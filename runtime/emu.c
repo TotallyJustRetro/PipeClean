@@ -19,6 +19,11 @@ static SDL_mutex *fmx;
 static Frame pub;                         /* latest published frame */
 static volatile int abort_flag, paused, turbo, thread_mode, preview_target, previewing;
 static volatile uint32_t input_word;     /* buttons | dpad << 8 */
+static SDL_mutex *rewind_sync_mx;
+static SDL_cond *rewind_sync_cv;
+static volatile int rewind_step_request;
+static volatile int rewind_step_done;
+static int rewind_step_result;
 static char save_path[1100];
 static int save_tick;
 static int force_interp_flag;
@@ -1046,6 +1051,11 @@ static int emu_state_load_blob(const void *src, size_t n)
 
 static void rewind_free(void)
 {
+    if (rewind_sync_mx) SDL_LockMutex(rewind_sync_mx);
+    rewind_step_request = 0;
+    rewind_step_done = 1;
+    if (rewind_sync_cv) SDL_CondBroadcast(rewind_sync_cv);
+    if (rewind_sync_mx) SDL_UnlockMutex(rewind_sync_mx);
     free(rewind_data);
     rewind_data = NULL;
     rewind_stride = 0;
@@ -1059,6 +1069,8 @@ static void rewind_free(void)
 static void rewind_init(void)
 {
     rewind_free();
+    if (!rewind_sync_mx) rewind_sync_mx = SDL_CreateMutex();
+    if (!rewind_sync_cv) rewind_sync_cv = SDL_CreateCond();
     rewind_stride = emu_state_blob_size();
     rewind_data = (uint8_t *)malloc((size_t)REWIND_SLOTS * rewind_stride);
     if (!rewind_data) { rewind_stride = 0; return; }
@@ -1185,11 +1197,20 @@ int emu_rewind_step(void)
     if (!rewind_mode && rewind_prime()) return -1;
     if (mp_ready || mp_active) {
         rewind_pending = 0;
-        if (rewind_load_previous()) return -1;
-    } else {
-        rewind_pending = 1;
+        return rewind_load_previous();
     }
-    return 0;
+    if (!thr || !rewind_sync_mx || !rewind_sync_cv) return -1;
+
+    SDL_LockMutex(rewind_sync_mx);
+    rewind_step_done = 0;
+    rewind_step_result = -1;
+    rewind_step_request = 1;
+    SDL_CondSignal(rewind_sync_cv);
+    while (!rewind_step_done && !abort_flag)
+        SDL_CondWait(rewind_sync_cv, rewind_sync_mx);
+    int result = abort_flag ? -1 : rewind_step_result;
+    SDL_UnlockMutex(rewind_sync_mx);
+    return result;
 }
 
 void emu_rewind_capture(void)
@@ -1264,7 +1285,17 @@ void frame_hook(void)
     }
     if (abort_flag) longjmp(stop_jmp, 1);
     if (rewind_mode) {
-        if (rewind_pending) {
+        if (rewind_step_request) {
+            int result = rewind_load_previous();
+            if (result) rewind_mode = 0;
+            SDL_LockMutex(rewind_sync_mx);
+            rewind_step_request = 0;
+            rewind_step_result = result;
+            rewind_step_done = 1;
+            SDL_CondBroadcast(rewind_sync_cv);
+            SDL_UnlockMutex(rewind_sync_mx);
+        } else if (rewind_pending) {
+            /* Compatibility path for an already-queued rewind request. */
             rewind_pending = 0;
             if (rewind_load_previous()) rewind_mode = 0;
         }
@@ -1329,12 +1360,21 @@ void emu_stop(void)
 {
     if (!thr) return;
     abort_flag = 1;
+    if (rewind_sync_mx) {
+        SDL_LockMutex(rewind_sync_mx);
+        rewind_step_done = 1;
+        rewind_step_request = 0;
+        if (rewind_sync_cv) SDL_CondBroadcast(rewind_sync_cv);
+        SDL_UnlockMutex(rewind_sync_mx);
+    }
     audio_game_abort();
     SDL_WaitThread(thr, NULL);
     thr = NULL;
     audio_game_end();
     events_end();
     rewind_free();
+    if (rewind_sync_cv) { SDL_DestroyCond(rewind_sync_cv); rewind_sync_cv = NULL; }
+    if (rewind_sync_mx) { SDL_DestroyMutex(rewind_sync_mx); rewind_sync_mx = NULL; }
 }
 
 void emu_preview(int frames)

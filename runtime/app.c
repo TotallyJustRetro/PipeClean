@@ -27,6 +27,7 @@ static void sfx(int w) { audio_sfx(w); }
 
 static char game_notice_text[160];
 static float game_notice_t;
+static int load_state_request_app[N_GAMES];
 
 static void game_notice(const char *s)
 {
@@ -195,7 +196,7 @@ static int app_handle_action_event(int g, const SDL_Event *e, int *paused, int *
             game_state_save(g, paused ? *paused : 0);
             break;
         case ACT_LOAD_STATE:
-            game_state_load(g, paused ? *paused : 0);
+            if (g >= 0 && g < N_GAMES) load_state_request_app[g] = 1;
             break;
         case ACT_REWIND:
             break; /* held state is handled every frame below */
@@ -560,6 +561,13 @@ static int play_multiplayer_sml1(int g)
             }
         }
 
+        if (load_state_request_app[g]) {
+            load_state_request_app[g] = 0;
+            game_state_load(g, paused);
+            f->seq = UINT64_MAX;
+            have = 0;
+        }
+
         int ds_rewinding = ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND;
         int now_rewind = app_rewind_held(g) && !paused;
         if (ds_rewinding) {
@@ -678,6 +686,7 @@ static int play(int g)
 {
     char err[256];
     GameCfg *c = &settings.g[g];
+    load_state_request_app[g] = 0;
     if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
     audio_menu_music(0);
     if (g == GAME_SML && c->multiplayer) return play_multiplayer_sml1(g);
@@ -727,6 +736,12 @@ static int play(int g)
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) { emu_set_turbo(0); }
             else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action) quit = 1;
+        }
+        if (load_state_request_app[g]) {
+            load_state_request_app[g] = 0;
+            game_state_load(g, paused);
+            f->seq = UINT64_MAX;
+            have = 0;
         }
         if (ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND) {
             emu_rewind_step();
