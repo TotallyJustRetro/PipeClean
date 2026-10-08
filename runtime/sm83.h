@@ -137,4 +137,4 @@ static inline int cpu_irq_check(void)
 
 /* After every instruction: take a pending interrupt, with PC = address of
  * the instruction that would have run next. */
-#define NEXT(pcv) do { if (UNLIKELY(cpu_irq_check())) { cpu.pc = (pcv); goto irq; } } while (0)
+#define NEXT(pcv) do {     if (UNLIKELY(gb_mp_vblank_watch && (uint16_t)(pcv) == gb_mp_vblank_return_pc)) gb_mp_vblank_done();     if (UNLIKELY(cpu_irq_check())) { cpu.pc = (pcv); goto irq; } } while (0)
