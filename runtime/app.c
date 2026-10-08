@@ -167,6 +167,8 @@ static int game_state_load(int g, int paused)
         game_notice("Couldn't load state.");
         return -1;
     }
+    /* A load can jump across rooms/scenes, so discard filter history from the old picture. */
+    render_reset();
     emu_set_paused(paused);
     char msg[96];
     snprintf(msg, sizeof msg, "State loaded — Slot %d", settings.g[g].state_slot + 1);

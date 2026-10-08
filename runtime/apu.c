@@ -376,10 +376,18 @@ int apu_state_load(const void *src, size_t n)
     const APUState *s = (const APUState *)src;
     memcpy(ch,s->ch,sizeof ch); memcpy(regs,s->regs,sizeof regs); memcpy(wave_ram,s->wave_ram,sizeof wave_ram);
     power=s->power; fs_cycles=s->fs_cycles; fs_step=s->fs_step; nr50=s->nr50; nr51=s->nr51;
-    memcpy(ring,s->ring,sizeof ring); ring_r=s->ring_r; ring_w=s->ring_w; period_steps=s->period_steps; step_t=s->step_t;
-    acc_l=s->acc_l; acc_r=s->acc_r; dc_l=s->dc_l; dc_r=s->dc_r; prev_l=s->prev_l; prev_r=s->prev_r; acc_n=s->acc_n;
-    memcpy(tring,s->tring,sizeof tring); tring_r=s->tring_r; tring_w=s->tring_w; tap_mask=s->tap_mask;
-    tacc_l=s->tacc_l; tacc_r=s->tacc_r; tdc_l=s->tdc_l; tdc_r=s->tdc_r; tprev_l=s->tprev_l; tprev_r=s->tprev_r;
-    sub_cycles=s->sub_cycles; master_vol=s->master_vol;
+    period_steps=s->period_steps;
+    /* The PCM rings are output history, not emulated hardware state. Never restore
+     * samples generated before the save/load point or the old music will overlap
+     * the newly restored game's audio. */
+    ring_r = ring_w = 0;
+    step_t = 0;
+    acc_l = acc_r = dc_l = dc_r = prev_l = prev_r = 0;
+    acc_n = 0;
+    tring_r = tring_w = 0;
+    tap_mask = s->tap_mask;
+    tacc_l = tacc_r = tdc_l = tdc_r = tprev_l = tprev_r = 0;
+    sub_cycles = s->sub_cycles;
+    master_vol = s->master_vol;
     return 0;
 }
