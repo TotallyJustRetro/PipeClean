@@ -790,7 +790,7 @@ void frame_hook(void)
             mp_vblank_waiting = 1;
             mp_vblank_life_event = rd8(0xC0A3);
             mp_vblank_collision = rd8(0xFFEE);
-            mp_vblank_collision_addr = (uint16_t)(rd8(0xFFEF) | ((uint16_t)rd8(0xFFF0) << 8));
+            mp_vblank_collision_addr = (uint16_t)(((uint16_t)rd8(0xFFEF) << 8) | rd8(0xFFF0));
             mp_vblank_collision_before = 0;
             if (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
                 mp_vblank_collision_before = rd8(mp_vblank_collision_addr);
