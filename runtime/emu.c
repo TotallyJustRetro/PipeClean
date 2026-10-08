@@ -196,6 +196,7 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     memcpy(f->tiles, vram, sizeof f->tiles);
     memcpy(f->bg_map, &vram[0x1800], sizeof f->bg_map);
     memcpy(f->mario_oam, &oam[0x0C], sizeof f->mario_oam);
+    memset(f->mario_oam2, 0, sizeof f->mario_oam2);
     if (screen_dx) {
         for (int i = 0; i < 4; i++) {
             int x = (int)f->mario_oam[i * 4 + 1] + screen_dx;
@@ -297,6 +298,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             wr8(0xC202, (uint8_t)(x + dx));
         }
         mp_capture_frame(frame, dx);
+        memcpy(frame->mario_oam2, frame->mario_oam, sizeof frame->mario_oam2);
+        /* Keep P1's authoritative OAM separate; the caller decides when to draw P2. */
+        memset(frame->mario_oam, 0, sizeof frame->mario_oam);
         mp_player_save(&mp_p2_state);
 
         /*
