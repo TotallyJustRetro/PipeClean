@@ -26,7 +26,7 @@ void emu_set_turbo(int t);
 void emu_set_save_path(const char *path);
 uint64_t emu_frames(void);
 
-/* Local two-player SML1 runtime: two independent emulator states stepped in lockstep. */
+/* Local two-player SML1 runtime: one authoritative world plus an isolated Player 2 state. */
 int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
