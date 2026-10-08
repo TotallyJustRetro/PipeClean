@@ -223,6 +223,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             uint8_t x = rd8(0xC202);
             wr8(0xC202, (uint8_t)(x + dx));
         }
+        mp_capture_frame(frame, dx);
         mp_player_save(&mp_p2_state);
         gb_state_load(mp_state, GB_STATE_BYTES);
         return mp_audio_n;
@@ -323,7 +324,7 @@ void frame_hook(void)
         return;
     }
     if (mp_active) {
-        mp_capture_frame(mp_frame_out);
+        mp_capture_frame(mp_frame_out, 0);
         mp_audio_n = mp_audio_out && mp_audio_max > 0 ? apu_drain(mp_audio_out, mp_audio_max) : 0;
         gb_set_input(mp_buttons, mp_dpad);
         longjmp(stop_jmp, 3);
