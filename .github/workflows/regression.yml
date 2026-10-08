@@ -25,6 +25,13 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_mp3.h -o runtime/dr_mp3.h
           curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_flac.h -o runtime/dr_flac.h
 
+      - name: Restore launcher font data
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Regular.ttf -o /tmp/Poppins-Regular.ttf
+          curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf -o /tmp/Poppins-Bold.ttf
+          python3 tools/make_font.py /tmp/Poppins-Regular.ttf /tmp/Poppins-Bold.ttf
+
       - name: Commit restored vendor sources
         run: |
           set -euo pipefail
