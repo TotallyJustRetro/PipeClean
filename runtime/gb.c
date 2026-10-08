@@ -1,6 +1,7 @@
 /* Memory map, timer, serial, joypad, DMA, interrupts. */
 #include "sm83.h"
 #include "cart.h"
+#include "widescreen.h"
 
 CPU cpu;
 uint8_t io_if, io_ie;
