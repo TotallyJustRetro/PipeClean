@@ -127,9 +127,6 @@ static uint8_t mp_vblank_floaty_control;
 static uint8_t mp_vblank_floaty_x;
 static uint8_t mp_vblank_floaty_y;
 static uint8_t mp_pending_block;
-static uint8_t mp_pending_block_row;
-static uint8_t mp_pending_block_world_col;
-static uint8_t mp_pending_block_tile;
 static int mp_vblank_waiting;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
@@ -340,12 +337,10 @@ static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
         return 1;
     case 0x02:
         mp_pending_block = 1;
-        mp_pending_block_row = (uint8_t)row;
-        mp_pending_block_world_col = (uint8_t)world_col;
-        mp_pending_block_tile = before;
         vram[0x1800 + p1idx] = after;
         return 1;
     case 0x04:
+        if (!mp_pending_block) return 0;
         vram[0x1800 + p1idx] = after;
         mp_pending_block = 0;
         return 1;
@@ -424,9 +419,6 @@ int emu_mp_begin(void)
     mp_vblank_floaty_x = 0;
     mp_vblank_floaty_y = 0;
     mp_pending_block = 0;
-    mp_pending_block_row = 0;
-    mp_pending_block_world_col = 0;
-    mp_pending_block_tile = 0;
     mp_vblank_waiting = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
     gb_mp_vblank_watch = 0;
@@ -458,7 +450,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int p2_world_lives_before = mp_bcd_to_int(rd8(0xDA15));
         uint8_t score_before[3];
         uint8_t coins_before = rd8(0xFFFA);
-        uint8_t p1_floaty_before = rd8(0xFFED);
         uint8_t p1_square_sfx_before = rd8(0xDFE0);
         uint8_t p1_noise_sfx_before = rd8(0xDFF8);
         for (int i = 0; i < 3; i++) score_before[i] = rd8((uint16_t)(0xC0A0 + i));
