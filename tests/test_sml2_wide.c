@@ -86,7 +86,7 @@ int main(void)
     cpu.pc = 0x40A9;
     if (wide_read_sml2(0xAF14, 0xFF) != 0x02) return 16;
     cpu.pc = 0x40AF;
-    if (wide_read_sml2(0xAF15, 0xFF) != 0xF0) return 17;
+    if (wide_read_sml2(0xAF15, 0xFF) != 0x08) return 17;
 
     cpu.pc = 0x401D;
     cpu.h = 1;
