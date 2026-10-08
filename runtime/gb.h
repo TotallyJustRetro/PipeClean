@@ -93,5 +93,5 @@ extern int frame_count;
  * hud_lines: top lines drawn with scroll 0 (the status bar) are centred instead of left-aligned. */
 extern int ppu_w, ppu_xoff;
 /* gate: 0 = always wide, 1 = only while the timer interrupt is enabled (Super Mario Land levels),
- * 2 = only while the bottom status window is up (Super Mario Land 2 levels). Otherwise the normal screen with bars. */
+ * 2 = legacy bottom-status-window gating (kept for compatibility). Otherwise the normal screen with bars. */
 void ppu_set_wide(int left, int right, int hud_lines, int centre_window, int gate);
