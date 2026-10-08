@@ -102,6 +102,11 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
         ui_text_fit(F_REG, 13, x + 14, oy + 7, w - 28, (o == (*sel + 1)) ? HEX(0xFFFFFF) : C_TEXT, label_text);
         if (pick) {
             *sel = o - 1;
+            if (*sel >= 0) {
+                pad_device_guid(*sel, c->pad_guid[player], sizeof c->pad_guid[player]);
+            } else {
+                c->pad_guid[player][0] = 0;
+            }
             controller_menu = -1;
         }
     }
