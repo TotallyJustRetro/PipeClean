@@ -141,6 +141,17 @@ static void mp_oam_offset_y(const uint8_t src[16], uint8_t dst[16], int dy)
     }
 }
 
+static void mp_oam_offset_x(uint8_t oam16[16], int dx)
+{
+    if (!oam16 || !dx) return;
+    for (int i = 0; i < 4; i++) {
+        int x = (int)oam16[i * 4 + 1] + dx;
+        while (x < 0) x += 256;
+        while (x > 255) x -= 256;
+        oam16[i * 4 + 1] = (uint8_t)x;
+    }
+}
+
 static void mp_respawn_p2_from_p1(void)
 {
     mp_player_save(&mp_p2_state);
@@ -154,14 +165,17 @@ static void mp_respawn_p2_from_p1(void)
     mp_p2_state.mario[13] = 0; /* C20D: direction */
     mp_p2_state.mario[14] = 2; /* C20E: walking */
 
-    int x = rd8(0xC202);
+    int p1x = rd8(0xC202);
+    int x = p1x;
     if (x <= 0x78) x += 24;
     else if (x >= 0x28) x -= 24;
     else x = 0x50;
     if (x < 0x18) x = 0x18;
     if (x > 0xC8) x = 0xC8;
+    mp_oam_offset_x(mp_p2_state.mario_oam, x - p1x);
     mp_p2_state.mario[2] = (uint8_t)x;
     mp_p2_state.mario[1] = rd8(0xC201);
+    memcpy(mp_p2_last_oam, mp_p2_state.mario_oam, sizeof mp_p2_last_oam);
 }
 
 static void mp_player_save(MpPlayerState *s)
@@ -556,14 +570,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (x < 0) x += 256;
         if (x > 255) x -= 256;
         mp_p2_state.mario[2] = (uint8_t)x;
-        if (mp_p2_hurt_timer > 0) {
-            for (int i = 0; i < 4; i++) {
-                int ox = (int)mp_p2_hurt_oam[i * 4 + 1] - p1_camera_dx;
-                while (ox < 0) ox += 256;
-                while (ox > 255) ox -= 256;
-                mp_p2_hurt_oam[i * 4 + 1] = (uint8_t)ox;
-            }
-        }
+        mp_oam_offset_x(mp_p2_state.mario_oam, -p1_camera_dx);
+        mp_oam_offset_x(mp_p2_last_oam, -p1_camera_dx);
+        if (mp_p2_hurt_timer > 0)
+            mp_oam_offset_x(mp_p2_hurt_oam, -p1_camera_dx);
     }
     frame->p1_lives = rd8(0xDA15);
     frame->p2_lives = mp_p2_lives;
@@ -582,10 +592,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_p2_state.joy_held = 0;
         mp_p2_state.joy_pressed = 0;
 
-        uint8_t x = rd8(0xC202);
-        if (x <= 0x70) x = (uint8_t)(x + 24);
-        else if (x >= 0x30) x = (uint8_t)(x - 24);
-        mp_p2_state.mario[2] = x;
+        int p1x = rd8(0xC202);
+        int x = p1x;
+        if (x <= 0x70) x += 24;
+        else if (x >= 0x30) x -= 24;
+        mp_oam_offset_x(mp_p2_state.mario_oam, x - p1x);
+        mp_p2_state.mario[2] = (uint8_t)x;
+        memcpy(mp_p2_last_oam, mp_p2_state.mario_oam, sizeof mp_p2_last_oam);
         mp_p2_spawned = 1;
         frame->p2_visible = 1;
         frame->p2_lives = mp_p2_lives;
