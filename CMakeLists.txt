@@ -58,7 +58,7 @@ add_test(NAME sml2_widescreen COMMAND test_sml2_wide)
 
 add_executable(test_sml_wide tests/test_sml_wide.c runtime/widescreen.c)
 target_include_directories(test_sml_wide PRIVATE runtime)
-add_test(NAME sml_widecreens COMMAND test_sml_wide)
+add_test(NAME sml_widescreen COMMAND test_sml_wide)
 
 add_executable(test_cart_mbc1 tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c)
 target_include_directories(test_cart_mbc1 PRIVATE runtime)
