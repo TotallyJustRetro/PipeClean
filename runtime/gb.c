@@ -107,7 +107,9 @@ uint8_t rd8(uint16_t a)
         if (a < 0xFF00) return 0xFF;
         if (a < 0xFF80) return io_read((uint8_t)(a & 0x7F));
         if (a == 0xFFFF) return io_ie;
-        return hram[a & 0x7F];
+        uint8_t v = hram[a & 0x7F];
+        if (a == 0xFFC5) wide_tap_sml2(a, v);
+        return wide_read_sml2(a, v);
     }
 }
 
