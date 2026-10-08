@@ -453,6 +453,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             for (int i = 0; i < -life_delta && mp_p2_lives > 0; i++) mp_p2_lives--;
         }
 
+        int dx = mp_scroll_delta(p2_scroll_after, p1_scroll);
         int enemy_merged = 0;
         int enemy_sound_event = 0;
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
@@ -482,7 +483,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * Convert Luigi's local camera back to the authoritative Player 1
          * coordinate system before saving his private character state.
          */
-        int dx = mp_scroll_delta(p2_scroll_after, p1_scroll);
         if (dx) {
             uint8_t x = rd8(0xC202);
             wr8(0xC202, (uint8_t)(x + dx));
