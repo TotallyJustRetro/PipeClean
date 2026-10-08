@@ -239,25 +239,19 @@ static void mp_copy_mario_oam_buffer(uint8_t out[16], int screen_dx)
     }
 }
 
-static int mp_is_enemy_stomped(uint8_t type)
+static int mp_is_enemy_stomp_transition(uint8_t before_type, uint8_t after_type)
 {
-    switch (type) {
-    case 0x01: /* CHIBIBO_STOMPED */
-    case 0x0F: /* FLY_STOMPED */
-    case 0x11: /* enemy death animation */
-    case 0x12: /* enemy death animation */
-    case 0x15: /* enemy death animation */
-    case 0x1C: /* MEKABON_STOMPED */
-    case 0x21: /* GUNION_EXPLOSION */
-    case 0x27: /* EXPLOSION */
-    case 0x3D: /* BATADON_STOMPED */
-    case 0x40: /* GAO_STOMPED */
-    case 0x43: /* BUNBUN_STOMPED */
-    case 0x57: /* PIONPI_STOMPED */
-        return 1;
-    default:
-        return 0;
+    if (before_type == 0xFF || before_type == after_type) return 0;
+    /*
+     * Call_2A01 indexes Data_3186 by enemy type and uses its first byte as
+     * the stomp transition. cart_lo is bank 0, where Data_3186 lives at
+     * ROM address $3186 in the original SML1 image.
+     */
+    if (cart_lo && (0x3186u + (unsigned)before_type * 5u) < 0x4000u) {
+        uint8_t expected = cart_lo[0x3186u + (unsigned)before_type * 5u];
+        if (expected != 0 && after_type == expected) return 1;
     }
+    return after_type == 0xFF;
 }
 
 static int mp_is_pickup(uint8_t type)
@@ -537,20 +531,17 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          */
         int stomp_target = -1;
         if (p2_stomp_event) {
-            int px = rd8(0xC202);
-            int best = 9999;
+            int changed = 0;
             for (int slot = 0; slot < 10; slot++) {
                 uint8_t bt = mp_enemy_before[slot * 0x10];
                 uint8_t at = mp_enemy_after[slot * 0x10];
-                if (bt == 0xFF || bt == at || mp_is_pickup(bt) || mp_is_pickup(at))
-                    continue;
-                int ex = mp_enemy_after[slot * 0x10 + 3];
-                int d = abs(ex - px);
-                if (d < best) {
-                    best = d;
+                if (bt != 0xFF && bt != at && !mp_is_pickup(bt) && !mp_is_pickup(at)) {
                     stomp_target = slot;
+                    changed++;
                 }
             }
+            /* Only use the fallback when exactly one enemy changed. */
+            if (changed != 1) stomp_target = -1;
         }
 
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
@@ -559,7 +550,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             uint8_t after_type = mp_enemy_after[slot * 0x10];
             int type_changed = before_type != after_type && before_type != 0xFF;
             int enemy_death = type_changed &&
-                              (mp_is_enemy_stomped(after_type) ||
+                              (mp_is_enemy_stomp_transition(before_type, after_type) ||
                                after_type == 0xFF ||
                                slot == stomp_target);
             int pickup_consumed = mp_is_pickup(before_type) && before_type != after_type;
@@ -584,10 +575,15 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             wr8(0xC202, (uint8_t)(x + dx));
         }
 
-        mp_capture_frame(frame, 0);
-        frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
-        mp_copy_mario_oam_buffer(frame->mario_oam2, dx);
-        memcpy(mp_p2_last_oam, frame->mario_oam2, sizeof mp_p2_last_oam);
+        /*
+         * Do NOT publish the isolated Luigi world here. Its tilemap contains
+         * temporary question-block/coin changes and its camera may have
+         * loaded different columns. Only keep Luigi's freshly rendered OAM;
+         * the visible frame must be captured from the restored P1 world below.
+         */
+        uint8_t p2_oam_saved[16];
+        mp_copy_mario_oam_buffer(p2_oam_saved, dx);
+        memcpy(mp_p2_last_oam, p2_oam_saved, sizeof mp_p2_last_oam);
 
         mp_player_save(&mp_p2_state);
         mp_p2_state.game_state = p2_game_state;
@@ -615,7 +611,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             else if (p1_square_sfx_before == 0 && p2_square_sfx)
                 wr8(0xDFE0, p2_square_sfx);
             else if (p2_jump_event)
-                wr8(0xDFE0, 0x07); /* SML1 movement/jump bump SFX */
+                wr8(0xDFE0, 0x01); /* SFX_JUMP */
         }
 
         int p2_block_hit = (mp_vblank_collision == 0x01 ||
@@ -711,6 +707,15 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                 if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
             }
         }
+
+        /*
+         * Capture the frame ONLY after restoring and merging into the
+         * authoritative Player 1 world. This prevents Luigi's private
+         * temporary block/item map from becoming the visible background.
+         */
+        mp_capture_frame(frame, 0);
+        memcpy(frame->mario_oam2, mp_p2_last_oam, sizeof frame->mario_oam2);
+        frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
 
         /*
          * Fatal small-Mario deaths are the original SML1 states 3 -> 4 -> 1.
