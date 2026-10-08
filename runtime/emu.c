@@ -107,10 +107,10 @@ static uint8_t mp_state[GB_STATE_BYTES];
 static MpPlayerState mp_p2_state;
 static uint8_t mp_tilemap_before[0x400];
 static uint8_t mp_tilemap_after[0x400];
-static uint8_t mp_enemy_before[0x90];
-static uint8_t mp_enemy_after[0x90];
-static uint8_t mp_enemy_merge[0x90];
-static uint8_t mp_enemy_merge_mask[9];
+static uint8_t mp_enemy_before[0xA0];
+static uint8_t mp_enemy_after[0xA0];
+static uint8_t mp_enemy_merge[0xA0];
+static uint8_t mp_enemy_merge_mask[10];
 static uint8_t mp_p1_lives_seen;
 static uint8_t mp_p2_lives;
 static uint8_t mp_p2_dead_timer;
@@ -215,7 +215,12 @@ static int mp_is_enemy_stomped(uint8_t type)
     switch (type) {
     case 0x01: /* CHIBIBO_STOMPED */
     case 0x0F: /* FLY_STOMPED */
+    case 0x11: /* enemy death animation */
+    case 0x12: /* enemy death animation */
+    case 0x15: /* enemy death animation */
     case 0x1C: /* MEKABON_STOMPED */
+    case 0x21: /* GUNION_EXPLOSION */
+    case 0x27: /* EXPLOSION */
     case 0x3D: /* BATADON_STOMPED */
     case 0x40: /* GAO_STOMPED */
     case 0x43: /* BUNBUN_STOMPED */
@@ -226,16 +231,32 @@ static int mp_is_enemy_stomped(uint8_t type)
     }
 }
 
+static int mp_is_pickup(uint8_t type)
+{
+    switch (type) {
+    case 0x28: /* MUSHROOM_IN_FLIGHT */
+    case 0x29: /* MUSHROOM */
+    case 0x2A: /* HEART_IN_FLIGHT */
+    case 0x2B: /* HEART */
+    case 0x2D: /* FLOWER_GROWING */
+    case 0x2E: /* FLOWER */
+    case 0x34: /* STAR */
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static void mp_capture_shared_world_before(void)
 {
     memcpy(mp_tilemap_before, &vram[0x1800], sizeof mp_tilemap_before);
-    for (int i = 0; i < 0x90; i++) mp_enemy_before[i] = rd8((uint16_t)(0xD100 + i));
+    for (int i = 0; i < 0xA0; i++) mp_enemy_before[i] = rd8((uint16_t)(0xD100 + i));
 }
 
 static void mp_capture_shared_world_after(void)
 {
     memcpy(mp_tilemap_after, &vram[0x1800], sizeof mp_tilemap_after);
-    for (int i = 0; i < 0x90; i++) mp_enemy_after[i] = rd8((uint16_t)(0xD100 + i));
+    for (int i = 0; i < 0xA0; i++) mp_enemy_after[i] = rd8((uint16_t)(0xD100 + i));
 }
 
 static int mp_scroll_delta(uint8_t now, uint8_t old)
@@ -402,16 +423,26 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
 
         int enemy_merged = 0;
+        int pickup_consumed = 0;
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
-        for (int slot = 0; slot < 9; slot++) {
+        for (int slot = 0; slot < 10; slot++) {
             uint8_t before_type = mp_enemy_before[slot * 0x10];
             uint8_t after_type = mp_enemy_after[slot * 0x10];
-            if (before_type != after_type && mp_is_enemy_stomped(after_type)) {
-                mp_enemy_merge_mask[slot >> 3] |= (uint8_t)(1u << (slot & 7));
+            int enemy_death = before_type != after_type && mp_is_enemy_stomped(after_type);
+            int pickup = mp_is_pickup(before_type) && before_type != after_type;
+            if (enemy_death || pickup) {
+                mp_enemy_merge_mask[slot] = 1;
                 memcpy(&mp_enemy_merge[slot * 0x10], &mp_enemy_after[slot * 0x10], 0x10);
                 enemy_merged = 1;
+                if (pickup) pickup_consumed = 1;
             }
         }
+
+        /*
+         * A power-up is a shared world object. When Luigi's isolated pass
+         * consumes one, persist the object's new state so Mario cannot collect
+         * the same physical power-up afterward.
+         */
 
         /*
          * SML1 keeps Mario's X coordinate relative to its own camera. Convert
@@ -464,8 +495,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             if (coins_after != coins_before)
                 wr8(0xFFFA, coins_after);
 
-            for (int slot = 0; slot < 9; slot++) {
-                if (mp_enemy_merge_mask[slot >> 3] & (uint8_t)(1u << (slot & 7)))
+            for (int slot = 0; slot < 10; slot++) {
+                if (mp_enemy_merge_mask[slot])
                     for (int i = 0; i < 0x10; i++)
                         wr8((uint16_t)(0xD100 + slot * 0x10 + i), mp_enemy_merge[slot * 0x10 + i]);
             }
