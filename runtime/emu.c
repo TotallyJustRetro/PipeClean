@@ -697,14 +697,6 @@ void gb_mp_vblank_done(void)
     longjmp(stop_jmp, 3);
 }
 
-void gb_mp_vblank_done(void)
-{
-    if (!mp_active) return;
-    gb_mp_vblank_watch = 0;
-    mp_vblank_waiting = 0;
-    longjmp(stop_jmp, 3);
-}
-
 static void dev_hook(uint8_t *b, uint8_t *d)
 {
     if (emu_dev.hash || hash_log) {
