@@ -25,7 +25,7 @@ A runtime `SDL2.dll` is **not** enough to compile PipeClean. You need the SDL2 d
 
 ## Windows CI build
 
-Each successful GitHub Actions run produces a PipeClean-Windows-x64 artifact. It contains PipeClean.exe, the Windows runtime DLLs used by the build, and the project documentation. The CI package uses a synthetic test cartridge only; commercial ROMs are never included.
+Each successful GitHub Actions run produces a PipeClean-Windows-x64 artifact. It contains PipeClean.exe, the Windows runtime DLLs used by the build, the PipeClean icon/assets, and the project documentation. The CI package uses a synthetic test cartridge only; commercial ROMs are never included.
 
 For development builds, use the normal CMake instructions below.
 
