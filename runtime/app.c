@@ -65,124 +65,7 @@ static void draw_bg_cover(float dim)
     }
 }
 
-/* Local SML1 multiplayer: each controller owns an independent SML1 state.
- * The original cartridge remains untouched; PipeClean supplies the multiplayer
- * session layer around two normal game instances. */
-/* Local SML1 multiplayer: one original SML1 world with a second Mario actor.
- * Player 1 remains the real cartridge-controlled Mario. Player 2 is simulated
- * beside that actor and drawn into the same final frame. */
-typedef struct {
-    int ready, grounded, facing_left;
-    uint8_t prev_buttons, camera_u8;
-    double camera_world, world_x, y, vx, vy;
-} Sml1P2;
-
-static int sml1_cam_delta(uint8_t now, uint8_t old)
-{
-    int d = (int)now - (int)old;
-    if (d > 127) d -= 256;
-    if (d < -127) d += 256;
-    return d;
-}
-
-static int sml1_solid_tile(const Frame *f, double wx, double wy)
-{
-    int tx = ((int)floor(wx) - 8) >> 3;
-    int ty = ((int)floor(wy) - 16) >> 3;
-    if (ty < 0 || ty >= 18) return 0;
-    tx &= 31;
-    return f->bg_map[ty * 32 + tx] >= 0x60;
-}
-
-static void sml1_p2_step(Sml1P2 *p, const Frame *f, uint8_t buttons, uint8_t dpad)
-{
-    if (!p || !f || f->game_state != 0) {
-        if (p) p->prev_buttons = buttons;
-        return;
-    }
-    if (!p->ready) {
-        p->camera_u8 = f->scroll_x;
-        p->camera_world = f->scroll_x;
-        p->world_x = p->camera_world + f->player_x + 24.0;
-        p->y = f->player_y;
-        p->vx = p->vy = 0.0;
-        p->grounded = 1;
-        p->facing_left = 0;
-        p->ready = 1;
-        p->prev_buttons = buttons;
-        return;
-    }
-
-    p->camera_world += sml1_cam_delta(f->scroll_x, p->camera_u8);
-    p->camera_u8 = f->scroll_x;
-
-    int right = (dpad & 0x01) != 0;
-    int left = (dpad & 0x02) != 0;
-    int jump = (buttons & 0x01) && !(p->prev_buttons & 0x01);
-
-    if (right && !left) {
-        p->vx += 0.22;
-        if (p->vx > 2.0) p->vx = 2.0;
-        p->facing_left = 0;
-    } else if (left && !right) {
-        p->vx -= 0.22;
-        if (p->vx < -2.0) p->vx = -2.0;
-        p->facing_left = 1;
-    } else {
-        p->vx *= 0.78;
-        if (fabs(p->vx) < 0.05) p->vx = 0.0;
-    }
-
-    if (jump && p->grounded) {
-        p->vy = -5.8;
-        p->grounded = 0;
-    }
-
-    double nx = p->world_x + p->vx;
-    if (p->vx > 0.0 && (sml1_solid_tile(f, nx + 6, p->y + 4) || sml1_solid_tile(f, nx + 6, p->y + 10))) {
-        int tx = ((int)floor(nx + 6) - 8) >> 3;
-        nx = tx * 8.0 + 2.0;
-        p->vx = 0.0;
-    } else if (p->vx < 0.0 && (sml1_solid_tile(f, nx - 6, p->y + 4) || sml1_solid_tile(f, nx - 6, p->y + 10))) {
-        int tx = ((int)floor(nx - 6) - 8) >> 3;
-        nx = (tx + 1) * 8.0 + 14.0;
-        p->vx = 0.0;
-    }
-
-    p->vy += 0.36;
-    if (p->vy > 6.0) p->vy = 6.0;
-    double ny = p->y + p->vy;
-    p->grounded = 0;
-
-    if (p->vy >= 0.0 && (sml1_solid_tile(f, nx - 5, ny + 11) || sml1_solid_tile(f, nx + 5, ny + 11))) {
-        int row = ((int)floor(ny + 11) - 16) >> 3;
-        ny = 16.0 + row * 8.0 - 11.0;
-        p->vy = 0.0;
-        p->grounded = 1;
-    } else if (p->vy < 0.0 && (sml1_solid_tile(f, nx - 5, ny - 1) || sml1_solid_tile(f, nx + 5, ny - 1))) {
-        int row = ((int)floor(ny - 1) - 16) >> 3;
-        ny = 16.0 + (row + 1) * 8.0 + 1.0;
-        p->vy = 0.0;
-    }
-
-    p->world_x = nx;
-    p->y = ny;
-
-    /* Keep Player 2 close enough to the shared camera that the current
-     * loaded SML1 tilemap remains the world used for collision. */
-    double sx = p->world_x - p->camera_world;
-    if (sx < -16.0) p->world_x = p->camera_world - 16.0;
-    if (sx > f->w + 16.0) p->world_x = p->camera_world + f->w + 16.0;
-
-    if (p->y > 176.0 || p->y < -24.0) {
-        p->world_x = p->camera_world + f->player_x + (p->facing_left ? -24.0 : 24.0);
-        p->y = f->player_y;
-        p->vx = p->vy = 0.0;
-        p->grounded = 1;
-    }
-    p->prev_buttons = buttons;
-}
-
+/* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer_sml1(int g)
 {
     GameCfg *c = &settings.g[g];
@@ -198,21 +81,18 @@ static int play_multiplayer_sml1(int g)
     render_reset();
     pad_set_context(g, 1);
     set_game_window(g);
-    if (emu_start(0)) {
-        launcher_toast("Couldn't start the game.");
+
+    if (emu_mp_begin()) {
+        launcher_toast("Couldn't start SML1 multiplayer.");
         return 0;
     }
+    apu_set_volume(settings.volume / 100.0f);
+    audio_game_begin();
 
-    Frame *f = SDL_malloc(sizeof *f);
-    if (!f) {
-        emu_stop();
-        return 0;
-    }
-    memset(f, 0, sizeof *f);
-
-    Sml1P2 p2 = {0};
+    Frame f = {0}, p2f = {0};
+    int16_t a0[4096 * 2], a1[4096 * 2], mix[4096 * 2];
     int quit = 0, paused = 0, have = 0, shot = 0;
-    uint8_t b1 = 0, d1 = 0, b2 = 0, d2 = 0;
+    uint8_t b0 = 0, d0 = 0, b1 = 0, d1 = 0;
     Uint64 last = SDL_GetPerformanceCounter();
 
     while (!quit) {
@@ -226,7 +106,9 @@ static int play_multiplayer_sml1(int g)
                 case SDLK_F11:
                     SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                     break;
-                case SDLK_p: paused = !paused; emu_set_paused(paused); break;
+                case SDLK_p:
+                    paused = !paused;
+                    break;
                 case SDLK_TAB: emu_set_turbo(1); break;
                 case SDLK_F12: shot = 1; break;
                 }
@@ -237,18 +119,33 @@ static int play_multiplayer_sml1(int g)
             }
         }
 
-        pad_poll_player(g, 0, &b1, &d1);
-        pad_poll_player(g, 1, &b2, &d2);
-        emu_input(b1, d1);
+        if (!paused) {
+            pad_poll_player(g, 0, &b0, &d0);
+            pad_poll_player(g, 1, &b1, &d1);
 
-        if (emu_frame_get(f)) {
-            have = 1;
-            tex_collect_frame(f);
-            sml1_p2_step(&p2, f, b2, d2);
-            if (p2.ready && f->game_state == 0) {
-                int dx = (int)floor((p2.world_x - p2.camera_world) - f->player_x + 0.5);
-                int dy = (int)floor(p2.y - f->player_y + 0.5);
-                render_overlay_sml1_mario(f, dx, dy);
+            int n0 = emu_mp_step(0, b0, d0, &f, a0, 4096);
+            if (n0 < 0) {
+                quit = 1;
+            } else {
+                int n1 = emu_mp_step(1, b1, d1, &p2f, a1, 4096);
+                if (n1 < 0) {
+                    quit = 1;
+                } else {
+                    have = 1;
+                    memcpy(f.mario_oam, p2f.mario_oam, sizeof f.mario_oam);
+                    if (f.game_state == 0) render_overlay_sml1_mario(&f, 0, 0);
+
+                    int n = n0 > n1 ? n0 : n1;
+                    if (n > 4096) n = 4096;
+                    for (int i = 0; i < n; i++) {
+                        int l = i < n0 ? a0[i * 2] : 0, r = i < n0 ? a0[i * 2 + 1] : 0;
+                        int l2 = i < n1 ? a1[i * 2] : 0, r2 = i < n1 ? a1[i * 2 + 1] : 0;
+                        mix[i * 2] = (int16_t)((l + l2) / 2);
+                        mix[i * 2 + 1] = (int16_t)((r + r2) / 2);
+                    }
+                    if (n > 0) audio_game_push(mix, n);
+                    if (audio_ok()) audio_game_wait(audio_game_target());
+                }
             }
         }
 
@@ -267,7 +164,7 @@ static int play_multiplayer_sml1(int g)
         bg_update(dt);
 
         if (have) {
-            render_build(f, g, 1);
+            render_build(&f, g, 1);
             SDL_Rect r;
             render_fit(W, H, c->aspect, c->scaling, &r);
             render_draw(&r, c->scaling);
@@ -282,6 +179,7 @@ static int play_multiplayer_sml1(int g)
         }
 
         pad_frame(dt);
+
         if (shot) {
             shot = 0;
             SDL_Surface *snap = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
@@ -293,12 +191,13 @@ static int play_multiplayer_sml1(int g)
                 SDL_FreeSurface(snap);
             }
         }
+
         SDL_RenderPresent(ren);
     }
 
     emu_set_turbo(0);
-    emu_stop();
-    SDL_free(f);
+    audio_game_end();
+    emu_mp_end();
     tex_collect_save();
     pad_set_context(g, 0);
     SDL_SetWindowFullscreen(win, 0);
