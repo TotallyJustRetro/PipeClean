@@ -64,6 +64,7 @@ typedef struct {
 
 extern Settings settings;
 extern const char *aspect_names[], *scale_names[], *size_names[], *btn_names[], *led_names[], *lat_names[];
+extern const char *action_names[];
 
 void settings_defaults(Settings *s);
 void game_cfg_defaults(GameCfg *c, int game);
