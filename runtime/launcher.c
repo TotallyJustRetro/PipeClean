@@ -48,6 +48,61 @@ static int bg_for_game = -1;
 static float anim_clock;
 static int wide_dirty, wide_note[N_GAMES];
 static char sfx_test_msg[64];
+static int controller_menu = -1;
+
+static void controller_name(int slot, int device, char *out, size_t n)
+{
+    if (device < 0) { snprintf(out, n, "Not assigned"); return; }
+    if (device >= pad_count()) { snprintf(out, n, "Controller %d (not connected)", device + 1); return; }
+    snprintf(out, n, "%s", pad_name(device));
+}
+
+static void controller_dropdown(int g, int player, float x, float y, float w)
+{
+    GameCfg *c = &settings.g[g];
+    int *sel = &c->pad_device[player];
+    char name[96];
+    controller_name(player, *sel, name, sizeof name);
+
+    int over = 0;
+    int clicked = clickable(x, y, w, 34, &over);
+    ui_rrect(x, y, w, 34, 9, over ? C_BTN_H : C_BTN);
+    char title[120];
+    snprintf(title, sizeof title, "Player %d   %s", player + 1, name);
+    ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, C_TEXT, title);
+    ui_tri(x + w - 20, y + 12, x + w - 10, y + 12, x + w - 15, y + 20, C_MUTED);
+    if (clicked) controller_menu = controller_menu == player ? -1 : player;
+
+    if (controller_menu != player) return;
+
+    float py = y + 38;
+    float ph = 32.0f;
+    int count = pad_count();
+    int options = count + 1;
+    ui_shadow(x, py, w, options * 34 + 8, 10, 8, RGBA(0, 0, 0, 100));
+    ui_rrect(x, py, w, options * 34 + 8, 10, C_BG2);
+
+    for (int o = 0; o < options; o++) {
+        float oy = py + 4 + o * 34;
+        int over_o = 0;
+        int pick = clickable(x + 4, oy, w - 8, ph, &over_o);
+        ui_rrect(x + 4, oy, w - 8, ph, 7, (o == (*sel + 1)) ? HEX(ui_accent) : (over_o ? C_BTN_H : C_BTN));
+        char label_text[96];
+        if (o == 0) {
+            snprintf(label_text, sizeof label_text, "Not assigned");
+        } else {
+            int dev = o - 1;
+            snprintf(label_text, sizeof label_text, "Controller %d — %s", dev + 1, pad_name(dev));
+        }
+        ui_text_fit(F_REG, 13, x + 14, oy + 7, w - 28, (o == (*sel + 1)) ? HEX(0xFFFFFF) : C_TEXT, label_text);
+        if (pick) {
+            *sel = o - 1;
+            controller_menu = -1;
+        }
+    }
+    (void)player;
+}
+
 
 static int last_game_tab;
 int launcher_current_game(void) { return tab < N_GAMES ? tab : last_game_tab; }
@@ -384,30 +439,34 @@ static void sub_controls(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "BUTTON LAYOUT");
+
+    controller_dropdown(g, 0, x + 18, y + 34, 374);
+    controller_dropdown(g, 1, x + 414, y + 34, 374);
+
     static const float colx[5] = {18, 150, 310, 470, 630};
-    ui_text(F_BOLD, 12, x + colx[0], y + 42, C_MUTED, "Game Boy button");
-    ui_text(F_BOLD, 12, x + colx[1] + 10, y + 42, C_MUTED, "Keyboard");
-    ui_text(F_BOLD, 12, x + colx[2] + 10, y + 42, C_MUTED, "Keyboard 2");
-    ui_text(F_BOLD, 12, x + colx[3] + 10, y + 42, C_MUTED, "Controller");
-    ui_text(F_BOLD, 12, x + colx[4] + 10, y + 42, C_MUTED, "Controller 2");
+    ui_text(F_BOLD, 12, x + colx[0], y + 78, C_MUTED, "Game Boy button");
+    ui_text(F_BOLD, 12, x + colx[1] + 10, y + 78, C_MUTED, "Keyboard");
+    ui_text(F_BOLD, 12, x + colx[2] + 10, y + 78, C_MUTED, "Keyboard 2");
+    ui_text(F_BOLD, 12, x + colx[3] + 10, y + 78, C_MUTED, "Player 1 controller");
+    ui_text(F_BOLD, 12, x + colx[4] + 10, y + 78, C_MUTED, "Player 2 controller");
     for (int b = 0; b < N_BTN; b++) {
-        float ry = y + 62 + b * 36;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 3, 788, 36, 8, RGBA(255, 255, 255, 6));
-        ui_text(F_BOLD, 14, x + colx[0], ry + 5, C_TEXT, btn_names[b]);
+        float ry = y + 94 + b * 32;
+        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 32, 8, RGBA(255, 255, 255, 6));
+        ui_text(F_BOLD, 14, x + colx[0], ry + 4, C_TEXT, btn_names[b]);
         bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
         bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
         bind_cell(g, x + colx[3], ry, 150, 2, b, 0);
         bind_cell(g, x + colx[4], ry, 150, 2, b, 1);
     }
-    float by = y + 62 + N_BTN * 36 + 8;
-    if (ui_button(x + 18, by, 170, 36, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); launcher_toast("Controls reset."); }
+    float by = y + 94 + N_BTN * 32 + 8;
+    if (ui_button(x + 18, by, 170, 36, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controls reset."); }
     label(x + 220, by + 8, "Stick dead zone");
     ui_slider(x + 330, by + 7, 220, &settings.pad_deadzone, 5, 80);
     char t[16]; snprintf(t, sizeof t, "%d%%", settings.pad_deadzone); ui_text(F_REG, 13, x + 566, by + 8, C_TEXT, t);
     char st[128];
     pad_status(st, sizeof st);
     ui_text_fit(F_REG, 12, x + 18, by + 46, 770, C_DIM, st);
-    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "The left stick always moves too. Triggers and back paddles (DualSense Edge) can be assigned like any button.");
+    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. Choose a device above; Player 2 can use a different controller.");
 }
 
 /* ------------------------------------------------------------------ game tab: DualSense */
