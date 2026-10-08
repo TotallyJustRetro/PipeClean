@@ -11,6 +11,7 @@ static Pad pads[MAXPADS];
 static int n_pads;
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
 static int pad_instance_device(SDL_JoystickID which);
+static int pad_find_guid(const char *guid);
 static void rescan(void)
 {
     for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
@@ -30,6 +31,7 @@ void pad_init(void)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
     rescan();
+    pad_sync_assignments();
 }
 
 void pad_shutdown(void)
@@ -43,22 +45,51 @@ void pad_event(const SDL_Event *e)
 {
     if (e->type == SDL_CONTROLLERDEVICEADDED || e->type == SDL_CONTROLLERDEVICEREMOVED ||
         e->type == SDL_JOYDEVICEADDED || e->type == SDL_JOYDEVICEREMOVED) {
-        if (e->type == SDL_CONTROLLERDEVICEREMOVED || e->type == SDL_JOYDEVICEREMOVED) {
-            SDL_JoystickID which = e->type == SDL_CONTROLLERDEVICEREMOVED ? e->cdevice.which : e->jdevice.which;
-            int removed = pad_instance_device(which);
-            if (removed >= 0) {
-                for (int g = 0; g < N_GAMES; g++) {
-                    for (int player = 0; player < 2; player++) {
-                        int *sel = &settings.g[g].pad_device[player];
-                        if (*sel == removed) *sel = -1;
-                        else if (*sel > removed) (*sel)--;
-                    }
-                }
-            }
-        }
         rescan();
+        pad_sync_assignments();
         if (e->type == SDL_CONTROLLERDEVICEADDED && pad_is_dualsense(0) + pad_is_dualsense(1) > 0)
             audio_pad_open();
+    }
+}
+
+int pad_device_guid(int device, char *buf, size_t n)
+{
+    if (!buf || !n) return 0;
+    buf[0] = 0;
+    if (device < 0 || device >= n_pads) return 0;
+    SDL_Joystick *j = pads[device].mapped ? SDL_GameControllerGetJoystick(pads[device].gc) : pads[device].joy;
+    if (!j) return 0;
+    SDL_JoystickGUID guid = SDL_JoystickGetGUID(j);
+    SDL_JoystickGetGUIDString(guid, buf, n);
+    return buf[0] != 0;
+}
+
+static int pad_find_guid(const char *guid)
+{
+    if (!guid || !guid[0]) return -1;
+    char cur[33];
+    for (int i = 0; i < n_pads; i++) {
+        if (pad_device_guid(i, cur, sizeof cur) && !strcmp(cur, guid)) return i;
+    }
+    return -1;
+}
+
+void pad_sync_assignments(void)
+{
+    for (int g = 0; g < N_GAMES; g++) {
+        GameCfg *c = &settings.g[g];
+        for (int player = 0; player < 2; player++) {
+            int *sel = &c->pad_device[player];
+            if (c->pad_guid[player][0]) {
+                *sel = pad_find_guid(c->pad_guid[player]);
+                continue;
+            }
+            if (*sel >= 0 && *sel < n_pads) {
+                pad_device_guid(*sel, c->pad_guid[player], sizeof c->pad_guid[player]);
+            } else if (*sel >= n_pads) {
+                *sel = -1;
+            }
+        }
     }
 }
 
