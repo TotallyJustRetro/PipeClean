@@ -86,19 +86,19 @@ int main(void)
      * so the ROM cannot consume a spawn-list entry between frames. */
     frame_count = 0;
     cpu.pc = 0x408A;
-    if (wide_read_sml2(0xAF12, 0xFF) != 0x02) return 12;
+    if (wide_read_sml2(0xAF12, 0xFF) != 0x02) return 24;
     cpu.pc = 0x4090;
-    if (wide_read_sml2(0xAF13, 0xFF) != 0xF8) return 13;
+    if (wide_read_sml2(0xAF13, 0xFF) != 0xF8) return 25;
     frame_count++;
     cpu.pc = 0x408A;
-    if (wide_read_sml2(0xAF12, 0xFF) != 0x03) return 14;
+    if (wide_read_sml2(0xAF12, 0xFF) != 0x03) return 26;
     cpu.pc = 0x4090;
-    if (wide_read_sml2(0xAF13, 0xFF) != 0x00) return 15;
+    if (wide_read_sml2(0xAF13, 0xFF) != 0x00) return 27;
     frame_count++;
     cpu.pc = 0x40A9;
-    if (wide_read_sml2(0xAF14, 0xFF) != 0x02) return 16;
+    if (wide_read_sml2(0xAF14, 0xFF) != 0x02) return 28;
     cpu.pc = 0x40AF;
-    if (wide_read_sml2(0xAF15, 0xFF) != 0x08) return 17;
+    if (wide_read_sml2(0xAF15, 0xFF) != 0x08) return 29;
 
     cpu.pc = 0x401D;
     cpu.h = 1;
