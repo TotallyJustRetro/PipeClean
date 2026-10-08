@@ -94,7 +94,8 @@ typedef struct {
     uint8_t death_y;         /* C0DD */
     uint8_t super_status;    /* FF99 */
     uint8_t superball;       /* FFB5 */
-    uint8_t timer0, timer1;  /* FFA6-FFA7 */
+    uint8_t joy_held;        /* FF80 */
+    uint8_t joy_pressed;     /* FF81 */
 } MpPlayerState;
 
 static int mp_active;
@@ -116,8 +117,8 @@ static void mp_player_save(MpPlayerState *s)
     s->death_y = rd8(0xC0DD);
     s->super_status = rd8(0xFF99);
     s->superball = rd8(0xFFB5);
-    s->timer0 = rd8(0xFFA6);
-    s->timer1 = rd8(0xFFA7);
+    s->joy_held = rd8(0xFF80);
+    s->joy_pressed = rd8(0xFF81);
 }
 
 static void mp_player_load(const MpPlayerState *s)
@@ -129,8 +130,8 @@ static void mp_player_load(const MpPlayerState *s)
     wr8(0xC0DD, s->death_y);
     wr8(0xFF99, s->super_status);
     wr8(0xFFB5, s->superball);
-    wr8(0xFFA6, s->timer0);
-    wr8(0xFFA7, s->timer1);
+    wr8(0xFF80, s->joy_held);
+    wr8(0xFF81, s->joy_pressed);
 }
 
 static int mp_scroll_delta(uint8_t now, uint8_t old)
