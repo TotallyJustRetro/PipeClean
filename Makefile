@@ -20,7 +20,7 @@ endif
 RT_SRC := $(wildcard runtime/*.c)
 GEN_SRC := $(GEN)/game.c $(GEN)/interp.c
 
-all: $(BUILD)/gb
+all: $(BUILD)/PipeClean
 
 $(GEN)/game.c $(GEN)/interp.c $(GEN)/game_info.h: $(ROM) tools/recomp.py tools/sm83.py $(wildcard $(ROOTS))
 	@bytes=$$(wc -c < "$(ROM)"); \
@@ -31,12 +31,13 @@ $(GEN)/game.c $(GEN)/interp.c $(GEN)/game_info.h: $(ROM) tools/recomp.py tools/s
 	  $(PYTHON) tools/recomp.py $(ROM) -o $(GEN) --listing $(if $(wildcard $(ROOTS)),--roots $(ROOTS),) $(RECOMP_ARGS); \
 	fi
 
-$(BUILD)/gb: $(RT_SRC) $(wildcard runtime/*.h) $(GEN_SRC) $(GEN)/game_info.h
+$(BUILD)/PipeClean: $(RT_SRC) $(wildcard runtime/*.h) $(GEN_SRC) $(GEN)/game_info.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(DEFS) $(SDL_CFLAGS) -Iruntime -I$(GEN) $(RT_SRC) $(GEN_SRC) -o $@ $(SDL_LIBS) -lm $(EXTRA_LIBS)
+	@mkdir -p $(BUILD)/assets && cp -f assets/pipeclean-icon.bmp $(BUILD)/assets/pipeclean-icon.bmp
 
-run: $(BUILD)/gb
-	$(BUILD)/gb $(ROM)
+run: $(BUILD)/PipeClean
+	$(BUILD)/PipeClean $(ROM)
 
 discover:
 	$(PYTHON) tools/discover.py $(ROM) --gen $(GEN) --build "$(MAKE) ROM=$(ROM) GEN=$(GEN) BUILD=$(BUILD)"
