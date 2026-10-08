@@ -277,11 +277,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (setjmp(stop_jmp) == 0) run_core(0);
         mp_active = 0;
         mp_capture_shared_world_after();
+        uint8_t p2_game_state = rd8(0xFFB3);
 
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
 
+        int enemy_merged = 0;
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
         for (int slot = 0; slot < 9; slot++) {
             uint8_t before_type = mp_enemy_before[slot * 0x10];
@@ -289,6 +291,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             if (before_type != after_type && mp_is_enemy_stomped(after_type)) {
                 mp_enemy_merge_mask[slot >> 3] |= (uint8_t)(1u << (slot & 7));
                 memcpy(&mp_enemy_merge[slot * 0x10], &mp_enemy_after[slot * 0x10], 0x10);
+                enemy_merged = 1;
             }
         }
 
@@ -315,7 +318,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * tile map is merged only when P2 did not move the camera, avoiding a
          * second scroll/render pass from becoming a world mutation.
          */
-        if (rd8(0xFFB3) == 0 && dx == 0) {
+        if (p2_game_state == 0 && dx == 0) {
             int tile_changed = memcmp(mp_tilemap_before, mp_tilemap_after, sizeof mp_tilemap_after) != 0;
             if (tile_changed)
                 memcpy(&vram[0x1800], mp_tilemap_after, sizeof mp_tilemap_after);
@@ -332,7 +335,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                         wr8((uint16_t)(0xD100 + slot * 0x10 + i), mp_enemy_merge[slot * 0x10 + i]);
             }
 
-            if (tile_changed || coins_after != coins_before || memcmp(score_before, score_after, sizeof score_before) != 0)
+            if (tile_changed || enemy_merged || coins_after != coins_before ||
+                memcmp(score_before, score_after, sizeof score_before) != 0)
                 if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
         }
         return mp_audio_n;
