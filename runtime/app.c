@@ -25,6 +25,269 @@ static int win_w = 1100, win_h = 720;
 
 static void sfx(int w) { audio_sfx(w); }
 
+static char game_notice_text[160];
+static float game_notice_t;
+
+static void game_notice(const char *s)
+{
+    snprintf(game_notice_text, sizeof game_notice_text, "%s", s ? s : "");
+    game_notice_t = 2.2f;
+}
+
+static void game_notice_draw(float dt)
+{
+    if (game_notice_t <= 0 || !game_notice_text[0]) return;
+    game_notice_t -= dt;
+    float a = game_notice_t < 0.35f ? game_notice_t / 0.35f : 1.0f;
+    float w = ui_text_w(F_BOLD, 13, game_notice_text) + 34.0f;
+    float x = UI_W * 0.5f - w * 0.5f, y = UI_H - 64.0f;
+    ui_shadow(x, y, w, 34, 10, 6, RGBA(0, 0, 0, (int)(100 * a)));
+    ui_rrect(x, y, w, 34, 10, RGBA(36, 42, 60, (int)(245 * a)));
+    ui_text_c(F_BOLD, 13, UI_W * 0.5f, y + 8, RGBA(245, 247, 252, (int)(255 * a)), game_notice_text);
+}
+
+static int app_key_down(int key)
+{
+    if (!key) return 0;
+    SDL_Scancode sc = SDL_GetScancodeFromKey((SDL_Keycode)key);
+    if (sc == SDL_SCANCODE_UNKNOWN) return 0;
+    const Uint8 *ks = SDL_GetKeyboardState(NULL);
+    return ks[sc] != 0;
+}
+
+static int state_file_exists(const char *path)
+{
+    FILE *f = path && path[0] ? fopen(path, "rb") : NULL;
+    if (!f) return 0;
+    fclose(f);
+    return 1;
+}
+
+static void state_path(int g, int slot, char *out, size_t n)
+{
+    char dir[1200];
+    snprintf(dir, sizeof dir, "%sstates/", settings_dir());
+    mkdir_u(dir);
+    snprintf(out, n, "%s%s.slot%d.pcs", dir, games[g].id, slot);
+}
+
+static void suspend_path(int g, char *out, size_t n)
+{
+    char dir[1200];
+    snprintf(dir, sizeof dir, "%sstates/", settings_dir());
+    mkdir_u(dir);
+    snprintf(out, n, "%s%s.suspend.pcs", dir, games[g].id);
+}
+
+static int game_state_save(int g, int paused)
+{
+    char path[1200];
+    state_path(g, settings.g[g].state_slot, path, sizeof path);
+    if (emu_rewind_available()) emu_rewind_end();
+    if (emu_state_save_file(path, 1) != 0) {
+        game_notice("Couldn't save state.");
+        return -1;
+    }
+    emu_set_paused(paused);
+    char msg[96];
+    snprintf(msg, sizeof msg, "State saved — Slot %d", settings.g[g].state_slot + 1);
+    game_notice(msg);
+    return 0;
+}
+
+static int game_state_load(int g, int paused)
+{
+    char path[1200];
+    state_path(g, settings.g[g].state_slot, path, sizeof path);
+    if (!state_file_exists(path)) {
+        char msg[96];
+        snprintf(msg, sizeof msg, "No saved state in Slot %d", settings.g[g].state_slot + 1);
+        game_notice(msg);
+        return -1;
+    }
+    emu_rewind_end();
+    if (emu_state_load_file(path, 1) != 0) {
+        game_notice("Couldn't load state.");
+        return -1;
+    }
+    emu_set_paused(paused);
+    char msg[96];
+    snprintf(msg, sizeof msg, "State loaded — Slot %d", settings.g[g].state_slot + 1);
+    game_notice(msg);
+    return 0;
+}
+
+static int game_suspend(int g)
+{
+    char path[1200];
+    suspend_path(g, path, sizeof path);
+    emu_rewind_end();
+    if (emu_state_save_file(path, 0) != 0) {
+        game_notice("Couldn't suspend the game.");
+        return -1;
+    }
+    game_notice("Game suspended.");
+    return 0;
+}
+
+static int game_action_key_match(int g, int action, const SDL_Event *e)
+{
+    if (!e || e->type != SDL_KEYDOWN || e->key.repeat || action < 0 || action >= N_ACTION) return 0;
+    return settings.g[g].action_key[action] != 0 &&
+           e->key.keysym.sym == settings.g[g].action_key[action];
+}
+
+static int app_handle_action_event(int g, const SDL_Event *e, int *paused, int *quit)
+{
+    if (!e || g < 0 || g >= N_GAMES) return 0;
+    for (int a = 0; a < N_ACTION; a++) {
+        if (!game_action_key_match(g, a, e) && !pad_binding_event(g, a, e)) continue;
+        switch (a) {
+        case ACT_SAVE_STATE:
+            game_state_save(g, paused ? *paused : 0);
+            break;
+        case ACT_LOAD_STATE:
+            game_state_load(g, paused ? *paused : 0);
+            break;
+        case ACT_REWIND:
+            break; /* held state is handled every frame below */
+        case ACT_SUSPEND:
+            if (game_suspend(g) == 0 && quit) *quit = 1;
+            break;
+        case ACT_NEXT_SLOT:
+            settings.g[g].state_slot = (settings.g[g].state_slot + 1) % 10;
+            {
+                char msg[64];
+                snprintf(msg, sizeof msg, "State Slot %d", settings.g[g].state_slot + 1);
+                game_notice(msg);
+            }
+            break;
+        }
+        return a + 1;
+    }
+    return 0;
+}
+
+static int app_rewind_held(int g)
+{
+    if (g < 0 || g >= N_GAMES) return 0;
+    return app_key_down(settings.g[g].action_key[ACT_REWIND]) ||
+           pad_binding_down(g, ACT_REWIND);
+}
+
+enum {
+    DS_MENU_SAVE, DS_MENU_LOAD, DS_MENU_SLOT_PLUS, DS_MENU_REWIND,
+    DS_MENU_SLOT_MINUS, DS_MENU_SUSPEND, DS_MENU_PAUSE, DS_MENU_CLOSE,
+    DS_MENU_COUNT
+};
+
+typedef struct {
+    int open;
+    int touch_active;
+    float touch_x, touch_y;
+    int selected;
+} DsStateMenu;
+
+static DsStateMenu ds_menu;
+
+static int ds_menu_select(float x, float y)
+{
+    float dx = x - 0.5f, dy = y - 0.5f;
+    if (dx * dx + dy * dy < 0.12f * 0.12f) return DS_MENU_CLOSE;
+    float a = atan2f(dy, dx) + (float)M_PI;
+    int s = (int)floorf(a / ((float)M_PI / 4.0f) + 0.5f) & 7;
+    return s;
+}
+
+static void ds_menu_open(void)
+{
+    ds_menu.open = 1;
+    ds_menu.touch_active = 0;
+    ds_menu.selected = DS_MENU_CLOSE;
+}
+
+static void ds_menu_close(void)
+{
+    ds_menu.open = 0;
+    ds_menu.touch_active = 0;
+    ds_menu.selected = DS_MENU_CLOSE;
+}
+
+static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
+{
+    if (!e || g < 0 || g >= N_GAMES) return 0;
+    if (e->type == SDL_CONTROLLERBUTTONDOWN &&
+        e->cbutton.button == SDL_CONTROLLER_BUTTON_TOUCHPAD &&
+        pad_is_dualsense_instance(e->cbutton.which)) {
+        if (ds_menu.open) {
+            emu_rewind_end();
+            ds_menu_close();
+        } else {
+            ds_menu_open();
+        }
+        return 1;
+    }
+
+    float x, y;
+    int kind;
+    if (!pad_touchpad_event(e, &x, &y, &kind)) return 0;
+
+    if (kind == 0) {
+        if (!ds_menu.open) ds_menu_open();
+        ds_menu.touch_active = 1;
+        ds_menu.touch_x = x; ds_menu.touch_y = y;
+        ds_menu.selected = ds_menu_select(x, y);
+    } else if (kind == 1 && ds_menu.open) {
+        int old = ds_menu.selected;
+        ds_menu.touch_x = x; ds_menu.touch_y = y;
+        ds_menu.selected = ds_menu_select(x, y);
+        if (old == DS_MENU_REWIND && ds_menu.selected != DS_MENU_REWIND) emu_rewind_end();
+    } else if (kind == 2 && ds_menu.open) {
+        ds_menu.touch_active = 0;
+        ds_menu.touch_x = x; ds_menu.touch_y = y;
+        ds_menu.selected = ds_menu_select(x, y);
+        int a = ds_menu.selected;
+        if (a == DS_MENU_SAVE) game_state_save(g, paused ? *paused : 0);
+        else if (a == DS_MENU_LOAD) game_state_load(g, paused ? *paused : 0);
+        else if (a == DS_MENU_SLOT_PLUS) { settings.g[g].state_slot = (settings.g[g].state_slot + 1) % 10; game_notice("Next state slot"); }
+        else if (a == DS_MENU_SLOT_MINUS) { settings.g[g].state_slot = (settings.g[g].state_slot + 9) % 10; game_notice("Previous state slot"); }
+        else if (a == DS_MENU_REWIND) emu_rewind_end();
+        else if (a == DS_MENU_SUSPEND) { if (game_suspend(g) == 0 && quit) *quit = 1; }
+        else if (a == DS_MENU_PAUSE && paused) { *paused = !*paused; emu_set_paused(*paused); }
+        else if (a != DS_MENU_CLOSE) {}
+        if (a != DS_MENU_REWIND) emu_rewind_end();
+        ds_menu_close();
+    }
+    return 1;
+}
+
+static void ds_menu_draw(int g)
+{
+    if (!ds_menu.open || g < 0 || g >= N_GAMES) return;
+    static const char *labels[DS_MENU_COUNT] = {"Save", "Load", "Slot +", "Rewind", "Slot -", "Suspend", "Pause", "Close"};
+    static const char *desc[DS_MENU_COUNT] = {
+        "save state", "load state", "next slot", "hold to rewind",
+        "previous slot", "save & return", "pause game", "close"
+    };
+    float cx = UI_W * 0.5f, cy = UI_H * 0.5f;
+    ui_shadow(cx - 270, cy - 220, 540, 440, 20, 12, RGBA(0, 0, 0, 135));
+    ui_rrect(cx - 270, cy - 220, 540, 440, 20, RGBA(16, 19, 28, 244));
+    ui_text_c(F_BOLD, 22, cx, cy - 190, C_TEXT, "DualSense • PipeClean");
+    char slot[64];
+    snprintf(slot, sizeof slot, "State Slot %d", settings.g[g].state_slot + 1);
+    ui_text_c(F_REG, 12, cx, cy - 162, C_MUTED, slot);
+    for (int i = 0; i < DS_MENU_COUNT; i++) {
+        float a = -((float)M_PI * 2.0f * i / DS_MENU_COUNT) + (float)M_PI / 8.0f;
+        float x = cx + cosf(a) * 180.0f, y = cy + sinf(a) * 140.0f;
+        int hot = i == ds_menu.selected;
+        ui_rrect(x - 68, y - 27, 136, 54, 12, hot ? mixc(C_BTN_H, HEX(ui_accent), 0.28f) : C_BTN);
+        if (hot) ui_stroke(x - 68, y - 27, 136, 54, 12, 2, HEX(ui_accent));
+        ui_text_c(F_BOLD, 13, x, y - 15, hot ? C_TEXT : C_MUTED, labels[i]);
+        ui_text_c(F_REG, 9, x, y + 4, C_DIM, desc[i]);
+    }
+    ui_text_c(F_REG, 11, cx, cy + 188, C_DIM, "Touch • slide to choose • release to confirm");
+}
+
 static void out_size(int *w, int *h)
 {
     if (SDL_GetRendererOutputSize(ren, w, h) != 0 || *w <= 0 || *h <= 0) SDL_GetWindowSize(win, w, h);
@@ -175,9 +438,17 @@ static int play_multiplayer_sml1(int g)
     }
     set_game_window(g);
 
+    char suspended[1200];
+    suspend_path(g, suspended, sizeof suspended);
+    int has_suspend = state_file_exists(suspended);
     if (emu_mp_begin()) {
         launcher_toast("Couldn't start SML1 multiplayer.");
         return 0;
+    }
+    if (has_suspend) {
+        if (emu_state_load_file(suspended, 1) == 0) {
+            remove(suspended);
+        }
     }
     apu_set_volume(settings.volume / 100.0f);
     audio_game_begin();
@@ -196,6 +467,7 @@ static int play_multiplayer_sml1(int g)
         return 0;
     }
     int quit = 0, paused = 0, have = 0, shot = 0;
+    int rewind_held = 0;
     uint8_t b0 = 0, d0 = 0, b1 = 0, d1 = 0;
     Uint64 last = SDL_GetPerformanceCounter();
 
@@ -203,6 +475,9 @@ static int play_multiplayer_sml1(int g)
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             pad_event(&e);
+            int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
+            if (ds_consumed) continue;
+            int action = app_handle_action_event(g, &e, &paused, &quit);
             if (e.type == SDL_QUIT) quit = 2;
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 switch (e.key.keysym.sym) {
@@ -218,34 +493,46 @@ static int play_multiplayer_sml1(int g)
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
                 emu_set_turbo(0);
-            } else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
+            } else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action) {
                 quit = 1;
             }
         }
 
-        if (!paused) {
-            pad_poll_player(g, 0, &b0, &d0);
-            pad_poll_player(g, 1, &b1, &d1);
+        int now_rewind = app_rewind_held(g) && !paused;
+        if (now_rewind) {
+            if (!rewind_held) {
+                if (emu_rewind_available()) rewind_held = 1;
+                else game_notice("Rewind buffer is not ready yet.");
+            }
+            if (rewind_held) {
+                emu_rewind_step();
+                emu_mp_frame_refresh(f);
+                have = 1;
+            }
+        } else {
+            if (rewind_held) {
+                emu_rewind_end();
+                rewind_held = 0;
+            }
+            if (!paused) {
+                pad_poll_player(g, 0, &b0, &d0);
+                pad_poll_player(g, 1, &b1, &d1);
 
-            int n0 = emu_mp_step(0, b0, d0, f, a0, 4096);
-            if (n0 < 0) {
-                quit = 1;
-            } else {
-                int n1 = emu_mp_step(1, b1, d1, p2f, NULL, 0);
-                if (n1 < 0) {
+                int n0 = emu_mp_step(0, b0, d0, f, a0, 4096);
+                if (n0 < 0) {
                     quit = 1;
                 } else {
-                    have = 1;
-                    /*
-                     * The P2 emulation pass is gameplay-only. Do not blend its
-                     * complete APU stream into P1: that makes music/SFX sound
-                     * doubled because the same shared world is simulated again.
-                     */
-                    if (f->game_state == 0 && f->p2_visible)
-                        render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
-
-                    if (n0 > 0) audio_game_push(a0, n0);
-                    if (audio_ok()) audio_game_wait(audio_game_target());
+                    int n1 = emu_mp_step(1, b1, d1, p2f, NULL, 0);
+                    if (n1 < 0) {
+                        quit = 1;
+                    } else {
+                        have = 1;
+                        emu_rewind_capture();
+                        if (f->game_state == 0 && f->p2_visible)
+                            render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
+                        if (n0 > 0) audio_game_push(a0, n0);
+                        if (audio_ok()) audio_game_wait(audio_game_target());
+                    }
                 }
             }
         }
@@ -283,6 +570,8 @@ static int play_multiplayer_sml1(int g)
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
         }
+        game_notice_draw(dt);
+        ds_menu_draw(g);
         ui_end();
 
         pad_frame(dt);
@@ -309,6 +598,7 @@ static int play_multiplayer_sml1(int g)
     free(f);
     free(p2f);
     pad_set_context(g, 0);
+    ds_menu_close();
     SDL_SetWindowFullscreen(win, 0);
     SDL_SetWindowSize(win, win_w, win_h);
     SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
@@ -334,17 +624,26 @@ static int play(int g)
     render_reset();
     pad_set_context(g, 1);
     set_game_window(g);
+    char suspended[1200];
+    suspend_path(g, suspended, sizeof suspended);
+    int has_suspend = state_file_exists(suspended);
     if (emu_start(0)) { launcher_toast("Couldn't start the game."); return 0; }
+    if (has_suspend) {
+        if (emu_state_load_file(suspended, 1) == 0) remove(suspended);
+    }
 
     Frame *f = SDL_malloc(sizeof *f);
     memset(f, 0, sizeof *f);
-    int quit = 0, paused = 0, have = 0;
+    int quit = 0, paused = 0, have = 0, rewind_held = 0;
     Uint64 last = SDL_GetPerformanceCounter();
     int shot = 0;
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             pad_event(&e);
+            int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
+            if (ds_consumed) continue;
+            int action = app_handle_action_event(g, &e, &paused, &quit);
             if (e.type == SDL_QUIT) { quit = 2; }
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 switch (e.key.keysym.sym) {
@@ -355,11 +654,21 @@ static int play(int g)
                 case SDLK_F12: shot = 1; break;
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) { emu_set_turbo(0); }
-            else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) quit = 1;
+            else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action) quit = 1;
+        }
+        int now_rewind = app_rewind_held(g) && !paused;
+        if (now_rewind) {
+            if (!rewind_held) {
+                if (emu_rewind_available()) rewind_held = 1;
+                else game_notice("Rewind buffer is not ready yet.");
+            }
+        } else if (rewind_held) {
+            emu_rewind_end();
+            rewind_held = 0;
         }
         uint8_t b, d;
         pad_poll(g, &b, &d);
-        emu_input(b, d);
+        emu_input(rewind_held ? 0 : b, rewind_held ? 0 : d);
         if (emu_frame_get(f)) { have = 1; tex_collect_frame(f); }
         int ev;
         while ((ev = events_pop()) >= 0) pad_event_fx(g, ev);
@@ -380,12 +689,18 @@ static int play(int g)
             render_draw(&r, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
+        ui_begin(W, H, dt);
         if (paused) {
-            ui_begin(W, H, dt);
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
-            ui_end();
         }
+        if (rewind_held) {
+            ui_rrect(UI_W / 2 - 112, 18, 224, 34, 10, RGBA(20, 24, 35, 230));
+            ui_text_c(F_BOLD, 13, UI_W / 2, 26, C_TEXT, "REWIND");
+        }
+        game_notice_draw(dt);
+        ds_menu_draw(g);
+        ui_end();
         pad_frame(dt);
         if (shot) { shot = 0; SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
                     if (s) { SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch);
