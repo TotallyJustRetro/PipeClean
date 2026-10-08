@@ -23,6 +23,7 @@ typedef struct {
 
 extern CPU cpu;
 extern uint8_t io_if, io_ie;
+extern uint8_t hram[0x80];
 extern uint8_t *rom;                  /* cartridge image (bank 0 first); see cart.c */
 extern uint64_t total_cycles;
 extern uint8_t *cart_ram;
