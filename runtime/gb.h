@@ -49,6 +49,18 @@ void gb_set_input(uint8_t buttons, uint8_t dpad);   /* bit set = pressed */
 void gb_dump_misses(const char *path);
 void gb_serial_hook(void (*fn)(uint8_t));
 
+/* Reentrant-state support used by local multiplayer. */
+#define GB_STATE_BYTES (786432u)
+size_t gb_state_size(void);
+int gb_state_save(void *dst, size_t n);
+int gb_state_load(const void *src, size_t n);
+size_t ppu_state_size(void);
+int ppu_state_save(void *dst, size_t n);
+int ppu_state_load(const void *src, size_t n);
+size_t apu_state_size(void);
+int apu_state_save(void *dst, size_t n);
+int apu_state_load(const void *src, size_t n);
+
 /* ---- PPU ---- */
 void ppu_reset(void);
 void ppu_tick(int n);
