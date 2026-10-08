@@ -30,6 +30,11 @@ jobs:
       - name: Run SML2 widescreen regression test
         run: ./test_sml2_wide
 
+      - name: Build and run MBC1 mapper regression
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c             -o test_cart_mbc1
+          ./test_cart_mbc1
+
       - name: Validate Python tools
         run: |
           python3 -m py_compile             tools/recomp.py             tools/sm83.py             tools/dis.py             tools/discover.py             tools/make_font.py
