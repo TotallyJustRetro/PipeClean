@@ -1,1 +1,81 @@
-# Installation\n\n## Requirements\n\nFor the current Windows development path you will need:\n\n- Windows 10 or newer\n- A C compiler/toolchain such as MinGW-w64\n- CMake (recommended)\n- SDL2 development files (headers and import library), not just SDL2.dll\n- A legally obtained Game Boy ROM for local testing\n\n## SDL2.dll vs development files\n\nThe runtime DLL is enough to run an existing Windows build. It is not enough to compile PipeClean. A source build needs SDL2 headers and the development import library for the selected compiler/toolchain.\n\n## Building\n\nThe intended CMake flow is:\n\n    cmake -S . -B build\n    cmake --build build --config Release\n\nIf you are using a single-configuration MinGW generator, the output will normally be under build/ rather than a Visual Studio-style configuration directory.\n\n## ROM setup\n\nDo **not** commit commercial ROM files to this repository. Place your own legally obtained ROM in the local ROM location described by the project tooling.\n\nThe repository contains a placeholder under roms/ so contributors know where local ROM assets belong.\n\n## SML2 widescreen development\n\nThe SML2 path supports a 512 KiB MBC1 ROM through the runtime/interpreter path. The widescreen fix extends the right-side object activation distance without modifying the original ROM instruction stream.\n\nThis matters because rendering more pixels is not enough. Game objects must also be activated early enough to appear correctly in the newly visible area.\n\n## Troubleshooting\n\n### SDL2 not found\n\nFor a packaged Windows build, SDL2.dll should normally sit beside the executable.\n\n### SDL.h not found\n\nInstall the SDL2 development package for your compiler. A copied SDL2.dll does not contain the headers required by the compiler.\n\n### ROM rejected\n\nCheck that the ROM is the expected Game Boy image and that its cartridge mapper is supported. SML2 uses MBC1.\n\n### Missing objects in widescreen\n\nThis usually indicates a viewport/camera/object-activation mismatch rather than a simple rendering problem. See docs/ARCHITECTURE.md.
+# Installation & Build
+
+PipeClean is currently a development project. There is not yet a polished one-click Windows release.
+
+## Requirements
+
+### Windows
+
+- Windows 10 or newer
+- Python 3
+- CMake
+- MinGW-w64 or another supported C compiler
+- SDL2 **development** package
+
+### Linux
+
+- Python 3
+- GCC or Clang
+- CMake or GNU Make
+- SDL2 development package
+
+### SDL2 note
+
+A runtime `SDL2.dll` is **not** enough to compile PipeClean. You need the SDL2 development package with headers and linker/import files.
+
+## Build with CMake
+
+From the repository root:
+
+```bash
+cmake -S . -B build -DROM=/path/to/your/game.gb
+cmake --build build --config Release
+```
+
+## Build with Make
+
+```bash
+make ROM=roms/your_game.gb
+```
+
+Run:
+
+```bash
+make run ROM=roms/your_game.gb
+```
+
+## Super Mario Land 2
+
+SML2 uses a larger banked ROM. PipeClean detects ROMs larger than 32 KiB and selects the interpreter-compatible path rather than treating the cartridge as a flat ROM.
+
+The widescreen implementation runs inside the runtime and does not patch the ROM file.
+
+## Testing
+
+```bash
+make test-sml2-wide
+```
+
+Expected:
+
+```
+SML2 widescreen hook: PASS
+```
+
+## Troubleshooting
+
+**CMake cannot find SDL2**  
+Install the SDL2 development package and make sure CMake can locate it.
+
+**ROM not found**  
+Check the `ROM=` path. ROMs are intentionally not included in Git.
+
+**I only have SDL2.dll**  
+That DLL is for running an existing Windows program. It does not provide the development headers/libraries needed to compile.
+
+**SML2 behaves incorrectly**  
+SML2 support is still being developed. Include your toolchain, build command and relevant log output when reporting a problem.
+
+## Legal
+
+Only use ROM images you are legally entitled to use. PipeClean does not distribute commercial ROMs.
