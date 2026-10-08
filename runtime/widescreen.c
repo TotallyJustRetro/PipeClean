@@ -39,7 +39,6 @@ static int sml2_right_extra;
 static int sml2_left_extra;
 static int sml2_scan_edge[2] = {-1, -1};
 static int sml2_scan_pick[2];
-static int sml2_scan_latched[2] = {-1, -1};
 
 typedef struct {
     int x, y;
@@ -282,7 +281,6 @@ int wide_install(int game, int l, int r)
     sml2_left_extra = 0;
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
-    sml2_scan_latched[0] = sml2_scan_latched[1] = -1;
     if (l + r == 0) return 1;
     if (game == GAME_SML2) {
         /* SML2's entity activation code lives in bank 2.  Its horizontal
