@@ -992,7 +992,7 @@ static void pace_without_audio(void)
 
 static size_t emu_state_blob_size(void)
 {
-    return sizeof(EmuStateHeader) + gb_state_data_size() + sizeof(MpStateExtra);
+    return sizeof(EmuStateHeader) + gb_state_data_size() + ((mp_ready || mp_active) ? sizeof(MpStateExtra) : 0);
 }
 
 static int emu_state_save_blob(void *dst, size_t n)
@@ -1001,7 +1001,7 @@ static int emu_state_save_blob(void *dst, size_t n)
     int mp_context = mp_ready || mp_active;
     EmuStateHeader h = {EMU_STATE_MAGIC, EMU_STATE_VERSION, mp_context ? EMU_STATE_FLAG_MP : 0u,
                         (uint32_t)rom_loaded_game(), (uint32_t)gb_state_data_size(),
-                        mp_active ? (uint32_t)sizeof(MpStateExtra) : 0u};
+                        mp_context ? (uint32_t)sizeof(MpStateExtra) : 0u};
     memcpy(dst, &h, sizeof h);
     if (gb_state_save((uint8_t *)dst + sizeof h, n - sizeof h)) return -1;
     if (mp_context) {
@@ -1048,7 +1048,7 @@ static void rewind_free(void)
     free(rewind_data);
     rewind_data = NULL;
     rewind_stride = 0;
-    rewind_head = rewind_count = -1;
+    rewind_head = -1;
     rewind_count = 0;
     rewind_oldest = rewind_cursor = rewind_last_loaded = -1;
     rewind_capture_skip = 0;
