@@ -303,7 +303,11 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
         int old = ds_menu.selected;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
         ds_menu.selected = ds_menu_select(x, y);
-        if (old == DS_MENU_REWIND && ds_menu.selected != DS_MENU_REWIND) emu_rewind_end();
+        if (ds_menu.selected == DS_MENU_REWIND && old != DS_MENU_REWIND) render_reset();
+        if (old == DS_MENU_REWIND && ds_menu.selected != DS_MENU_REWIND) {
+            emu_rewind_end();
+            render_reset();
+        }
     } else if (kind == 2 && ds_menu.open) {
         ds_menu.touch_active = 0;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
@@ -586,7 +590,7 @@ static int play_multiplayer_sml1(int g)
             have = 1;
         } else if (now_rewind) {
             if (!rewind_held) {
-                if (emu_rewind_available()) rewind_held = 1;
+                if (emu_rewind_available()) { rewind_held = 1; render_reset(); }
                 else game_notice("Rewind buffer is not ready yet.");
             }
             if (rewind_held) {
@@ -597,6 +601,7 @@ static int play_multiplayer_sml1(int g)
         } else {
             if (rewind_held) {
                 emu_rewind_end();
+                render_reset();
                 rewind_held = 0;
             }
             if (!paused) {
@@ -760,7 +765,7 @@ static int play(int g)
         int now_rewind = app_rewind_held(g) && !paused;
         if (now_rewind) {
             if (!rewind_held) {
-                if (emu_rewind_available()) rewind_held = 1;
+                if (emu_rewind_available()) { rewind_held = 1; render_reset(); }
                 else game_notice("Rewind buffer is not ready yet.");
             }
         } else if (rewind_held) {
