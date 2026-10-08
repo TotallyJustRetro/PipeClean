@@ -303,10 +303,12 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             uint8_t x = rd8(0xC202);
             wr8(0xC202, (uint8_t)(x + dx));
         }
+        uint8_t p1_oam[16];
+        memcpy(p1_oam, frame->mario_oam, sizeof p1_oam);
         mp_capture_frame(frame, dx);
         memcpy(frame->mario_oam2, frame->mario_oam, sizeof frame->mario_oam2);
-        /* Keep P1's authoritative OAM separate; the caller decides when to draw P2. */
-        memset(frame->mario_oam, 0, sizeof frame->mario_oam);
+        /* Restore P1's authoritative sprite while keeping P2 in mario_oam2. */
+        memcpy(frame->mario_oam, p1_oam, sizeof frame->mario_oam);
         mp_player_save(&mp_p2_state);
 
         /*
