@@ -1,9 +1,7 @@
 #include "branding.h"
 #include <SDL_image.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 static SDL_Texture *icon_tex;
 static SDL_Texture *logo_tex;
@@ -30,7 +28,6 @@ static SDL_Texture *load_brand_texture(SDL_Renderer *renderer, const char *name,
             if (!try_paths[j]) continue;
             SDL_Surface *src = IMG_Load(try_paths[j]);
             if (!src) continue;
-        if (!src) continue;
 
             SDL_Surface *s = SDL_ConvertSurfaceFormat(src, SDL_PIXELFORMAT_RGBA32, 0);
             SDL_FreeSurface(src);
