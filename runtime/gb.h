@@ -59,6 +59,7 @@ void gb_mp_vblank_done(void);
 /* Reentrant-state support used by local multiplayer. */
 #define GB_STATE_BYTES (800000u)
 size_t gb_state_size(void);
+size_t gb_state_data_size(void);
 int gb_state_save(void *dst, size_t n);
 int gb_state_load(const void *src, size_t n);
 size_t ppu_state_size(void);
