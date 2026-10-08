@@ -782,6 +782,12 @@ void emu_mp_end(void)
     mp_vblank_collision = 0;
     mp_vblank_collision_addr = 0;
     mp_vblank_collision_before = 0;
+    mp_vblank_square_sfx = 0;
+    mp_vblank_noise_sfx = 0;
+    mp_vblank_floaty_control = 0;
+    mp_vblank_floaty_x = 0;
+    mp_vblank_floaty_y = 0;
+    mp_pending_block = 0;
     mp_vblank_waiting = 0;
     gb_mp_vblank_watch = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
