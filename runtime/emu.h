@@ -43,6 +43,7 @@ void emu_mp_frame_refresh(Frame *frame);
 int emu_state_save_file(const char *path, int resume_after);
 int emu_state_load_file(const char *path, int resume_after);
 int emu_rewind_step(void);
+void emu_rewind_capture(void);
 void emu_rewind_end(void);
 int emu_rewind_available(void);
 
