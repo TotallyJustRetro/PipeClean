@@ -80,7 +80,19 @@ Expected result:
 SML2 widescreen hook: PASS
 ```
 
-The GitHub Actions workflow also validates the Python tools and attempts a full native runtime build against a synthetic 512 KiB ROM so the banked-ROM path is exercised without shipping any game ROM.
+The repository also has an MBC1 mapper regression:
+
+```bash
+make test-cart-mbc1
+```
+
+Expected result:
+
+```
+MBC1 mapper: PASS
+```
+
+GitHub Actions runs both regressions, validates the Python tools, builds the full native runtime against a synthetic 512 KiB MBC1/SML2-shaped ROM, and performs a headless widescreen launch without shipping any game ROM.
 
 See **[Architecture](docs/ARCHITECTURE.md)** for technical details.
 
