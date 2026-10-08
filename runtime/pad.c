@@ -214,11 +214,10 @@ int pad_capture(const SDL_Event *e)
     return -1;
 }
 
-const char *pad_code_name(int code, char *buf, size_t n)
+const char *pad_code_name_device(int device, int code, char *buf, size_t n)
 {
     if (code < 0) { snprintf(buf, n, "-"); return buf; }
-    int ps = 0;
-    for (int i = 0; i < n_pads; i++) if (pad_is_dualsense(i)) ps = 1;
+    int ps = pad_is_dualsense(device);
     if (code == PAD_AXIS_BASE) { snprintf(buf, n, ps ? "L2" : "LT"); return buf; }
     if (code == PAD_AXIS_BASE + 1) { snprintf(buf, n, ps ? "R2" : "RT"); return buf; }
     static const char *xb[] = {"A", "B", "X", "Y", "Back", "Guide", "Start", "L3", "R3", "LB", "RB", "Up", "Down", "Left", "Right", "Share", "Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Touchpad"};
@@ -226,6 +225,11 @@ const char *pad_code_name(int code, char *buf, size_t n)
     if (code < (int)(sizeof xb / sizeof xb[0])) snprintf(buf, n, "%s", ps ? dsn[code] : xb[code]);
     else snprintf(buf, n, "Button %d", code);
     return buf;
+}
+
+const char *pad_code_name(int code, char *buf, size_t n)
+{
+    return pad_code_name_device(n_pads > 0 ? 0 : -1, code, buf, n);
 }
 
 const char *key_code_name(int key, char *buf, size_t n)
