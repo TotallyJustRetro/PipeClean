@@ -51,13 +51,6 @@ if(WIN32)
   target_link_libraries(PipeClean PRIVATE shell32 ole32 comdlg32 uuid)
 endif()
 
-add_custom_target(pipeclean_assets ALL
-  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/assets
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          ${CMAKE_SOURCE_DIR}/assets/pipeclean-icon.bmp
-          ${CMAKE_BINARY_DIR}/assets/pipeclean-icon.bmp
-)
-add_dependencies(PipeClean pipeclean_assets)
 
 # Small hardware-independent regression tests.
 enable_testing()
