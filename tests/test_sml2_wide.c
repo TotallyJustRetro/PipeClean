@@ -23,6 +23,8 @@ int main(void)
     if (!rom) return 2;
 
     rom[0x801C] = 0x19;
+    rom[0x8040] = 0x19;
+    rom[0x8064] = 0x19;
     cart_hi = rom + 0x8000;
 
     wide_dims(GAME_SML2, 100, &l, &r);
@@ -41,11 +43,28 @@ int main(void)
     if (HL() != 0x0181) return 6;
     if (cpu.pc != 0x401D || total_cycles != 8) return 7;
 
+    /* The wider loader also uses the +0x70 and +0xA0 horizontal bounds. */
+    cpu.pc = 0x4040;
+    cpu.h = 1;
+    cpu.l = 0;
+    cpu.f = 0;
+    total_cycles = 0;
+    if (!wide_intercept_sml2(0x19)) return 8;
+    if (HL() != 0x0183 || cpu.pc != 0x4041 || total_cycles != 8) return 9;
+
+    cpu.pc = 0x4064;
+    cpu.h = 1;
+    cpu.l = 0;
+    cpu.f = 0;
+    total_cycles = 0;
+    if (!wide_intercept_sml2(0x19)) return 10;
+    if (HL() != 0x0180 || cpu.pc != 0x4065 || total_cycles != 8) return 11;
+
     cpu.pc = 0x401D;
     cpu.h = 1;
     cpu.l = 0;
-    if (wide_intercept_sml2(0x19)) return 8;
-    if (HL() != 0x0100) return 9;
+    if (wide_intercept_sml2(0x19)) return 12;
+    if (HL() != 0x0100) return 13;
 
     /* The same CPU opcode must not be intercepted while another bank is mapped. */
     cart_hi = rom + 0xC000;
@@ -55,8 +74,8 @@ int main(void)
     cpu.d = 0;
     cpu.e = 0x60;
     total_cycles = 0;
-    if (wide_intercept_sml2(0x19)) return 10;
-    if (HL() != 0x0100 || total_cycles != 0) return 11;
+    if (wide_intercept_sml2(0x19)) return 14;
+    if (HL() != 0x0100 || total_cycles != 0) return 15;
 
     free(rom);
     puts("SML2 widescreen hook: PASS");
