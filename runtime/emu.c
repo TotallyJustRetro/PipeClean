@@ -121,6 +121,15 @@ static uint8_t mp_vblank_life_event;
 static uint8_t mp_vblank_collision;
 static uint16_t mp_vblank_collision_addr;
 static uint8_t mp_vblank_collision_before;
+static uint8_t mp_vblank_square_sfx;
+static uint8_t mp_vblank_noise_sfx;
+static uint8_t mp_vblank_floaty_control;
+static uint8_t mp_vblank_floaty_x;
+static uint8_t mp_vblank_floaty_y;
+static uint8_t mp_pending_block;
+static uint8_t mp_pending_block_row;
+static uint8_t mp_pending_block_world_col;
+static uint8_t mp_pending_block_tile;
 static int mp_vblank_waiting;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
@@ -302,7 +311,7 @@ static int mp_merge_tilemap_local_edits(int allow_full)
             uint8_t before = mp_tilemap_before[idx];
             uint8_t after = mp_tilemap_after[idx];
             if (before == after) continue;
-            /* Never import SML1's temporary solid->blank block-hit result. */
+            /* Block collisions are synchronized by their explicit VBlank event. */
             if (before >= 0x60 && before != 0xF4 && after == 0x20)
                 continue;
             vram[0x1800 + idx] = after;
@@ -310,6 +319,39 @@ static int mp_merge_tilemap_local_edits(int allow_full)
         }
     }
     return changed;
+}
+
+static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
+                                       uint8_t before, uint8_t after,
+                                       uint8_t p2_scroll, uint8_t p1_scroll)
+{
+    if (addr < 0x9800 || addr >= 0x9C00) return 0;
+
+    int p2idx = (int)addr - 0x9800;
+    int row = p2idx / 32;
+    int col = p2idx & 31;
+    int world_col = ((int)(p2_scroll >> 3) + col) & 31;
+    int p1_col = (world_col - (int)(p1_scroll >> 3)) & 31;
+    int p1idx = row * 32 + p1_col;
+
+    switch (event) {
+    case 0x01:
+        vram[0x1800 + p1idx] = after;
+        return 1;
+    case 0x02:
+        mp_pending_block = 1;
+        mp_pending_block_row = (uint8_t)row;
+        mp_pending_block_world_col = (uint8_t)world_col;
+        mp_pending_block_tile = before;
+        vram[0x1800 + p1idx] = after;
+        return 1;
+    case 0x04:
+        vram[0x1800 + p1idx] = after;
+        mp_pending_block = 0;
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 static int mp_scroll_delta(uint8_t now, uint8_t old)
@@ -376,6 +418,15 @@ int emu_mp_begin(void)
     mp_vblank_collision = 0;
     mp_vblank_collision_addr = 0;
     mp_vblank_collision_before = 0;
+    mp_vblank_square_sfx = 0;
+    mp_vblank_noise_sfx = 0;
+    mp_vblank_floaty_control = 0;
+    mp_vblank_floaty_x = 0;
+    mp_vblank_floaty_y = 0;
+    mp_pending_block = 0;
+    mp_pending_block_row = 0;
+    mp_pending_block_world_col = 0;
+    mp_pending_block_tile = 0;
     mp_vblank_waiting = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
     gb_mp_vblank_watch = 0;
@@ -414,6 +465,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         mp_capture_shared_world_before();
         mp_player_load(&mp_p2_state);
+        uint8_t p2_floaty_before = rd8(0xFFED);
 
         /* A death sequence and hurt timer are part of SML1's actual state
          * machine, so keep the original game state instead of substituting a
@@ -437,11 +489,11 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p2_scroll_after = rd8(0xFFA4);
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
-        uint8_t p2_floaty_control = rd8(0xFFED);
-        uint8_t p2_floaty_x = rd8(0xFFEB);
-        uint8_t p2_floaty_y = rd8(0xFFEC);
-        uint8_t p2_square_sfx = rd8(0xDFE0);
-        uint8_t p2_noise_sfx = rd8(0xDFF8);
+        uint8_t p2_floaty_control = mp_vblank_floaty_control ? mp_vblank_floaty_control : rd8(0xFFED);
+        uint8_t p2_floaty_x = mp_vblank_floaty_control ? mp_vblank_floaty_x : rd8(0xFFEB);
+        uint8_t p2_floaty_y = mp_vblank_floaty_control ? mp_vblank_floaty_y : rd8(0xFFEC);
+        uint8_t p2_square_sfx = mp_vblank_square_sfx ? mp_vblank_square_sfx : rd8(0xDFE0);
+        uint8_t p2_noise_sfx = mp_vblank_noise_sfx ? mp_vblank_noise_sfx : rd8(0xDFF8);
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
         int p2_world_lives_after = mp_bcd_to_int(rd8(0xDA15));
         int life_delta = p2_world_lives_after - p2_world_lives_before;
@@ -463,18 +515,19 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int dx = mp_scroll_delta(p2_scroll_after, p1_scroll);
         int enemy_merged = 0;
         int enemy_sound_event = 0;
+        int p2_stomp_event = (p2_square_sfx == 0x03);
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
         for (int slot = 0; slot < 10; slot++) {
             uint8_t before_type = mp_enemy_before[slot * 0x10];
             uint8_t after_type = mp_enemy_after[slot * 0x10];
-            int enemy_death = before_type != after_type && mp_is_enemy_stomped(after_type);
-            int enemy_state_change = before_type != after_type &&
-                                     before_type != 0xFF &&
-                                     !mp_is_pickup(before_type) &&
-                                     !mp_is_pickup(after_type);
+            int type_changed = before_type != after_type && before_type != 0xFF;
+            int enemy_death = type_changed &&
+                              (mp_is_enemy_stomped(after_type) ||
+                               after_type == 0xFF ||
+                               p2_stomp_event);
             int pickup_consumed = mp_is_pickup(before_type) && before_type != after_type;
             int pickup_spawned = before_type == 0xFF && mp_is_pickup(after_type);
-            if (enemy_death || enemy_state_change || pickup_consumed || pickup_spawned) {
+            if (enemy_death || pickup_consumed || pickup_spawned) {
                 mp_enemy_merge_mask[slot] = 1;
                 memcpy(&mp_enemy_merge[slot * 0x10], &mp_enemy_after[slot * 0x10], 0x10);
                 int ex = (int)mp_enemy_merge[slot * 0x10 + 3] + dx;
@@ -510,7 +563,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * authoritative P1 state. Coin and stomp have stable original IDs;
          * block hits use the game's noise SFX.
          */
-        int p2_new_floaty = (p1_floaty_before == 0 && p2_floaty_control != 0);
+        int p2_new_floaty = (p2_floaty_before == 0 && p2_floaty_control != 0);
         if (rd8(0xDFE0) == 0) {
             if (coins_after != coins_before)
                 wr8(0xDFE0, 0x05); /* SFX_COIN */
@@ -551,29 +604,38 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int block_hit = (mp_vblank_collision == 0x01 ||
                          mp_vblank_collision == 0x02 ||
                          mp_vblank_collision == 0x04);
-        if (p2_state_before == 0 && !block_hit)
-            tile_changed = mp_merge_tilemap_local_edits(dx == 0);
+
+        if (p2_state_before == 0) {
+            tile_changed |= mp_merge_block_vblank_event(
+                mp_vblank_collision,
+                mp_vblank_collision_addr,
+                mp_vblank_collision_before,
+                (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
+                    ? mp_tilemap_after[mp_vblank_collision_addr - 0x9800]
+                    : 0,
+                p2_scroll_after,
+                p1_scroll);
+
+            if (!block_hit)
+                tile_changed |= mp_merge_tilemap_local_edits(dx == 0);
+
+            if (mp_vblank_collision == 0xC0 &&
+                mp_vblank_collision_addr >= 0x9800 &&
+                mp_vblank_collision_addr < 0x9C00) {
+                int p2idx = (int)mp_vblank_collision_addr - 0x9800;
+                int row = p2idx / 32, col = p2idx & 31;
+                int world_col = ((int)(p2_scroll_after >> 3) + col) & 31;
+                int p1_col = (world_col - (int)(p1_scroll >> 3)) & 31;
+                int p1idx = row * 32 + p1_col;
+
+                if (mp_vblank_collision_before != mp_tilemap_after[p2idx]) {
+                    vram[0x1800 + p1idx] = mp_tilemap_after[p2idx];
+                    tile_changed = 1;
+                }
+            }
+        }
 
         int collision_changed = 0;
-        if (p2_state_before == 0 &&
-            mp_vblank_collision == 0xC0 &&
-            mp_vblank_collision_addr >= 0x9800 &&
-            mp_vblank_collision_addr < 0x9C00) {
-            int p2idx = (int)mp_vblank_collision_addr - 0x9800;
-            int row = p2idx / 32, col = p2idx & 31;
-            int world_col = ((int)(p2_scroll_after >> 3) + col) & 31;
-            int p1_col = (world_col - (int)(p1_scroll >> 3)) & 31;
-            int p1idx = row * 32 + p1_col;
-
-            if (mp_vblank_collision_before != mp_tilemap_after[p2idx]) {
-                vram[0x1800 + p1idx] = mp_tilemap_after[p2idx];
-                collision_changed = 1;
-            }
-
-            /* Block-hit events are deliberately not copied. SML1 blanks the
-             * temporary collision tile during VBlank; copying that private
-             * blank was making Luigi delete shared question blocks. */
-        }
 
         /* Coins/score and consumed/spawned powerups are shared world state. */
         if (p2_state_before == 0) {
@@ -832,6 +894,11 @@ void frame_hook(void)
             mp_vblank_life_event = rd8(0xC0A3);
             mp_vblank_collision = rd8(0xFFEE);
             mp_vblank_collision_addr = (uint16_t)(((uint16_t)rd8(0xFFEF) << 8) | rd8(0xFFF0));
+            mp_vblank_square_sfx = rd8(0xDFE0);
+            mp_vblank_noise_sfx = rd8(0xDFF8);
+            mp_vblank_floaty_control = rd8(0xFFED);
+            mp_vblank_floaty_x = rd8(0xFFEB);
+            mp_vblank_floaty_y = rd8(0xFFEC);
             mp_vblank_collision_before = 0;
             if (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
                 mp_vblank_collision_before = rd8(mp_vblank_collision_addr);
