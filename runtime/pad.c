@@ -56,7 +56,7 @@ int pad_is_dualsense(int i)
 int pad_is_edge(int i)
 {
     if (!pad_is_dualsense(i)) return 0;
-    return SDL_GameControllerGetVendor(pads[i]) == 0x054C && SDL_GameControllerGetProduct(pads[i]) == 0x0DF2;
+    return SDL_GameControllerGetVendor(pads[i].gc) == 0x054C && SDL_GameControllerGetProduct(pads[i].gc) == 0x0DF2;
 }
 
 const char *pad_status(char *buf, size_t n)
@@ -209,5 +209,5 @@ void pad_frame(float dt)
     if (out == last_sent || send_acc < 0.033f) return;
     send_acc = 0;
     last_sent = out;
-    for (int i = 0; i < n_pads; i++) if (SDL_GameControllerHasLED(pads[i])) SDL_GameControllerSetLED(pads[i].gc, (Uint8)(out >> 16), (Uint8)(out >> 8), (Uint8)out);
+    for (int i = 0; i < n_pads; i++) if (pads[i].mapped && SDL_GameControllerHasLED(pads[i].gc)) SDL_GameControllerSetLED(pads[i].gc, (Uint8)(out >> 16), (Uint8)(out >> 8), (Uint8)out);
 }
