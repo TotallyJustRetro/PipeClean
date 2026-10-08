@@ -25,24 +25,35 @@ jobs:
 
       - name: Build SML2 widescreen regression test
         run: |
-          gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_sml2_wide.c runtime/widescreen.c             -o test_sml2_wide
+          gcc -std=c11 -Wall -Wextra -Iruntime \
+            tests/test_sml2_wide.c runtime/widescreen.c \
+            -o test_sml2_wide
 
       - name: Run SML2 widescreen regression test
         run: ./test_sml2_wide
 
       - name: Build and run SML1 widescreen regression
         run: |
-          gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_sml_wide.c runtime/widescreen.c             -o test_sml_wide
+          gcc -std=c11 -Wall -Wextra -Iruntime \
+            tests/test_sml_wide.c runtime/widescreen.c \
+            -o test_sml_wide
           ./test_sml_wide
 
       - name: Build and run MBC1 mapper regression
         run: |
-          gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c             -o test_cart_mbc1
+          gcc -std=c11 -Wall -Wextra -Iruntime \
+            tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c \
+            -o test_cart_mbc1
           ./test_cart_mbc1
 
       - name: Validate Python tools
         run: |
-          python3 -m py_compile             tools/recomp.py             tools/sm83.py             tools/dis.py             tools/discover.py             tools/make_font.py
+          python3 -m py_compile \
+            tools/recomp.py \
+            tools/sm83.py \
+            tools/gbdis.py \
+            tools/discover.py \
+            tools/make_font.py
 
       - name: Generate synthetic SML2-shaped 512 KiB ROM
         run: |
@@ -76,7 +87,12 @@ jobs:
 
       - name: Smoke-test SML2 interpreter and CLI widescreen path
         run: |
-          timeout 15s build-ci/gb             --headless             --frames 2             --no-crc-check             --wide 100             ci/sml2_smoke.gb
+          timeout 15s build-ci/gb \
+            --headless \
+            --frames 2 \
+            --no-crc-check \
+            --wide 100 \
+            ci/sml2_smoke.gb
 
   windows-build:
     runs-on: windows-latest
