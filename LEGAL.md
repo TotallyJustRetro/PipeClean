@@ -1,1 +1,37 @@
-# Legal Information\n\n## Project status\n\nPipeClean is an independent fan/development project. It is not affiliated with, sponsored by, or endorsed by Nintendo, its subsidiaries, or the original publishers/developers of any supported game.\n\n## ROMs\n\nThis repository does **not** distribute commercial Game Boy ROMs.\n\nUsers are responsible for obtaining and using ROM images in accordance with the laws applicable to them. Contributors must not commit commercial ROM images, BIOS files, copyrighted game assets, or other material that they do not have permission to redistribute.\n\n## Game names and trademarks\n\nGame titles, company names, trademarks, and other references to third-party products remain the property of their respective owners. They are used only to identify compatibility or development targets.\n\n## Third-party software\n\nPipeClean may depend on third-party libraries and tools, including SDL2 and compiler/toolchain components. Those projects retain their own licenses and notices.\n\n## Repository contributions\n\nContributors should ensure they have the right to submit their code or documentation and that it does not contain copied proprietary game source, extracted commercial assets, or other material they are not authorized to redistribute.\n\n## No warranty\n\nThis is development software. It may contain bugs, compatibility problems, or incomplete features. Use it at your own risk.
+# Legal & Project Policy
+
+## Project status
+
+PipeClean is an independent software project for research, preservation, compatibility work and technical experimentation.
+
+It is **not affiliated with, sponsored by, authorized by, or endorsed by Nintendo** or any original game publisher.
+
+## ROM policy
+
+Commercial Game Boy ROM images are **not included** in this repository.
+
+Do not submit ROMs, ROM dumps, save files containing copyrighted content, or other commercial game material.
+
+Users are responsible for obtaining and using ROM images lawfully in their jurisdiction.
+
+## Copyrighted game content
+
+Do not contribute proprietary game source code, extracted game assets, commercial music, or other material you do not have permission to redistribute.
+
+PipeClean source changes should be original contributions or material compatible with its applicable license.
+
+## Third-party software
+
+Third-party libraries and tools retain their own copyrights and licenses. Preserve required notices when adding dependencies.
+
+## Reverse engineering
+
+The project may contain reverse-engineered addresses, instruction signatures and behavioral notes. These are used to reproduce runtime behavior and compatibility, not to claim ownership of the original games.
+
+## No endorsement
+
+Mentioning a game, company, platform or third-party project does not imply a partnership or endorsement.
+
+## No warranty
+
+PipeClean is experimental software and is provided without a guarantee of compatibility or fitness for a particular purpose.
