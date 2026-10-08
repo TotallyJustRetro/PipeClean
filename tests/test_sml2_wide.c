@@ -70,6 +70,18 @@ int main(void)
     if (!wide_intercept_sml2(0x19)) return 10;
     if (HL() != 0x01C1 || cpu.pc != 0x4065 || total_cycles != 8) return 11;
 
+    /* The entity-loader's activation and cull windows must also follow
+     * the widened camera bounds, or actors still pop out before the margin. */
+    cpu.pc = 0x3CAA;
+    if (wide_read_sml2(0xAF0A, 0) != 0x03 ||
+        wide_read_sml2(0xAF0B, 0) != 0x01 ||
+        wide_read_sml2(0xAF0C, 0) != 0x01 ||
+        wide_read_sml2(0xAF0D, 0) != 0xEF) return 22;
+    if (wide_read_sml2(0xAF1A, 0) != 0x03 ||
+        wide_read_sml2(0xAF1B, 0) != 0x41 ||
+        wide_read_sml2(0xAF1C, 0) != 0x01 ||
+        wide_read_sml2(0xAF1D, 0) != 0xAF) return 23;
+
     /* Enemy spawn scan: the widened edge must advance in <=8 px steps
      * so the ROM cannot consume a spawn-list entry between frames. */
     frame_count = 0;
