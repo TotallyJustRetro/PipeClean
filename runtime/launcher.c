@@ -956,20 +956,13 @@ LauncherResult launcher_frame(float dt)
         ui_rect(vx, vy, vw, vh, RGBA(8, 9, 14, (int)(60 + settings.g[g].bg_dim * 2.4f)));
     }
 
-    /*
-     * Use the supplied PipeClean artwork itself. The icon and wordmark are
-     * textures now; do not approximate the artwork with UI text/shapes.
-     */
-    SDL_Texture *brand_icon = branding_icon_texture();
+    /* Use only the supplied transparent PipeClean logo in the header. */
     SDL_Texture *brand_logo = branding_logo_texture();
-    if (brand_icon) ui_image(brand_icon, NULL, 20, 10, 62, 62);
-    if (brand_logo) ui_image(brand_logo, NULL, 88, 11, 238, 62);
-
-    ui_text(F_REG, 12, 88, 61, C_DIM, "Classic Game Boy behavior. Modern runtime.");
-    ui_rect(20, 80, UI_W - 40, 1, C_LINE);
+    if (brand_logo) ui_image(brand_logo, NULL, 20, 1, 170, 83);
+    ui_rect(20, 90, UI_W - 40, 1, C_LINE);
 
     /* sidebar */
-    float sx = 24, sy = 98;
+    float sx = 24, sy = 108;
     for (int i = 0; i < N_GAMES; i++) {
         float y = sy + i * 76;
         if (tab_button(sx, y, 224, 68, tab == i, games[i].accent)) { tab = i; }
@@ -984,7 +977,7 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 15, sx + 18, y + 11, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
     }
 
-    float cx = 268, cy = 98;
+    float cx = 268, cy = 108;
     if (tab < N_GAMES) {
         ui_accent = games[tab].accent;
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, games[tab].name);

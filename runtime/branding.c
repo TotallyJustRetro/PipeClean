@@ -57,8 +57,8 @@ int branding_init(SDL_Renderer *renderer, SDL_Window *window)
                                   "assets/pipeclean-icon.svg",
                                   "assets/pipeclean-icon.png", NULL, NULL);
     logo_tex = load_brand_texture(renderer,
-                                  "assets/pipeclean-logo.svg",
-                                  "assets/pipeclean-logo.png", NULL, NULL);
+                                  "assets/pipeclean-logo.webp",
+                                  "assets/pipeclean-logo.svg", NULL, NULL);
 
     if (!icon_tex)
         fprintf(stderr, "PipeClean branding: couldn't load icon: %s\n", IMG_GetError());
