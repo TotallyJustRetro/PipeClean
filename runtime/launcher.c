@@ -470,6 +470,7 @@ static void sub_display(int g, float x, float y)
 static void bind_cell(int g, float x, float y, float w, int kind, int btn, int slot)
 {
     GameCfg *c = &settings.g[g];
+    int pad_device = slot >= 0 && slot < 2 ? c->pad_device[slot] : -1;
     int over;
     int clicked = clickable(x, y, w, 32, &over);
     int active = cap_kind == kind && cap_btn == btn && cap_slot == slot;
@@ -477,7 +478,7 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
     char b[48];
     if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
     else {
-        if (kind == 1) key_code_name(c->key[btn][slot], b, sizeof b); else pad_code_name(c->pad[btn][slot], b, sizeof b);
+        if (kind == 1) key_code_name(c->key[btn][slot], b, sizeof b); else pad_code_name_device(pad_device, c->pad[btn][slot], b, sizeof b);
         int none = kind == 1 ? !c->key[btn][slot] : c->pad[btn][slot] < 0;
         ui_text_c(F_REG, 13, x + w / 2, y + 7, none ? C_DIM : C_TEXT, b);
     }
@@ -488,6 +489,7 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
 static void bind_action_cell(int g, float x, float y, float w, int kind, int action)
 {
     GameCfg *c = &settings.g[g];
+    int pad_device = c->pad_device[0];
     int over;
     int clicked = clickable(x, y, w, 32, &over);
     int active = (cap_kind == kind && cap_btn == action);
@@ -496,7 +498,7 @@ static void bind_action_cell(int g, float x, float y, float w, int kind, int act
     if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 3 ? "press a key…" : "press a button…");
     else {
         if (kind == 3) key_code_name(c->action_key[action], b, sizeof b);
-        else pad_code_name(c->action_pad[action], b, sizeof b);
+        else pad_code_name_device(pad_device, c->action_pad[action], b, sizeof b);
         int none = kind == 3 ? !c->action_key[action] : c->action_pad[action] < 0;
         ui_text_c(F_REG, 12, x + w / 2, y + 7, none ? C_DIM : C_TEXT, b);
     }
