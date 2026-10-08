@@ -1,6 +1,6 @@
 # Third-Party Sources
 
-PipeClean includes single-file third-party libraries used by the native runtime for image, font, and audio decoding.
+PipeClean includes third-party libraries and a separately licensed UI font used by the native runtime for image, font, and audio support.
 
 ## stb
 
@@ -15,6 +15,17 @@ Repository: https://github.com/nothings/stb
 | `runtime/stb_vorbis.inc` | 1.22 |
 
 The stb project describes these libraries as public-domain or MIT-licensed single-file C/C++ libraries; individual files contain their applicable license text.
+
+## Poppins UI Font
+
+Source: **Google Fonts / The Poppins Project Authors**  
+Repository: https://github.com/google/fonts/tree/main/ofl/poppins
+
+| File | Version |
+| --- | --- |
+| `runtime/font_data.c` | Poppins 4.004 source font data |
+
+Poppins is distributed under the SIL Open Font License 1.1. The embedded font data is generated from the official Poppins Regular and Bold TTF files.
 
 ## dr_libs
 
