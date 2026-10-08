@@ -76,6 +76,28 @@ static int sml2_scan_value(int side)
 uint8_t wide_read_sml2(uint16_t address, uint8_t value)
 {
     if (!sml2_right_extra && !sml2_left_extra) return value;
+    if (cart_hi != rom + 0x8000) return value;
+
+    /* The entity-loader rebuilds both its activation and cull windows from
+     * the camera every frame. These are RAM-backed bounds, so widening the
+     * final ADD HL,DE alone leaves the next window narrower and causes actors
+     * to disappear before they reach the visible margin. Override the four
+     * bytes at the ROM0 memcpy call site, using the exact same camera-relative
+     * bounds the hardware logic uses. */
+    if (cpu.pc == 0x3CAA || cpu.pc == 0x3CAB) {
+        int cam = sml2_read16(0xFFCA);
+        unsigned upper = (unsigned)(cam + 0x60 + sml2_right_extra);
+        unsigned lower = (unsigned)(cam - 0x60 - sml2_left_extra);
+        int cull = address >= 0xAF1A && address <= 0xAF1D;
+        if (cull) {
+            upper = (unsigned)(cam + 0xA0 + sml2_right_extra);
+            lower = (unsigned)(cam - 0xA0 - sml2_left_extra);
+        }
+        if (address == 0xAF0A || address == 0xAF1A) return (uint8_t)(upper >> 8);
+        if (address == 0xAF0B || address == 0xAF1B) return (uint8_t)upper;
+        if (address == 0xAF0C || address == 0xAF1C) return (uint8_t)(lower >> 8);
+        if (address == 0xAF0D || address == 0xAF1D) return (uint8_t)lower;
+    }
 
     int side = -1;
     uint16_t hi_pc = 0, lo_pc = 0;
@@ -84,7 +106,7 @@ uint8_t wide_read_sml2(uint16_t address, uint8_t value)
     } else if (address == 0xAF14 || address == 0xAF15) {
         side = 1; hi_pc = 0x40A9; lo_pc = 0x40AF;
     }
-    if (side < 0 || cart_hi != rom + 0x8000) return value;
+    if (side < 0) return value;
 
     if (cpu.pc != hi_pc && cpu.pc != lo_pc &&
         cpu.pc != (uint16_t)(hi_pc + 3) &&
