@@ -237,11 +237,13 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
         ds_menu.touch_active = 1;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
         ds_menu.selected = ds_menu_select(x, y);
+        if (ds_menu.selected == DS_MENU_REWIND) emu_rewind_step();
     } else if (kind == 1 && ds_menu.open) {
         int old = ds_menu.selected;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
         ds_menu.selected = ds_menu_select(x, y);
         if (old == DS_MENU_REWIND && ds_menu.selected != DS_MENU_REWIND) emu_rewind_end();
+        else if (ds_menu.selected == DS_MENU_REWIND) emu_rewind_step();
     } else if (kind == 2 && ds_menu.open) {
         ds_menu.touch_active = 0;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
@@ -499,6 +501,11 @@ static int play_multiplayer_sml1(int g)
         }
 
         int now_rewind = app_rewind_held(g) && !paused;
+        if (ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND) {
+            emu_rewind_step();
+            emu_mp_frame_refresh(f);
+            have = 1;
+        }
         if (now_rewind) {
             if (!rewind_held) {
                 if (emu_rewind_available()) rewind_held = 1;
@@ -655,6 +662,10 @@ static int play(int g)
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) { emu_set_turbo(0); }
             else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action) quit = 1;
+        }
+        if (ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND) {
+            emu_rewind_step();
+            if (emu_frame_get(f)) have = 1;
         }
         int now_rewind = app_rewind_held(g) && !paused;
         if (now_rewind) {
