@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 static SDL_Texture *icon_tex;
 static SDL_Texture *logo_tex;
@@ -13,24 +14,36 @@ static SDL_Texture *load_brand_texture(SDL_Renderer *renderer, const char *name,
     if (!renderer) return NULL;
 
     const char *paths[] = {name, fallback};
+    char base[2048], p0[2048], p1[2048], p2[2048];
+    const char *base_dir = SDL_GetBasePath();
+    if (base_dir) snprintf(base, sizeof base, "%s", base_dir); else base[0] = 0;
     for (int i = 0; i < 2; i++) {
         if (!paths[i] || !paths[i][0]) continue;
-        SDL_Surface *src = IMG_Load(paths[i]);
+        const char *try_paths[5] = { paths[i], NULL, NULL, NULL, NULL };
+        if (base[0]) {
+            snprintf(p0, sizeof p0, "%s%s", base, paths[i]);
+            snprintf(p1, sizeof p1, "%s../%s", base, paths[i]);
+            snprintf(p2, sizeof p2, "%s../../%s", base, paths[i]);
+            try_paths[1] = p0; try_paths[2] = p1; try_paths[3] = p2;
+        }
+        for (int j = 0; j < 4; j++) {
+            if (!try_paths[j]) continue;
+            SDL_Surface *src = IMG_Load(try_paths[j]);
+            if (!src) continue;
         if (!src) continue;
 
-        SDL_Surface *s = SDL_ConvertSurfaceFormat(src, SDL_PIXELFORMAT_RGBA32, 0);
-        SDL_FreeSurface(src);
-        if (!s) continue;
-
-        SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
-        if (w_out) *w_out = s->w;
-        if (h_out) *h_out = s->h;
-        SDL_FreeSurface(s);
-        if (!t) continue;
-
-        SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
-        SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
-        return t;
+            SDL_Surface *s = SDL_ConvertSurfaceFormat(src, SDL_PIXELFORMAT_RGBA32, 0);
+            SDL_FreeSurface(src);
+            if (!s) continue;
+            SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
+            if (w_out) *w_out = s->w;
+            if (h_out) *h_out = s->h;
+            SDL_FreeSurface(s);
+            if (!t) continue;
+            SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
+            SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
+            return t;
+        }
     }
     return NULL;
 }
