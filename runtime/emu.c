@@ -244,10 +244,22 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * AI/timer advancement into the authoritative Player 1 world.
          */
         MpSharedProbe control = {0}, actual = {0};
+        MpPlayerState probe_player = mp_p2_state;
 
         if (gb_state_save(mp_p2_probe_state, GB_STATE_BYTES)) return -1;
 
-        mp_player_load(&mp_p2_state);
+        /*
+         * Keep the control Mario away from the active play area. His only job
+         * in this pass is to let the shared world advance one frame normally;
+         * otherwise an already-moving P2 could stomp an enemy in both passes
+         * and the interaction delta would disappear.
+         */
+        probe_player.mario[1] = 0x10; /* Y */
+        probe_player.mario[2] = 0x00; /* screen X */
+        probe_player.mario[0x0C] = 0; /* horizontal momentum */
+        probe_player.mario[0x0D] = 0; /* movement direction */
+        probe_player.mario[0x0E] = 0; /* walking/running state */
+        mp_player_load(&probe_player);
         mp_buttons = 0;
         mp_dpad = 0;
         gb_set_input(0, 0);
