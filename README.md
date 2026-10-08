@@ -2,6 +2,8 @@
 
 **A source-first Game Boy recompilation project with modern widescreen support.**
 
+[![Regression Tests](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml/badge.svg)](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml)
+
 PipeClean is an independent project exploring static recompilation and a lightweight native runtime for classic Game Boy software.
 
 The current focus is bringing **Super Mario Land 2: 6 Golden Coins** to a modern PC presentation while preserving the original game's behavior as closely as possible.
@@ -77,6 +79,8 @@ Expected result:
 ```
 SML2 widescreen hook: PASS
 ```
+
+The GitHub Actions workflow also validates the Python tools and attempts a full native runtime build against a synthetic 512 KiB ROM so the banked-ROM path is exercised without shipping any game ROM.
 
 See **[Architecture](docs/ARCHITECTURE.md)** for technical details.
 
