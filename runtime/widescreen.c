@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 #include "widescreen.h"
 #include "gb.h"
 #include "cart.h"
@@ -35,6 +36,69 @@ void wide_dims(int game, int pct, int *l, int *r)
 static int expect(int addr, const uint8_t *b, int n) { return memcmp(&rom[addr], b, (size_t)n) == 0; }
 
 static int sml2_right_extra;
+static int sml2_left_extra;
+static int sml2_scan_edge[2] = {-1, -1};
+static int sml2_scan_pick[2];
+static int sml2_scan_frame[2] = {-1, -1};
+
+static int sml2_read16(uint16_t a)
+{
+    return (int)rd8(a) | ((int)rd8((uint16_t)(a + 1)) << 8);
+}
+
+static int sml2_scan_value(int side)
+{
+    int cam = sml2_read16(0xFFCA);
+    int vanilla = side == 0 ? cam + 112 : cam - 112;
+    int target = side == 0 ? vanilla + sml2_right_extra : vanilla - sml2_left_extra;
+    if (target < 0) target = 0;
+    if (target > 0xFFFF) target = 0xFFFF;
+
+    int prev = sml2_scan_edge[side];
+    if (prev < 0 || abs(prev - vanilla) > 128) prev = vanilla;
+
+    int edge = target;
+    if (side == 0 && edge > prev + 8) edge = prev + 8;
+    if (side == 1 && edge < prev - 8) edge = prev - 8;
+    if (edge < 0) edge = 0;
+    if (edge > 0xFFFF) edge = 0xFFFF;
+
+    sml2_scan_edge[side] = edge;
+    sml2_scan_pick[side] = edge;
+    sml2_scan_frame[side] = frame_count;
+    return edge;
+}
+
+/* SML2's enemy scanner consumes spawn-list entries as it advances. The ROM
+ * aligns its scan edge to 8 px, so widening the edge in one jump can step over
+ * an entry before the next frame. Feed each scan a latched edge that moves
+ * toward the widened target by at most one 8 px quantum per scan. */
+uint8_t wide_read_sml2(uint16_t address, uint8_t value)
+{
+    if (!sml2_right_extra && !sml2_left_extra) return value;
+
+    int side = -1;
+    uint16_t hi_pc = 0, lo_pc = 0;
+    if (address == 0xAF12 || address == 0xAF13) {
+        side = 0; hi_pc = 0x408A; lo_pc = 0x4090;
+    } else if (address == 0xAF14 || address == 0xAF15) {
+        side = 1; hi_pc = 0x40A9; lo_pc = 0x40AF;
+    }
+    if (side < 0 || cart_hi != rom + 0x8000) return value;
+
+    if (cpu.pc != hi_pc && cpu.pc != lo_pc &&
+        cpu.pc != (uint16_t)(hi_pc + 3) &&
+        cpu.pc != (uint16_t)(lo_pc + 3))
+        return value;
+
+    int edge = sml2_scan_frame[side] == frame_count
+        ? sml2_scan_pick[side] : sml2_scan_value(side);
+
+    return address == 0xAF12 || address == 0xAF14
+        ? (uint8_t)(edge >> 8)
+        : (uint8_t)edge;
+}
+
 
 /* The SML2 entity-loader builds several horizontal look-ahead limits from
  * ADD HL,DE in the same bank-2 routine.  Different ROM revisions can move
@@ -78,6 +142,10 @@ int wide_intercept_sml2(uint8_t op)
 int wide_install(int game, int l, int r)
 {
     sml2_right_extra = 0;
+    sml2_left_extra = 0;
+    sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
+    sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
+    sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
     if (l + r == 0) return 1;
     if (game == GAME_SML2) {
         /* SML2's entity activation code lives in bank 2.  Its horizontal
@@ -87,6 +155,7 @@ int wide_install(int game, int l, int r)
          * appropriate here because SML2 already runs through the interpreter. */
         if (r > 0x9F || rom[0x801C] != 0x19) return 0;
         sml2_right_extra = r;
+        sml2_left_extra = l;
         return 1;
     }
 
