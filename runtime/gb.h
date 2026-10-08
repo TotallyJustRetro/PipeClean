@@ -50,7 +50,7 @@ void gb_dump_misses(const char *path);
 void gb_serial_hook(void (*fn)(uint8_t));
 
 /* Reentrant-state support used by local multiplayer. */
-#define GB_STATE_BYTES (786432u)
+#define GB_STATE_BYTES (800000u)
 size_t gb_state_size(void);
 int gb_state_save(void *dst, size_t n);
 int gb_state_load(const void *src, size_t n);
