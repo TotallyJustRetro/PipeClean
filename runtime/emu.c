@@ -72,7 +72,7 @@ static void publish(void)
     pub.player_x = rd8(0xC202); pub.player_y = rd8(0xC201);
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
     pub.obp0 = ppu_read(0x48); pub.obp1 = ppu_read(0x49); pub.sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
-    memcpy(pub.mario_oam, oam, sizeof pub.mario_oam);
+    memcpy(pub.mario_oam, &oam[0x0C], sizeof pub.mario_oam);
     memcpy(pub.bg_map, &vram[0x1800], sizeof pub.bg_map);
     pub.lcd_on = ppu_lcd_is_on();
     pub.seq++;
@@ -100,11 +100,153 @@ static void mp_capture_frame(Frame *f)
     f->w = ppu_w; f->xoff = ppu_xoff; f->lcd_on = ppu_lcd_is_on(); f->seq = (uint64_t)frame_count;
 }
 
-/* The multiplayer runner deliberately stops at the end of exactly one video
- * frame. The complete core state is restored for whichever player is next. */
+/* SML1 multiplayer uses the original game code for both players.
+ * Player 1 owns the authoritative world/camera. For Player 2 we clone the
+ * current Player 1 world, restore only Player 2's character state, execute one
+ * real SML1 frame with Player 2's input, keep the resulting character state,
+ * and discard the world's changes. This gives P2 the game's actual movement,
+ * collision and animation code while keeping one shared world on screen. */
+typedef struct {
+    uint8_t mario[0x10];     /* C200-C20F: position, animation, momentum, etc. */
+    uint8_t invincibility;   /* C0D3 */
+    uint8_t superball_ttl;   /* C0A9 */
+    uint8_t death_y;         /* C0DD */
+    uint8_t super_status;    /* FF99 */
+    uint8_t superball;       /* FFB5 */
+    uint8_t timer0, timer1;  /* FFA6-FFA7 */
+} MpPlayerState;
+
+static int mp_active;
+static uint8_t mp_buttons, mp_dpad;
+static int mp_ready;
+static uint8_t mp_state[GB_STATE_BYTES];
+static MpPlayerState mp_p2_state;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
+
+static void mp_player_save(MpPlayerState *s)
+{
+    if (!s) return;
+    for (int i = 0; i < 0x10; i++) s->mario[i] = rd8((uint16_t)(0xC200 + i));
+    s->invincibility = rd8(0xC0D3);
+    s->superball_ttl = rd8(0xC0A9);
+    s->death_y = rd8(0xC0DD);
+    s->super_status = rd8(0xFF99);
+    s->superball = rd8(0xFFB5);
+    s->timer0 = rd8(0xFFA6);
+    s->timer1 = rd8(0xFFA7);
+}
+
+static void mp_player_load(const MpPlayerState *s)
+{
+    if (!s) return;
+    for (int i = 0; i < 0x10; i++) wr8((uint16_t)(0xC200 + i), s->mario[i]);
+    wr8(0xC0D3, s->invincibility);
+    wr8(0xC0A9, s->superball_ttl);
+    wr8(0xC0DD, s->death_y);
+    wr8(0xFF99, s->super_status);
+    wr8(0xFFB5, s->superball);
+    wr8(0xFFA6, s->timer0);
+    wr8(0xFFA7, s->timer1);
+}
+
+static int mp_scroll_delta(uint8_t now, uint8_t old)
+{
+    int d = (int)now - (int)old;
+    if (d > 127) d -= 256;
+    if (d < -127) d += 256;
+    return d;
+}
+
+static void mp_capture_frame(Frame *f, int screen_dx)
+{
+    memcpy(f->shade, ppu_shade, sizeof f->shade);
+    memcpy(f->layer, ppu_layer, sizeof f->layer);
+    memcpy(f->bguv, ppu_bguv, sizeof f->bguv);
+    memcpy(f->spruv, ppu_spruv, sizeof f->spruv);
+    memcpy(f->bgtile, ppu_bgtile, sizeof f->bgtile);
+    memcpy(f->sprtile, ppu_sprtile, sizeof f->sprtile);
+    memcpy(f->tiles, vram, sizeof f->tiles);
+    memcpy(f->bg_map, &vram[0x1800], sizeof f->bg_map);
+    memcpy(f->mario_oam, &oam[0x0C], sizeof f->mario_oam);
+    if (screen_dx) {
+        for (int i = 0; i < 4; i++) {
+            int x = (int)f->mario_oam[i * 4 + 1] + screen_dx;
+            f->mario_oam[i * 4 + 1] = (uint8_t)x;
+        }
+    }
+    f->w = ppu_w; f->xoff = ppu_xoff;
+    f->player_x = rd8(0xC202); f->player_y = rd8(0xC201);
+    f->scroll_x = rd8(0xFFA4); f->game_state = rd8(0xFFB3);
+    f->obp0 = ppu_read(0x48); f->obp1 = ppu_read(0x49);
+    f->sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
+    f->lcd_on = ppu_lcd_is_on();
+    f->seq = (uint64_t)frame_count;
+}
+
+int emu_mp_begin(void)
+{
+    if (thr || mp_ready || rom_loaded_game() != GAME_SML) return -1;
+    if (!fmx) fmx = SDL_CreateMutex();
+    gb_reset();
+    if (save_path[0]) cart_load_save(save_path);
+    if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+
+    mp_player_save(&mp_p2_state);
+    /* Start the second Mario a comfortable distance beside Player 1. */
+    mp_p2_state.mario[2] = (uint8_t)(mp_p2_state.mario[2] + 24);
+
+    mp_ready = 1;
+    return 0;
+}
+
+int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
+{
+    if (!mp_ready || (player != 0 && player != 1) || !frame) return -1;
+
+    if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+
+    if (player == 1) {
+        uint8_t p1_scroll = rd8(0xFFA4);
+        mp_player_load(&mp_p2_state);
+        mp_buttons = buttons; mp_dpad = dpad;
+        mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
+        mp_active = 1;
+        if (setjmp(stop_jmp) == 0) run_core(0);
+        mp_active = 0;
+
+        /* P2 may have moved SML1's camera while trying to stay centered.
+         * Convert its screen X/OAM back into Player 1's camera coordinates. */
+        int dx = mp_scroll_delta(rd8(0xFFA4), p1_scroll);
+        if (dx) {
+            uint8_t x = rd8(0xC202);
+            wr8(0xC202, (uint8_t)(x + dx));
+        }
+        mp_player_save(&mp_p2_state);
+        gb_state_load(mp_state, GB_STATE_BYTES);
+        return mp_audio_n;
+    }
+
+    mp_buttons = buttons; mp_dpad = dpad;
+    mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
+    mp_active = 1;
+    if (setjmp(stop_jmp) == 0) run_core(0);
+    mp_active = 0;
+    if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+    mp_capture_frame(frame, 0);
+    return mp_audio_n;
+}
+
+void emu_mp_end(void)
+{
+    if (mp_ready && save_path[0]) cart_write_save(save_path);
+    mp_active = 0;
+    mp_ready = 0;
+    mp_frame_out = NULL;
+    mp_audio_out = NULL;
+    mp_audio_max = mp_audio_n = 0;
+}
 
 static void dev_hook(uint8_t *b, uint8_t *d)
 {
