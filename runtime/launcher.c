@@ -707,13 +707,22 @@ LauncherResult launcher_frame(float dt)
         ui_rect(vx, vy, vw, vh, RGBA(8, 9, 14, (int)(60 + settings.g[g].bg_dim * 2.4f)));
     }
 
-    /* top bar: PipeClean mark + wordmark */
+    /* top bar: cartoon-pipe PipeClean identity */
     SDL_Texture *brand = branding_icon_texture();
-    if (brand) ui_image(brand, NULL, 24, 16, 46, 46);
-    ui_text(F_BOLD, 21, 67, 20, C_TEXT, "Pipe");
-    ui_text(F_BOLD, 21, 67 + ui_text_w(F_BOLD, 21, "Pipe"), 20, HEX(0x3FE2EE), "Clean");
-    ui_hgrad(67, 54, 176, 3, HEX(0x3FE2EE), HEX(0x7A4CFF));
-    ui_text(F_REG, 12, 67, 62, C_DIM, "Classic Game Boy behavior. Modern runtime.");
+    if (brand) ui_image(brand, NULL, 24, 11, 58, 58);
+
+    /* Small splash accents echo the pipe artwork without making the header busy. */
+    ui_rrect(82, 12, 9, 9, 4, HEX(0x62DDFF));
+    ui_rrect(96, 8, 6, 6, 3, HEX(0x9B74FF));
+    ui_rrect(286, 13, 8, 8, 4, HEX(0x62DDFF));
+    ui_rrect(300, 18, 5, 5, 2, HEX(0x9B74FF));
+
+    /* Chunky outlined wordmark. */
+    ui_text(F_BOLD, 25, 94, 14, HEX(0x11102F), "PipeClean");
+    ui_text(F_BOLD, 25, 92, 12, C_TEXT, "Pipe");
+    ui_text(F_BOLD, 25, 92 + ui_text_w(F_BOLD, 25, "Pipe"), 12, HEX(0x63E6FF), "Clean");
+    ui_hgrad(92, 48, 204, 4, HEX(0x6ADFFF), HEX(0x7048E8));
+    ui_text(F_REG, 12, 92, 57, C_DIM, "Classic Game Boy behavior. Modern runtime.");
     ui_rect(24, 80, UI_W - 48, 1, C_LINE);
 
     /* sidebar */
