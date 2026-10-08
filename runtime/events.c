@@ -153,6 +153,16 @@ void events_end(void)
     gb_watch_set(NULL, 0, NULL);
 }
 
+void events_state_reset(void)
+{
+    /* HUD/event observations are frontend history, not saved game state. */
+    qr = qw = 0;
+    hud_have = 0;
+    hud_cnt = 0;
+    tap_frames = 0;
+    apu_set_tap_mask(0);
+}
+
 void events_frame(void)
 {
     static int16_t tb[2048 * 2];
