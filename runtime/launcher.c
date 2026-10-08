@@ -441,14 +441,25 @@ static void sub_controls(int g, float x, float y)
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "BUTTON LAYOUT");
 
+    float my = y + 76;
+    label(x + 18, my, "Local multiplayer");
+    if (g == GAME_SML) {
+        if (ui_toggle(x + 154, my - 4, &c->multiplayer) && c->multiplayer && c->pad_device[1] < 0)
+            launcher_toast("Multiplayer enabled. Player 2 can use Keyboard 2 or choose a controller above.");
+        ui_text_fit(F_REG, 11, x + 208, my, 580, C_DIM,
+                    c->multiplayer ? "Two independent SML1 game states, shown side-by-side." : "Off by default; SML1 starts in the normal single-player view.");
+    } else {
+        ui_text(F_REG, 11, x + 154, my, C_DIM, "Available for Super Mario Land 1.");
+    }
+
     static const float colx[5] = {18, 150, 310, 470, 630};
-    ui_text(F_BOLD, 12, x + colx[0], y + 78, C_MUTED, "Game Boy button");
-    ui_text(F_BOLD, 12, x + colx[1] + 10, y + 78, C_MUTED, "Keyboard");
-    ui_text(F_BOLD, 12, x + colx[2] + 10, y + 78, C_MUTED, "Keyboard 2");
-    ui_text(F_BOLD, 12, x + colx[3] + 10, y + 78, C_MUTED, "Player 1 controller");
-    ui_text(F_BOLD, 12, x + colx[4] + 10, y + 78, C_MUTED, "Player 2 controller");
+    ui_text(F_BOLD, 12, x + colx[0], y + 112, C_MUTED, "Game Boy button");
+    ui_text(F_BOLD, 12, x + colx[1] + 10, y + 112, C_MUTED, "Keyboard");
+    ui_text(F_BOLD, 12, x + colx[2] + 10, y + 112, C_MUTED, "Keyboard 2");
+    ui_text(F_BOLD, 12, x + colx[3] + 10, y + 112, C_MUTED, "Player 1 controller");
+    ui_text(F_BOLD, 12, x + colx[4] + 10, y + 112, C_MUTED, "Player 2 controller");
     for (int b = 0; b < N_BTN; b++) {
-        float ry = y + 94 + b * 32;
+        float ry = y + 128 + b * 32;
         if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 32, 8, RGBA(255, 255, 255, 6));
         ui_text(F_BOLD, 14, x + colx[0], ry + 4, C_TEXT, btn_names[b]);
         bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
@@ -456,7 +467,7 @@ static void sub_controls(int g, float x, float y)
         bind_cell(g, x + colx[3], ry, 150, 2, b, 0);
         bind_cell(g, x + colx[4], ry, 150, 2, b, 1);
     }
-    float by = y + 94 + N_BTN * 32 + 8;
+    float by = y + 128 + N_BTN * 32 + 8;
     if (ui_button(x + 18, by, 170, 36, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controls reset."); }
     label(x + 220, by + 8, "Stick dead zone");
     ui_slider(x + 330, by + 7, 220, &settings.pad_deadzone, 5, 80);
@@ -464,7 +475,7 @@ static void sub_controls(int g, float x, float y)
     char st[128];
     pad_status(st, sizeof st);
     ui_text_fit(F_REG, 12, x + 18, by + 46, 770, C_DIM, st);
-    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. For SML1, assigning Player 2 enables local 2-player split-screen.");
+    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. For SML1, turn on Local multiplayer to use the two-player split-screen.");
 
     /*
      * Draw the controller menus last so their popups sit above the binding
