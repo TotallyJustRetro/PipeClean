@@ -97,10 +97,13 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
             if (c->pad[i][s] >= 0 && pad_down(c->pad_device[s], c->pad[i][s])) bits[i] = 1;
         }
     }
-    /* left stick = d-pad */
+    /* left stick = d-pad, using the controller selected for each player slot */
     float dz = settings.pad_deadzone / 100.0f * 32767.0f;
-    for (int i = 0; i < n_pads; i++) {
-        int ax = SDL_GameControllerGetAxis(pads[i], SDL_CONTROLLER_AXIS_LEFTX), ay = SDL_GameControllerGetAxis(pads[i], SDL_CONTROLLER_AXIS_LEFTY);
+    for (int s = 0; s < 2; s++) {
+        int device = c->pad_device[s];
+        if (device < 0 || device >= n_pads) continue;
+        int ax = SDL_GameControllerGetAxis(pads[device], SDL_CONTROLLER_AXIS_LEFTX);
+        int ay = SDL_GameControllerGetAxis(pads[device], SDL_CONTROLLER_AXIS_LEFTY);
         if (ax > dz) bits[BTN_RIGHT] = 1; else if (ax < -dz) bits[BTN_LEFT] = 1;
         if (ay > dz) bits[BTN_DOWN] = 1; else if (ay < -dz) bits[BTN_UP] = 1;
     }
