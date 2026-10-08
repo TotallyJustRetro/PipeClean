@@ -89,6 +89,7 @@ int emu_frame_get(Frame *f)
  * collision and animation code while keeping one shared world on screen. */
 typedef struct {
     uint8_t mario[0x10];     /* C200-C20F: position, animation, momentum, etc. */
+    uint8_t mario_oam[16];   /* C00C-C01B: Mario's last rendered four OAM entries */
     uint8_t invincibility;   /* C0D3 */
     uint8_t superball_ttl;   /* C0A9 */
     uint8_t death_y;         /* C0DD */
@@ -116,6 +117,7 @@ static uint8_t mp_p2_dead_timer;
 static uint8_t mp_p2_respawn_pending;
 static uint8_t mp_p2_hurt_timer;
 static uint8_t mp_p2_hurt_oam[16];
+static uint8_t mp_p2_last_oam[16];
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
@@ -142,6 +144,7 @@ static void mp_oam_offset_y(const uint8_t src[16], uint8_t dst[16], int dy)
 static void mp_respawn_p2_from_p1(void)
 {
     mp_player_save(&mp_p2_state);
+    memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
     mp_p2_state.joy_held = 0;
     mp_p2_state.joy_pressed = 0;
     mp_p2_state.mario[0] = 0;  /* visible */
@@ -165,6 +168,7 @@ static void mp_player_save(MpPlayerState *s)
 {
     if (!s) return;
     for (int i = 0; i < 0x10; i++) s->mario[i] = rd8((uint16_t)(0xC200 + i));
+    for (int i = 0; i < 16; i++) s->mario_oam[i] = rd8((uint16_t)(0xC00C + i));
     s->invincibility = rd8(0xC0D3);
     s->superball_ttl = rd8(0xC0A9);
     s->death_y = rd8(0xC0DD);
@@ -178,6 +182,7 @@ static void mp_player_load(const MpPlayerState *s)
 {
     if (!s) return;
     for (int i = 0; i < 0x10; i++) wr8((uint16_t)(0xC200 + i), s->mario[i]);
+    for (int i = 0; i < 16; i++) wr8((uint16_t)(0xC00C + i), s->mario_oam[i]);
     wr8(0xC0D3, s->invincibility);
     wr8(0xC0A9, s->superball_ttl);
     wr8(0xC0DD, s->death_y);
@@ -293,6 +298,7 @@ int emu_mp_begin(void)
     mp_p2_respawn_pending = 0;
     mp_p2_hurt_timer = 0;
     memset(mp_p2_hurt_oam, 0, sizeof mp_p2_hurt_oam);
+    memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
 
     mp_ready = 1;
     return 0;
@@ -419,7 +425,11 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         if (p2_game_state == 1 || p2_game_state == 3 || p2_game_state == 4) {
             mp_capture_frame(frame, 0);
-            mp_copy_mario_oam_buffer(mp_p2_hurt_oam, dx);
+            memcpy(mp_p2_hurt_oam, mp_p2_last_oam, sizeof mp_p2_hurt_oam);
+            for (int i = 0; i < 4; i++) {
+                int ox = (int)mp_p2_hurt_oam[i * 4 + 1] + dx;
+                mp_p2_hurt_oam[i * 4 + 1] = (uint8_t)ox;
+            }
             mp_p2_hurt_timer = 36;
             mp_player_save(&mp_p2_state);
             frame->p2_lives = mp_p2_lives;
@@ -430,7 +440,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         mp_capture_frame(frame, 0);
         mp_copy_mario_oam_buffer(frame->mario_oam2, dx);
+        memcpy(mp_p2_last_oam, frame->mario_oam2, sizeof mp_p2_last_oam);
         mp_player_save(&mp_p2_state);
+        memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
 
         /* Restore the exact authoritative Player 1 world first. */
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
@@ -563,6 +575,7 @@ void emu_mp_end(void)
     mp_p2_respawn_pending = 0;
     mp_p2_hurt_timer = 0;
     memset(mp_p2_hurt_oam, 0, sizeof mp_p2_hurt_oam);
+    memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
     mp_p1_lives_seen = 0;
     mp_frame_out = NULL;
     mp_audio_out = NULL;
