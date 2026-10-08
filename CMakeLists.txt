@@ -9,6 +9,7 @@ endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(SDL2 REQUIRED)
+find_package(SDL2_image REQUIRED)
 
 set(GEN ${CMAKE_BINARY_DIR}/generated)
 set(ROOTS ${CMAKE_SOURCE_DIR}/roots.txt)
@@ -17,8 +18,6 @@ if(EXISTS ${ROOTS})
   set(ROOT_ARGS --roots ${ROOTS})
 endif()
 
-# Mapper/banked cartridges such as Super Mario Land 2 are run through the
-# interpreter.  ROM-only 32 KiB cartridges still use the static recompiler.
 file(SIZE "${ROM}" ROM_SIZE)
 set(RECOMP_ARGS "")
 if(ROM_SIZE GREATER 32768)
@@ -41,9 +40,7 @@ endif()
 add_executable(PipeClean ${RT} ${GEN}/game.c ${GEN}/interp.c ${PIPECLEAN_ICON_RC})
 target_include_directories(PipeClean PRIVATE runtime ${GEN})
 target_compile_definitions(PipeClean PRIVATE USE_SDL)
-# runtime/main.c intentionally defines SDL_MAIN_HANDLED, so PipeClean owns
-# the normal C entry point and does not link SDL2main on Windows.
-target_link_libraries(PipeClean PRIVATE SDL2::SDL2)
+target_link_libraries(PipeClean PRIVATE SDL2::SDL2 SDL2_image::SDL2_image)
 if(NOT WIN32)
   target_link_libraries(PipeClean PRIVATE m)
 endif()
@@ -51,8 +48,6 @@ if(WIN32)
   target_link_libraries(PipeClean PRIVATE shell32 ole32 comdlg32 uuid)
 endif()
 
-
-# Small hardware-independent regression tests.
 enable_testing()
 add_executable(test_sml2_wide tests/test_sml2_wide.c runtime/widescreen.c)
 target_include_directories(test_sml2_wide PRIVATE runtime)
@@ -60,7 +55,7 @@ add_test(NAME sml2_widescreen COMMAND test_sml2_wide)
 
 add_executable(test_sml_wide tests/test_sml_wide.c runtime/widescreen.c)
 target_include_directories(test_sml_wide PRIVATE runtime)
-add_test(NAME sml_widescreen COMMAND test_sml_wide)
+add_test(NAME sml_wide COMMAND test_sml_wide)
 
 add_executable(test_cart_mbc1 tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c)
 target_include_directories(test_cart_mbc1 PRIVATE runtime)
