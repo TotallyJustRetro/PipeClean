@@ -7,6 +7,7 @@ void render_shutdown(void);
 void render_reset(void);                                   /* forget ghost trails */
 /* Build the picture for `game` from a frame. live != 0 applies temporal effects (ghosting). */
 void render_build(const Frame *f, int game, int live);
+void render_overlay_sml1_mario(Frame *f, int dx, int dy);
 /* Where the picture goes in a W x H area for the chosen window shape and scaling. */
 void render_fit(int W, int H, int aspect, int scaling, SDL_Rect *out);
 /* Draw the picture (with the screen filters) into r. */

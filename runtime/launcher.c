@@ -447,7 +447,7 @@ static void sub_controls(int g, float x, float y)
         if (ui_toggle(x + 154, my - 4, &c->multiplayer) && c->multiplayer && c->pad_device[1] < 0)
             launcher_toast("Multiplayer enabled. Player 2 can use Keyboard 2 or choose a controller above.");
         ui_text_fit(F_REG, 11, x + 208, my, 580, C_DIM,
-                    c->multiplayer ? "Two independent SML1 game states, shown side-by-side." : "Off by default; SML1 starts in the normal single-player view.");
+                    c->multiplayer ? "One SML1 world with two independently controlled Marios on the same screen." : "Off by default; SML1 starts in the normal single-player view.");
     } else {
         ui_text(F_REG, 11, x + 154, my, C_DIM, "Available for Super Mario Land 1.");
     }
@@ -475,7 +475,7 @@ static void sub_controls(int g, float x, float y)
     char st[128];
     pad_status(st, sizeof st);
     ui_text_fit(F_REG, 12, x + 18, by + 46, 770, C_DIM, st);
-    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. For SML1, turn on Local multiplayer to use the two-player split-screen.");
+    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. For SML1, turn on Local multiplayer to add Player 2 to the same game screen.");
 
     /*
      * Draw the controller menus last so their popups sit above the binding

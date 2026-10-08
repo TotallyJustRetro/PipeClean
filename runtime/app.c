@@ -68,36 +68,151 @@ static void draw_bg_cover(float dim)
 /* Local SML1 multiplayer: each controller owns an independent SML1 state.
  * The original cartridge remains untouched; PipeClean supplies the multiplayer
  * session layer around two normal game instances. */
-static void draw_mp_game(const Frame *f, int g, const GameCfg *c, int W, int H, int player)
+/* Local SML1 multiplayer: one original SML1 world with a second Mario actor.
+ * Player 1 remains the real cartridge-controlled Mario. Player 2 is simulated
+ * beside that actor and drawn into the same final frame. */
+typedef struct {
+    int ready, grounded, facing_left;
+    uint8_t prev_buttons, camera_u8;
+    double camera_world, world_x, y, vx, vy;
+} Sml1P2;
+
+static int sml1_cam_delta(uint8_t now, uint8_t old)
 {
-    int pane_w = W / 2;
-    int pane_x = player * pane_w;
-    render_build(f, g, 1);
-    SDL_Rect r;
-    render_fit(pane_w, H - 28, c->aspect, c->scaling, &r);
-    r.x += pane_x + (pane_w - r.w) / 2;
-    r.y += 24 + (H - 28 - r.h) / 2;
-    render_draw(&r, c->scaling);
+    int d = (int)now - (int)old;
+    if (d > 127) d -= 256;
+    if (d < -127) d += 256;
+    return d;
+}
+
+static int sml1_solid_tile(const Frame *f, double wx, double wy)
+{
+    int tx = ((int)floor(wx) - 8) >> 3;
+    int ty = ((int)floor(wy) - 16) >> 3;
+    if (ty < 0 || ty >= 18) return 0;
+    tx &= 31;
+    return f->tiles[0x1800 + ty * 32 + tx] >= 0x60;
+}
+
+static void sml1_p2_step(Sml1P2 *p, const Frame *f, uint8_t buttons, uint8_t dpad)
+{
+    if (!p || !f || f->game_state != 0) {
+        if (p) p->prev_buttons = buttons;
+        return;
+    }
+    if (!p->ready) {
+        p->camera_u8 = f->scroll_x;
+        p->camera_world = f->scroll_x;
+        p->world_x = p->camera_world + f->player_x + 24.0;
+        p->y = f->player_y;
+        p->vx = p->vy = 0.0;
+        p->grounded = 1;
+        p->facing_left = 0;
+        p->ready = 1;
+        p->prev_buttons = buttons;
+        return;
+    }
+
+    p->camera_world += sml1_cam_delta(f->scroll_x, p->camera_u8);
+    p->camera_u8 = f->scroll_x;
+
+    int right = (dpad & 0x01) != 0;
+    int left = (dpad & 0x02) != 0;
+    int jump = (buttons & 0x01) && !(p->prev_buttons & 0x01);
+
+    if (right && !left) {
+        p->vx += 0.22;
+        if (p->vx > 2.0) p->vx = 2.0;
+        p->facing_left = 0;
+    } else if (left && !right) {
+        p->vx -= 0.22;
+        if (p->vx < -2.0) p->vx = -2.0;
+        p->facing_left = 1;
+    } else {
+        p->vx *= 0.78;
+        if (fabs(p->vx) < 0.05) p->vx = 0.0;
+    }
+
+    if (jump && p->grounded) {
+        p->vy = -5.8;
+        p->grounded = 0;
+    }
+
+    double nx = p->world_x + p->vx;
+    if (p->vx > 0.0 && (sml1_solid_tile(f, nx + 6, p->y + 4) || sml1_solid_tile(f, nx + 6, p->y + 10))) {
+        int tx = ((int)floor(nx + 6) - 8) >> 3;
+        nx = tx * 8.0 + 2.0;
+        p->vx = 0.0;
+    } else if (p->vx < 0.0 && (sml1_solid_tile(f, nx - 6, p->y + 4) || sml1_solid_tile(f, nx - 6, p->y + 10))) {
+        int tx = ((int)floor(nx - 6) - 8) >> 3;
+        nx = (tx + 1) * 8.0 + 14.0;
+        p->vx = 0.0;
+    }
+
+    p->vy += 0.36;
+    if (p->vy > 6.0) p->vy = 6.0;
+    double ny = p->y + p->vy;
+    p->grounded = 0;
+
+    if (p->vy >= 0.0 && (sml1_solid_tile(f, nx - 5, ny + 11) || sml1_solid_tile(f, nx + 5, ny + 11))) {
+        int row = ((int)floor(ny + 11) - 16) >> 3;
+        ny = 16.0 + row * 8.0 - 11.0;
+        p->vy = 0.0;
+        p->grounded = 1;
+    } else if (p->vy < 0.0 && (sml1_solid_tile(f, nx - 5, ny - 1) || sml1_solid_tile(f, nx + 5, ny - 1))) {
+        int row = ((int)floor(ny - 1) - 16) >> 3;
+        ny = 16.0 + (row + 1) * 8.0 + 1.0;
+        p->vy = 0.0;
+    }
+
+    p->world_x = nx;
+    p->y = ny;
+
+    /* Keep Player 2 close enough to the shared camera that the current
+     * loaded SML1 tilemap remains the world used for collision. */
+    double sx = p->world_x - p->camera_world;
+    if (sx < -16.0) p->world_x = p->camera_world - 16.0;
+    if (sx > f->w + 16.0) p->world_x = p->camera_world + f->w + 16.0;
+
+    if (p->y > 176.0 || p->y < -24.0) {
+        p->world_x = p->camera_world + f->player_x + (p->facing_left ? -24.0 : 24.0);
+        p->y = f->player_y;
+        p->vx = p->vy = 0.0;
+        p->grounded = 1;
+    }
+    p->prev_buttons = buttons;
 }
 
 static int play_multiplayer_sml1(int g)
 {
     GameCfg *c = &settings.g[g];
-    if (emu_mp_begin()) { launcher_toast("Couldn't start SML1 multiplayer."); return 0; }
+    char sp[1200];
+    snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
+    mkdir_u(sp);
+    snprintf(sp, sizeof sp, "%ssaves/%s.sav", settings_dir(), games[g].id);
+    emu_set_save_path(sp);
 
-    SDL_SetWindowFullscreen(win, 0);
-    set_game_window(g);
     bg_load(c->bg_path);
     texpack_load(c->tex_on ? c->tex_path : "");
+    tex_collect_begin(g);
     render_reset();
     pad_set_context(g, 1);
-    apu_set_volume(settings.volume / 100.0f);
-    audio_game_begin();
+    set_game_window(g);
+    if (emu_start(0)) {
+        launcher_toast("Couldn't start the game.");
+        return 0;
+    }
 
-    Frame f[2];
-    memset(f, 0, sizeof f);
-    int16_t a[2][2048 * 2], mix[2048 * 2];
-    int quit = 0, paused = 0, have[2] = {0, 0};
+    Frame *f = SDL_malloc(sizeof *f);
+    if (!f) {
+        emu_stop();
+        return 0;
+    }
+    memset(f, 0, sizeof *f);
+
+    Sml1P2 p2 = {0};
+    int quit = 0, paused = 0, have = 0, shot = 0;
+    uint8_t b1 = 0, d1 = 0, b2 = 0, d2 = 0;
     Uint64 last = SDL_GetPerformanceCounter();
 
     while (!quit) {
@@ -108,61 +223,84 @@ static int play_multiplayer_sml1(int g)
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 switch (e.key.keysym.sym) {
                 case SDLK_ESCAPE: quit = 1; break;
-                case SDLK_F11: SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP); break;
-                case SDLK_p: paused = !paused; break;
+                case SDLK_F11:
+                    SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                    break;
+                case SDLK_p: paused = !paused; emu_set_paused(paused); break;
+                case SDLK_TAB: emu_set_turbo(1); break;
+                case SDLK_F12: shot = 1; break;
                 }
+            } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
+                emu_set_turbo(0);
+            } else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE) {
+                quit = 1;
             }
         }
 
-        if (!paused) {
-            uint8_t b[2], d[2];
-            int na[2];
-            for (int p = 0; p < 2; p++) {
-                pad_poll_player(g, p, &b[p], &d[p]);
-                na[p] = emu_mp_step(p, b[p], d[p], &f[p], a[p], 2048);
-                if (na[p] < 0) { quit = 1; break; }
-                have[p] = 1;
-            }
-            if (quit) break;
+        pad_poll_player(g, 0, &b1, &d1);
+        pad_poll_player(g, 1, &b2, &d2);
+        emu_input(b1, d1);
 
-            int n = na[0] > na[1] ? na[0] : na[1];
-            if (n > 2048) n = 2048;
-            for (int i = 0; i < n; i++) {
-                int l = i < na[0] ? a[0][i * 2] : 0, r = i < na[0] ? a[0][i * 2 + 1] : 0;
-                int l2 = i < na[1] ? a[1][i * 2] : 0, r2 = i < na[1] ? a[1][i * 2 + 1] : 0;
-                mix[i * 2] = (int16_t)((l + l2) / 2);
-                mix[i * 2 + 1] = (int16_t)((r + r2) / 2);
+        if (emu_frame_get(f)) {
+            have = 1;
+            tex_collect_frame(f);
+            sml1_p2_step(&p2, f, b2, d2);
+            if (p2.ready && f->game_state == 0) {
+                int dx = (int)floor((p2.world_x - p2.camera_world) - f->player_x + 0.5);
+                int dy = (int)floor(p2.y - f->player_y + 0.5);
+                render_overlay_sml1_mario(f, dx, dy);
             }
-            if (n > 0) audio_game_push(mix, n);
-            if (audio_ok()) audio_game_wait(audio_game_target());
         }
 
-        int nowW, nowH;
-        out_size(&nowW, &nowH);
+        int ev;
+        while ((ev = events_pop()) >= 0) pad_event_fx(g, ev);
+
+        Uint64 now = SDL_GetPerformanceCounter();
+        float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
+        last = now;
+
+        int W, H;
+        out_size(&W, &H);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
         SDL_RenderClear(ren);
         draw_bg_cover((float)c->bg_dim);
-        if (have[0]) draw_mp_game(&f[0], g, c, nowW, nowH, 0);
-        if (have[1]) draw_mp_game(&f[1], g, c, nowW, nowH, 1);
+        bg_update(dt);
 
-        ui_begin(nowW, nowH, (float)(SDL_GetPerformanceCounter() - last) / SDL_GetPerformanceFrequency());
-        ui_rect(0, 0, nowW, 22, RGBA(0, 0, 0, 175));
-        ui_text(F_BOLD, 12, 18, 5, C_TEXT, "PLAYER 1");
-        ui_text(F_BOLD, 12, nowW / 2 + 18, 5, C_TEXT, "PLAYER 2");
-        ui_rect(nowW / 2 - 1, 22, 2, nowH - 22, C_LINE);
-        if (paused) {
-            ui_rect(0, 0, nowW, nowH, RGBA(0, 0, 0, 120));
-            ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
+        if (have) {
+            render_build(f, g, 1);
+            SDL_Rect r;
+            render_fit(W, H, c->aspect, c->scaling, &r);
+            render_draw(&r, c->scaling);
+            pad_set_screen_color(render_avg_color());
         }
-        ui_end();
 
-        Uint64 now = SDL_GetPerformanceCounter();
-        last = now;
+        if (paused) {
+            ui_begin(W, H, dt);
+            ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
+            ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
+            ui_end();
+        }
+
+        pad_frame(dt);
+        if (shot) {
+            shot = 0;
+            SDL_Surface *snap = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
+            if (snap) {
+                SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, snap->pixels, snap->pitch);
+                char path[1200];
+                snprintf(path, sizeof path, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks());
+                SDL_SaveBMP(snap, path);
+                SDL_FreeSurface(snap);
+            }
+        }
         SDL_RenderPresent(ren);
     }
 
-    audio_game_end();
-    emu_mp_end();
+    emu_set_turbo(0);
+    emu_stop();
+    SDL_free(f);
+    tex_collect_save();
+    pad_set_context(g, 0);
     SDL_SetWindowFullscreen(win, 0);
     SDL_SetWindowSize(win, win_w, win_h);
     SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
@@ -176,7 +314,7 @@ static int play(int g)
     GameCfg *c = &settings.g[g];
     if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
     audio_menu_music(0);
-    if (g == GAME_SML && c->pad_device[1] >= 0) return play_multiplayer_sml1(g);
+    if (g == GAME_SML && c->multiplayer) return play_multiplayer_sml1(g);
     char sp[1200];
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);

@@ -43,6 +43,10 @@ void frame_from_ppu(Frame *f)
     memcpy(f->tiles, vram, sizeof f->tiles);
     f->lcd_on = ppu_lcd_is_on();
     f->w = ppu_w; f->xoff = ppu_xoff;
+    f->player_x = rd8(0xC202); f->player_y = rd8(0xC201);
+    f->scroll_x = rd8(0xFFA4); f->game_state = rd8(0xFFB3);
+    f->obp0 = ppu_read(0x48); f->obp1 = ppu_read(0x49); f->sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
+    memcpy(f->mario_oam, oam, sizeof f->mario_oam);
     f->seq++;
 }
 
@@ -168,6 +172,47 @@ static void cpu_filters(const FilterCfg *f, int live, int N)
         img[i] = 0xFF000000u | ((uint32_t)(v[0] * 255 + 0.5f) << 16) | ((uint32_t)(v[1] * 255 + 0.5f) << 8) | (uint32_t)(v[2] * 255 + 0.5f);
     }
     free(c);
+}
+
+void render_overlay_sml1_mario(Frame *f, int dx, int dy)
+{
+    if (!f || !f->lcd_on || f->w <= 0) return;
+
+    int L = f->xoff, W = f->w;
+    int h = f->sprite_size16 ? 16 : 8;
+    int sprite_neg = L > 8 ? 256 - (L - 8) : 256;
+
+    for (int i = 0; i < 4; i++) {
+        const uint8_t *src = &f->mario_oam[i * 4];
+        if (!src[0]) continue;
+
+        int oy = src[0] + dy, ox = src[1] + dx;
+        if (ox >= sprite_neg) ox -= 256;
+        int sy = oy - 16, sx = ox - 8 + L;
+        uint8_t tile = src[2], fl = src[3];
+        uint8_t pal = (fl & 0x10) ? f->obp1 : f->obp0;
+        int yy0 = sy < 0 ? 0 : sy, yy1 = sy + h > GB_H ? GB_H : sy + h;
+
+        for (int y = yy0; y < yy1; y++) {
+            int row = y - sy;
+            if (fl & 0x40) row = h - 1 - row;
+            uint8_t t = (uint8_t)(h == 16 ? (tile & 0xFE) : tile);
+            int addr = (t + (row >> 3)) * 16 + (row & 7) * 2;
+            for (int px = 0; px < 8; px++) {
+                int x = sx + px;
+                if (x < 0 || x >= W) continue;
+                int bit = (fl & 0x20) ? px : 7 - px;
+                int ci = (((f->tiles[addr + 1] >> bit) & 1) << 1) | ((f->tiles[addr] >> bit) & 1);
+                if (!ci) continue;
+                f->shade[y][x] = (pal >> (ci * 2)) & 3;
+                f->layer[y][x] = (fl & 0x10) ? 2 : 1;
+                f->sprtile[y][x] = (uint16_t)(addr >> 4);
+                f->spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
+                                           ((fl & 0x20) ? 0x40 : 0) |
+                                           ((fl & 0x40) ? 0x80 : 0));
+            }
+        }
+    }
 }
 
 void render_build(const Frame *f, int game, int live)

@@ -6,6 +6,10 @@ typedef struct {
     uint8_t bguv[GB_H][GB_WMAX], spruv[GB_H][GB_WMAX];
     uint16_t bgtile[GB_H][GB_WMAX], sprtile[GB_H][GB_WMAX];
     int w, xoff;
+    int player_x, player_y;
+    uint8_t scroll_x, game_state;
+    uint8_t obp0, obp1, sprite_size16;
+    uint8_t mario_oam[16];
     uint8_t tiles[0x1800];
     uint64_t seq;
     int lcd_on;
