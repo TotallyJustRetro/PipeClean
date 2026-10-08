@@ -707,19 +707,14 @@ LauncherResult launcher_frame(float dt)
         ui_rect(vx, vy, vw, vh, RGBA(8, 9, 14, (int)(60 + settings.g[g].bg_dim * 2.4f)));
     }
 
-    /* Supplied PipeClean identity: expressive purple pipe + chunky cyan wordmark. */
-    SDL_Texture *brand = branding_icon_texture();
-    if (brand) ui_image(brand, NULL, 20, 10, 62, 62);
-
-    /* Heavy dark outline behind the wordmark gives the same sticker/cartoon feel. */
-    ui_text(F_BOLD, 29, 91, 11, HEX(0x0A0924), "PipeClean");
-    ui_text(F_BOLD, 29, 88, 8, C_TEXT, "Pipe");
-    ui_text(F_BOLD, 29, 88 + ui_text_w(F_BOLD, 29, "Pipe"), 8, HEX(0x63E6FF), "Clean");
-
-    /* Purple pipe/splash accent behind the lettering. */
-    ui_rrect(89, 46, 209, 7, 3, HEX(0x6A47E8));
-    ui_rrect(102, 46, 79, 3, 1, HEX(0xB58BFF));
-    ui_rrect(244, 43, 17, 3, 1, HEX(0x6AE5FF));
+    /*
+     * Use the supplied PipeClean artwork itself. The icon and wordmark are
+     * textures now; do not approximate the artwork with UI text/shapes.
+     */
+    SDL_Texture *brand_icon = branding_icon_texture();
+    SDL_Texture *brand_logo = branding_logo_texture();
+    if (brand_icon) ui_image(brand_icon, NULL, 20, 10, 62, 62);
+    if (brand_logo) ui_image(brand_logo, NULL, 88, 11, 238, 62);
 
     ui_text(F_REG, 12, 88, 61, C_DIM, "Classic Game Boy behavior. Modern runtime.");
     ui_rect(20, 80, UI_W - 40, 1, C_LINE);
