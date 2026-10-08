@@ -454,18 +454,28 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         }
 
         int enemy_merged = 0;
+        int enemy_sound_event = 0;
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
         for (int slot = 0; slot < 10; slot++) {
             uint8_t before_type = mp_enemy_before[slot * 0x10];
             uint8_t after_type = mp_enemy_after[slot * 0x10];
             int enemy_death = before_type != after_type && mp_is_enemy_stomped(after_type);
+            int enemy_state_change = before_type != after_type &&
+                                     before_type != 0xFF &&
+                                     !mp_is_pickup(before_type) &&
+                                     !mp_is_pickup(after_type);
             int pickup_consumed = mp_is_pickup(before_type) && before_type != after_type;
             int pickup_spawned = before_type == 0xFF && mp_is_pickup(after_type);
-            if (enemy_death || pickup_consumed || pickup_spawned) {
+            if (enemy_death || enemy_state_change || pickup_consumed || pickup_spawned) {
                 mp_enemy_merge_mask[slot] = 1;
                 memcpy(&mp_enemy_merge[slot * 0x10], &mp_enemy_after[slot * 0x10], 0x10);
+                int ex = (int)mp_enemy_merge[slot * 0x10 + 3] + dx;
+                mp_enemy_merge[slot * 0x10 + 3] = (uint8_t)ex;
                 enemy_merged = 1;
+                if (enemy_death) enemy_sound_event = 1;
             }
+        }
+        frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
         }
 
         /*
@@ -479,6 +489,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         }
 
         mp_capture_frame(frame, 0);
+        frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
         mp_copy_mario_oam_buffer(frame->mario_oam2, dx);
         memcpy(mp_p2_last_oam, frame->mario_oam2, sizeof mp_p2_last_oam);
 
@@ -495,13 +506,15 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * separately below.
          */
         int tile_changed = 0;
-        if (p2_state_before == 0)
+        int block_hit = (mp_vblank_collision == 0x01 ||
+                         mp_vblank_collision == 0x02 ||
+                         mp_vblank_collision == 0x04);
+        if (p2_state_before == 0 && !block_hit)
             tile_changed = mp_merge_tilemap_local_edits(dx == 0);
 
         int collision_changed = 0;
         if (p2_state_before == 0 &&
-            (mp_vblank_collision == 0x01 || mp_vblank_collision == 0x02 ||
-             mp_vblank_collision == 0x04 || mp_vblank_collision == 0xC0) &&
+            mp_vblank_collision == 0xC0 &&
             mp_vblank_collision_addr >= 0x9800 &&
             mp_vblank_collision_addr < 0x9C00) {
             int p2idx = (int)mp_vblank_collision_addr - 0x9800;
@@ -515,15 +528,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                 collision_changed = 1;
             }
 
-            /* Call_1B86 can also remove a coin directly above a block. */
-            if (p2idx >= 32 &&
-                mp_tilemap_before[p2idx - 32] == 0xF4 &&
-                mp_tilemap_after[p2idx - 32] != mp_tilemap_before[p2idx - 32]) {
-                int above_col = p1_col;
-                int above_idx = (row - 1) * 32 + above_col;
-                vram[0x1800 + above_idx] = mp_tilemap_after[p2idx - 32];
-                collision_changed = 1;
-            }
+            /* Block-hit events are deliberately not copied. SML1 blanks the
+             * temporary collision tile during VBlank; copying that private
+             * blank was making Luigi delete shared question blocks. */
         }
 
         /* Coins/score and consumed/spawned powerups are shared world state. */
