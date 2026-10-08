@@ -133,6 +133,24 @@ static void mp_player_load(const MpPlayerState *s)
     wr8(0xFF81, s->joy_pressed);
 }
 
+static void mp_copy_mario_oam_buffer(uint8_t out[16], int screen_dx)
+{
+    /*
+     * SML1 builds Mario's current four OAM entries in wOAMBuffer at C000.
+     * The hardware OAM is still the previous frame when frame_hook fires at
+     * the start of VBlank, so multiplayer must read the freshly-built buffer.
+     * Mario starts at OAM entry 3, hence C00C.
+     */
+    if (!out) return;
+    for (int i = 0; i < 16; i++) out[i] = rd8((uint16_t)(0xC00C + i));
+    if (screen_dx) {
+        for (int i = 0; i < 4; i++) {
+            int x = (int)out[i * 4 + 1] + screen_dx;
+            out[i * 4 + 1] = (uint8_t)x;
+        }
+    }
+}
+
 static int mp_scroll_delta(uint8_t now, uint8_t old)
 {
     int d = (int)now - (int)old;
@@ -231,8 +249,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             wr8(0xC202, (uint8_t)(x + dx));
         }
 
-        mp_capture_frame(frame, dx);
-        memcpy(frame->mario_oam2, frame->mario_oam, sizeof frame->mario_oam2);
+        mp_capture_frame(frame, 0);
+        mp_copy_mario_oam_buffer(frame->mario_oam2, dx);
         mp_player_save(&mp_p2_state);
 
         /* Never commit P2's whole world back into the authoritative P1 state. */
