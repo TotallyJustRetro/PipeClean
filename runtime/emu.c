@@ -104,6 +104,12 @@ static int mp_ready;
 static int mp_p2_spawned;
 static uint8_t mp_state[GB_STATE_BYTES];
 static MpPlayerState mp_p2_state;
+static uint8_t mp_tilemap_before[0x400];
+static uint8_t mp_tilemap_after[0x400];
+static uint8_t mp_enemy_before[0x90];
+static uint8_t mp_enemy_after[0x90];
+static uint8_t mp_enemy_merge[0x90];
+static uint8_t mp_enemy_merge_mask[9];
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
@@ -149,6 +155,34 @@ static void mp_copy_mario_oam_buffer(uint8_t out[16], int screen_dx)
             out[i * 4 + 1] = (uint8_t)x;
         }
     }
+}
+
+static int mp_is_enemy_stomped(uint8_t type)
+{
+    switch (type) {
+    case 0x01: /* CHIBIBO_STOMPED */
+    case 0x0F: /* FLY_STOMPED */
+    case 0x1C: /* MEKABON_STOMPED */
+    case 0x3D: /* BATADON_STOMPED */
+    case 0x40: /* GAO_STOMPED */
+    case 0x43: /* BUNBUN_STOMPED */
+    case 0x57: /* PIONPI_STOMPED */
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static void mp_capture_shared_world_before(void)
+{
+    memcpy(mp_tilemap_before, &vram[0x1800], sizeof mp_tilemap_before);
+    for (int i = 0; i < 0x90; i++) mp_enemy_before[i] = rd8((uint16_t)(0xD100 + i));
+}
+
+static void mp_capture_shared_world_after(void)
+{
+    memcpy(mp_tilemap_after, &vram[0x1800], sizeof mp_tilemap_after);
+    for (int i = 0; i < 0x90; i++) mp_enemy_after[i] = rd8((uint16_t)(0xD100 + i));
 }
 
 static int mp_scroll_delta(uint8_t now, uint8_t old)
@@ -224,6 +258,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * state. The authoritative Player 1 world is restored afterward.
          */
         uint8_t p1_scroll = rd8(0xFFA4);
+        uint8_t score_before[3];
+        uint8_t coins_before = rd8(0xFFFA);
+        for (int i = 0; i < 3; i++) score_before[i] = rd8((uint16_t)(0xC0A0 + i));
+        mp_capture_shared_world_before();
         mp_player_load(&mp_p2_state);
 
         /* Install P2's physical/keyboard input before the game reads JOYP. */
@@ -238,6 +276,21 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_active = 1;
         if (setjmp(stop_jmp) == 0) run_core(0);
         mp_active = 0;
+        mp_capture_shared_world_after();
+
+        uint8_t score_after[3];
+        uint8_t coins_after = rd8(0xFFFA);
+        for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
+
+        memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
+        for (int slot = 0; slot < 9; slot++) {
+            uint8_t before_type = mp_enemy_before[slot * 0x10];
+            uint8_t after_type = mp_enemy_after[slot * 0x10];
+            if (before_type != after_type && mp_is_enemy_stomped(after_type)) {
+                mp_enemy_merge_mask[slot >> 3] |= (uint8_t)(1u << (slot & 7));
+                memcpy(&mp_enemy_merge[slot * 0x10], &mp_enemy_after[slot * 0x10], 0x10);
+            }
+        }
 
         /*
          * SML1 keeps Mario's X coordinate relative to its own camera. Convert
@@ -253,8 +306,35 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_copy_mario_oam_buffer(frame->mario_oam2, dx);
         mp_player_save(&mp_p2_state);
 
-        /* Never commit P2's whole world back into the authoritative P1 state. */
+        /* Restore the exact authoritative Player 1 world first. */
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+
+        /*
+         * Persist only shared interactions that are unambiguous. Score and
+         * coins are global counters changed by pickups/enemy defeats. The level
+         * tile map is merged only when P2 did not move the camera, avoiding a
+         * second scroll/render pass from becoming a world mutation.
+         */
+        if (rd8(0xFFB3) == 0 && dx == 0) {
+            int tile_changed = memcmp(mp_tilemap_before, mp_tilemap_after, sizeof mp_tilemap_after) != 0;
+            if (tile_changed)
+                memcpy(&vram[0x1800], mp_tilemap_after, sizeof mp_tilemap_after);
+
+            for (int i = 0; i < 3; i++)
+                if (score_after[i] != score_before[i])
+                    wr8((uint16_t)(0xC0A0 + i), score_after[i]);
+            if (coins_after != coins_before)
+                wr8(0xFFFA, coins_after);
+
+            for (int slot = 0; slot < 9; slot++) {
+                if (mp_enemy_merge_mask[slot >> 3] & (uint8_t)(1u << (slot & 7)))
+                    for (int i = 0; i < 0x10; i++)
+                        wr8((uint16_t)(0xD100 + slot * 0x10 + i), mp_enemy_merge[slot * 0x10 + i]);
+            }
+
+            if (tile_changed || coins_after != coins_before || memcmp(score_before, score_after, sizeof score_before) != 0)
+                if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+        }
         return mp_audio_n;
     }
 
