@@ -50,6 +50,25 @@ SML2 uses a larger banked ROM. PipeClean detects ROMs larger than 32 KiB and sel
 
 The widescreen implementation runs inside the runtime and does not patch the ROM file.
 
+## Headless / developer runs
+
+The command-line runtime can be used without opening the launcher:
+
+```bash
+build/gb --headless --frames 120 /path/to/game.gb
+```
+
+Useful development switches include:
+
+- `--interp` — force interpreter execution
+- `--wide 100` — enable the configured widescreen profile at 100%
+- `--hash` — report a deterministic frame-hash chain and CPU state
+- `--dump-ppm FILE` — save the final rendered frame
+- `--dump-ram FILE` — save WRAM, HRAM and cartridge RAM
+- `--no-crc-check` — load an unrecognized ROM in interpreter mode for development/testing
+
+SML2 can therefore be exercised with its real ROM through the headless path while keeping the ROM outside the repository.
+
 ## Testing
 
 ```bash
