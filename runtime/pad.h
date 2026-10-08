@@ -29,5 +29,6 @@ void pad_set_screen_color(uint32_t rgb);
 void pad_event_fx(int game, int ev);
 void pad_frame(float dt);
 void pad_rumble(int strength_pct, int ms);
+void pad_rumble_selected(int game, int strength_pct, int ms);
 void pad_flash(uint32_t rgb);
 int  pad_has_light(void);
