@@ -217,18 +217,18 @@ static int play_multiplayer_sml1(int g)
         draw_bg_cover((float)c->bg_dim);
         bg_update(dt);
 
+        SDL_Rect game_rect = {0, 0, 0, 0};
         if (have) {
             render_build(f, g, 1);
-            SDL_Rect r;
-            render_fit(W, H, c->aspect, c->scaling, &r);
-            render_draw(&r, c->scaling);
+            render_fit(W, H, c->aspect, c->scaling, &game_rect);
+            render_draw(&game_rect, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
 
         ui_begin(W, H, dt);
         if (have) {
-            sml1_draw_player_tag(f, f->mario_oam, &r, "P1", C_ACCENT);
-            sml1_draw_player_tag(f, p2f->mario_oam2, &r, "P2", C_OK);
+            sml1_draw_player_tag(f, f->mario_oam, &game_rect, "P1", C_ACCENT);
+            sml1_draw_player_tag(f, p2f->mario_oam2, &game_rect, "P2", C_OK);
         }
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
