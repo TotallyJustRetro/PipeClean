@@ -313,7 +313,14 @@ void audio_game_end(void)
     SDL_CondBroadcast(cv);
 }
 
-void audio_game_set_paused(int p) { if (dev) { SDL_LockMutex(mx); g_paused = p; SDL_UnlockMutex(mx); } }
+void audio_game_set_paused(int p)
+{
+    if (!dev) return;
+    SDL_LockMutex(mx);
+    g_paused = p;
+    SDL_CondBroadcast(cv); /* wake a producer waiting on the old audio fill level */
+    SDL_UnlockMutex(mx);
+}
 
 void audio_game_flush(void)
 {
@@ -325,6 +332,7 @@ void audio_game_flush(void)
     g_playing = 0;
     g_last_l = g_last_r = 0;
     g_ramp = 0;
+    SDL_CondBroadcast(cv); /* wake emulation if it was inside audio_game_wait() */
     SDL_UnlockMutex(mx);
 }
 
