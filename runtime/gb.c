@@ -20,11 +20,15 @@ static int serial_cycles;
 static void (*serial_cb)(uint8_t);
 /* joypad */
 static uint8_t joy_sel = 0x30, joy_buttons, joy_dpad;
-static void (*mp_instruction_hook)(uint8_t opcode, uint16_t pc_before, uint16_t pc_after);
 
-void gb_set_mp_instruction_hook(void (*fn)(uint8_t opcode, uint16_t pc_before, uint16_t pc_after))
+volatile int gb_mp_vblank_watch;
+volatile uint16_t gb_mp_vblank_return_pc;
+static volatile int gb_mp_vblank_pending;
+
+void gb_mp_vblank_arm(void)
 {
-    mp_instruction_hook = fn;
+    gb_mp_vblank_pending = 1;
+    gb_mp_vblank_watch = 0;
 }
 
 void gb_serial_hook(void (*fn)(uint8_t)) { serial_cb = fn; }
@@ -211,6 +215,7 @@ void cpu_halt(void)
 void cpu_service_irq(void)
 {
     uint8_t pend = io_if & io_ie & 0x1F;
+    uint16_t return_pc = cpu.pc;
     cpu.ime = 0;
     cpu.ei_pending = 0;
     cpu.sp--; wr8(cpu.sp, cpu.pc >> 8);
@@ -218,6 +223,11 @@ void cpu_service_irq(void)
     for (int i = 0; i < 5; i++) {
         if (pend & (1 << i)) {
             io_if &= (uint8_t)~(1 << i);
+            if (i == 0 && gb_mp_vblank_pending) {
+                gb_mp_vblank_pending = 0;
+                gb_mp_vblank_return_pc = return_pc;
+                gb_mp_vblank_watch = 1;
+            }
             cpu.pc = (uint16_t)(0x40 + i * 8);
             break;
         }
@@ -237,8 +247,10 @@ void cpu_step_checked(void)
     uint16_t pc_before = cpu.pc;
     uint8_t opcode = rd8(cpu.pc);
     cpu_step();
-    if (mp_instruction_hook)
-        mp_instruction_hook(opcode, pc_before, cpu.pc);
+    (void)pc_before;
+    (void)opcode;
+    if (gb_mp_vblank_watch && cpu.pc == gb_mp_vblank_return_pc)
+        gb_mp_vblank_done();
     if (cpu_irq_check()) cpu_service_irq();
 }
 
@@ -345,6 +357,9 @@ void gb_reset(void)
     div_counter = 0xABCC; tima = tma = tac = 0;
     sb = 0; sc = 0x7E; serial_cycles = 0;
     joy_sel = 0x30; joy_buttons = joy_dpad = 0;
+    gb_mp_vblank_watch = 0;
+    gb_mp_vblank_pending = 0;
+    gb_mp_vblank_return_pc = 0;
     memset(wram, 0, sizeof wram);
     memset(hram, 0, sizeof hram);
     memset(io_misc, 0xFF, sizeof io_misc);
