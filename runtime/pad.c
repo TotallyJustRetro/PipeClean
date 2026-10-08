@@ -180,13 +180,21 @@ int pad_binding_down(int game, int action)
     if (game < 0 || game >= N_GAMES || action < 0 || action >= N_ACTION) return 0;
     int code = settings.g[game].action_pad[action];
     if (code < 0) return 0;
-    for (int i = 0; i < n_pads; i++) if (pad_down(i, code)) return 1;
-    return 0;
+    int device = settings.g[game].pad_device[0];
+    return device >= 0 && device < n_pads && pad_down(device, code);
 }
 
 int pad_binding_event(int game, int action, const SDL_Event *e)
 {
     if (game < 0 || game >= N_GAMES || action < 0 || action >= N_ACTION || !e) return 0;
+    int device = settings.g[game].pad_device[0];
+    if (device < 0 || device >= n_pads) return 0;
+    SDL_JoystickID which = -1;
+    if (e->type == SDL_CONTROLLERBUTTONDOWN) which = e->cbutton.which;
+    else if (e->type == SDL_CONTROLLERAXISMOTION) which = e->caxis.which;
+    else if (e->type == SDL_JOYBUTTONDOWN) which = e->jbutton.which;
+    else if (e->type == SDL_JOYAXISMOTION) which = e->jaxis.which;
+    if (pad_instance_device(which) != device) return 0;
     int code = settings.g[game].action_pad[action];
     if (code < 0) return 0;
     if (e->type == SDL_CONTROLLERBUTTONDOWN) return e->cbutton.button == code;
