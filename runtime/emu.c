@@ -24,6 +24,13 @@ static int save_tick;
 static int force_interp_flag;
 static Uint64 pace_next;
 
+static int mp_active;
+static int mp_start_frame;
+static uint8_t mp_buttons, mp_dpad;
+static int mp_ready;
+static uint8_t mp_state[2][GB_STATE_BYTES];
+
+
 static uint64_t chain = 1469598103934665603ull;
 static FILE *hash_log;
 typedef struct { int frame; uint8_t mask; } ScriptEv;
@@ -75,6 +82,24 @@ int emu_frame_get(Frame *f)
     SDL_UnlockMutex(fmx);
     return got;
 }
+
+static void mp_capture_frame(Frame *f)
+{
+    memcpy(f->shade, ppu_shade, sizeof f->shade);
+    memcpy(f->layer, ppu_layer, sizeof f->layer);
+    memcpy(f->bguv, ppu_bguv, sizeof f->bguv);
+    memcpy(f->spruv, ppu_spruv, sizeof f->spruv);
+    memcpy(f->bgtile, ppu_bgtile, sizeof f->bgtile);
+    memcpy(f->sprtile, ppu_sprtile, sizeof f->sprtile);
+    memcpy(f->tiles, vram, sizeof f->tiles);
+    f->w = ppu_w; f->xoff = ppu_xoff; f->lcd_on = ppu_lcd_is_on(); f->seq = (uint64_t)frame_count;
+}
+
+/* The multiplayer runner deliberately stops at the end of exactly one video
+ * frame. The complete core state is restored for whichever player is next. */
+static Frame *mp_frame_out;
+static int16_t *mp_audio_out;
+static int mp_audio_max, mp_audio_n;
 
 static void dev_hook(uint8_t *b, uint8_t *d)
 {
@@ -149,6 +174,12 @@ void frame_hook(void)
         if (frame_count >= preview_target) longjmp(stop_jmp, 1);
         apu_drain(abuf, 4096);
         return;
+    }
+    if (mp_active) {
+        mp_capture_frame(mp_frame_out);
+        mp_audio_n = mp_audio_out && mp_audio_max > 0 ? apu_drain(mp_audio_out, mp_audio_max) : 0;
+        gb_set_input(mp_buttons, mp_dpad);
+        longjmp(stop_jmp, 3);
     }
     uint8_t b = (uint8_t)(input_word & 0xFF), d = (uint8_t)(input_word >> 8);
     if (!thread_mode) {                      /* headless / developer run */
@@ -252,3 +283,36 @@ void emu_dev_report(void)
 }
 
 void emu_dev_close(void) { if (hash_log) { fclose(hash_log); hash_log = NULL; } }
+int emu_mp_begin(void)
+{
+    if (thr || mp_ready || rom_loaded_game() != GAME_SML) return -1;
+    if (!fmx) fmx = SDL_CreateMutex();
+    gb_reset();
+    if (gb_state_save(mp_state[0], GB_STATE_BYTES)) return -1;
+    memcpy(mp_state[1], mp_state[0], GB_STATE_BYTES);
+    mp_ready = 1;
+    return 0;
+}
+
+int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
+{
+    if (!mp_ready || player < 0 || player > 1 || !frame) return -1;
+    if (gb_state_load(mp_state[player], GB_STATE_BYTES)) return -1;
+    mp_buttons = buttons; mp_dpad = dpad;
+    mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
+    mp_active = 1;
+    mp_start_frame = frame_count;
+    if (setjmp(stop_jmp) == 0) run_core(0);
+    mp_active = 0;
+    if (gb_state_save(mp_state[player], GB_STATE_BYTES)) return -1;
+    return mp_audio_n;
+}
+
+void emu_mp_end(void)
+{
+    mp_active = 0;
+    mp_ready = 0;
+    mp_frame_out = NULL;
+    mp_audio_out = NULL;
+    mp_audio_max = mp_audio_n = 0;
+}
