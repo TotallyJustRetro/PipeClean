@@ -91,7 +91,7 @@ static int sml1_solid_tile(const Frame *f, double wx, double wy)
     int ty = ((int)floor(wy) - 16) >> 3;
     if (ty < 0 || ty >= 18) return 0;
     tx &= 31;
-    return f->tiles[0x1800 + ty * 32 + tx] >= 0x60;
+    return f->bg_map[ty * 32 + tx] >= 0x60;
 }
 
 static void sml1_p2_step(Sml1P2 *p, const Frame *f, uint8_t buttons, uint8_t dpad)
