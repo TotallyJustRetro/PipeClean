@@ -50,7 +50,7 @@ int main(void)
     cpu.f = 0;
     total_cycles = 0;
     if (!wide_intercept_sml2(0x19)) return 8;
-    if (HL() != 0x0183 || cpu.pc != 0x4041 || total_cycles != 8) return 9;
+    if (HL() != 0x0167 || cpu.pc != 0x4041 || total_cycles != 8) return 9;
 
     cpu.pc = 0x4064;
     cpu.h = 1;
@@ -58,7 +58,7 @@ int main(void)
     cpu.f = 0;
     total_cycles = 0;
     if (!wide_intercept_sml2(0x19)) return 10;
-    if (HL() != 0x0180 || cpu.pc != 0x4065 || total_cycles != 8) return 11;
+    if (HL() != 0x01A0 || cpu.pc != 0x4065 || total_cycles != 8) return 11;
 
     cpu.pc = 0x401D;
     cpu.h = 1;
