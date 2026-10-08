@@ -440,13 +440,20 @@ void pad_poll_player(int game, int player, uint8_t *b, uint8_t *d)
 
 void pad_poll(int game, uint8_t *b, uint8_t *d)
 {
-    uint8_t b0 = 0, d0 = 0, b1 = 0, d1 = 0;
-    pad_poll_player(game, 0, &b0, &d0);
-    pad_poll_player(game, 1, &b1, &d1);
-    *b = (uint8_t)(b0 | b1);
-    *d = (uint8_t)(d0 | d1);
-    if ((*d & 3) == 3) *d &= (uint8_t)~3;
-    if ((*d & 12) == 12) *d &= (uint8_t)~12;
+    /*
+     * The normal single-player loop has exactly one Game Boy input port.
+     * Never OR Player 2 into this state: it lets the second controller or
+     * Keyboard 2 move/control Player 1 in non-multiplayer games.
+     *
+     * SML1 local multiplayer polls pad_poll_player() independently for both
+     * emulated player states, so its Player 2 support remains unaffected.
+     */
+    if (!b || !d || game < 0 || game >= N_GAMES) {
+        if (b) *b = 0;
+        if (d) *d = 0;
+        return;
+    }
+    pad_poll_player(game, 0, b, d);
 }
 
 
