@@ -10,15 +10,7 @@ CPU cpu;
 uint8_t *rom;
 const uint8_t *cart_lo, *cart_hi;
 uint64_t total_cycles;
-int frame_count;
-
-uint8_t rd8(uint16_t a)
-{
-    /* Camera X is the SML2 16-bit little-endian value at $FFCA. */
-    if (a == 0xFFCA) return 0x80;
-    if (a == 0xFFCB) return 0x02;
-    return 0;
-}
+uint8_t hram[0x80];
 
 void hw_tick(int tcycles)
 {
@@ -84,17 +76,16 @@ int main(void)
 
     /* Enemy spawn scan: the widened edge must advance in <=8 px steps
      * so the ROM cannot consume a spawn-list entry between frames. */
-    frame_count = 0;
+    hram[0x4A] = 0x80;
+    hram[0x4B] = 0x02;
     cpu.pc = 0x408A;
     if (wide_read_sml2(0xAF12, 0xFF) != 0x02) return 24;
     cpu.pc = 0x4090;
     if (wide_read_sml2(0xAF13, 0xFF) != 0xF8) return 25;
-    frame_count++;
     cpu.pc = 0x408A;
     if (wide_read_sml2(0xAF12, 0xFF) != 0x03) return 26;
     cpu.pc = 0x4090;
     if (wide_read_sml2(0xAF13, 0xFF) != 0x00) return 27;
-    frame_count++;
     cpu.pc = 0x40A9;
     if (wide_read_sml2(0xAF14, 0xFF) != 0x02) return 28;
     cpu.pc = 0x40AF;
