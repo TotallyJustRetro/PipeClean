@@ -12,7 +12,7 @@ The repository contains the native runtime, toolchain, launcher UI, tests and pr
 
 ## Current state
 
-The primary active target is **Super Mario Land 2 widescreen support**.
+The primary active target is **Super Mario Land 2 widescreen support**. Super Mario Land 1 widescreen is already implemented and regression-tested.
 
 SML2 is a 512 KiB MBC1 cartridge, so its current path uses the full interpreter rather than pretending the cartridge is a flat 32 KiB image.
 
@@ -59,7 +59,9 @@ The GitHub Actions workflow is now read-only. It does not modify the repository 
 
 CI validates:
 
+- SML1 widescreen patch behavior
 - SML2 widescreen hook behavior
+- MBC1 mapper behavior
 - Python tooling
 - a synthetic 512 KiB banked-ROM build
 - the complete native runtime link
