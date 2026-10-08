@@ -27,7 +27,19 @@ void render_shutdown(void)
     img = NULL; gacc = NULL; iw = ih = 0;
 }
 
-void render_reset(void) { gacc_valid = 0; }
+void render_reset(void)
+{
+    /* A save-state/rewind can jump to a completely different scene. Do not
+     * allow old image or temporal-filter state to survive that discontinuity. */
+    gacc_valid = 0;
+    avg_rgb = 0;
+    memset(&cur_f, 0, sizeof cur_f);
+    free(img); img = NULL;
+    free(gacc); gacc = NULL;
+    iw = ih = 0;
+    if (tex_game) { SDL_DestroyTexture(tex_game); tex_game = NULL; }
+    if (tex_bloom) { SDL_DestroyTexture(tex_bloom); tex_bloom = NULL; }
+}
 uint32_t render_avg_color(void) { return avg_rgb; }
 
 static int gw = GB_W;
