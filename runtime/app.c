@@ -87,6 +87,11 @@ static int play_multiplayer_sml1(int g)
 
     SDL_SetWindowFullscreen(win, 0);
     set_game_window(g);
+    bg_load(c->bg_path);
+    texpack_load(c->tex_on ? c->tex_path : "");
+    render_reset();
+    pad_set_context(g, 1);
+    apu_set_volume(settings.volume / 100.0f);
     audio_game_begin();
 
     Frame f[2];
