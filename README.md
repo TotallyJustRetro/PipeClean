@@ -27,7 +27,7 @@ Its larger **MBC1 banked ROM** uses an interpreter-compatible execution path. Th
 | Game | Status |
 | --- | --- |
 | Super Mario Land 2: 6 Golden Coins | 🛠️ Active |
-| Super Mario Land | 🔬 Development |
+| Super Mario Land | ✅ Widescreen implemented |
 | Dr. Mario | 🔬 Development |
 
 ## 📁 Project layout
@@ -80,9 +80,10 @@ Expected result:
 SML2 widescreen hook: PASS
 ```
 
-The repository also has an MBC1 mapper regression:
+The repository also has dedicated SML1 and MBC1 regressions:
 
 ```bash
+make test-sml-wide
 make test-cart-mbc1
 ```
 
