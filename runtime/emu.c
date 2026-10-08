@@ -290,13 +290,6 @@ static int mp_merge_tilemap_local_edits(int allow_full)
 {
     (void)allow_full;
     int changed = 0;
-
-    /*
-     * Never import a solid->blank transition from Luigi's private simulation.
-     * SML1's block-hit handler intentionally writes a blank to the temporary
-     * collision tile, but the shared multiplayer block must remain a solid
-     * collidable block. Coin removal is safe to synchronize explicitly.
-     */
     for (int col = 0; col < 32; col++) {
         int n = 0;
         for (int row = 0; row < 32; row++) {
@@ -304,59 +297,18 @@ static int mp_merge_tilemap_local_edits(int allow_full)
             if (mp_tilemap_before[idx] != mp_tilemap_after[idx]) n++;
         }
         if (n == 0 || n > 4) continue;
-
         for (int row = 0; row < 32; row++) {
             int idx = row * 32 + col;
             uint8_t before = mp_tilemap_before[idx];
             uint8_t after = mp_tilemap_after[idx];
             if (before == after) continue;
-
-            /* Preserve every solid tile that the private block-hit path
-             * changed into the blank tile. */
             if (before >= 0x60 && before != 0xF4 && after == 0x20)
                 continue;
-
-            /* Only small, local non-block changes are safe to import. */
             vram[0x1800 + idx] = after;
             changed = 1;
         }
     }
     return changed;
-}
-
-static int mp_score_points(uint8_t control)
-{
-    switch (control) {
-    case 0x01: return 100;
-    case 0x02: return 200;
-    case 0x04: return 400;
-    case 0x05: return 500;
-    case 0x08: return 800;
-    case 0x10: return 1000;
-    case 0x20: return 2000;
-    case 0x40: return 4000;
-    case 0x50: return 5000;
-    case 0x80: return 8000;
-    default: return 0;
-    }
-}
-
-static void mp_add_score_bcd(int points)
-{
-    if (points <= 0) return;
-    int carry = points;
-    for (int i = 0; i < 3 && carry > 0; i++) {
-        int add = carry % 100;
-        carry /= 100;
-        int b = rd8((uint16_t)(0xC0A0 + i));
-        int value = ((b >> 4) & 0x0F) * 10 + (b & 0x0F) + add;
-        if (value >= 100) {
-            value -= 100;
-            carry++;
-        }
-        wr8((uint16_t)(0xC0A0 + i), (uint8_t)(((value / 10) << 4) | (value % 10)));
-    }
-    wr8(0xFFB1, 1);
 }
 
 static int mp_scroll_delta(uint8_t now, uint8_t old)
@@ -482,6 +434,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
         uint8_t p2_floaty_control = rd8(0xFFED);
+        uint8_t p2_floaty_x = rd8(0xFFEB);
+        uint8_t p2_floaty_y = rd8(0xFFEC);
         uint8_t p2_square_sfx = rd8(0xDFE0);
         uint8_t p2_noise_sfx = rd8(0xDFF8);
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
@@ -550,10 +504,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
         /*
-         * Preserve SML1's own one-shot sound requests. The original sound
-         * interrupt consumes DFE0 (square SFX) and DFF8 (noise SFX), so putting
-         * the request back into P1's authoritative state lets the real SML1
-         * sound code produce the effect on the next frame.
+         * Preserve SML1's own sound and score requests. These requests normally
+         * get consumed by the game's next timer/gameplay update, so keep them
+         * in the authoritative P1 state after Luigi's isolated pass.
          */
         if (rd8(0xDFE0) == 0) {
             if (coins_after != coins_before)
@@ -566,25 +519,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (rd8(0xDFF8) == 0 && p2_noise_sfx)
             wr8(0xDFF8, p2_noise_sfx);
 
-        /*
-         * A score-producing enemy hit may queue its score through FFED instead
-         * of updating wScore until the floaty subsystem runs on the next frame.
-         * Apply the exact SML1 point value now so the authoritative HUD cannot
-         * lose the reward when Luigi's private state is discarded.
-         */
-        int queued_score = mp_score_points(p2_floaty_control);
-        if (queued_score > 0 &&
-            memcmp(score_before, score_after, sizeof score_before) == 0) {
-            /*
-             * The floaty subsystem awards stomp points on its following
-             * update. Luigi's private floaty state is discarded when we
-             * restore P1, so apply that queued reward directly here.
-             *
-             * Powerups can also produce a 1000-point floaty. That is harmless
-             * to apply here because their pickup is already synchronized
-             * independently; the score must not be lost with P2's private RAM.
-             */
-            mp_add_score_bcd(queued_score);
+        /* FFED is SML1's queued score/floaty control. Keep it when P1 does not
+         * already have a floaty pending, allowing the original SML1 update to
+         * award and display Luigi's points on the shared state. */
+        if (p2_floaty_control && rd8(0xFFED) == 0) {
+            wr8(0xFFEB, p2_floaty_x);
+            wr8(0xFFEC, p2_floaty_y);
+            wr8(0xFFED, p2_floaty_control);
         }
 
         /*
@@ -598,7 +539,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                          mp_vblank_collision == 0x02 ||
                          mp_vblank_collision == 0x04);
         if (p2_state_before == 0 && !block_hit)
-            tile_changed = mp_merge_tilemap_local_edits(dx == 0);
+            tile_changed = mp_merge_tilemap_local_edits(0);
 
         int collision_changed = 0;
         if (p2_state_before == 0 &&
