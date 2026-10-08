@@ -98,7 +98,7 @@ uint8_t rd8(uint16_t a)
     case 0: case 1: case 2: case 3:
     case 4: case 5: case 6: case 7: return a < 0x4000 ? cart_lo[a] : cart_hi[a - 0x4000];
     case 8: case 9: return vram[a & 0x1FFF];
-    case 0xA: case 0xB: return cart_ram_read(a);
+    case 0xA: case 0xB: { uint8_t v = cart_ram_read(a); return wide_read_sml2(a, v); }
     case 0xC: case 0xD: case 0xE: return wram[a & 0x1FFF];
     default:
         if (a < 0xFE00) return wram[a & 0x1FFF];
