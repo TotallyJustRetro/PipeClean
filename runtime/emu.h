@@ -1,4 +1,5 @@
 #pragma once
+/* CI verification marker. */
 #include "gb.h"
 
 typedef struct {
