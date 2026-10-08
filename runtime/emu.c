@@ -107,15 +107,6 @@ static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
 
 
-static int mp_active;
-static uint8_t mp_buttons, mp_dpad;
-static int mp_ready;
-static uint8_t mp_state[GB_STATE_BYTES];
-static MpPlayerState mp_p2_state;
-static Frame *mp_frame_out;
-static int16_t *mp_audio_out;
-static int mp_audio_max, mp_audio_n;
-
 static void mp_player_save(MpPlayerState *s)
 {
     if (!s) return;
