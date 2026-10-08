@@ -52,6 +52,12 @@ test-sml2-wide:
 
 .PHONY: test-sml2-wide
 
+test-sml-wide:
+	$(CC) $(CFLAGS) -Iruntime tests/test_sml_wide.c runtime/widescreen.c -o /tmp/test_sml_wide
+	/tmp/test_sml_wide
+
+.PHONY: test-sml-wide
+
 test-cart-mbc1:
 	$(CC) $(CFLAGS) -Iruntime tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c -o /tmp/test_cart_mbc1
 	/tmp/test_cart_mbc1
