@@ -248,9 +248,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (gb_state_save(mp_p2_probe_state, GB_STATE_BYTES)) return -1;
 
         mp_player_load(&mp_p2_state);
-        mp_buttons = 0; mp_dpad = 0;
+        mp_buttons = 0;
+        mp_dpad = 0;
         gb_set_input(0, 0);
-        mp_frame_out = &mp_probe_frame; mp_audio_out = NULL; mp_audio_max = 0; mp_audio_n = 0;
+        mp_frame_out = &mp_probe_frame;
+        mp_audio_out = NULL;
+        mp_audio_max = 0;
+        mp_audio_n = 0;
         mp_active = 1;
         if (setjmp(stop_jmp) == 0) run_core(0);
         mp_active = 0;
@@ -260,10 +264,14 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         uint8_t p1_scroll = rd8(0xFFA4);
         mp_player_load(&mp_p2_state);
-        mp_buttons = buttons; mp_dpad = dpad;
+        mp_buttons = buttons;
+        mp_dpad = dpad;
         /* Input must be installed before the SML1 frame starts. */
         gb_set_input(mp_buttons, mp_dpad);
-        mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
+        mp_frame_out = frame;
+        mp_audio_out = audio;
+        mp_audio_max = audio_max;
+        mp_audio_n = 0;
         mp_active = 1;
         if (setjmp(stop_jmp) == 0) run_core(0);
         mp_active = 0;
@@ -289,31 +297,14 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         return mp_audio_n;
     }
 
-    mp_buttons = buttons; mp_dpad = dpad;
-        /* Input must be installed before the SML1 frame starts. */
-        gb_set_input(mp_buttons, mp_dpad);
-        mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
-        mp_active = 1;
-        if (setjmp(stop_jmp) == 0) run_core(0);
-        mp_active = 0;
-
-        /* P2 may have moved SML1's camera while trying to stay centered.
-         * Convert its screen X/OAM back into Player 1's camera coordinates. */
-        int dx = mp_scroll_delta(rd8(0xFFA4), p1_scroll);
-        if (dx) {
-            uint8_t x = rd8(0xC202);
-            wr8(0xC202, (uint8_t)(x + dx));
-        }
-        mp_capture_frame(frame, dx);
-        mp_player_save(&mp_p2_state);
-        gb_state_load(mp_state, GB_STATE_BYTES);
-        return mp_audio_n;
-    }
-
-    mp_buttons = buttons; mp_dpad = dpad;
+    mp_buttons = buttons;
+    mp_dpad = dpad;
     /* Input must be installed before the SML1 frame starts. */
     gb_set_input(mp_buttons, mp_dpad);
-    mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
+    mp_frame_out = frame;
+    mp_audio_out = audio;
+    mp_audio_max = audio_max;
+    mp_audio_n = 0;
     mp_active = 1;
     if (setjmp(stop_jmp) == 0) run_core(0);
     mp_active = 0;
