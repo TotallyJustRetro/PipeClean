@@ -200,6 +200,7 @@ static int field_table(Field *t, int cap)
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
         GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1);
         GI("pad_device1", c->pad_device[0], -1, 3); GI("pad_device2", c->pad_device[1], -1, 3);
+        GS("pad_guid1", c->pad_guid[0]); GS("pad_guid2", c->pad_guid[1]);
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
         GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
