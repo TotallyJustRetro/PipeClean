@@ -475,8 +475,8 @@ static void sub_emulator(int g, float x, float y)
         float ry = y + 136 + a * 46;
         if (a % 2 == 0) ui_rrect(x + 10, ry - 4, 788, 40, 8, RGBA(255, 255, 255, 6));
         ui_text(F_BOLD, 13, x + 18, ry + 5, C_TEXT, action_names[a]);
-        bind_action_cell(g, x + 228, ry, 190, 32, 3, a);
-        bind_action_cell(g, x + 438, ry, 190, 32, 4, a);
+        bind_action_cell(g, x + 228, ry, 190, 3, a);
+        bind_action_cell(g, x + 438, ry, 190, 4, a);
     }
 
     ui_text_wrap(F_REG, 12, x + 18, y + 382, 772, C_DIM,
