@@ -1,0 +1,23 @@
+name: Regression Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build SML2 widescreen regression test
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_sml2_wide.c runtime/widescreen.c             -o test_sml2_wide
+
+      - name: Run SML2 widescreen regression test
+        run: ./test_sml2_wide
+
+      - name: Validate Python tools
+        run: |
+          python3 -m py_compile             tools/recomp.py             tools/sm83.py             tools/dis.py             tools/discover.py             tools/make_font.py
