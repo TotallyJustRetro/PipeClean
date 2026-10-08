@@ -202,11 +202,32 @@ int pad_binding_event(int game, int action, const SDL_Event *e)
     return 0;
 }
 
-int pad_capture(const SDL_Event *e)
+static int pad_instance_device(SDL_JoystickID which)
 {
+    for (int i = 0; i < n_pads; i++) {
+        SDL_Joystick *j = pads[i].mapped ? SDL_GameControllerGetJoystick(pads[i].gc) : pads[i].joy;
+        if (j && SDL_JoystickInstanceID(j) == which) return i;
+    }
+    return -1;
+}
+
+int pad_capture(int device, const SDL_Event *e)
+{
+    if (!e) return -1;
+    if (device >= 0) {
+        SDL_JoystickID which = -1;
+        if (e->type == SDL_CONTROLLERBUTTONDOWN) which = e->cbutton.which;
+        else if (e->type == SDL_CONTROLLERAXISMOTION) which = e->caxis.which;
+        else if (e->type == SDL_JOYBUTTONDOWN) which = e->jbutton.which;
+        else if (e->type == SDL_JOYAXISMOTION) which = e->jaxis.which;
+        if (pad_instance_device(which) != device) return -1;
+    }
     if (e->type == SDL_CONTROLLERBUTTONDOWN) return e->cbutton.button;
     if (e->type == SDL_JOYBUTTONDOWN) return e->jbutton.button;
-    if (e->type == SDL_JOYAXISMOTION && e->jaxis.value > 20000) { if (e->jaxis.axis == 4) return PAD_AXIS_BASE; if (e->jaxis.axis == 5) return PAD_AXIS_BASE + 1; }
+    if (e->type == SDL_JOYAXISMOTION && e->jaxis.value > 20000) {
+        if (e->jaxis.axis == 4) return PAD_AXIS_BASE;
+        if (e->jaxis.axis == 5) return PAD_AXIS_BASE + 1;
+    }
     if (e->type == SDL_CONTROLLERAXISMOTION && e->caxis.value > 20000) {
         if (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) return PAD_AXIS_BASE;
         if (e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) return PAD_AXIS_BASE + 1;
