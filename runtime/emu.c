@@ -193,6 +193,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p1_scroll = rd8(0xFFA4);
         mp_player_load(&mp_p2_state);
         mp_buttons = buttons; mp_dpad = dpad;
+        /* Input must be installed before the SML1 frame starts. */
+        gb_set_input(mp_buttons, mp_dpad);
         mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
         mp_active = 1;
         if (setjmp(stop_jmp) == 0) run_core(0);
@@ -212,6 +214,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     }
 
     mp_buttons = buttons; mp_dpad = dpad;
+    /* Input must be installed before the SML1 frame starts. */
+    gb_set_input(mp_buttons, mp_dpad);
     mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
     mp_active = 1;
     if (setjmp(stop_jmp) == 0) run_core(0);
@@ -308,7 +312,6 @@ void frame_hook(void)
     if (mp_active) {
         mp_capture_frame(mp_frame_out, 0);
         mp_audio_n = mp_audio_out && mp_audio_max > 0 ? apu_drain(mp_audio_out, mp_audio_max) : 0;
-        gb_set_input(mp_buttons, mp_dpad);
         longjmp(stop_jmp, 3);
     }
     uint8_t b = (uint8_t)(input_word & 0xFF), d = (uint8_t)(input_word >> 8);
