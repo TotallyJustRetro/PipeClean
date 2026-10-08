@@ -10,6 +10,9 @@ CPU cpu;
 uint8_t *rom;
 const uint8_t *cart_lo, *cart_hi;
 uint64_t total_cycles;
+int frame_count;
+
+uint8_t rd8(uint16_t a) { (void)a; return 0; }
 
 void hw_tick(int tcycles)
 {
