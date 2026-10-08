@@ -10,6 +10,7 @@ typedef struct {
     uint8_t scroll_x, game_state;
     uint8_t obp0, obp1, sprite_size16;
     uint8_t mario_oam[16];
+    uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
     uint64_t seq;
     int lcd_on;
