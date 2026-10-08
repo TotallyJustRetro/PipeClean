@@ -110,9 +110,40 @@ static uint8_t mp_enemy_before[0x90];
 static uint8_t mp_enemy_after[0x90];
 static uint8_t mp_enemy_merge[0x90];
 static uint8_t mp_enemy_merge_mask[9];
+static uint8_t mp_p2_lives;
+static uint8_t mp_p2_dead_timer;
+static uint8_t mp_p2_respawn_pending;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
+static int mp_bcd_to_int(uint8_t b)
+{
+    int n = ((b >> 4) & 0x0F) * 10 + (b & 0x0F);
+    return n > 99 ? 99 : n;
+}
+
+static void mp_respawn_p2_from_p1(void)
+{
+    mp_player_save(&mp_p2_state);
+    mp_p2_state.joy_held = 0;
+    mp_p2_state.joy_pressed = 0;
+    mp_p2_state.mario[0] = 0;  /* visible */
+    mp_p2_state.mario[7] = 0;  /* C207: grounded */
+    mp_p2_state.mario[11] = 0; /* C20B: animation counter */
+    mp_p2_state.mario[12] = 0; /* C20C: momentum */
+    mp_p2_state.mario[13] = 0; /* C20D: direction */
+    mp_p2_state.mario[14] = 2; /* C20E: walking */
+
+    int x = rd8(0xC202);
+    if (x <= 0x78) x += 24;
+    else if (x >= 0x28) x -= 24;
+    else x = 0x50;
+    if (x < 0x18) x = 0x18;
+    if (x > 0xC8) x = 0xC8;
+    mp_p2_state.mario[2] = (uint8_t)x;
+    mp_p2_state.mario[1] = rd8(0xC201);
+}
+
 static void mp_player_save(MpPlayerState *s)
 {
     if (!s) return;
@@ -205,6 +236,10 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     memcpy(f->bg_map, &vram[0x1800], sizeof f->bg_map);
     memcpy(f->mario_oam, &oam[0x0C], sizeof f->mario_oam);
     memset(f->mario_oam2, 0, sizeof f->mario_oam2);
+    memset(f->luigi_mask, 0, sizeof f->luigi_mask);
+    f->p1_lives = rd8(0xDA15);
+    f->p2_lives = mp_p2_lives;
+    f->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_dead_timer == 0 && mp_p2_lives > 0);
     if (screen_dx) {
         for (int i = 0; i < 4; i++) {
             int x = (int)f->mario_oam[i * 4 + 1] + screen_dx;
@@ -235,6 +270,9 @@ int emu_mp_begin(void)
      */
     memset(&mp_p2_state, 0, sizeof mp_p2_state);
     mp_p2_spawned = 0;
+    mp_p2_lives = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
+    mp_p2_dead_timer = 0;
+    mp_p2_respawn_pending = 0;
 
     mp_ready = 1;
     return 0;
@@ -247,9 +285,18 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
     if (player == 1) {
-        if (!mp_p2_spawned) {
+        if (!mp_p2_spawned || mp_p2_dead_timer > 0 || mp_p2_lives == 0) {
+            if (mp_p2_dead_timer > 0) mp_p2_dead_timer--;
+            if (mp_p2_dead_timer == 0 && mp_p2_respawn_pending && mp_p2_lives > 0) {
+                mp_respawn_p2_from_p1();
+                mp_p2_respawn_pending = 0;
+            }
             memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
             memset(frame->mario_oam, 0, sizeof frame->mario_oam);
+            memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
+            frame->p1_lives = rd8(0xDA15);
+            frame->p2_lives = mp_p2_lives;
+            frame->p2_visible = 0;
             return 0;
         }
 
@@ -305,6 +352,19 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             wr8(0xC202, (uint8_t)(x + dx));
         }
 
+        if (p2_game_state == 3 || p2_game_state == 4) {
+            if (mp_p2_lives > 0) mp_p2_lives--;
+            mp_p2_dead_timer = 90;
+            mp_p2_respawn_pending = (uint8_t)(mp_p2_lives > 0);
+            memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
+            memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
+            frame->p1_lives = rd8(0xDA15);
+            frame->p2_lives = mp_p2_lives;
+            frame->p2_visible = 0;
+            if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+            return 0;
+        }
+
         mp_capture_frame(frame, 0);
         mp_copy_mario_oam_buffer(frame->mario_oam2, dx);
         mp_player_save(&mp_p2_state);
@@ -342,6 +402,16 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         return mp_audio_n;
     }
 
+    /*
+     * Player 1 is the camera leader. When Luigi is too close to the left edge,
+     * block a rightward camera advance until Luigi has moved farther right.
+     */
+    if (mp_p2_spawned && mp_p2_dead_timer == 0 && mp_p2_lives > 0 &&
+        (dpad & 0x01) && rd8(0xC202) >= 0x50 &&
+        mp_p2_state.mario[2] < 0x20) {
+        dpad &= (uint8_t)~0x01;
+    }
+
     mp_buttons = buttons;
     mp_dpad = dpad;
     gb_set_input(mp_buttons, mp_dpad);
@@ -352,8 +422,25 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     mp_active = 1;
     if (setjmp(stop_jmp) == 0) run_core(0);
     mp_active = 0;
+    uint8_t p1_scroll_before = rd8(0xFFA4);
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
     mp_capture_frame(frame, 0);
+
+    /*
+     * Luigi's C202 is a screen coordinate in the previous shared camera.
+     * When Mario advances the authoritative camera, shift Luigi's saved
+     * screen coordinate by the same amount before Luigi's next physics frame.
+     */
+    int p1_camera_dx = mp_scroll_delta(frame->scroll_x, p1_scroll_before);
+    if (mp_p2_spawned && mp_p2_dead_timer == 0 && frame->game_state == 0 && p1_camera_dx) {
+        int x = (int)mp_p2_state.mario[2] - p1_camera_dx;
+        if (x < 0) x += 256;
+        if (x > 255) x -= 256;
+        mp_p2_state.mario[2] = (uint8_t)x;
+    }
+    frame->p1_lives = rd8(0xDA15);
+    frame->p2_lives = mp_p2_lives;
+    frame->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_dead_timer == 0 && mp_p2_lives > 0);
 
     /*
      * Spawn P2 only once SML1 reaches normal gameplay. This guarantees that
@@ -369,6 +456,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         else if (x >= 0x30) x = (uint8_t)(x - 24);
         mp_p2_state.mario[2] = x;
         mp_p2_spawned = 1;
+        frame->p2_visible = 1;
+        frame->p2_lives = mp_p2_lives;
     }
 
     return mp_audio_n;
@@ -381,6 +470,9 @@ void emu_mp_end(void)
     mp_active = 0;
     mp_ready = 0;
     mp_p2_spawned = 0;
+    mp_p2_lives = 0;
+    mp_p2_dead_timer = 0;
+    mp_p2_respawn_pending = 0;
     mp_frame_out = NULL;
     mp_audio_out = NULL;
     mp_audio_max = mp_audio_n = 0;
