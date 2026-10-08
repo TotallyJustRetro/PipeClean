@@ -40,9 +40,24 @@ void pad_shutdown(void)
 
 void pad_event(const SDL_Event *e)
 {
-    if (e->type == SDL_CONTROLLERDEVICEADDED || e->type == SDL_CONTROLLERDEVICEREMOVED || e->type == SDL_JOYDEVICEADDED || e->type == SDL_JOYDEVICEREMOVED) {
+    if (e->type == SDL_CONTROLLERDEVICEADDED || e->type == SDL_CONTROLLERDEVICEREMOVED ||
+        e->type == SDL_JOYDEVICEADDED || e->type == SDL_JOYDEVICEREMOVED) {
+        if (e->type == SDL_CONTROLLERDEVICEREMOVED || e->type == SDL_JOYDEVICEREMOVED) {
+            SDL_JoystickID which = e->type == SDL_CONTROLLERDEVICEREMOVED ? e->cdevice.which : e->jdevice.which;
+            int removed = pad_instance_device(which);
+            if (removed >= 0) {
+                for (int g = 0; g < N_GAMES; g++) {
+                    for (int player = 0; player < 2; player++) {
+                        int *sel = &settings.g[g].pad_device[player];
+                        if (*sel == removed) *sel = -1;
+                        else if (*sel > removed) (*sel)--;
+                    }
+                }
+            }
+        }
         rescan();
-        if (e->type == SDL_CONTROLLERDEVICEADDED && pad_is_dualsense(0) + pad_is_dualsense(1) > 0) audio_pad_open();
+        if (e->type == SDL_CONTROLLERDEVICEADDED && pad_is_dualsense(0) + pad_is_dualsense(1) > 0)
+            audio_pad_open();
     }
 }
 
