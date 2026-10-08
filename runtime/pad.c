@@ -85,30 +85,55 @@ static int pad_down(int device, int code)
     return code >= 0 && code < SDL_JoystickNumButtons(p->joy) && SDL_JoystickGetButton(p->joy, code) != 0;
 }
 
-void pad_poll(int game, uint8_t *b, uint8_t *d)
+static void pad_poll_one(const GameCfg *c, int player, uint8_t *b, uint8_t *d)
 {
-    const GameCfg *c = &settings.g[game];
     const Uint8 *ks = SDL_GetKeyboardState(NULL);
     uint8_t bits[N_BTN] = {0};
+    if (player < 0 || player > 1) player = 0;
     for (int i = 0; i < N_BTN; i++) {
-        for (int s = 0; s < 2; s++) {
-            if (c->key[i][s]) { SDL_Scancode sc = SDL_GetScancodeFromKey(c->key[i][s]); if (sc != SDL_SCANCODE_UNKNOWN && ks[sc]) bits[i] = 1; }
-            if (c->pad[i][s] >= 0 && pad_down(c->pad_device[s], c->pad[i][s])) bits[i] = 1;
+        if (c->key[i][player]) {
+            SDL_Scancode sc = SDL_GetScancodeFromKey(c->key[i][player]);
+            if (sc != SDL_SCANCODE_UNKNOWN && ks[sc]) bits[i] = 1;
         }
+        if (c->pad[i][player] >= 0 && pad_down(c->pad_device[player], c->pad[i][player])) bits[i] = 1;
     }
-    /* left stick = d-pad, using the controller selected for each player slot */
     float dz = settings.pad_deadzone / 100.0f * 32767.0f;
-    for (int s = 0; s < 2; s++) {
-        int device = c->pad_device[s];
-        if (device < 0 || device >= n_pads) continue;
-        int ax = (pads[device].mapped ? SDL_GameControllerGetAxis(pads[device].gc, SDL_CONTROLLER_AXIS_LEFTX) : (SDL_JoystickNumAxes(pads[device].joy) > 0 ? SDL_JoystickGetAxis(pads[device].joy, 0) : 0));
-        int ay = (pads[device].mapped ? SDL_GameControllerGetAxis(pads[device].gc, SDL_CONTROLLER_AXIS_LEFTY) : (SDL_JoystickNumAxes(pads[device].joy) > 1 ? SDL_JoystickGetAxis(pads[device].joy, 1) : 0));
+    int device = c->pad_device[player];
+    if (device >= 0 && device < n_pads) {
+        int ax = pads[device].mapped ? SDL_GameControllerGetAxis(pads[device].gc, SDL_CONTROLLER_AXIS_LEFTX) :
+                 (SDL_JoystickNumAxes(pads[device].joy) > 0 ? SDL_JoystickGetAxis(pads[device].joy, 0) : 0);
+        int ay = pads[device].mapped ? SDL_GameControllerGetAxis(pads[device].gc, SDL_CONTROLLER_AXIS_LEFTY) :
+                 (SDL_JoystickNumAxes(pads[device].joy) > 1 ? SDL_JoystickGetAxis(pads[device].joy, 1) : 0);
         if (ax > dz) bits[BTN_RIGHT] = 1; else if (ax < -dz) bits[BTN_LEFT] = 1;
         if (ay > dz) bits[BTN_DOWN] = 1; else if (ay < -dz) bits[BTN_UP] = 1;
+        if (!pads[device].mapped && SDL_JoystickNumHats(pads[device].joy) > 0) {
+            Uint8 hat = SDL_JoystickGetHat(pads[device].joy, 0);
+            if (hat & SDL_HAT_RIGHT) bits[BTN_RIGHT] = 1;
+            if (hat & SDL_HAT_LEFT) bits[BTN_LEFT] = 1;
+            if (hat & SDL_HAT_UP) bits[BTN_UP] = 1;
+            if (hat & SDL_HAT_DOWN) bits[BTN_DOWN] = 1;
+        }
     }
     *b = (uint8_t)(bits[BTN_A] | bits[BTN_B] << 1 | bits[BTN_SELECT] << 2 | bits[BTN_START] << 3);
     *d = (uint8_t)(bits[BTN_RIGHT] | bits[BTN_LEFT] << 1 | bits[BTN_UP] << 2 | bits[BTN_DOWN] << 3);
-    if ((*d & 3) == 3) *d &= (uint8_t)~3;       /* no left+right at once */
+}
+
+void pad_poll_player(int game, int player, uint8_t *b, uint8_t *d)
+{
+    if (!b || !d || game < 0) return;
+    pad_poll_one(&settings.g[game], player, b, d);
+    if ((*d & 3) == 3) *d &= (uint8_t)~3;
+    if ((*d & 12) == 12) *d &= (uint8_t)~12;
+}
+
+void pad_poll(int game, uint8_t *b, uint8_t *d)
+{
+    uint8_t b0 = 0, d0 = 0, b1 = 0, d1 = 0;
+    pad_poll_player(game, 0, &b0, &d0);
+    pad_poll_player(game, 1, &b1, &d1);
+    *b = (uint8_t)(b0 | b1);
+    *d = (uint8_t)(d0 | d1);
+    if ((*d & 3) == 3) *d &= (uint8_t)~3;
     if ((*d & 12) == 12) *d &= (uint8_t)~12;
 }
 
