@@ -3,9 +3,14 @@ name: Regression Tests
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: regression-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   regression:
@@ -13,45 +18,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Restore bundled third-party sources
-        run: |
-          set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_image.h -o runtime/stb_image.h
-          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_image_write.h -o runtime/stb_image_write.h
-          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_truetype.h -o runtime/stb_truetype.h
-          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_vorbis.c -o runtime/stb_vorbis.inc
-          curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_wav.h -o runtime/dr_wav.h
-          curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_mp3.h -o runtime/dr_mp3.h
-          curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_flac.h -o runtime/dr_flac.h
-
-      - name: Restore launcher font data
-        run: |
-          set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Regular.ttf -o /tmp/Poppins-Regular.ttf
-          curl -fsSL https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Bold.ttf -o /tmp/Poppins-Bold.ttf
-          python3 tools/make_font.py /tmp/Poppins-Regular.ttf /tmp/Poppins-Bold.ttf
-
-      - name: Commit restored vendor sources
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/stb_image.h runtime/stb_image_write.h runtime/stb_truetype.h \
-                  runtime/stb_vorbis.inc runtime/dr_wav.h runtime/dr_mp3.h runtime/dr_flac.h \
-                  runtime/font_data.c
-          if git diff --cached --quiet; then
-            echo "Vendor sources already current."
-          else
-            git commit -m "Restore bundled third-party source files"
-            git fetch origin main
-            git rebase origin/main
-            if git log origin/main..HEAD --oneline | grep -q .; then
-              git push origin HEAD:main
-            else
-              echo "Vendor restoration was already pushed by another run."
-            fi
-          fi
 
       - name: Install SDL2 development package
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
