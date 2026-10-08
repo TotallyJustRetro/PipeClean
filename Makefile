@@ -10,13 +10,14 @@ PYTHON     ?= python3
 ROOTS      ?= $(GEN)/roots.txt
 RECOMP_ARGS ?=
 
-SDL_CFLAGS ?= $(shell sdl2-config --cflags 2>/dev/null)
-SDL_LIBS   ?= $(shell sdl2-config --libs 2>/dev/null)
+SDL_CFLAGS       ?= $(shell sdl2-config --cflags 2>/dev/null)
+SDL_LIBS         ?= $(shell sdl2-config --libs 2>/dev/null)
+SDL_IMAGE_CFLAGS ?= $(shell pkg-config --cflags SDL2_image 2>/dev/null)
+SDL_IMAGE_LIBS   ?= $(shell pkg-config --libs SDL2_image 2>/dev/null)
 ifneq ($(strip $(SDL_LIBS)),)
   DEFS += -DUSE_SDL
 endif
 
-# Windows (mingw): make EXTRA_LIBS="-lshell32 -lole32 -lcomdlg32 -luuid" CC=x86_64-w64-mingw32-clang
 RT_SRC := $(wildcard runtime/*.c)
 GEN_SRC := $(GEN)/game.c $(GEN)/interp.c
 
@@ -33,33 +34,27 @@ $(GEN)/game.c $(GEN)/interp.c $(GEN)/game_info.h: $(ROM) tools/recomp.py tools/s
 
 $(BUILD)/PipeClean: $(RT_SRC) $(wildcard runtime/*.h) $(GEN_SRC) $(GEN)/game_info.h
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) $(DEFS) $(SDL_CFLAGS) -Iruntime -I$(GEN) $(RT_SRC) $(GEN_SRC) -o $@ $(SDL_LIBS) -lm $(EXTRA_LIBS)
+	$(CC) $(CFLAGS) $(DEFS) $(SDL_CFLAGS) $(SDL_IMAGE_CFLAGS) -Iruntime -I$(GEN) $(RT_SRC) $(GEN_SRC) -o $@ $(SDL_LIBS) $(SDL_IMAGE_LIBS) -lm $(EXTRA_LIBS)
 
 run: $(BUILD)/PipeClean
 	$(BUILD)/PipeClean $(ROM)
 
 discover:
-	$(PYTHON) tools/discover.py $(ROM) --gen $(GEN) --build "$(MAKE) ROM=$(ROM) GEN=$(GEN) BUILD=$(BUILD)"
+	$(PYTHON) tools/discover.py $(ROM) --gen $(GEN) --build "make ROM=$(ROM) GEN=$(GEN) BUILD=$(BUILD)"
 
 clean:
 	rm -rf $(BUILD) $(GEN)
 
-.PHONY: all run discover clean
+.PHONY: all run discover clean test-sml2-wide test-sml-wide test-cart-mbc1
 
 test-sml2-wide:
 	$(CC) $(CFLAGS) -Iruntime tests/test_sml2_wide.c runtime/widescreen.c -o /tmp/test_sml2_wide
 	/tmp/test_sml2_wide
 
-.PHONY: test-sml2-wide
-
 test-sml-wide:
 	$(CC) $(CFLAGS) -Iruntime tests/test_sml_wide.c runtime/widescreen.c -o /tmp/test_sml_wide
 	/tmp/test_sml_wide
 
-.PHONY: test-sml-wide
-
 test-cart-mbc1:
 	$(CC) $(CFLAGS) -Iruntime tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c -o /tmp/test_cart_mbc1
 	/tmp/test_cart_mbc1
-
-.PHONY: test-cart-mbc1
