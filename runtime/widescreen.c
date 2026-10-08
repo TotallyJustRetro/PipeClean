@@ -161,6 +161,16 @@ int wide_intercept_sml2(uint8_t op)
 }
 
 
+void wide_state_reset(void)
+{
+    /* These are runtime scanner latches, not emulated RAM. A state load can jump
+     * to an unrelated room/frame, so stale bounds from the previous timeline
+     * must never survive the load. Keep the installed widescreen dimensions. */
+    sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
+    sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
+    sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
+}
+
 int wide_install(int game, int l, int r)
 {
     sml2_right_extra = 0;
