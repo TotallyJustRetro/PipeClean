@@ -39,7 +39,7 @@ static int sml2_right_extra;
 static int sml2_left_extra;
 static int sml2_scan_edge[2] = {-1, -1};
 static int sml2_scan_pick[2];
-static int sml2_scan_frame[2] = {-1, -1};
+static int sml2_scan_latched[2] = {-1, -1};
 
 typedef struct {
     int x, y;
@@ -98,14 +98,17 @@ static void sml2_capture_emitter(uint8_t sx)
 }
 
 
-static int sml2_read16(uint16_t a)
+static int sml2_camera_x(void)
 {
-    return (int)rd8(a) | ((int)rd8((uint16_t)(a + 1)) << 8);
+    /* SML2 stores camera X in HRAM $FFCA/$FFCB. Read the backing HRAM
+     * directly so the standalone widescreen regressions stay independent of
+     * the full CPU-memory API. */
+    return (int)hram[0x4A] | ((int)hram[0x4B] << 8);
 }
 
 static int sml2_scan_value(int side)
 {
-    int cam = sml2_read16(0xFFCA);
+    int cam = sml2_camera_x();
     int vanilla = side == 0 ? cam + 112 : cam - 112;
     int target = side == 0 ? vanilla + sml2_right_extra : vanilla - sml2_left_extra;
     if (target < 0) target = 0;
@@ -122,7 +125,6 @@ static int sml2_scan_value(int side)
 
     sml2_scan_edge[side] = edge;
     sml2_scan_pick[side] = edge;
-    sml2_scan_frame[side] = frame_count;
     return edge;
 }
 
@@ -170,8 +172,12 @@ uint8_t wide_read_sml2(uint16_t address, uint8_t value)
         cpu.pc != (uint16_t)(lo_pc + 3))
         return value;
 
-    int edge = sml2_scan_frame[side] == frame_count
-        ? sml2_scan_pick[side] : sml2_scan_value(side);
+    int edge;
+    if (address == 0xAF12 || address == 0xAF14) {
+        edge = sml2_scan_value(side);
+    } else {
+        edge = sml2_scan_pick[side];
+    }
 
     return address == 0xAF12 || address == 0xAF14
         ? (uint8_t)(edge >> 8)
@@ -276,7 +282,7 @@ int wide_install(int game, int l, int r)
     sml2_left_extra = 0;
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
-    sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
+    sml2_scan_latched[0] = sml2_scan_latched[1] = -1;
     if (l + r == 0) return 1;
     if (game == GAME_SML2) {
         /* SML2's entity activation code lives in bank 2.  Its horizontal
