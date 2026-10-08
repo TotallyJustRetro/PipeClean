@@ -111,6 +111,39 @@ static void sml1_draw_player_tag(const Frame *f, const uint8_t oam[16], const SD
     ui_tri(ux - 5, ty + 16, ux + 5, ty + 16, ux, uy - 1, color);
 }
 
+static int sml1_bcd_to_int(uint8_t b)
+{
+    return ((b >> 4) & 0x0F) * 10 + (b & 0x0F);
+}
+
+static void sml1_draw_coop_hud(const Frame *f)
+{
+    if (!f) return;
+
+    float vx = ui_view_x0(), vw = ui_view_w();
+    const float y = 12.0f, w = 230.0f, h = 42.0f, pad = 14.0f;
+    float lx = vx + pad;
+    float rx = vx + vw - pad - w;
+
+    char lives[16];
+
+    ui_shadow(lx, y, w, h, 10, 4, RGBA(0, 0, 0, 110));
+    ui_rrect(lx, y, w, h, 10, RGBA(22, 25, 34, 235));
+    ui_text(F_BOLD, 14, lx + 12, y + 5, C_ACCENT, "P1  MARIO");
+    snprintf(lives, sizeof lives, "x %d", sml1_bcd_to_int(f->p1_lives));
+    ui_text_r(F_BOLD, 16, lx + w - 12, y + 3, C_TEXT, lives);
+
+    ui_shadow(rx, y, w, h, 10, 4, RGBA(0, 0, 0, 110));
+    ui_rrect(rx, y, w, h, 10, RGBA(22, 25, 34, 235));
+    ui_text(F_BOLD, 14, rx + 12, y + 5, C_OK, "P2  LUIGI");
+    snprintf(lives, sizeof lives, "x %d", f->p2_lives);
+    ui_text_r(F_BOLD, 16, rx + w - 12, y + 3, C_TEXT, lives);
+
+    if (!f->p2_visible && f->p2_lives > 0) {
+        ui_text(F_REG, 11, rx + 12, y + 24, HEX(0xA8B0C0), "Respawning...");
+    }
+}
+
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer_sml1(int g)
 {
@@ -208,8 +241,8 @@ static int play_multiplayer_sml1(int g)
                      * complete APU stream into P1: that makes music/SFX sound
                      * doubled because the same shared world is simulated again.
                      */
-                    if (f->game_state == 0)
-                        render_overlay_sml1_mario_oam(f, p2f->mario_oam2, 0, 0);
+                    if (f->game_state == 0 && f->p2_visible)
+                        render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
 
                     if (n0 > 0) audio_game_push(a0, n0);
                     if (audio_ok()) audio_game_wait(audio_game_target());
@@ -242,7 +275,9 @@ static int play_multiplayer_sml1(int g)
         ui_begin(W, H, dt);
         if (have) {
             sml1_draw_player_tag(f, f->mario_oam, &game_rect, "P1", C_ACCENT);
-            sml1_draw_player_tag(f, p2f->mario_oam2, &game_rect, "P2", C_OK);
+            if (f->p2_visible)
+                sml1_draw_player_tag(f, p2f->mario_oam2, &game_rect, "P2", C_OK);
+            sml1_draw_coop_hud(f);
         }
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
