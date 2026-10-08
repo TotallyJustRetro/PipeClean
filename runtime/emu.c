@@ -10,7 +10,6 @@
 #include "cart.h"
 #include "events.h"
 #include "settings.h"
-#include "widescreen.h"
 
 EmuDev emu_dev = {.max_frames = -1};
 
@@ -146,14 +145,9 @@ static void pace_without_audio(void)
 void frame_hook(void)
 {
     static int16_t abuf[4096 * 2];
-
-    /* The whole guest frame has now been rasterized. Compose the SML2 sprites
-     * captured at the shared emitter before publishing the finished frame. */
-    wide_sml2_compose_margins();
     if (previewing) {
         if (frame_count >= preview_target) longjmp(stop_jmp, 1);
         apu_drain(abuf, 4096);
-        wide_sml2_begin_frame();
         return;
     }
     uint8_t b = (uint8_t)(input_word & 0xFF), d = (uint8_t)(input_word >> 8);
@@ -162,7 +156,6 @@ void frame_hook(void)
         events_frame();
         dev_hook(&b, &d);
         gb_set_input(b, d);
-        wide_sml2_begin_frame();
         return;
     }
     if (abort_flag) longjmp(stop_jmp, 1);
@@ -171,7 +164,6 @@ void frame_hook(void)
     int n = apu_drain(abuf, 4096);
     if (!turbo) audio_game_push(abuf, n);
     gb_set_input(b, d);
-    wide_sml2_begin_frame();
     while (paused && !abort_flag) SDL_Delay(8);
     if (abort_flag) longjmp(stop_jmp, 1);
     if (!turbo) {
