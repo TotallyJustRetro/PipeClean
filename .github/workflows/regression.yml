@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install SDL2 development package
-        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libsdl2-image-dev
 
       - name: Build SML2 widescreen regression test
         run: |
@@ -110,6 +110,7 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-SDL2_image
             mingw-w64-ucrt-x86_64-cmake
 
       - name: Verify Windows toolchain
