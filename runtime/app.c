@@ -237,13 +237,11 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
         ds_menu.touch_active = 1;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
         ds_menu.selected = ds_menu_select(x, y);
-        if (ds_menu.selected == DS_MENU_REWIND) emu_rewind_step();
     } else if (kind == 1 && ds_menu.open) {
         int old = ds_menu.selected;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
         ds_menu.selected = ds_menu_select(x, y);
         if (old == DS_MENU_REWIND && ds_menu.selected != DS_MENU_REWIND) emu_rewind_end();
-        else if (ds_menu.selected == DS_MENU_REWIND) emu_rewind_step();
     } else if (kind == 2 && ds_menu.open) {
         ds_menu.touch_active = 0;
         ds_menu.touch_x = x; ds_menu.touch_y = y;
