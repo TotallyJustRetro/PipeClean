@@ -127,12 +127,19 @@ static int play_multiplayer_sml1(int g)
     render_reset();
     pad_set_context(g, 1);
     /*
-     * Multiplayer is meant to be plug-and-play: when a second controller is
-     * detected and Player 2 has not been assigned, use controller #2.
-     * Keyboard 2 (WASD + J/K) remains available as a fallback.
+     * Multiplayer is plug-and-play. Keep the two players on different physical
+     * devices whenever two controllers are available. Keyboard 2 (WASD + J/K)
+     * remains the fallback when P2 has no controller assigned.
      */
-    if (c->pad_device[0] < 0 && pad_count() > 0) c->pad_device[0] = 0;
-    if (c->pad_device[1] < 0 && pad_count() > 1) c->pad_device[1] = 1;
+    int pads = pad_count();
+    if (pads > 0 && (c->pad_device[0] < 0 || c->pad_device[0] >= pads))
+        c->pad_device[0] = 0;
+    if (pads > 1) {
+        if (c->pad_device[1] < 0 || c->pad_device[1] >= pads || c->pad_device[1] == c->pad_device[0])
+            c->pad_device[1] = c->pad_device[0] == 0 ? 1 : 0;
+    } else if (c->pad_device[1] == c->pad_device[0]) {
+        c->pad_device[1] = -1;
+    }
     set_game_window(g);
 
     if (emu_mp_begin()) {
