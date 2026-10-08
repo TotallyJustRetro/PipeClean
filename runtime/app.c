@@ -243,8 +243,10 @@ static int ds_menu_select(float x, float y)
     float dx = x - 0.5f, dy = y - 0.5f;
     if (dx * dx + dy * dy < 0.12f * 0.12f) return -1;
     float a = atan2f(dy, dx);
-    int s = (int)floorf(((float)3.14159265358979323846f / 8.0f - a) /
-                         (float)(3.14159265358979323846f / 4.0f) + 0.5f) & 7;
+    float sector = (float)(2.0 * 3.14159265358979323846 / DS_MENU_COUNT);
+    int s = (int)floorf(((float)3.14159265358979323846f / 8.0f - a) / sector + 0.5f);
+    s %= DS_MENU_COUNT;
+    if (s < 0) s += DS_MENU_COUNT;
     return s;
 }
 
