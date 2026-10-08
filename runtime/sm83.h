@@ -62,7 +62,7 @@ static inline void alu_or(uint8_t v)  { cpu.a |= v; cpu.f = (cpu.a == 0 ? FZ : 0
 static inline void alu_cp(uint8_t v)
 {
     unsigned r = (unsigned)cpu.a - v;
-    cpu.f = FN | ((r & 0xFF) == 0 ? FZ : 0) | ((cpu.a & 0xF) < (v & 0xF) ? FH : 0) | (cpu.a < v ? FC : 0);
+    cpu.f = FN | ((r & 0xFF) == 0 ? FZ : 0) | ((cpu.a & 0xF) < (v & 0xF) ? FH : 0) | ((cpu.a < v) ? FC : 0);
 }
 static inline uint8_t alu_inc(uint8_t v)
 {
