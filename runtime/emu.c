@@ -73,6 +73,7 @@ static void publish(void)
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
     pub.obp0 = ppu_read(0x48); pub.obp1 = ppu_read(0x49); pub.sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     memcpy(pub.mario_oam, oam, sizeof pub.mario_oam);
+    memcpy(pub.bg_map, &vram[0x1800], sizeof pub.bg_map);
     pub.lcd_on = ppu_lcd_is_on();
     pub.seq++;
     SDL_UnlockMutex(fmx);
