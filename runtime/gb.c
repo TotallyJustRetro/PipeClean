@@ -20,6 +20,12 @@ static int serial_cycles;
 static void (*serial_cb)(uint8_t);
 /* joypad */
 static uint8_t joy_sel = 0x30, joy_buttons, joy_dpad;
+static void (*mp_instruction_hook)(uint8_t opcode, uint16_t pc_before, uint16_t pc_after);
+
+void gb_set_mp_instruction_hook(void (*fn)(uint8_t opcode, uint16_t pc_before, uint16_t pc_after))
+{
+    mp_instruction_hook = fn;
+}
 
 void gb_serial_hook(void (*fn)(uint8_t)) { serial_cb = fn; }
 
@@ -228,7 +234,11 @@ void cpu_lockup(uint8_t op, uint16_t pc)
 
 void cpu_step_checked(void)
 {
+    uint16_t pc_before = cpu.pc;
+    uint8_t opcode = rd8(cpu.pc);
     cpu_step();
+    if (mp_instruction_hook)
+        mp_instruction_hook(opcode, pc_before, cpu.pc);
     if (cpu_irq_check()) cpu_service_irq();
 }
 
