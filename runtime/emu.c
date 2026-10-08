@@ -477,7 +477,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             }
         }
         frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
-        }
 
         /*
          * Convert Luigi's local camera back to the authoritative Player 1
