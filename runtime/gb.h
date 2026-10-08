@@ -42,13 +42,19 @@ void cpu_service_irq(void);
 void cpu_lockup(uint8_t op, uint16_t pc) __attribute__((noreturn));
 void cpu_step(void);                    /* generated interpreter (interp.c) */
 void cpu_step_checked(void);            /* one instruction + interrupt check */
-void gb_set_mp_instruction_hook(void (*fn)(uint8_t opcode, uint16_t pc_before, uint16_t pc_after));
 void recomp_run(void);                  /* generated lifted code (game.c) */
 void recomp_miss(uint16_t pc);
 void run_interpreter(void);
 void gb_set_input(uint8_t buttons, uint8_t dpad);   /* bit set = pressed */
 void gb_dump_misses(const char *path);
 void gb_serial_hook(void (*fn)(uint8_t));
+
+/* Multiplayer can run through a complete VBlank ISR before yielding a frame.
+ * The watcher is armed when the VBlank interrupt is taken and fires after RETI. */
+extern volatile int gb_mp_vblank_watch;
+extern volatile uint16_t gb_mp_vblank_return_pc;
+void gb_mp_vblank_arm(void);
+void gb_mp_vblank_done(void);
 
 /* Reentrant-state support used by local multiplayer. */
 #define GB_STATE_BYTES (800000u)
