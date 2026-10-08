@@ -1065,7 +1065,7 @@ void launcher_event(const SDL_Event *e)
                 cap_kind = 0;
             }
         } else if (cap_kind == 2) {
-            int code = pad_capture(e);
+            int code = pad_capture(cap_kind == 2 ? c->pad_device[cap_slot] : -1, e);
             if (code >= 0) { c->pad[cap_btn][cap_slot] = code; cap_kind = 0; }
         } else if (cap_kind == 4) {
             int code = pad_capture(e);
