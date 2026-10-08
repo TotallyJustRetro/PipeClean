@@ -5,7 +5,6 @@
 #include "widescreen.h"
 #include "rom.h"
 #include "settings.h"
-#include "rom.h"
 #include "cart.h"
 #include "emu.h"
 #include "events.h"
@@ -113,11 +112,6 @@ int main(int argc, char **argv)
     memset(&st, 0, sizeof st);
     if (!crc_check || rom_identify_file(path) < 0) {
         if (rom_load_raw(path)) { fprintf(stderr, "Cannot load %s\n", path); return 1; }
-        if (widepct > 0) {
-            int g = rom_identify_file(path), l, r;
-            wide_dims(g, widepct, &l, &r);
-            if (g >= 0 && wide_install(g, l, r)) ppu_set_wide(l, r, games[g].hud_lines, games[g].hud_window, games[g].wide_gate); else fprintf(stderr, "widescreen not available\n");
-        }
         interp = 1;
     } else {
         int g = rom_identify_file(path);
@@ -126,6 +120,15 @@ int main(int argc, char **argv)
             if (rom_apply_hack(hack, &st)) { fprintf(stderr, "%s: %s\n", hack, st.msg); return 1; }
             fprintf(stderr, "%s\n", st.msg);
         }
+    }
+    if (widepct > 0) {
+        int g = rom_loaded_game(), l = 0, r = 0;
+        if (g < 0) g = rom_identify_file(path);
+        wide_dims(g, widepct, &l, &r);
+        if (g >= 0 && (l + r) > 0 && wide_install(g, l, r))
+            ppu_set_wide(l, r, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
+        else
+            fprintf(stderr, "widescreen not available\n");
     }
     if (emu_dev_init()) return 1;
     if (scan_mode) gb_watch_range(0xC000, 0xFFFE, dev_scan_cb);
