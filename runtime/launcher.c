@@ -564,56 +564,33 @@ static void sub_save_states(int g, float x, float y)
 static void sub_bindings(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
-    const float left_w = 392.0f;
-    const float right_x = x + 404.0f;
-    const float right_w = 404.0f;
+    card(x, y, 808, 476, "SAVE STATE BINDINGS");
 
-    card(x, y, left_w, 476, "GAME BOY CONTROLS");
-    ui_text_wrap(F_REG, 11, x + 14, y + 38, left_w - 28, C_DIM,
-                 "Per-game keyboard and controller bindings. Player 1 and Player 2 stay independent for SML1 multiplayer.", 2);
+    ui_text_wrap(F_REG, 12, x + 18, y + 40, 772, C_DIM,
+                 "These bindings are only for PipeClean's save-state controls. Game Boy button and controller bindings stay on the Controllers tab.", 2);
 
-    static const float colx[5] = {14, 84, 160, 236, 312};
-    ui_text(F_BOLD, 10, x + colx[0], y + 82, C_MUTED, "Button");
-    ui_text(F_BOLD, 10, x + colx[1] + 8, y + 82, C_MUTED, "Key");
-    ui_text(F_BOLD, 10, x + colx[2] + 8, y + 82, C_MUTED, "Key 2");
-    ui_text(F_BOLD, 10, x + colx[3] + 5, y + 82, C_MUTED, "P1");
-    ui_text(F_BOLD, 10, x + colx[4] + 5, y + 82, C_MUTED, "P2");
-
-    for (int b = 0; b < N_BTN; b++) {
-        float ry = y + 96 + b * 38;
-        if (b % 2 == 0) ui_rrect(x + 8, ry - 3, left_w - 16, 34, 7, RGBA(255,255,255,6));
-        ui_text(F_BOLD, 12, x + colx[0], ry + 5, C_TEXT, btn_names[b]);
-        bind_cell(g, x + colx[1], ry, 70, 1, b, 0);
-        bind_cell(g, x + colx[2], ry, 70, 1, b, 1);
-        bind_cell(g, x + colx[3], ry, 70, 2, b, 0);
-        bind_cell(g, x + colx[4], ry, 70, 2, b, 1);
-    }
-
-    card(right_x, y, right_w, 476, "EMULATOR SHORTCUTS");
-    ui_text_wrap(F_REG, 11, right_x + 14, y + 38, right_w - 28, C_DIM,
-                 "Save state, load state, rewind, suspend and state-slot shortcuts for this game.", 2);
-    ui_text(F_BOLD, 10, right_x + 14, y + 82, C_MUTED, "Action");
-    ui_text(F_BOLD, 10, right_x + 148, y + 82, C_MUTED, "Keyboard");
-    ui_text(F_BOLD, 10, right_x + 270, y + 82, C_MUTED, "Controller");
+    ui_text(F_BOLD, 11, x + 18, y + 82, C_MUTED, "ACTION");
+    ui_text(F_BOLD, 11, x + 288, y + 82, C_MUTED, "KEYBOARD");
+    ui_text(F_BOLD, 11, x + 510, y + 82, C_MUTED, "CONTROLLER");
 
     for (int a = 0; a < N_ACTION; a++) {
-        float ry = y + 96 + a * 48;
-        if (a % 2 == 0) ui_rrect(right_x + 8, ry - 3, right_w - 16, 42, 8, RGBA(255,255,255,6));
-        ui_text(F_BOLD, 11, right_x + 14, ry + 6, C_TEXT, action_names[a]);
-        bind_action_cell(g, right_x + 140, ry + 4, 112, 3, a);
-        bind_action_cell(g, right_x + 262, ry + 4, 124, 4, a);
+        float ry = y + 98 + a * 52;
+        if (a % 2 == 0) ui_rrect(x + 10, ry - 4, 788, 46, 8, RGBA(255,255,255,6));
+        ui_text(F_BOLD, 13, x + 18, ry + 7, C_TEXT, action_names[a]);
+        bind_action_cell(g, x + 270, ry + 3, 190, 3, a);
+        bind_action_cell(g, x + 490, ry + 3, 190, 4, a);
     }
 
-    ui_text_wrap(F_REG, 10, right_x + 14, y + 348, right_w - 28, C_DIM,
-                 "Rewind moves through the recent in-memory history. DualSense also exposes these actions from its touchpad menu.", 3);
-    if (ui_button(right_x + 14, y + 396, 180, 36, "Reset all bindings", B_NORMAL, 1)) {
-        controls_defaults(c);
+    ui_text_wrap(F_REG, 11, x + 18, y + 372, 772, C_DIM,
+                 "Save State stores the selected slot, Load State restores it, Rewind moves backward through recent history, Suspend saves and returns to the launcher, and Next State Slot changes the active slot.", 3);
+
+    label(x + 18, y + 430, "Current slot");
+    ui_text(F_BOLD, 13, x + 118, y + 430, HEX(ui_accent), "Change slots on Save States");
+
+    if (ui_button(x + 18, y + 452, 180, 36, "Reset state bindings", B_NORMAL, 1)) {
         shortcut_defaults(c);
-        controller_menu = -1;
-        launcher_toast("Bindings reset.");
+        launcher_toast("Save-state bindings reset.");
     }
-    ui_text_fit(F_REG, 10, right_x + 14, y + 444, right_w - 28, C_DIM,
-                "Backspace/Delete clears a binding. Esc cancels capture.");
 }
 static void sub_controls(int g, float x, float y)
 {

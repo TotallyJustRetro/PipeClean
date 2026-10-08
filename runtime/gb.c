@@ -319,7 +319,7 @@ int gb_state_load(const void *src, size_t n)
     memcpy(&s,p,sizeof s);
     if (s.magic != GB_STATE_MAGIC || s.version != GB_STATE_VERSION) return -1;
     size_t off = sizeof s;
-    if (s.ppu_n != ppu_state_size() || s.apu_n != apu_state_size() || s.cart_n != cart_state_size() || s.cart_n > sizeof s.cart_state || off + s.ppu_n + s.apu_n + s.cart_n > n) return -1;
+    if (s.ppu_n != ppu_state_size() || s.apu_n != apu_state_size() || s.cart_n != cart_state_size() || s.cart_n > sizeof s.cart_state || off + s.ppu_n + s.apu_n > n) return -1;
     cpu=s.cpu; io_if=s.io_if; io_ie=s.io_ie; total_cycles=s.total_cycles;
     memcpy(wram,s.wram,sizeof wram); memcpy(hram,s.hram,sizeof hram); memcpy(io_misc,s.io_misc,sizeof io_misc);
     div_counter=s.div_counter; tima=s.tima; tma=s.tma; tac=s.tac; sb=s.sb; sc=s.sc; serial_cycles=s.serial_cycles;

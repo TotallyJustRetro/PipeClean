@@ -66,6 +66,7 @@ static int state_file_exists(const char *path)
 
 static int thumb_pending_game = -1;
 static int thumb_pending_slot = -1;
+static int thumb_pending_delay = 0;
 
 static void state_thumb_path(int g, int slot, char *out, size_t n)
 {
@@ -79,11 +80,17 @@ static void queue_state_thumbnail(int g, int slot)
 {
     thumb_pending_game = g;
     thumb_pending_slot = slot;
+    /* The first rendered frame after saving can contain the save-state flash. */
+    thumb_pending_delay = 1;
 }
 
 static void capture_pending_state_thumbnail(void)
 {
     if (thumb_pending_game < 0 || thumb_pending_slot < 0 || !ren) return;
+    if (thumb_pending_delay > 0) {
+        thumb_pending_delay--;
+        return;
+    }
     int W, H;
     if (SDL_GetRendererOutputSize(ren, &W, &H) != 0 || W <= 0 || H <= 0) return;
 
@@ -109,6 +116,7 @@ static void capture_pending_state_thumbnail(void)
     SDL_FreeSurface(dst);
     thumb_pending_game = -1;
     thumb_pending_slot = -1;
+    thumb_pending_delay = 0;
 }
 
 static void state_path(int g, int slot, char *out, size_t n)
