@@ -39,75 +39,16 @@ static int sml2_right_extra;
 static int sml2_left_extra;
 static int sml2_scan_edge[2] = {-1, -1};
 static int sml2_scan_pick[2];
+static int sml2_scan_frame[2] = {-1, -1};
 
-typedef struct {
-    int x, y;
-    uint8_t tile, attr;
-} Sml2WideSprite;
-
-#define SML2_WIDE_SPRITES 256
-static Sml2WideSprite sml2_wide_sprites[SML2_WIDE_SPRITES];
-static int sml2_wide_sprite_count;
-static int sml2_emit_active;
-
-static int sml2_rom_byte(unsigned addr)
+static int sml2_read16(uint16_t a)
 {
-    if (!rom || addr < 0x4000u || addr >= 0x8000u) return 0xFF;
-    return rom[addr];
-}
-
-static int sml2_pc_is_emitter(uint16_t pc)
-{
-    /* V1.0 shared emitter taps: PC is already advanced past LD A,[$FFC5]. */
-    return pc == 0x52BA || pc == 0x5E5D || pc == 0x5D8B || pc == 0x5E3F;
-}
-
-static void sml2_capture_emitter(uint8_t sx)
-{
-    if (!sml2_pc_is_emitter(cpu.pc) || cart_hi != rom + 0x4000) return;
-
-    int sy = rd8(0xFFC4);
-    int idx = rd8(0xFFC6);
-    int pal = rd8(0xFFC7) != 0;
-
-    int xs = sx >= 0xD0 ? (int)sx - 256 : (int)sx;
-    int ys = sy >= 0xD0 ? (int)sy - 256 : (int)sy;
-    int ox = ppu_xoff + xs - 8;
-    int oy = ys - 16;
-
-    unsigned entry = 0x4000u + (unsigned)idx * 2u;
-    if (entry + 1 >= 0x8000u) return;
-    unsigned de = (unsigned)sml2_rom_byte(entry) |
-                  ((unsigned)sml2_rom_byte(entry + 1) << 8);
-    if (de < 0x4000u || de + 3 >= 0x8000u) return;
-
-    for (int n = 0; n < 64 && de + 3 < 0x8000u; n++, de += 4) {
-        uint8_t yraw = (uint8_t)sml2_rom_byte(de);
-        if (yraw == 0x80) break;
-        if (sml2_wide_sprite_count >= SML2_WIDE_SPRITES) break;
-
-        Sml2WideSprite *sp = &sml2_wide_sprites[sml2_wide_sprite_count++];
-        sp->y = oy + (int8_t)yraw;
-        sp->x = ox + (int8_t)sml2_rom_byte(de + 1);
-        sp->tile = (uint8_t)sml2_rom_byte(de + 2);
-        sp->attr = (uint8_t)sml2_rom_byte(de + 3);
-        if (pal) sp->attr |= 0x10;
-    }
-    sml2_emit_active = 1;
-}
-
-
-static int sml2_camera_x(void)
-{
-    /* SML2 stores camera X in HRAM $FFCA/$FFCB. Read the backing HRAM
-     * directly so the standalone widescreen regressions stay independent of
-     * the full CPU-memory API. */
-    return (int)hram[0x4A] | ((int)hram[0x4B] << 8);
+    return (int)rd8(a) | ((int)rd8((uint16_t)(a + 1)) << 8);
 }
 
 static int sml2_scan_value(int side)
 {
-    int cam = sml2_camera_x();
+    int cam = sml2_read16(0xFFCA);
     int vanilla = side == 0 ? cam + 112 : cam - 112;
     int target = side == 0 ? vanilla + sml2_right_extra : vanilla - sml2_left_extra;
     if (target < 0) target = 0;
@@ -124,6 +65,7 @@ static int sml2_scan_value(int side)
 
     sml2_scan_edge[side] = edge;
     sml2_scan_pick[side] = edge;
+    sml2_scan_frame[side] = frame_count;
     return edge;
 }
 
@@ -171,12 +113,8 @@ uint8_t wide_read_sml2(uint16_t address, uint8_t value)
         cpu.pc != (uint16_t)(lo_pc + 3))
         return value;
 
-    int edge;
-    if (address == 0xAF12 || address == 0xAF14) {
-        edge = sml2_scan_value(side);
-    } else {
-        edge = sml2_scan_pick[side];
-    }
+    int edge = sml2_scan_frame[side] == frame_count
+        ? sml2_scan_pick[side] : sml2_scan_value(side);
 
     return address == 0xAF12 || address == 0xAF14
         ? (uint8_t)(edge >> 8)
@@ -195,58 +133,6 @@ static unsigned sml2_hook_base(uint16_t pc)
     case 0x4040: return 0x0070u;
     case 0x4064: return 0x00A0u;
     default: return 0;
-    }
-}
-
-void wide_tap_sml2(uint16_t address, uint8_t value)
-{
-    if (address == 0xFFC5 && sml2_right_extra) sml2_capture_emitter(value);
-}
-
-void wide_sml2_begin_frame(void)
-{
-    sml2_wide_sprite_count = 0;
-    sml2_emit_active = 0;
-}
-
-void wide_sml2_compose_margins(void)
-{
-    if (!sml2_right_extra || !sml2_wide_sprite_count) return;
-
-    const int left = ppu_xoff;
-    const int native_right = left + GB_W;
-
-    for (int n = 0; n < sml2_wide_sprite_count; n++) {
-        const Sml2WideSprite *sp = &sml2_wide_sprites[n];
-        if (sp->x + 7 >= left && sp->x < native_right) continue;
-        if (sp->x + 7 < 0 || sp->x >= ppu_w) continue;
-
-        for (int py = 0; py < 8; py++) {
-            int y = sp->y + py;
-            if ((unsigned)y >= GB_H) continue;
-            int row = (sp->attr & 0x40) ? 7 - py : py;
-            int addr = (sp->tile * 16) + row * 2;
-            for (int px = 0; px < 8; px++) {
-                int x = sp->x + px;
-                if ((unsigned)x >= (unsigned)ppu_w) continue;
-                int bit = (sp->attr & 0x20) ? px : 7 - px;
-                int ci = (((vram[addr + 1] >> bit) & 1) << 1) |
-                         ((vram[addr] >> bit) & 1);
-                if (!ci) continue;
-                if ((sp->attr & 0x80) && ppu_shade[y][x] != 0) continue;
-
-                uint8_t pal = (sp->attr & 0x10) ? 2 : 1;
-                /* Use a raw shade index here; render_build maps it through the
-                 * configured PipeClean palette exactly like normal sprites. */
-                (void)pal;
-                ppu_shade[y][x] = ci;
-                ppu_layer[y][x] = pal;
-                ppu_sprtile[y][x] = (uint16_t)(addr >> 4);
-                ppu_spruv[y][x] = (uint8_t)((row << 3) | (7 - bit) |
-                    ((sp->attr & 0x20) ? 0x40 : 0) |
-                    ((sp->attr & 0x40) ? 0x80 : 0));
-            }
-        }
     }
 }
 
@@ -281,6 +167,7 @@ int wide_install(int game, int l, int r)
     sml2_left_extra = 0;
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
+    sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
     if (l + r == 0) return 1;
     if (game == GAME_SML2) {
         /* SML2's entity activation code lives in bank 2.  Its horizontal
