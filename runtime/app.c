@@ -572,7 +572,7 @@ static int play_multiplayer_sml1(int g)
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
                 emu_set_turbo(0);
-            } else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action) {
+            } else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action && pad_is_selected_instance(g, e.cbutton.which)) {
                 quit = 1;
             }
         }
@@ -752,7 +752,7 @@ static int play(int g)
                 case SDLK_F12: shot = 1; break;
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) { emu_set_turbo(0); }
-            else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action) quit = 1;
+            else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action && pad_is_selected_instance(g, e.cbutton.which)) quit = 1;
         }
         if (load_state_request_app[g]) {
             load_state_request_app[g] = 0;
