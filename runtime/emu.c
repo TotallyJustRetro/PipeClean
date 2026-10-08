@@ -92,6 +92,7 @@ typedef struct {
     uint8_t mario_oam[16];   /* C00C-C01B: Mario's last rendered four OAM entries */
     uint8_t invincibility;   /* C0D3 */
     uint8_t superball_ttl;   /* C0A9 */
+    uint8_t projectile_status[3]; /* FFA9-FFAB: active Superball projectile state */
     uint8_t death_y;         /* C0DD */
     uint8_t super_status;    /* FF99 */
     uint8_t superball;       /* FFB5 */
