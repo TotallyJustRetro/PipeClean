@@ -89,8 +89,19 @@ static int play_multiplayer_sml1(int g)
     apu_set_volume(settings.volume / 100.0f);
     audio_game_begin();
 
-    Frame f = {0}, p2f = {0};
+    Frame *f = (Frame *)calloc(1, sizeof *f);
+    Frame *p2f = (Frame *)calloc(1, sizeof *p2f);
     int16_t a0[4096 * 2], a1[4096 * 2], mix[4096 * 2];
+    if (!f || !p2f) {
+        free(f);
+        free(p2f);
+        audio_game_end();
+        emu_mp_end();
+        tex_collect_save();
+        pad_set_context(g, 0);
+        launcher_toast("Not enough memory for SML1 multiplayer.");
+        return 0;
+    }
     int quit = 0, paused = 0, have = 0, shot = 0;
     uint8_t b0 = 0, d0 = 0, b1 = 0, d1 = 0;
     Uint64 last = SDL_GetPerformanceCounter();
@@ -123,17 +134,17 @@ static int play_multiplayer_sml1(int g)
             pad_poll_player(g, 0, &b0, &d0);
             pad_poll_player(g, 1, &b1, &d1);
 
-            int n0 = emu_mp_step(0, b0, d0, &f, a0, 4096);
+            int n0 = emu_mp_step(0, b0, d0, f, a0, 4096);
             if (n0 < 0) {
                 quit = 1;
             } else {
-                int n1 = emu_mp_step(1, b1, d1, &p2f, a1, 4096);
+                int n1 = emu_mp_step(1, b1, d1, p2f, a1, 4096);
                 if (n1 < 0) {
                     quit = 1;
                 } else {
                     have = 1;
-                    memcpy(f.mario_oam, p2f.mario_oam, sizeof f.mario_oam);
-                    if (f.game_state == 0) render_overlay_sml1_mario(&f, 0, 0);
+                    memcpy(f->mario_oam, p2f->mario_oam, sizeof f->mario_oam);
+                    if (f->game_state == 0) render_overlay_sml1_mario(f, 0, 0);
 
                     int n = n0 > n1 ? n0 : n1;
                     if (n > 4096) n = 4096;
@@ -164,7 +175,7 @@ static int play_multiplayer_sml1(int g)
         bg_update(dt);
 
         if (have) {
-            render_build(&f, g, 1);
+            render_build(f, g, 1);
             SDL_Rect r;
             render_fit(W, H, c->aspect, c->scaling, &r);
             render_draw(&r, c->scaling);
@@ -199,6 +210,8 @@ static int play_multiplayer_sml1(int g)
     audio_game_end();
     emu_mp_end();
     tex_collect_save();
+    free(f);
+    free(p2f);
     pad_set_context(g, 0);
     SDL_SetWindowFullscreen(win, 0);
     SDL_SetWindowSize(win, win_w, win_h);
