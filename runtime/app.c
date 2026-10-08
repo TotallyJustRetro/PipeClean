@@ -279,7 +279,7 @@ static void ds_menu_draw(int g)
     snprintf(slot, sizeof slot, "State Slot %d", settings.g[g].state_slot + 1);
     ui_text_c(F_REG, 12, cx, cy - 162, C_MUTED, slot);
     for (int i = 0; i < DS_MENU_COUNT; i++) {
-        float a = -((float)M_PI * 2.0f * i / DS_MENU_COUNT) + (float)M_PI / 8.0f;
+        float a = -(3.14159265358979323846f * 2.0f * i / DS_MENU_COUNT) + 3.14159265358979323846f / 8.0f;
         float x = cx + cosf(a) * 180.0f, y = cy + sinf(a) * 140.0f;
         int hot = i == ds_menu.selected;
         ui_rrect(x - 68, y - 27, 136, 54, 12, hot ? mixc(C_BTN_H, HEX(ui_accent), 0.28f) : C_BTN);
