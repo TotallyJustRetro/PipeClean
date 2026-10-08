@@ -59,6 +59,8 @@ int pad_is_edge(int i)
     return SDL_GameControllerGetVendor(pads[i].gc) == 0x054C && SDL_GameControllerGetProduct(pads[i].gc) == 0x0DF2;
 }
 
+static int pad_instance_device(SDL_JoystickID which);
+
 int pad_is_dualsense_instance(SDL_JoystickID which)
 {
     for (int i = 0; i < n_pads; i++) {
@@ -174,8 +176,6 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
     if ((*d & 12) == 12) *d &= (uint8_t)~12;
 }
 
-
-static int pad_instance_device(SDL_JoystickID which);
 
 int pad_is_selected_dualsense_instance(int game, SDL_JoystickID which)
 {
