@@ -11,6 +11,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install SDL2 development package
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+
       - name: Build SML2 widescreen regression test
         run: |
           gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_sml2_wide.c runtime/widescreen.c             -o test_sml2_wide
@@ -21,3 +24,14 @@ jobs:
       - name: Validate Python tools
         run: |
           python3 -m py_compile             tools/recomp.py             tools/sm83.py             tools/dis.py             tools/discover.py             tools/make_font.py
+
+      - name: Configure full runtime with synthetic 512 KiB ROM
+        run: |
+          mkdir -p ci build-ci
+          truncate -s 524288 ci/smoke_512k.gb
+          cmake -S . -B build-ci -DROM="$GITHUB_WORKSPACE/ci/smoke_512k.gb"
+
+      - name: Build full runtime and test target
+        run: |
+          cmake --build build-ci --target gb test_sml2_wide --parallel 2
+          ctest --test-dir build-ci --output-on-failure
