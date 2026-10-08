@@ -68,7 +68,7 @@ The hook is tightly guarded and does not modify the commercial ROM file.
 
 ## 🪟 Windows build
 
-GitHub Actions produces a Windows x64 test build artifact from the same source tree. The ZIP contains the PipeClean executable, the runtime DLL dependencies required by the CI build, and the project documentation.
+GitHub Actions produces a Windows x64 test build artifact from the same source tree. The ZIP contains the PipeClean executable, its runtime DLL dependencies, the PipeClean icon/assets, and the project documentation.
 
 The artifact is built and smoke-tested against a synthetic test cartridge. No commercial ROM is included. To run a real game, supply a ROM you are legally permitted to use.
 
