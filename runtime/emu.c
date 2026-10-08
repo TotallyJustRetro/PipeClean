@@ -127,6 +127,8 @@ static uint8_t mp_vblank_floaty_control;
 static uint8_t mp_vblank_floaty_x;
 static uint8_t mp_vblank_floaty_y;
 static uint8_t mp_pending_block;
+static uint16_t mp_pending_block_idx;
+static uint8_t mp_p2_jump_before;
 static int mp_vblank_waiting;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
@@ -322,6 +324,7 @@ static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
                                        uint8_t before, uint8_t after,
                                        uint8_t p2_scroll, uint8_t p1_scroll)
 {
+    (void)before;
     if (addr < 0x9800 || addr >= 0x9C00) return 0;
 
     int p2idx = (int)addr - 0x9800;
@@ -333,16 +336,29 @@ static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
 
     switch (event) {
     case 0x01:
+        /* A real breakable block is destroyed immediately. */
         vram[0x1800 + p1idx] = after;
         return 1;
     case 0x02:
+        /*
+         * This is the start of the normal SML1 bump animation. The game's
+         * VBlank handler temporarily hides the block while the item emerges,
+         * but the shared world must NOT permanently import that blank tile.
+         */
         mp_pending_block = 1;
-        vram[0x1800 + p1idx] = after;
-        return 1;
+        mp_pending_block_idx = (uint16_t)p1idx;
+        return 0;
     case 0x04:
+        /*
+         * The animation has finished. SML1 has now decided whether this is
+         * the normal block again or the spent/mystery block, so import exactly
+         * the final tile produced by the original game.
+         */
         if (!mp_pending_block) return 0;
-        vram[0x1800 + p1idx] = after;
+        if (mp_pending_block_idx < 0x400)
+            vram[0x1800 + mp_pending_block_idx] = after;
         mp_pending_block = 0;
+        mp_pending_block_idx = 0;
         return 1;
     default:
         return 0;
@@ -419,6 +435,8 @@ int emu_mp_begin(void)
     mp_vblank_floaty_x = 0;
     mp_vblank_floaty_y = 0;
     mp_pending_block = 0;
+    mp_pending_block_idx = 0;
+    mp_p2_jump_before = 0;
     mp_vblank_waiting = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
     gb_mp_vblank_watch = 0;
@@ -456,6 +474,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         mp_capture_shared_world_before();
         mp_player_load(&mp_p2_state);
+        mp_p2_jump_before = rd8(0xC207);
         uint8_t p2_floaty_before = rd8(0xFFED);
 
         /* A death sequence and hurt timer are part of SML1's actual state
@@ -507,6 +526,33 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int enemy_merged = 0;
         int enemy_sound_event = 0;
         int p2_stomp_event = (p2_square_sfx == 0x03);
+        int p2_jump_event = (mp_p2_jump_before == 0 && rd8(0xC207) != 0);
+
+        /*
+         * A stomp sound belongs to one collision, not every enemy whose AI
+         * happened to change state during this isolated frame. First collect
+         * explicit death-state transitions. If this particular enemy uses a
+         * less-common transition, use the nearest changed enemy to Luigi as the
+         * stomp target.
+         */
+        int stomp_target = -1;
+        if (p2_stomp_event) {
+            int px = rd8(0xC202);
+            int best = 9999;
+            for (int slot = 0; slot < 10; slot++) {
+                uint8_t bt = mp_enemy_before[slot * 0x10];
+                uint8_t at = mp_enemy_after[slot * 0x10];
+                if (bt == 0xFF || bt == at || mp_is_pickup(bt) || mp_is_pickup(at))
+                    continue;
+                int ex = mp_enemy_after[slot * 0x10 + 3];
+                int d = abs(ex - px);
+                if (d < best) {
+                    best = d;
+                    stomp_target = slot;
+                }
+            }
+        }
+
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
         for (int slot = 0; slot < 10; slot++) {
             uint8_t before_type = mp_enemy_before[slot * 0x10];
@@ -515,7 +561,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             int enemy_death = type_changed &&
                               (mp_is_enemy_stomped(after_type) ||
                                after_type == 0xFF ||
-                               p2_stomp_event);
+                               slot == stomp_target);
             int pickup_consumed = mp_is_pickup(before_type) && before_type != after_type;
             int pickup_spawned = before_type == 0xFF && mp_is_pickup(after_type);
             if (enemy_death || pickup_consumed || pickup_spawned) {
@@ -547,7 +593,25 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_p2_state.game_state = p2_game_state;
         memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
 
+        uint8_t p2_super_status_after = mp_p2_state.super_status;
+        uint8_t p2_superball_after = mp_p2_state.superball;
+        uint8_t p2_superball_ttl_after = mp_p2_state.superball_ttl;
+        uint8_t p2_timer_after = mp_p2_state.timer;
+
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+
+        /*
+         * Restore only Luigi's player-specific power-up state after returning
+         * to the authoritative world. The original SML1 code uses hSuperStatus
+         * 1 for Super Mario and 2 for the fully powered-up/fire-capable state;
+         * losing that byte here is what prevented Luigi from progressing from
+         * mushroom to flower.
+         */
+        wr8(0xFF99, p2_super_status_after);
+        wr8(0xFFB5, p2_superball_after);
+        wr8(0xC0A9, p2_superball_ttl_after);
+        if (p2_timer_after > rd8(0xFFA6))
+            wr8(0xFFA6, p2_timer_after);
 
         /*
          * Transfer Luigi's newly generated SML1 sound requests to the
@@ -562,6 +626,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                 wr8(0xDFE0, 0x03); /* SFX_STOMP */
             else if (p1_square_sfx_before == 0 && p2_square_sfx)
                 wr8(0xDFE0, p2_square_sfx);
+            else if (p2_jump_event)
+                wr8(0xDFE0, 0x07); /* SML1 movement/jump bump SFX */
         }
 
         int p2_block_hit = (mp_vblank_collision == 0x01 ||
@@ -583,6 +649,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             wr8(0xFFEB, p2_floaty_x);
             wr8(0xFFEC, p2_floaty_y);
             wr8(0xFFED, p2_floaty_control);
+        } else if (enemy_sound_event && rd8(0xFFED) == 0) {
+            /* A stomp always awards an original SML1 floaty; this fallback is
+             * only used if the transient FFED write was consumed during the
+             * cloned frame. */
+            wr8(0xFFEB, rd8(0xC202));
+            wr8(0xFFEC, (uint8_t)(rd8(0xC201) - 8));
+            wr8(0xFFED, 0x01); /* first stomp = 100 points */
         }
 
         /*
@@ -607,7 +680,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                 p2_scroll_after,
                 p1_scroll);
 
-            if (!block_hit)
+            if (mp_vblank_collision != 0x01 &&
+                mp_vblank_collision != 0x02 &&
+                mp_vblank_collision != 0x04)
                 tile_changed |= mp_merge_tilemap_local_edits(dx == 0);
 
             if (mp_vblank_collision == 0xC0 &&
