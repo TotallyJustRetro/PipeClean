@@ -485,6 +485,7 @@ static void sml1_draw_coop_hud(const Frame *f)
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer_sml1(int g)
 {
+    ds_menu_close();
     GameCfg *c = &settings.g[g];
     char sp[1200];
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
@@ -701,6 +702,7 @@ static int play_multiplayer_sml1(int g)
 /* returns 0 = back to launcher, 1 = quit */
 static int play(int g)
 {
+    ds_menu_close();
     char err[256];
     GameCfg *c = &settings.g[g];
     load_state_request_app[g] = 0;
