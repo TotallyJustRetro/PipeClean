@@ -765,11 +765,22 @@ static int play(int g)
         int now_rewind = app_rewind_held(g) && !paused;
         if (now_rewind) {
             if (!rewind_held) {
-                if (emu_rewind_available()) { rewind_held = 1; render_reset(); }
-                else game_notice("Rewind buffer is not ready yet.");
+                if (emu_rewind_available()) {
+                    rewind_held = 1;
+                    render_reset();
+                } else {
+                    game_notice("Rewind buffer is not ready yet.");
+                }
+            }
+            if (rewind_held && emu_rewind_step() != 0) {
+                game_notice("Rewind buffer is exhausted.");
+                emu_rewind_end();
+                render_reset();
+                rewind_held = 0;
             }
         } else if (rewind_held) {
             emu_rewind_end();
+            render_reset();
             rewind_held = 0;
         }
         uint8_t b, d;
