@@ -176,16 +176,16 @@ static void cpu_filters(const FilterCfg *f, int live, int N)
     free(c);
 }
 
-void render_overlay_sml1_mario(Frame *f, int dx, int dy)
+static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], int dx, int dy)
 {
-    if (!f || !f->lcd_on || f->w <= 0) return;
+    if (!f || !src_oam || !f->lcd_on || f->w <= 0) return;
 
     int L = f->xoff, W = f->w;
     int h = f->sprite_size16 ? 16 : 8;
     int sprite_neg = L > 8 ? 256 - (L - 8) : 256;
 
     for (int i = 0; i < 4; i++) {
-        const uint8_t *src = &f->mario_oam[i * 4];
+        const uint8_t *src = &src_oam[i * 4];
         if (!src[0]) continue;
 
         int oy = src[0] + dy, ox = src[1] + dx;
@@ -215,6 +215,17 @@ void render_overlay_sml1_mario(Frame *f, int dx, int dy)
             }
         }
     }
+}
+
+void render_overlay_sml1_mario(Frame *f, int dx, int dy)
+{
+    if (!f) return;
+    render_overlay_sml1_mario_src(f, f->mario_oam, dx, dy);
+}
+
+void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
+{
+    render_overlay_sml1_mario_src(f, oam, dx, dy);
 }
 
 void render_build(const Frame *f, int game, int live)
