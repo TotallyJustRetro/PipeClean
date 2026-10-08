@@ -47,6 +47,17 @@ int main(void)
     if (wide_intercept_sml2(0x19)) return 8;
     if (HL() != 0x0100) return 9;
 
+    /* The same CPU opcode must not be intercepted while another bank is mapped. */
+    cart_hi = rom + 0xC000;
+    cpu.pc = 0x401C;
+    cpu.h = 1;
+    cpu.l = 0;
+    cpu.d = 0;
+    cpu.e = 0x60;
+    total_cycles = 0;
+    if (wide_intercept_sml2(0x19)) return 10;
+    if (HL() != 0x0100 || total_cycles != 0) return 11;
+
     free(rom);
     puts("SML2 widescreen hook: PASS");
     return 0;
