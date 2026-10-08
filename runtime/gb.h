@@ -42,6 +42,7 @@ void cpu_service_irq(void);
 void cpu_lockup(uint8_t op, uint16_t pc) __attribute__((noreturn));
 void cpu_step(void);                    /* generated interpreter (interp.c) */
 void cpu_step_checked(void);            /* one instruction + interrupt check */
+void gb_set_mp_instruction_hook(void (*fn)(uint8_t opcode, uint16_t pc_before, uint16_t pc_after));
 void recomp_run(void);                  /* generated lifted code (game.c) */
 void recomp_miss(uint16_t pc);
 void run_interpreter(void);
