@@ -8,7 +8,7 @@ uint8_t io_if, io_ie;
 uint64_t total_cycles;
 
 static uint8_t wram[0x2000];
-static uint8_t hram[0x80];
+uint8_t hram[0x80];
 static uint8_t io_misc[0x80];
 
 /* timer */
