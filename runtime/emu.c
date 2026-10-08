@@ -142,6 +142,46 @@ static int mp_scroll_delta(uint8_t now, uint8_t old)
     return d;
 }
 
+typedef struct {
+    uint8_t enemies[0x90]; /* SML1's D100-D18F active enemy/object slots. */
+    uint8_t score[3];      /* C0A0-C0A2. */
+    uint8_t lives_earned;  /* C0A3. */
+    uint8_t coins;         /* FFFA. */
+} MpSharedProbe;
+
+static void mp_shared_probe_capture(MpSharedProbe *p)
+{
+    if (!p) return;
+    for (int i = 0; i < 0x90; i++) p->enemies[i] = rd8((uint16_t)(0xD100 + i));
+    for (int i = 0; i < 3; i++) p->score[i] = rd8((uint16_t)(0xC0A0 + i));
+    p->lives_earned = rd8(0xC0A3);
+    p->coins = rd8(0xFFFA);
+}
+
+static void mp_shared_probe_merge(const MpSharedProbe *before, const MpSharedProbe *after)
+{
+    if (!before || !after) return;
+    /*
+     * The Player 2 pass runs a control simulation with no input, then an
+     * identical simulation with the real P2 input. Only differences between
+     * those two passes are candidates for P2-caused world events. This avoids
+     * copying the whole second frame's enemy simulation and advancing the
+     * shared world twice.
+     */
+    for (int i = 0; i < 0x90; i++) {
+        if (after->enemies[i] != before->enemies[i])
+            wr8((uint16_t)(0xD100 + i), after->enemies[i]);
+    }
+    for (int i = 0; i < 3; i++) {
+        if (after->score[i] != before->score[i])
+            wr8((uint16_t)(0xC0A0 + i), after->score[i]);
+    }
+    if (after->lives_earned != before->lives_earned)
+        wr8(0xC0A3, after->lives_earned);
+    if (after->coins != before->coins)
+        wr8(0xFFFA, after->coins);
+}
+
 static void mp_capture_frame(Frame *f, int screen_dx)
 {
     memcpy(f->shade, ppu_shade, sizeof f->shade);
@@ -194,9 +234,61 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
     if (player == 1) {
+        /*
+         * Run a neutral P2 control frame first. The world progresses exactly
+         * once in this control pass, so comparing it with the real-input pass
+         * lets us identify changes caused by P2 instead of copying normal enemy
+         * AI/timer advancement into the authoritative Player 1 world.
+         */
+        uint8_t p2_start_state[GB_STATE_BYTES];
+        MpSharedProbe control = {0}, actual = {0};
+        Frame control_frame = {0};
+
+        if (gb_state_save(p2_start_state, GB_STATE_BYTES)) return -1;
+
+        mp_player_load(&mp_p2_state);
+        mp_buttons = 0; mp_dpad = 0;
+        gb_set_input(0, 0);
+        mp_frame_out = &control_frame; mp_audio_out = NULL; mp_audio_max = 0; mp_audio_n = 0;
+        mp_active = 1;
+        if (setjmp(stop_jmp) == 0) run_core(0);
+        mp_active = 0;
+        mp_shared_probe_capture(&control);
+
+        if (gb_state_load(p2_start_state, GB_STATE_BYTES)) return -1;
+
         uint8_t p1_scroll = rd8(0xFFA4);
         mp_player_load(&mp_p2_state);
         mp_buttons = buttons; mp_dpad = dpad;
+        /* Input must be installed before the SML1 frame starts. */
+        gb_set_input(mp_buttons, mp_dpad);
+        mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
+        mp_active = 1;
+        if (setjmp(stop_jmp) == 0) run_core(0);
+        mp_active = 0;
+        mp_shared_probe_capture(&actual);
+
+        /* P2 may have moved SML1's camera while trying to stay centered.
+         * Convert its screen X/OAM back into Player 1's camera coordinates. */
+        int dx = mp_scroll_delta(rd8(0xFFA4), p1_scroll);
+        if (dx) {
+            uint8_t x = rd8(0xC202);
+            wr8(0xC202, (uint8_t)(x + dx));
+        }
+        mp_capture_frame(frame, dx);
+        mp_player_save(&mp_p2_state);
+
+        /*
+         * Restore the authoritative P1 world, then apply only the interaction
+         * deltas that the real P2 input produced relative to the neutral probe.
+         */
+        if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+        mp_shared_probe_merge(&control, &actual);
+        if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+        return mp_audio_n;
+    }
+
+    mp_buttons = buttons; mp_dpad = dpad;
         /* Input must be installed before the SML1 frame starts. */
         gb_set_input(mp_buttons, mp_dpad);
         mp_frame_out = frame; mp_audio_out = audio; mp_audio_max = audio_max; mp_audio_n = 0;
