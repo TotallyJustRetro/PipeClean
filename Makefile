@@ -1,0 +1,31 @@
+ROM ?= roms/game.gb
+GEN ?= generated
+BUILD ?= build
+CC ?= cc
+CFLAGS ?= -O2 -Wall
+PYTHON ?= python3
+ROOTS ?= $(GEN)/roots.txt
+RECOMP_ARGS ?=
+SDL_CFLAGS ?= $(shell sdl2-config --cflags 2>/dev/null)
+SDL_LIBS ?= $(shell sdl2-config --libs 2>/dev/null)
+ifneq ($(strip $(SDL_LIBS)),)
+  DEFS += -DUSE_SDL
+endif
+RT_SRC := $(wildcard runtime/*.c)
+GEN_SRC := $(GEN)/game.c $(GEN)/interp.c
+all: $(BUILD)/gb
+$(GEN)/game.c $(GEN)/interp.c $(GEN)/game_info.h: $(ROM) tools/recomp.py tools/sm83.py $(wildcard $(ROOTS))
+	@bytes=$$(wc -c < "$(ROM)"); 	if [ $$bytes -gt 32768 ]; then 	  echo "$(ROM): banked ROM ($$bytes bytes), generating interpreter-only build"; 	  $(PYTHON) tools/recomp.py $(ROM) -o $(GEN) --listing --interp-only $(if $(wildcard $(ROOTS)),--roots $(ROOTS),) $(RECOMP_ARGS); 	else 	  $(PYTHON) tools/recomp.py $(ROM) -o $(GEN) --listing $(if $(wildcard $(ROOTS)),--roots $(ROOTS),) $(RECOMP_ARGS); 	fi
+$(BUILD)/gb: $(RT_SRC) $(wildcard runtime/*.h) $(GEN_SRC) $(GEN)/game_info.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) $(DEFS) $(SDL_CFLAGS) -Iruntime -I$(GEN) $(RT_SRC) $(GEN_SRC) -o $@ $(SDL_LIBS) -lm $(EXTRA_LIBS)
+run: $(BUILD)/gb
+	$(BUILD)/gb $(ROM)
+discover:
+	$(PYTHON) tools/discover.py $(ROM) --gen $(GEN) --build "$(MAKE) ROM=$(ROM) GEN=$(GEN) BUILD=$(BUILD)"
+clean:
+	rm -rf $(BUILD) $(GEN)
+test-sml2-wide:
+	$(CC) $(CFLAGS) -Iruntime tests/test_sml2_wide.c runtime/widescreen.c -o /tmp/test_sml2_wide
+	/tmp/test_sml2_wide
+.PHONY: all run discover clean test-sml2-wide
