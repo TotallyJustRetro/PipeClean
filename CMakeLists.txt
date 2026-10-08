@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(gb_recomp C)
+project(PipeClean C)
 
 # cmake -S . -B build -DROM=path/to/game.gb && cmake --build build
 set(ROM "" CACHE FILEPATH "ROM to load/recompile")
@@ -34,18 +34,30 @@ add_custom_command(
 )
 
 file(GLOB RT CONFIGURE_DEPENDS runtime/*.c)
-add_executable(gb ${RT} ${GEN}/game.c ${GEN}/interp.c)
-target_include_directories(gb PRIVATE runtime ${GEN})
-target_compile_definitions(gb PRIVATE USE_SDL)
+if(WIN32)
+  set(PIPECLEAN_ICON_RC ${CMAKE_SOURCE_DIR}/assets/pipeclean.rc)
+endif()
+
+add_executable(PipeClean ${RT} ${GEN}/game.c ${GEN}/interp.c ${PIPECLEAN_ICON_RC})
+target_include_directories(PipeClean PRIVATE runtime ${GEN})
+target_compile_definitions(PipeClean PRIVATE USE_SDL)
 # runtime/main.c intentionally defines SDL_MAIN_HANDLED, so PipeClean owns
 # the normal C entry point and does not link SDL2main on Windows.
-target_link_libraries(gb PRIVATE SDL2::SDL2)
+target_link_libraries(PipeClean PRIVATE SDL2::SDL2)
 if(NOT WIN32)
-  target_link_libraries(gb PRIVATE m)
+  target_link_libraries(PipeClean PRIVATE m)
 endif()
 if(WIN32)
-  target_link_libraries(gb PRIVATE shell32 ole32 comdlg32 uuid)
+  target_link_libraries(PipeClean PRIVATE shell32 ole32 comdlg32 uuid)
 endif()
+
+add_custom_target(pipeclean_assets ALL
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/assets
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${CMAKE_SOURCE_DIR}/assets/pipeclean-icon.bmp
+          ${CMAKE_BINARY_DIR}/assets/pipeclean-icon.bmp
+)
+add_dependencies(PipeClean pipeclean_assets)
 
 # Small hardware-independent regression tests.
 enable_testing()
