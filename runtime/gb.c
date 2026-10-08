@@ -292,7 +292,7 @@ size_t gb_state_data_size(void) { return sizeof(CoreState) + ppu_state_size() + 
 
 int gb_state_save(void *dst, size_t n)
 {
-    if (!dst || n < GB_STATE_BYTES) return -1;
+    if (!dst || n < gb_state_data_size()) return -1;
     uint8_t *p = (uint8_t *)dst;
     CoreState s;
     memset(&s, 0, sizeof s);
