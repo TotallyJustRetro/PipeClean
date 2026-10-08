@@ -7,7 +7,6 @@
 uint8_t vram[0x2000], oam[0xA0];
 uint8_t ppu_shade[GB_H][GB_WMAX];
 uint8_t ppu_layer[GB_H][GB_WMAX];
-uint8_t ppu_bgci[GB_H][GB_WMAX];
 uint16_t ppu_bgtile[GB_H][GB_WMAX], ppu_sprtile[GB_H][GB_WMAX];   /* tile number 0..383, 0xFFFF = none */
 uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
@@ -21,7 +20,7 @@ void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
     hud_lines = (l + r) ? hud : 0; hud_shift = (r - l) / 2;
     win_centre = (l + r) ? centre_win : 0;
     cfg_hud = hud_lines; cfg_win = win_centre; wide_gate = gate; wide_on = 1;
-    sprite_neg = gate == 0 ? 256 : (l > 8 ? 256 - (l - 8) : 256); /* SML2 uses explicit wide sprite capture; do not wrap OAM X */
+    sprite_neg = l > 8 ? 256 - (l - 8) : 256;       /* OAM X bytes this high are sprites left of the screen */
 }       /* (v << 3) | u inside the tile as stored (before flips) */
 
 static uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
@@ -35,7 +34,6 @@ void ppu_reset(void)
     memset(oam, 0, sizeof oam);
     memset(ppu_shade, 0, sizeof ppu_shade);
     memset(ppu_layer, 0, sizeof ppu_layer);
-    memset(ppu_bgci, 0, sizeof ppu_bgci);
     memset(ppu_bgtile, 0xFF, sizeof ppu_bgtile); memset(ppu_sprtile, 0xFF, sizeof ppu_sprtile);
     lcdc = 0x91; stat_sel = 0; scy = scx = lyc = 0;
     bgp = 0xFC; obp0 = obp1 = 0xFF; wy = wx = 0;
@@ -49,12 +47,6 @@ static void update_stat(void)
                ((stat_sel & 0x20) && mode == 2) || ((stat_sel & 0x40) && ly == lyc);
     if (line && !stat_line) io_if |= 0x02;
     stat_line = line;
-}
-
-uint8_t ppu_sprite_shade(uint8_t ci, uint8_t attr)
-{
-    uint8_t pal = (attr & 0x10) ? obp1 : obp0;
-    return (uint8_t)((pal >> (ci * 2)) & 3);
 }
 
 uint8_t ppu_read(uint8_t r)
@@ -131,7 +123,6 @@ static void render_line(int y)
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
     uint8_t *out = ppu_shade[y];
     memset(ppu_layer[y], 0, W);
-    memset(ppu_bgci[y], 0, W);
     memset(ppu_bgtile[y], 0xFF, W * 2);
     memset(ppu_sprtile[y], 0xFF, W * 2);
     uint8_t bgci[GB_WMAX];                      /* BG/window colour index, for sprite priority */
@@ -149,7 +140,6 @@ static void render_line(int y)
             int bit = 7 - (px & 7);
             int ci = (((vram[addr + 1] >> bit) & 1) << 1) | ((vram[addr] >> bit) & 1);
             bgci[X] = (uint8_t)ci;
-            ppu_bgci[y][X] = (uint8_t)ci;
             out[X] = (bgp >> (ci * 2)) & 3;
             ppu_bgtile[y][X] = (uint16_t)(addr >> 4);
             ppu_bguv[y][X] = (uint8_t)(((sy & 7) << 3) | (px & 7));
@@ -169,7 +159,6 @@ static void render_line(int y)
             int bit = 7 - (px & 7);
             int ci = (((vram[addr + 1] >> bit) & 1) << 1) | ((vram[addr] >> bit) & 1);
             bgci[X] = (uint8_t)ci;
-            ppu_bgci[y][X] = (uint8_t)ci;
             out[X] = (bgp >> (ci * 2)) & 3;
             ppu_bgtile[y][X] = (uint16_t)(addr >> 4);
             ppu_bguv[y][X] = (uint8_t)(((wlc & 7) << 3) | (px & 7));
