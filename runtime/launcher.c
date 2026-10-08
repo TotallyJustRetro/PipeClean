@@ -441,9 +441,6 @@ static void sub_controls(int g, float x, float y)
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "BUTTON LAYOUT");
 
-    controller_dropdown(g, 0, x + 18, y + 34, 374);
-    controller_dropdown(g, 1, x + 414, y + 34, 374);
-
     static const float colx[5] = {18, 150, 310, 470, 630};
     ui_text(F_BOLD, 12, x + colx[0], y + 78, C_MUTED, "Game Boy button");
     ui_text(F_BOLD, 12, x + colx[1] + 10, y + 78, C_MUTED, "Keyboard");
@@ -468,6 +465,13 @@ static void sub_controls(int g, float x, float y)
     pad_status(st, sizeof st);
     ui_text_fit(F_REG, 12, x + 18, by + 46, 770, C_DIM, st);
     ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. Choose a device above; Player 2 can use a different controller.");
+
+    /*
+     * Draw the controller menus last so their popups sit above the binding
+     * grid and cannot be visually covered by the controls underneath.
+     */
+    controller_dropdown(g, 0, x + 18, y + 34, 374);
+    controller_dropdown(g, 1, x + 414, y + 34, 374);
 }
 
 /* ------------------------------------------------------------------ game tab: DualSense */
