@@ -340,7 +340,6 @@ int gb_state_load(const void *src, size_t n)
     if (apu_state_load(p + off, s.apu_n)) return -1;
     off += s.apu_n;
     if (cart_state_load(s.cart_state, s.cart_n)) return -1;
-    off += s.apu_n;
     if (cart_ram_state_load(p + off, s.cart_ram_n)) return -1;
     return 0;
 }
