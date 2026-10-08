@@ -10,6 +10,15 @@ CPU cpu;
 uint8_t *rom;
 const uint8_t *cart_lo, *cart_hi;
 uint64_t total_cycles;
+int frame_count;
+
+uint8_t rd8(uint16_t a)
+{
+    /* Camera X is the SML2 16-bit little-endian value at $FFCA. */
+    if (a == 0xFFCA) return 0x80;
+    if (a == 0xFFCB) return 0x02;
+    return 0;
+}
 
 void hw_tick(int tcycles)
 {
@@ -61,11 +70,29 @@ int main(void)
     if (!wide_intercept_sml2(0x19)) return 10;
     if (HL() != 0x01C1 || cpu.pc != 0x4065 || total_cycles != 8) return 11;
 
+    /* Enemy spawn scan: the widened edge must advance in <=8 px steps
+     * so the ROM cannot consume a spawn-list entry between frames. */
+    frame_count = 0;
+    cpu.pc = 0x408A;
+    if (wide_read_sml2(0xAF12, 0xFF) != 0x02) return 12;
+    cpu.pc = 0x4090;
+    if (wide_read_sml2(0xAF13, 0xFF) != 0xF8) return 13;
+    frame_count++;
+    cpu.pc = 0x408A;
+    if (wide_read_sml2(0xAF12, 0xFF) != 0x03) return 14;
+    cpu.pc = 0x4090;
+    if (wide_read_sml2(0xAF13, 0xFF) != 0x00) return 15;
+    frame_count++;
+    cpu.pc = 0x40A9;
+    if (wide_read_sml2(0xAF14, 0xFF) != 0x02) return 16;
+    cpu.pc = 0x40AF;
+    if (wide_read_sml2(0xAF15, 0xFF) != 0xF0) return 17;
+
     cpu.pc = 0x401D;
     cpu.h = 1;
     cpu.l = 0;
-    if (wide_intercept_sml2(0x19)) return 12;
-    if (HL() != 0x0100) return 13;
+    if (wide_intercept_sml2(0x19)) return 18;
+    if (HL() != 0x0100) return 19;
 
     /* The same CPU opcode must not be intercepted while another bank is mapped. */
     cart_hi = rom + 0xC000;
@@ -75,8 +102,8 @@ int main(void)
     cpu.d = 0;
     cpu.e = 0x60;
     total_cycles = 0;
-    if (wide_intercept_sml2(0x19)) return 14;
-    if (HL() != 0x0100 || total_cycles != 0) return 15;
+    if (wide_intercept_sml2(0x19)) return 20;
+    if (HL() != 0x0100 || total_cycles != 0) return 21;
 
     free(rom);
     puts("SML2 widescreen hook: PASS");
