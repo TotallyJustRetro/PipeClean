@@ -41,8 +41,11 @@ target_link_libraries(gb PRIVATE SDL2::SDL2)
 if(NOT WIN32)
   target_link_libraries(gb PRIVATE m)
 endif()
-if(TARGET SDL2::SDL2main AND WIN32)
-  target_link_libraries(gb PRIVATE SDL2::SDL2main)
+if(WIN32)
+  target_link_libraries(gb PRIVATE shell32 ole32 comdlg32 uuid)
+  if(TARGET SDL2::SDL2main)
+    target_link_libraries(gb PRIVATE SDL2::SDL2main)
+  endif()
 endif()
 
 # Small hardware-independent regression tests.
