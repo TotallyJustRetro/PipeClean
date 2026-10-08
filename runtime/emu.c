@@ -177,6 +177,9 @@ int emu_mp_begin(void)
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
 
     mp_player_save(&mp_p2_state);
+    /* Give Player 2 its own clean input history. */
+    mp_p2_state.joy_held = 0;
+    mp_p2_state.joy_pressed = 0;
     /* Start the second Mario a comfortable distance beside Player 1. */
     mp_p2_state.mario[2] = (uint8_t)(mp_p2_state.mario[2] + 24);
 
