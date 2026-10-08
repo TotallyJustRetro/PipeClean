@@ -11,3 +11,5 @@ int  wide_install(int game, int left, int right);
 int wide_intercept_sml2(uint8_t op);
 /* Override SML2 enemy-spawn scan bounds at their verified bank-2 read sites. */
 uint8_t wide_read_sml2(uint16_t address, uint8_t value);
+/* Clear per-frame SML2 widescreen scanner state after a save-state/rewind load. */
+void wide_state_reset(void);
