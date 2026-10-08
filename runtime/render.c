@@ -47,6 +47,7 @@ void frame_from_ppu(Frame *f)
     f->scroll_x = rd8(0xFFA4); f->game_state = rd8(0xFFB3);
     f->obp0 = ppu_read(0x48); f->obp1 = ppu_read(0x49); f->sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     memcpy(f->mario_oam, oam, sizeof f->mario_oam);
+    memcpy(f->bg_map, &vram[0x1800], sizeof f->bg_map);
     f->seq++;
 }
 
