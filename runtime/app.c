@@ -16,6 +16,7 @@
 #include "audio.h"
 #include "events.h"
 #include "util.h"
+#include "branding.h"
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
@@ -164,7 +165,7 @@ int app_run(const char *autorun, const char *hack)
         return 1;
     }
     settings_load();
-    win = SDL_CreateWindow("Dr Mario Launcher", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
+    win = SDL_CreateWindow("PipeClean", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
                            SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!win) { fprintf(stderr, "window: %s\n", SDL_GetError()); return 1; }
     SDL_SetWindowMinimumSize(win, 640, 420);
@@ -174,6 +175,7 @@ int app_run(const char *autorun, const char *hack)
     if (!ren) { fprintf(stderr, "renderer: %s\n", SDL_GetError()); return 1; }
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
     ui_init(ren);
+    branding_init(ren, win);
     bg_init(ren);
     render_init(ren);
     launcher_set_renderer(ren);
@@ -239,6 +241,7 @@ int app_run(const char *autorun, const char *hack)
         if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_SHOWN)) SDL_Delay(30);
     }
     launcher_shutdown();
+    branding_shutdown();
     settings_save();
     pad_shutdown();
     audio_shutdown();
