@@ -48,6 +48,7 @@ void frame_from_ppu(Frame *f)
     f->obp0 = ppu_read(0x48); f->obp1 = ppu_read(0x49); f->sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     /* SML1 writes Mario's four OAM entries at wOAMBuffer + $0C. */
     memcpy(f->mario_oam, &oam[0x0C], sizeof f->mario_oam);
+    memset(f->mario_oam2, 0, sizeof f->mario_oam2);
     memcpy(f->bg_map, &vram[0x1800], sizeof f->bg_map);
     f->seq++;
 }
