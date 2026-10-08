@@ -21,6 +21,11 @@
 #define SDLK_LEFT 0x40000050
 #define SDLK_DOWN 0x40000051
 #define SDLK_UP 0x40000052
+#define SDLK_F5 0x4000003E
+#define SDLK_F6 0x4000003F
+#define SDLK_F7 0x40000040
+#define SDLK_F8 0x40000041
+#define SDLK_F10 0x40000043
 enum { SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X, SDL_CONTROLLER_BUTTON_Y,
        SDL_CONTROLLER_BUTTON_BACK, SDL_CONTROLLER_BUTTON_GUIDE, SDL_CONTROLLER_BUTTON_START,
        SDL_CONTROLLER_BUTTON_LEFTSTICK, SDL_CONTROLLER_BUTTON_RIGHTSTICK, SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
@@ -32,6 +37,7 @@ const char *aspect_names[] = {"Original (10:9)", "4:3", "16:9"};
 const char *scale_names[] = {"Pixel-perfect", "Smooth", "Stretch"};
 const char *size_names[] = {"Small", "Medium", "Large", "Fullscreen"};
 const char *btn_names[] = {"A", "B", "Select", "Start", "Right", "Left", "Up", "Down"};
+const char *action_names[] = {"Save state", "Load state", "Rewind", "Suspend", "Next state slot"};
 const char *led_names[] = {"Off", "Match colors", "Custom", "Follow screen"};
 const char *lat_names[] = {"Low", "Normal", "High (safest)"};
 
@@ -106,6 +112,15 @@ void controls_defaults(GameCfg *c)
     c->pad_device[1] = -1;
 }
 
+
+void shortcut_defaults(GameCfg *c)
+{
+    static const int key[N_ACTION] = {SDLK_F5, SDLK_F8, SDLK_F7, SDLK_F10, SDLK_F6};
+    if (!c) return;
+    memcpy(c->action_key, key, sizeof key);
+    for (int i = 0; i < N_ACTION; i++) c->action_pad[i] = -1;
+}
+
 void game_cfg_defaults(GameCfg *c, int game)
 {
     memset(c, 0, sizeof *c);
@@ -115,6 +130,8 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->palette = game == GAME_DRMARIO ? 0 : (game == GAME_SML ? 1 : 12);
     c->bg_dim = 25;
     c->wide = 0;
+    c->state_slot = 0;
+    shortcut_defaults(c);
     c->tex_collect = 1;
     c->ds_led_mode = LED_PALETTE; c->ds_bright = 60; c->ds_color = 0x40A0FF;
     c->ds_rumble = 70; c->ds_speaker_vol = 55;
@@ -181,7 +198,7 @@ static int field_table(Field *t, int cap)
         GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
-        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1);
+        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1);
         GI("pad_device1", c->pad_device[0], -1, 3); GI("pad_device2", c->pad_device[1], -1, 3);
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
@@ -228,6 +245,8 @@ void settings_load(void)
             int b, s2;
             if (sscanf(k, "key%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < 2) settings.g[g].key[b][s2] = atoi(v);
             else if (sscanf(k, "pad%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < 2) settings.g[g].pad[b][s2] = atoi(v);
+            else if (sscanf(k, "actionkey%d", &b) == 1 && b >= 0 && b < N_ACTION) settings.g[g].action_key[b] = atoi(v);
+            else if (sscanf(k, "actionpad%d", &b) == 1 && b >= 0 && b < N_ACTION) settings.g[g].action_pad[b] = atoi(v);
             else if (!strcmp(k, "ledcolor")) settings.g[g].ds_color = (uint32_t)strtoul(v, NULL, 16) & 0xFFFFFF;
         }
     }
@@ -253,6 +272,10 @@ void settings_save(void)
                 fprintf(f, "%s.key%d_%d=%d\n", games[g].id, b, s, settings.g[g].key[b][s]);
                 fprintf(f, "%s.pad%d_%d=%d\n", games[g].id, b, s, settings.g[g].pad[b][s]);
             }
+        for (int a = 0; a < N_ACTION; a++) {
+            fprintf(f, "%s.actionkey%d=%d\n", games[g].id, a, settings.g[g].action_key[a]);
+            fprintf(f, "%s.actionpad%d=%d\n", games[g].id, a, settings.g[g].action_pad[a]);
+        }
         fprintf(f, "%s.ledcolor=%06X\n", games[g].id, settings.g[g].ds_color);
     }
     fclose(f);
