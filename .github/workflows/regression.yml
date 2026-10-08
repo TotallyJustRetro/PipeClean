@@ -151,7 +151,7 @@ jobs:
           mkdir -p dist/PipeClean-Windows-x64
           cp build-windows/PipeClean.exe dist/PipeClean-Windows-x64/PipeClean.exe
           {
-            ldd build-windows/gb.exe
+            ldd build-windows/PipeClean.exe
             ldd /ucrt64/bin/SDL2.dll
           } | awk '/=> \/ucrt64\// {print $3}' | sort -u | while read -r dll; do
             cp "$dll" dist/PipeClean-Windows-x64/
