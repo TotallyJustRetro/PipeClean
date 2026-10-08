@@ -485,6 +485,7 @@ int emu_mp_begin(void)
     gb_mp_vblank_watch = 0;
 
     mp_ready = 1;
+    rewind_init();
     return 0;
 }
 
