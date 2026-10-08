@@ -165,6 +165,8 @@ static int rewind_mode;
 static int rewind_pending;
 
 static void mp_player_save(MpPlayerState *s);
+static void rewind_free(void);
+static void rewind_init(void);
 
 static int mp_bcd_to_int(uint8_t b)
 {
@@ -1060,6 +1062,80 @@ static void rewind_init(void)
     rewind_head = -1;
     rewind_count = 0;
     rewind_capture_skip = 0;
+}
+
+static int state_write_file(const char *path, const void *data, size_t n)
+{
+    if (!path || !path[0] || !data || !n) return -1;
+    char tmp[1200];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return -1;
+    size_t wrote = fwrite(data, 1, n, f);
+    if (fclose(f) != 0 || wrote != n) { remove(tmp); return -1; }
+    remove(path);
+    if (rename(tmp, path) != 0) { remove(tmp); return -1; }
+    return 0;
+}
+
+static int state_read_file(const char *path, void **data_out, size_t *n_out)
+{
+    if (!path || !path[0] || !data_out || !n_out) return -1;
+    *data_out = NULL; *n_out = 0;
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
+    long sz = ftell(f);
+    if (sz <= 0) { fclose(f); return -1; }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return -1; }
+    void *data = malloc((size_t)sz);
+    if (!data) { fclose(f); return -1; }
+    if (fread(data, 1, (size_t)sz, f) != (size_t)sz || fclose(f) != 0) {
+        free(data); return -1;
+    }
+    *data_out = data;
+    *n_out = (size_t)sz;
+    return 0;
+}
+
+int emu_state_save_file(const char *path, int resume_after)
+{
+    int was_running = thr != NULL;
+    if (was_running) emu_stop();
+
+    size_t n = emu_state_blob_size();
+    void *data = malloc(n);
+    int ok = data && emu_state_save_blob(data, n) == 0 && state_write_file(path, data, n) == 0;
+    free(data);
+
+    if (was_running && resume_after) {
+        if (emu_start_internal(force_interp_flag, 0) != 0) ok = 0;
+    }
+    return ok ? 0 : -1;
+}
+
+int emu_state_load_file(const char *path, int resume_after)
+{
+    int was_running = thr != NULL;
+    if (was_running) emu_stop();
+
+    void *data = NULL;
+    size_t n = 0;
+    int ok = state_read_file(path, &data, &n) == 0 &&
+             emu_state_load_blob(data, n) == 0;
+    free(data);
+
+    if (ok) {
+        rewind_init();
+    } else if (was_running) {
+        /* Re-start the game exactly where it was before the failed load. */
+        ok = 0;
+    }
+
+    if (was_running && resume_after) {
+        if (emu_start_internal(force_interp_flag, 0) != 0) ok = 0;
+    }
+    return ok ? 0 : -1;
 }
 
 static void rewind_capture_if_due(void)
