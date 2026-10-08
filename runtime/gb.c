@@ -247,6 +247,66 @@ void recomp_miss(uint16_t pc)
     else miss_ram_steps++;
 }
 
+typedef struct {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t ppu_n, apu_n;
+    CPU cpu;
+    uint8_t io_if, io_ie;
+    uint64_t total_cycles;
+    uint8_t wram[0x2000], hram[0x80], io_misc[0x80];
+    uint16_t div_counter;
+    uint8_t tima, tma, tac;
+    uint8_t sb, sc;
+    int serial_cycles;
+    uint8_t joy_sel, joy_buttons, joy_dpad;
+} CoreState;
+
+#define GB_STATE_MAGIC 0x50434D50u
+#define GB_STATE_VERSION 1u
+
+size_t gb_state_size(void) { return GB_STATE_BYTES; }
+
+int gb_state_save(void *dst, size_t n)
+{
+    if (!dst || n < GB_STATE_BYTES) return -1;
+    uint8_t *p = (uint8_t *)dst;
+    CoreState s;
+    memset(&s, 0, sizeof s);
+    s.magic = GB_STATE_MAGIC; s.version = GB_STATE_VERSION;
+    s.ppu_n = (uint32_t)ppu_state_size(); s.apu_n = (uint32_t)apu_state_size();
+    s.cpu = cpu; s.io_if = io_if; s.io_ie = io_ie; s.total_cycles = total_cycles;
+    memcpy(s.wram,wram,sizeof wram); memcpy(s.hram,hram,sizeof hram); memcpy(s.io_misc,io_misc,sizeof io_misc);
+    s.div_counter=div_counter; s.tima=tima; s.tma=tma; s.tac=tac; s.sb=sb; s.sc=sc; s.serial_cycles=serial_cycles;
+    s.joy_sel=joy_sel; s.joy_buttons=joy_buttons; s.joy_dpad=joy_dpad;
+    size_t off = sizeof s;
+    if (off + s.ppu_n + s.apu_n > n) return -1;
+    memcpy(p, &s, sizeof s); off += s.ppu_n;
+    if (ppu_state_save(p + sizeof s, s.ppu_n)) return -1;
+    if (apu_state_save(p + sizeof s + s.ppu_n, s.apu_n)) return -1;
+    return 0;
+}
+
+int gb_state_load(const void *src, size_t n)
+{
+    if (!src || n < sizeof(CoreState)) return -1;
+    const uint8_t *p = (const uint8_t *)src;
+    CoreState s;
+    memcpy(&s,p,sizeof s);
+    if (s.magic != GB_STATE_MAGIC || s.version != GB_STATE_VERSION) return -1;
+    size_t off = sizeof s;
+    if (s.ppu_n != ppu_state_size() || s.apu_n != apu_state_size() || off + s.ppu_n + s.apu_n > n) return -1;
+    cpu=s.cpu; io_if=s.io_if; io_ie=s.io_ie; total_cycles=s.total_cycles;
+    memcpy(wram,s.wram,sizeof wram); memcpy(hram,s.hram,sizeof hram); memcpy(io_misc,s.io_misc,sizeof io_misc);
+    div_counter=s.div_counter; tima=s.tima; tma=s.tma; tac=s.tac; sb=s.sb; sc=s.sc; serial_cycles=s.serial_cycles;
+    joy_sel=s.joy_sel; joy_buttons=s.joy_buttons; joy_dpad=s.joy_dpad;
+    if (ppu_state_load(p + off, s.ppu_n)) return -1;
+    off += s.ppu_n;
+    if (apu_state_load(p + off, s.apu_n)) return -1;
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
 void gb_dump_misses(const char *path)
 {
     FILE *f = fopen(path, "w");
