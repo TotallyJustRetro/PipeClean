@@ -8,4 +8,4 @@ void wide_dims(int game, int pct, int *left, int *right);
 /* patch the loaded ROM for these dimensions. 1 = ok / nothing needed, 0 = this ROM doesn't match (use the normal screen) */
 int  wide_install(int game, int left, int right);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
-int  wide_intercept_sml2(uint8_t op);
+int wide_intercept_sml2(uint8_t op);
