@@ -593,25 +593,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_p2_state.game_state = p2_game_state;
         memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
 
-        uint8_t p2_super_status_after = mp_p2_state.super_status;
-        uint8_t p2_superball_after = mp_p2_state.superball;
-        uint8_t p2_superball_ttl_after = mp_p2_state.superball_ttl;
-        uint8_t p2_timer_after = mp_p2_state.timer;
-
-        if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-
         /*
-         * Restore only Luigi's player-specific power-up state after returning
-         * to the authoritative world. The original SML1 code uses hSuperStatus
-         * 1 for Super Mario and 2 for the fully powered-up/fire-capable state;
-         * losing that byte here is what prevented Luigi from progressing from
-         * mushroom to flower.
+         * Restore Mario's authoritative world exactly as it was before the
+         * isolated Luigi simulation. Luigi's power-up state lives in
+         * mp_p2_state and is therefore kept private to his next simulation;
+         * it must never be copied into Player 1's RAM.
          */
-        wr8(0xFF99, p2_super_status_after);
-        wr8(0xFFB5, p2_superball_after);
-        wr8(0xC0A9, p2_superball_ttl_after);
-        if (p2_timer_after > rd8(0xFFA6))
-            wr8(0xFFA6, p2_timer_after);
+        if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
         /*
          * Transfer Luigi's newly generated SML1 sound requests to the
