@@ -37,15 +37,17 @@ file(GLOB RT CONFIGURE_DEPENDS runtime/*.c)
 add_executable(gb ${RT} ${GEN}/game.c ${GEN}/interp.c)
 target_include_directories(gb PRIVATE runtime ${GEN})
 target_compile_definitions(gb PRIVATE USE_SDL)
+if(WIN32 AND TARGET SDL2::SDL2main)
+  # MinGW requires SDL2main to precede SDL2 so its wrapper can resolve
+  # SDL symbols from the SDL2 import library.
+  target_link_libraries(gb PRIVATE SDL2::SDL2main)
+endif()
 target_link_libraries(gb PRIVATE SDL2::SDL2)
 if(NOT WIN32)
   target_link_libraries(gb PRIVATE m)
 endif()
 if(WIN32)
   target_link_libraries(gb PRIVATE shell32 ole32 comdlg32 uuid)
-  if(TARGET SDL2::SDL2main)
-    target_link_libraries(gb PRIVATE SDL2::SDL2main)
-  endif()
 endif()
 
 # Small hardware-independent regression tests.
@@ -56,7 +58,7 @@ add_test(NAME sml2_widescreen COMMAND test_sml2_wide)
 
 add_executable(test_sml_wide tests/test_sml_wide.c runtime/widescreen.c)
 target_include_directories(test_sml_wide PRIVATE runtime)
-add_test(NAME sml_widescreen COMMAND test_sml_wide)
+add_test(NAME sml_widecreens COMMAND test_sml_wide)
 
 add_executable(test_cart_mbc1 tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c)
 target_include_directories(test_cart_mbc1 PRIVATE runtime)
