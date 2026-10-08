@@ -9,7 +9,8 @@ typedef struct {
     int player_x, player_y;
     uint8_t scroll_x, game_state;
     uint8_t obp0, obp1, sprite_size16;
-    uint8_t mario_oam[16];
+    uint8_t mario_oam[16];      /* Player 1 Mario OAM */
+    uint8_t mario_oam2[16];     /* Player 2 Mario OAM in local multiplayer */
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
     uint64_t seq;
