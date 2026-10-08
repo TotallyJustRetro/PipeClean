@@ -464,7 +464,7 @@ static void sub_controls(int g, float x, float y)
     char st[128];
     pad_status(st, sizeof st);
     ui_text_fit(F_REG, 12, x + 18, by + 46, 770, C_DIM, st);
-    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. Choose a device above; Player 2 can use a different controller.");
+    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. For SML1, assigning Player 2 enables local 2-player split-screen.");
 
     /*
      * Draw the controller menus last so their popups sit above the binding
