@@ -59,6 +59,30 @@ int pad_is_edge(int i)
     return SDL_GameControllerGetVendor(pads[i].gc) == 0x054C && SDL_GameControllerGetProduct(pads[i].gc) == 0x0DF2;
 }
 
+int pad_is_dualsense_instance(SDL_JoystickID which)
+{
+    for (int i = 0; i < n_pads; i++) {
+        SDL_Joystick *j = pads[i].mapped ? SDL_GameControllerGetJoystick(pads[i].gc) : pads[i].joy;
+        if (pad_is_dualsense(i) && j && SDL_JoystickInstanceID(j) == which) return 1;
+    }
+    return 0;
+}
+
+int pad_touchpad_event(const SDL_Event *e, float *x, float *y, int *kind)
+{
+    if (!e) return 0;
+    int k = -1;
+    if (e->type == SDL_CONTROLLERTOUCHPADDOWN) k = 0;
+    else if (e->type == SDL_CONTROLLERTOUCHPADMOTION) k = 1;
+    else if (e->type == SDL_CONTROLLERTOUCHPADUP) k = 2;
+    else return 0;
+    if (!pad_is_dualsense_instance(e->ctouchpad.which)) return 0;
+    if (x) *x = e->ctouchpad.x;
+    if (y) *y = e->ctouchpad.y;
+    if (kind) *kind = k;
+    return 1;
+}
+
 const char *pad_status(char *buf, size_t n)
 {
     if (!n_pads) { snprintf(buf, n, "No controller connected"); return buf; }
@@ -148,6 +172,34 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
     *d = (uint8_t)(d0 | d1);
     if ((*d & 3) == 3) *d &= (uint8_t)~3;
     if ((*d & 12) == 12) *d &= (uint8_t)~12;
+}
+
+
+int pad_binding_down(int game, int action)
+{
+    if (game < 0 || game >= N_GAMES || action < 0 || action >= N_ACTION) return 0;
+    int code = settings.g[game].action_pad[action];
+    if (code < 0) return 0;
+    for (int i = 0; i < n_pads; i++) if (pad_down(i, code)) return 1;
+    return 0;
+}
+
+int pad_binding_event(int game, int action, const SDL_Event *e)
+{
+    if (game < 0 || game >= N_GAMES || action < 0 || action >= N_ACTION || !e) return 0;
+    int code = settings.g[game].action_pad[action];
+    if (code < 0) return 0;
+    if (e->type == SDL_CONTROLLERBUTTONDOWN) return e->cbutton.button == code;
+    if (e->type == SDL_JOYBUTTONDOWN) return e->jbutton.button == code;
+    if (e->type == SDL_CONTROLLERAXISMOTION && e->caxis.value > 20000) {
+        if (code == PAD_AXIS_BASE && e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) return 1;
+        if (code == PAD_AXIS_BASE + 1 && e->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) return 1;
+    }
+    if (e->type == SDL_JOYAXISMOTION && e->jaxis.value > 20000) {
+        if (code == PAD_AXIS_BASE && e->jaxis.axis == 4) return 1;
+        if (code == PAD_AXIS_BASE + 1 && e->jaxis.axis == 5) return 1;
+    }
+    return 0;
 }
 
 int pad_capture(const SDL_Event *e)
