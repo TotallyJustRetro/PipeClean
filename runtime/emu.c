@@ -95,6 +95,9 @@ typedef struct {
     uint8_t death_y;         /* C0DD */
     uint8_t super_status;    /* FF99 */
     uint8_t superball;       /* FFB5 */
+    uint8_t timer;           /* FFA6: SML1 death/injury timer */
+    uint8_t death_anim_counter; /* C0AC: SML1 state-4 death animation index */
+    uint8_t game_state;      /* FFB3: private SML1 state machine */
     uint8_t joy_held;        /* FF80 */
     uint8_t joy_pressed;     /* FF81 */
 } MpPlayerState;
@@ -113,11 +116,12 @@ static uint8_t mp_enemy_merge[0xA0];
 static uint8_t mp_enemy_merge_mask[10];
 static uint8_t mp_p1_lives_seen;
 static uint8_t mp_p2_lives;
-static uint8_t mp_p2_dead_timer;
-static uint8_t mp_p2_respawn_pending;
-static uint8_t mp_p2_hurt_timer;
-static uint8_t mp_p2_hurt_oam[16];
 static uint8_t mp_p2_last_oam[16];
+static uint8_t mp_vblank_life_event;
+static uint8_t mp_vblank_collision;
+static uint16_t mp_vblank_collision_addr;
+static uint8_t mp_vblank_collision_before;
+static int mp_vblank_waiting;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
@@ -127,18 +131,6 @@ static int mp_bcd_to_int(uint8_t b)
 {
     int n = ((b >> 4) & 0x0F) * 10 + (b & 0x0F);
     return n > 99 ? 99 : n;
-}
-
-static void mp_oam_offset_y(const uint8_t src[16], uint8_t dst[16], int dy)
-{
-    memcpy(dst, src, 16);
-    if (!dy) return;
-    for (int i = 0; i < 4; i++) {
-        int y = (int)dst[i * 4] + dy;
-        if (y < 0) y = 0;
-        if (y > 255) y = 255;
-        dst[i * 4] = (uint8_t)y;
-    }
 }
 
 static void mp_oam_offset_x(uint8_t oam16[16], int dx)
@@ -155,7 +147,13 @@ static void mp_oam_offset_x(uint8_t oam16[16], int dx)
 static void mp_respawn_p2_from_p1(void)
 {
     mp_player_save(&mp_p2_state);
-    memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
+    mp_p2_state.game_state = 0;
+    mp_p2_state.timer = 0;
+    mp_p2_state.death_anim_counter = 0;
+    mp_p2_state.invincibility = 0;
+    mp_p2_state.superball_ttl = 0;
+    mp_p2_state.super_status = 0;
+    mp_p2_state.superball = 0;
     mp_p2_state.joy_held = 0;
     mp_p2_state.joy_pressed = 0;
     mp_p2_state.mario[0] = 0;  /* visible */
@@ -165,6 +163,8 @@ static void mp_respawn_p2_from_p1(void)
     mp_p2_state.mario[13] = 0; /* C20D: direction */
     mp_p2_state.mario[14] = 2; /* C20E: walking */
 
+    /* Start Luigi from Mario's current location, then let SML1 rebuild his
+     * small-Mario OAM on the next real gameplay frame. */
     int p1x = rd8(0xC202);
     int x = p1x;
     if (x <= 0x78) x += 24;
@@ -172,6 +172,7 @@ static void mp_respawn_p2_from_p1(void)
     else x = 0x50;
     if (x < 0x18) x = 0x18;
     if (x > 0xC8) x = 0xC8;
+    memcpy(mp_p2_state.mario_oam, &oam[0x0C], sizeof mp_p2_state.mario_oam);
     mp_oam_offset_x(mp_p2_state.mario_oam, x - p1x);
     mp_p2_state.mario[2] = (uint8_t)x;
     mp_p2_state.mario[1] = rd8(0xC201);
@@ -188,6 +189,9 @@ static void mp_player_save(MpPlayerState *s)
     s->death_y = rd8(0xC0DD);
     s->super_status = rd8(0xFF99);
     s->superball = rd8(0xFFB5);
+    s->timer = rd8(0xFFA6);
+    s->death_anim_counter = rd8(0xC0AC);
+    s->game_state = rd8(0xFFB3);
     s->joy_held = rd8(0xFF80);
     s->joy_pressed = rd8(0xFF81);
 }
@@ -202,6 +206,9 @@ static void mp_player_load(const MpPlayerState *s)
     wr8(0xC0DD, s->death_y);
     wr8(0xFF99, s->super_status);
     wr8(0xFFB5, s->superball);
+    wr8(0xFFA6, s->timer);
+    wr8(0xC0AC, s->death_anim_counter);
+    wr8(0xFFB3, s->game_state);
     wr8(0xFF80, s->joy_held);
     wr8(0xFF81, s->joy_pressed);
 }
@@ -329,7 +336,11 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     memset(f->luigi_mask, 0, sizeof f->luigi_mask);
     f->p1_lives = rd8(0xDA15);
     f->p2_lives = mp_p2_lives;
-    f->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_dead_timer == 0 && mp_p2_lives > 0);
+    f->p2_game_state = mp_p2_state.game_state;
+    f->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0 &&
+                               (mp_p2_state.game_state == 0 ||
+                                mp_p2_state.game_state == 3 ||
+                                mp_p2_state.game_state == 4));
     if (screen_dx) {
         for (int i = 0; i < 4; i++) {
             int x = (int)f->mario_oam[i * 4 + 1] + screen_dx;
@@ -362,11 +373,13 @@ int emu_mp_begin(void)
     mp_p2_spawned = 0;
     mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     mp_p2_lives = mp_p1_lives_seen;
-    mp_p2_dead_timer = 0;
-    mp_p2_respawn_pending = 0;
-    mp_p2_hurt_timer = 0;
-    memset(mp_p2_hurt_oam, 0, sizeof mp_p2_hurt_oam);
+    mp_vblank_life_event = 0;
+    mp_vblank_collision = 0;
+    mp_vblank_collision_addr = 0;
+    mp_vblank_collision_before = 0;
+    mp_vblank_waiting = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
+    gb_mp_vblank_watch = 0;
 
     mp_ready = 1;
     return 0;
@@ -385,191 +398,184 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
             frame->p1_lives = rd8(0xDA15);
             frame->p2_lives = mp_p2_lives;
+            frame->p2_game_state = mp_p2_state.game_state;
             frame->p2_visible = 0;
             return 0;
         }
 
-        /*
-         * Keep Luigi visible during the same kind of hit/death feedback the
-         * original game gives Mario. The saved SML1 OAM pose is moved upward
-         * while it blinks for a short hurt/death animation. We deliberately
-         * freeze the isolated P2 physics during this sequence so it cannot
-         * fall through the level or disappear before the animation finishes.
-         */
-        if (mp_p2_hurt_timer > 0) {
-            mp_capture_frame(frame, 0);
-            int elapsed = 36 - mp_p2_hurt_timer;
-            int dy = elapsed < 18 ? -(elapsed / 3) : -6 + ((elapsed - 18) / 4);
-            int blink = ((elapsed / 3) & 1) == 0;
-            if (blink)
-                mp_oam_offset_y(mp_p2_hurt_oam, frame->mario_oam2, dy);
-            else
-                memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
-            mp_p2_hurt_timer--;
-            frame->p2_lives = mp_p2_lives;
-            frame->p2_visible = 1;
-
-            if (mp_p2_hurt_timer == 0) {
-                if (mp_p2_lives > 0) mp_p2_lives--;
-                mp_p2_dead_timer = 45;
-                mp_p2_respawn_pending = (uint8_t)(mp_p2_lives > 0);
-                frame->p2_lives = mp_p2_lives;
-                frame->p2_visible = 0;
-            }
-            return 0;
-        }
-
-        if (mp_p2_dead_timer > 0) {
-            mp_p2_dead_timer--;
-            if (mp_p2_dead_timer == 0 && mp_p2_respawn_pending && mp_p2_lives > 0) {
-                mp_respawn_p2_from_p1();
-                mp_p2_respawn_pending = 0;
-            }
-            mp_capture_frame(frame, 0);
-            memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
-            memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
-            frame->p1_lives = rd8(0xDA15);
-            frame->p2_lives = mp_p2_lives;
-            frame->p2_visible = 0;
-            return 0;
-        }
-
-        /*
-         * Run exactly one complete SML1 frame from Player 2's saved character
-         * state. The authoritative Player 1 world is restored afterward.
-         */
         uint8_t p1_scroll = rd8(0xFFA4);
+        uint8_t p2_state_before = mp_p2_state.game_state;
+        int p2_world_lives_before = mp_bcd_to_int(rd8(0xDA15));
         uint8_t score_before[3];
         uint8_t coins_before = rd8(0xFFFA);
-        uint8_t p2_life_event_before = rd8(0xC0A3);
         for (int i = 0; i < 3; i++) score_before[i] = rd8((uint16_t)(0xC0A0 + i));
+
         mp_capture_shared_world_before();
         mp_player_load(&mp_p2_state);
 
-        /* Install P2's physical/keyboard input before the game reads JOYP. */
-        mp_buttons = buttons;
-        mp_dpad = dpad;
+        /* A death sequence and hurt timer are part of SML1's actual state
+         * machine, so keep the original game state instead of substituting a
+         * second animation system. */
+        mp_buttons = (p2_state_before == 0) ? buttons : 0;
+        mp_dpad = (p2_state_before == 0) ? dpad : 0;
         gb_set_input(mp_buttons, mp_dpad);
 
         mp_frame_out = frame;
         mp_audio_out = audio;
         mp_audio_max = audio_max;
         mp_audio_n = 0;
+        mp_vblank_waiting = 0;
+        gb_mp_vblank_watch = 0;
         mp_active = 1;
         if (setjmp(stop_jmp) == 0) run_core(0);
         mp_active = 0;
+
         mp_capture_shared_world_after();
         uint8_t p2_game_state = rd8(0xFFB3);
-
+        uint8_t p2_scroll_after = rd8(0xFFA4);
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
-        uint8_t p2_life_event_after = rd8(0xC0A3);
-        if (p2_life_event_after != p2_life_event_before &&
-            p2_life_event_after != 0xFF && mp_p2_lives < 99)
-            mp_p2_lives++;
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
+        int p2_world_lives_after = mp_bcd_to_int(rd8(0xDA15));
+        int life_delta = p2_world_lives_after - p2_world_lives_before;
+
+        /* The VBlank routine consumes wLivesEarnedLost, so frame_hook snapshots
+         * it before UpdateLives clears it. This catches a 1UP/100-coin life even
+         * when the cloned world's visible lives are already saturated at 99. */
+        if (mp_vblank_life_event == 0xFF)
+            life_delta = -1;
+        else if (mp_vblank_life_event != 0)
+            life_delta = 1;
+
+        if (life_delta > 0) {
+            for (int i = 0; i < life_delta && mp_p2_lives < 99; i++) mp_p2_lives++;
+        } else if (life_delta < 0) {
+            for (int i = 0; i < -life_delta && mp_p2_lives > 0; i++) mp_p2_lives--;
+        }
 
         int enemy_merged = 0;
-        int pickup_consumed = 0;
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
         for (int slot = 0; slot < 10; slot++) {
             uint8_t before_type = mp_enemy_before[slot * 0x10];
             uint8_t after_type = mp_enemy_after[slot * 0x10];
             int enemy_death = before_type != after_type && mp_is_enemy_stomped(after_type);
-            int pickup = mp_is_pickup(before_type) && before_type != after_type;
-            if (enemy_death || pickup) {
+            int pickup_consumed = mp_is_pickup(before_type) && before_type != after_type;
+            int pickup_spawned = before_type == 0xFF && mp_is_pickup(after_type);
+            if (enemy_death || pickup_consumed || pickup_spawned) {
                 mp_enemy_merge_mask[slot] = 1;
                 memcpy(&mp_enemy_merge[slot * 0x10], &mp_enemy_after[slot * 0x10], 0x10);
                 enemy_merged = 1;
-                if (pickup) pickup_consumed = 1;
             }
         }
 
         /*
-         * A power-up is a shared world object. When Luigi's isolated pass
-         * consumes one, persist the object's new state so Mario cannot collect
-         * the same physical power-up afterward.
+         * Convert Luigi's local camera back to the authoritative Player 1
+         * coordinate system before saving his private character state.
          */
-
-        /*
-         * SML1 keeps Mario's X coordinate relative to its own camera. Convert
-         * any camera movement back into the shared Player 1 camera coordinates.
-         */
-        int dx = mp_scroll_delta(rd8(0xFFA4), p1_scroll);
+        int dx = mp_scroll_delta(p2_scroll_after, p1_scroll);
         if (dx) {
             uint8_t x = rd8(0xC202);
             wr8(0xC202, (uint8_t)(x + dx));
         }
 
-        if (p2_game_state == 1 || p2_game_state == 3 || p2_game_state == 4) {
-            mp_capture_frame(frame, 0);
-            memcpy(mp_p2_hurt_oam, mp_p2_last_oam, sizeof mp_p2_hurt_oam);
-            for (int i = 0; i < 4; i++) {
-                int ox = (int)mp_p2_hurt_oam[i * 4 + 1] + dx;
-                mp_p2_hurt_oam[i * 4 + 1] = (uint8_t)ox;
-            }
-            mp_p2_hurt_timer = 36;
-            mp_player_save(&mp_p2_state);
-            frame->p2_lives = mp_p2_lives;
-            frame->p2_visible = 1;
-            if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-            return 0;
-        }
-
         mp_capture_frame(frame, 0);
         mp_copy_mario_oam_buffer(frame->mario_oam2, dx);
         memcpy(mp_p2_last_oam, frame->mario_oam2, sizeof mp_p2_last_oam);
+
         mp_player_save(&mp_p2_state);
+        mp_p2_state.game_state = p2_game_state;
         memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
 
-        /* Restore the exact authoritative Player 1 world first. */
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
         /*
-         * Persist only shared interactions that are unambiguous. Score and
-         * coins are global counters changed by pickups/enemy defeats. The level
-         * tile map is merged only when P2 did not move the camera, avoiding a
-         * second scroll/render pass from becoming a world mutation.
+         * Shared level edits. A same-camera frame can safely merge the entire
+         * tile map. During a private-camera move, merge only small local edits;
+         * the exact tile touched by SML1's VBlank collision routine is handled
+         * separately below.
          */
-        if (p2_game_state == 0) {
-            int tile_changed = 0;
-
-            /*
-             * Merge small local tile edits even when Luigi's private camera
-             * moved. Full-column streaming remains isolated to P1's world.
-             */
+        int tile_changed = 0;
+        if (p2_state_before == 0)
             tile_changed = mp_merge_tilemap_local_edits(dx == 0);
 
-            /* Coins and score are global counters, not player-local state. */
+        int collision_changed = 0;
+        if (p2_state_before == 0 &&
+            mp_vblank_collision_addr >= 0x9800 &&
+            mp_vblank_collision_addr < 0x9C00) {
+            int p2idx = (int)mp_vblank_collision_addr - 0x9800;
+            int row = p2idx / 32, col = p2idx & 31;
+            int world_col = ((int)(p2_scroll_after >> 3) + col) & 31;
+            int p1_col = (world_col - (int)(p1_scroll >> 3)) & 31;
+            int p1idx = row * 32 + p1_col;
+
+            if (mp_vblank_collision_before != mp_tilemap_after[p2idx]) {
+                vram[0x1800 + p1idx] = mp_tilemap_after[p2idx];
+                collision_changed = 1;
+            }
+
+            /* Call_1B86 can also remove a coin directly above a block. */
+            if (p2idx >= 32 &&
+                mp_tilemap_before[p2idx - 32] == 0xF4 &&
+                mp_tilemap_after[p2idx - 32] != mp_tilemap_before[p2idx - 32]) {
+                int above_col = p1_col;
+                int above_idx = (row - 1) * 32 + above_col;
+                vram[0x1800 + above_idx] = mp_tilemap_after[p2idx - 32];
+                collision_changed = 1;
+            }
+        }
+
+        /* Coins/score and consumed/spawned powerups are shared world state. */
+        if (p2_state_before == 0) {
             for (int i = 0; i < 3; i++)
                 if (score_after[i] != score_before[i])
                     wr8((uint16_t)(0xC0A0 + i), score_after[i]);
             if (coins_after != coins_before)
                 wr8(0xFFFA, coins_after);
 
-            /*
-             * Enemy death animations and consumed pickups are world objects.
-             * Persist the changed object slot so Mario cannot hit/collect the
-             * same object a second time after Luigi already did.
-             */
             for (int slot = 0; slot < 10; slot++) {
                 if (mp_enemy_merge_mask[slot])
                     for (int i = 0; i < 0x10; i++)
                         wr8((uint16_t)(0xD100 + slot * 0x10 + i), mp_enemy_merge[slot * 0x10 + i]);
             }
 
-            if (tile_changed || enemy_merged || coins_after != coins_before ||
-                memcmp(score_before, score_after, sizeof score_before) != 0)
+            if (tile_changed || collision_changed || enemy_merged ||
+                coins_after != coins_before ||
+                memcmp(score_before, score_after, sizeof score_before) != 0) {
                 if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+            }
         }
-        return mp_audio_n;
+
+        /*
+         * Fatal small-Mario deaths are the original SML1 states 3 -> 4 -> 1.
+         * Let the original code draw those four falling OAM objects. When the
+         * life is finally consumed, respawn from the authoritative P1 state.
+         */
+        if (life_delta < 0 || p2_game_state == 39 || p2_game_state == 58) {
+            frame->p1_lives = rd8(0xDA15);
+            frame->p2_lives = mp_p2_lives;
+            frame->p2_game_state = p2_game_state;
+            memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
+            memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
+            frame->p2_visible = 0;
+            if (mp_p2_lives > 0) {
+                mp_respawn_p2_from_p1();
+            }
+            return 0;
+        }
+
+        frame->p2_game_state = p2_game_state;
+        frame->p2_lives = mp_p2_lives;
+        frame->p2_visible = (uint8_t)(p2_state_before == 0 ||
+                                      p2_game_state == 3 ||
+                                      p2_game_state == 4);
+        return 0;
     }
 
     /*
      * Player 1 is the camera leader. When Luigi is too close to the left edge,
      * block a rightward camera advance until Luigi has moved farther right.
      */
-    if (mp_p2_spawned && mp_p2_dead_timer == 0 && mp_p2_hurt_timer == 0 && mp_p2_lives > 0 &&
+    if (mp_p2_spawned && mp_p2_lives > 0 && mp_p2_state.game_state == 0 &&
         (dpad & 0x01) && rd8(0xC202) >= 0x50 &&
         mp_p2_state.mario[2] < 0x20) {
         dpad &= (uint8_t)~0x01;
@@ -583,9 +589,12 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     mp_audio_out = audio;
     mp_audio_max = audio_max;
     mp_audio_n = 0;
+    mp_vblank_waiting = 0;
+    gb_mp_vblank_watch = 0;
     mp_active = 1;
     if (setjmp(stop_jmp) == 0) run_core(0);
     mp_active = 0;
+    mp_audio_n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
     mp_capture_frame(frame, 0);
 
@@ -608,19 +617,19 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
      * screen coordinate by the same amount before Luigi's next physics frame.
      */
     int p1_camera_dx = mp_scroll_delta(frame->scroll_x, p1_scroll_before);
-    if (mp_p2_spawned && mp_p2_dead_timer == 0 && p1_camera_dx) {
+    if (mp_p2_spawned && mp_p2_lives > 0 && p1_camera_dx) {
         int x = (int)mp_p2_state.mario[2] - p1_camera_dx;
         if (x < 0) x += 256;
         if (x > 255) x -= 256;
         mp_p2_state.mario[2] = (uint8_t)x;
         mp_oam_offset_x(mp_p2_state.mario_oam, -p1_camera_dx);
         mp_oam_offset_x(mp_p2_last_oam, -p1_camera_dx);
-        if (mp_p2_hurt_timer > 0)
-            mp_oam_offset_x(mp_p2_hurt_oam, -p1_camera_dx);
     }
     frame->p1_lives = rd8(0xDA15);
     frame->p2_lives = mp_p2_lives;
-    frame->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_dead_timer == 0 && mp_p2_lives > 0);
+    frame->p2_game_state = mp_p2_state.game_state;
+    frame->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0 &&
+                                  mp_p2_state.game_state == 0);
 
     /*
      * Spawn P2 only once SML1 reaches normal gameplay. This guarantees that
@@ -632,6 +641,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             if (mp_p2_lives == 0) mp_p2_lives = 1;
         }
         mp_player_save(&mp_p2_state);
+        mp_p2_state.game_state = 0;
+        mp_p2_state.timer = 0;
+        mp_p2_state.death_anim_counter = 0;
+        mp_p2_state.invincibility = 0;
+        mp_p2_state.superball_ttl = 0;
+        mp_p2_state.super_status = 0;
+        mp_p2_state.superball = 0;
         mp_p2_state.joy_held = 0;
         mp_p2_state.joy_pressed = 0;
 
@@ -658,15 +674,25 @@ void emu_mp_end(void)
     mp_ready = 0;
     mp_p2_spawned = 0;
     mp_p2_lives = 0;
-    mp_p2_dead_timer = 0;
-    mp_p2_respawn_pending = 0;
-    mp_p2_hurt_timer = 0;
-    memset(mp_p2_hurt_oam, 0, sizeof mp_p2_hurt_oam);
+    mp_vblank_life_event = 0;
+    mp_vblank_collision = 0;
+    mp_vblank_collision_addr = 0;
+    mp_vblank_collision_before = 0;
+    mp_vblank_waiting = 0;
+    gb_mp_vblank_watch = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
     mp_p1_lives_seen = 0;
     mp_frame_out = NULL;
     mp_audio_out = NULL;
     mp_audio_max = mp_audio_n = 0;
+}
+
+void gb_mp_vblank_done(void)
+{
+    if (!mp_active) return;
+    gb_mp_vblank_watch = 0;
+    mp_vblank_waiting = 0;
+    longjmp(stop_jmp, 3);
 }
 
 static void dev_hook(uint8_t *b, uint8_t *d)
@@ -744,8 +770,27 @@ void frame_hook(void)
         return;
     }
     if (mp_active) {
-        mp_capture_frame(mp_frame_out, 0);
-        mp_audio_n = mp_audio_out && mp_audio_max > 0 ? apu_drain(mp_audio_out, mp_audio_max) : 0;
+        /*
+         * PPU reaches frame_hook at the VBlank boundary, before the SML1
+         * VBlank interrupt executes. Let that ISR run to completion so
+         * Call_1B86, UpdateLives, DMA and the rest of the original frame are
+         * processed. gb_mp_vblank_done() yields immediately after RETI.
+         */
+        if (!mp_vblank_waiting) {
+            mp_vblank_waiting = 1;
+            mp_vblank_life_event = rd8(0xC0A3);
+            mp_vblank_collision = rd8(0xFFEE);
+            mp_vblank_collision_addr = (uint16_t)(rd8(0xFFEF) | ((uint16_t)rd8(0xFFF0) << 8));
+            mp_vblank_collision_before = 0;
+            if (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
+                mp_vblank_collision_before = rd8(mp_vblank_collision_addr);
+            gb_mp_vblank_arm();
+            return;
+        }
+
+        mp_vblank_waiting = 0;
+        gb_mp_vblank_watch = 0;
+        mp_audio_n = 0;
         longjmp(stop_jmp, 3);
     }
     uint8_t b = (uint8_t)(input_word & 0xFF), d = (uint8_t)(input_word >> 8);
