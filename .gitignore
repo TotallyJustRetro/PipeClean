@@ -1,0 +1,41 @@
+# Build output
+build/
+build-*/
+out/
+bin/
+dist/
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.exe
+
+# Generated recompilation output
+generated/
+game.c
+interp.c
+
+# Local ROMs / copyrighted game dumps
+roms/*.gb
+roms/*.gbc
+roms/*.bin
+roms/*.zip
+roms/*.7z
+
+# Local configuration
+*.ini
+*.cfg
+*.sav
+*.srm
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# IDE / OS
+.vscode/
+.idea/
+*.user
+.DS_Store
+Thumbs.db
