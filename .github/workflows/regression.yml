@@ -43,3 +43,7 @@ jobs:
         run: |
           cmake --build build-ci --target gb test_sml2_wide --parallel 2
           ctest --test-dir build-ci --output-on-failure
+
+      - name: Smoke-test the built runtime
+        run: |
+          timeout 15s build-ci/gb --headless --frames 2 --no-crc-check ci/smoke_512k.gb
