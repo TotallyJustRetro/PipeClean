@@ -574,12 +574,16 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          */
         int queued_score = mp_score_points(p2_floaty_control);
         if (queued_score > 0 &&
-            memcmp(score_before, score_after, sizeof score_before) == 0 &&
-            !enemy_merged) {
-            mp_add_score_bcd(queued_score);
-        } else if (queued_score > 0 &&
-                   memcmp(score_before, score_after, sizeof score_before) == 0 &&
-                   enemy_sound_event) {
+            memcmp(score_before, score_after, sizeof score_before) == 0) {
+            /*
+             * The floaty subsystem awards stomp points on its following
+             * update. Luigi's private floaty state is discarded when we
+             * restore P1, so apply that queued reward directly here.
+             *
+             * Powerups can also produce a 1000-point floaty. That is harmless
+             * to apply here because their pickup is already synchronized
+             * independently; the score must not be lost with P2's private RAM.
+             */
             mp_add_score_bcd(queued_score);
         }
 
