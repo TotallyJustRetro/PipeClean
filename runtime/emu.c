@@ -1202,6 +1202,7 @@ int emu_rewind_step(void)
     if (!thr || !rewind_sync_mx || !rewind_sync_cv) return -1;
 
     SDL_LockMutex(rewind_sync_mx);
+    rewind_pending = 0;
     rewind_step_done = 0;
     rewind_step_result = -1;
     rewind_step_request = 1;
@@ -1294,10 +1295,6 @@ void frame_hook(void)
             rewind_step_done = 1;
             SDL_CondBroadcast(rewind_sync_cv);
             SDL_UnlockMutex(rewind_sync_mx);
-        } else if (rewind_pending) {
-            /* Compatibility path for an already-queued rewind request. */
-            rewind_pending = 0;
-            if (rewind_load_previous()) rewind_mode = 0;
         }
         publish();
         events_frame();
