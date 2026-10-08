@@ -1,7 +1,6 @@
 /* Memory map, timer, serial, joypad, DMA, interrupts. */
 #include "sm83.h"
 #include "cart.h"
-#include "widescreen.h"
 
 CPU cpu;
 uint8_t io_if, io_ie;
@@ -10,15 +9,20 @@ uint64_t total_cycles;
 static uint8_t wram[0x2000];
 static uint8_t hram[0x80];
 static uint8_t io_misc[0x80];
+
+/* timer */
 static uint16_t div_counter;
 static uint8_t tima, tma, tac;
+/* serial */
 static uint8_t sb, sc;
 static int serial_cycles;
 static void (*serial_cb)(uint8_t);
+/* joypad */
 static uint8_t joy_sel = 0x30, joy_buttons, joy_dpad;
 
 void gb_serial_hook(void (*fn)(uint8_t)) { serial_cb = fn; }
 
+/* ------------------------------------------------------------------ */
 static uint8_t joyp_read(void)
 {
     uint8_t lines = 0x0F;
@@ -71,7 +75,7 @@ static void io_write(uint8_t r, uint8_t v)
         sc = v;
         if ((v & 0x81) == 0x81) {
             if (serial_cb) serial_cb(sb);
-            serial_cycles = 4096;
+            serial_cycles = 4096;       /* 8 bits at 8192 Hz */
         }
         return;
     case 0x04: timer_div_reset(); return;
@@ -87,6 +91,7 @@ static void io_write(uint8_t r, uint8_t v)
     io_misc[r] = v;
 }
 
+/* ------------------------------------------------------------------ */
 uint8_t rd8(uint16_t a)
 {
     switch (a >> 12) {
@@ -105,6 +110,7 @@ uint8_t rd8(uint16_t a)
     }
 }
 
+/* memory-write watchers (game event detection) */
 #define MAX_WATCH 16
 static uint16_t watch_lo[MAX_WATCH], watch_hi[MAX_WATCH];
 static int watch_n;
@@ -134,7 +140,7 @@ void wr8(uint16_t a, uint8_t v)
     if (UNLIKELY(watch_n)) watch_check(a, v);
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
-    case 4: case 5: case 6: case 7: cart_write_ctrl(a, v); return;
+    case 4: case 5: case 6: case 7: cart_write_ctrl(a, v); return;     /* mapper registers */
     case 8: case 9: vram[a & 0x1FFF] = v; return;
     case 0xA: case 0xB: cart_ram_write(a, v); return;
     case 0xC: case 0xD: case 0xE: wram[a & 0x1FFF] = v; return;
@@ -148,6 +154,7 @@ void wr8(uint16_t a, uint8_t v)
     }
 }
 
+/* ------------------------------------------------------------------ */
 static inline unsigned timer_mask(void)
 {
     static const unsigned m[4] = {1u << 9, 1u << 3, 1u << 5, 1u << 7};
@@ -181,10 +188,14 @@ void hw_tick(int n)
     ppu_tick(n);
     apu_tick(n);
     if (serial_cycles > 0 && (serial_cycles -= n) <= 0) {
-        serial_cycles = 0; sc &= 0x7F; sb = 0xFF; io_if |= 0x08;
+        serial_cycles = 0;
+        sc &= 0x7F;
+        sb = 0xFF;
+        io_if |= 0x08;
     }
 }
 
+/* ------------------------------------------------------------------ */
 void cpu_halt(void)
 {
     while (!(io_if & io_ie & 0x1F)) hw_tick(4);
@@ -193,11 +204,16 @@ void cpu_halt(void)
 void cpu_service_irq(void)
 {
     uint8_t pend = io_if & io_ie & 0x1F;
-    cpu.ime = 0; cpu.ei_pending = 0;
+    cpu.ime = 0;
+    cpu.ei_pending = 0;
     cpu.sp--; wr8(cpu.sp, cpu.pc >> 8);
     cpu.sp--; wr8(cpu.sp, (uint8_t)cpu.pc);
-    for (int i = 0; i < 5; i++) if (pend & (1 << i)) {
-        io_if &= (uint8_t)~(1 << i); cpu.pc = (uint16_t)(0x40 + i * 8); break;
+    for (int i = 0; i < 5; i++) {
+        if (pend & (1 << i)) {
+            io_if &= (uint8_t)~(1 << i);
+            cpu.pc = (uint16_t)(0x40 + i * 8);
+            break;
+        }
     }
     hw_tick(20);
 }
@@ -205,15 +221,12 @@ void cpu_service_irq(void)
 void cpu_lockup(uint8_t op, uint16_t pc)
 {
     fprintf(stderr, "CPU locked up: illegal opcode %02X at %04X\n", op, pc);
-    fflush(stdout); exit(2);
+    fflush(stdout);
+    exit(2);
 }
 
 void cpu_step_checked(void)
 {
-    if (wide_intercept_sml2(rd8(cpu.pc))) {
-        if (cpu_irq_check()) cpu_service_irq();
-        return;
-    }
     cpu_step();
     if (cpu_irq_check()) cpu_service_irq();
 }
@@ -223,12 +236,14 @@ void run_interpreter(void)
     for (;;) cpu_step_checked();
 }
 
+/* ---- coverage of ROM addresses that were executed but not recompiled ---- */
 static uint8_t miss_seen[0x8000];
 static unsigned long miss_ram_steps;
 
 void recomp_miss(uint16_t pc)
 {
-    if (pc < 0x8000) miss_seen[pc] = 1; else miss_ram_steps++;
+    if (pc < 0x8000) miss_seen[pc] = 1;
+    else miss_ram_steps++;
 }
 
 void gb_dump_misses(const char *path)
@@ -236,22 +251,30 @@ void gb_dump_misses(const char *path)
     FILE *f = fopen(path, "w");
     if (!f) return;
     int n = 0;
-    for (int i = 0; i < 0x8000; i++) if (miss_seen[i]) { fprintf(f, "%04X\n", i); n++; }
+    for (int i = 0; i < 0x8000; i++)
+        if (miss_seen[i]) { fprintf(f, "%04X\n", i); n++; }
     fclose(f);
-    fprintf(stderr, "[recomp] %d ROM addresses ran in the interpreter (wrote %s); %lu RAM/HRAM steps\n", n, path, miss_ram_steps);
+    fprintf(stderr, "[recomp] %d ROM addresses ran in the interpreter (wrote %s); %lu RAM/HRAM steps\n",
+            n, path, miss_ram_steps);
 }
 
+/* ------------------------------------------------------------------ */
 void gb_reset(void)
 {
     memset(&cpu, 0, sizeof cpu);
     cart_reset();
-    cpu.a=0x01; cpu.f=0xB0; cpu.b=0x00; cpu.c=0x13;
-    cpu.d=0x00; cpu.e=0xD8; cpu.h=0x01; cpu.l=0x4D;
-    cpu.sp=0xFFFE; cpu.pc=0x0100;
-    io_if=0x01; io_ie=0;
-    div_counter=0xABCC; tima=tma=tac=0;
-    sb=0; sc=0x7E; serial_cycles=0;
-    joy_sel=0x30; joy_buttons=joy_dpad=0;
-    memset(wram,0,sizeof wram); memset(hram,0,sizeof hram); memset(io_misc,0xFF,sizeof io_misc);
-    total_cycles=0; ppu_reset(); apu_reset();
+    /* state after the DMG boot ROM hands over */
+    cpu.a = 0x01; cpu.f = 0xB0; cpu.b = 0x00; cpu.c = 0x13;
+    cpu.d = 0x00; cpu.e = 0xD8; cpu.h = 0x01; cpu.l = 0x4D;
+    cpu.sp = 0xFFFE; cpu.pc = 0x0100;
+    io_if = 0x01; io_ie = 0;
+    div_counter = 0xABCC; tima = tma = tac = 0;
+    sb = 0; sc = 0x7E; serial_cycles = 0;
+    joy_sel = 0x30; joy_buttons = joy_dpad = 0;
+    memset(wram, 0, sizeof wram);
+    memset(hram, 0, sizeof hram);
+    memset(io_misc, 0xFF, sizeof io_misc);
+    total_cycles = 0;
+    ppu_reset();
+    apu_reset();
 }
