@@ -36,21 +36,39 @@ static int expect(int addr, const uint8_t *b, int n) { return memcmp(&rom[addr],
 
 static int sml2_right_extra;
 
+/* The SML2 entity-loader builds several horizontal look-ahead limits from
+ * ADD HL,DE in the same bank-2 routine.  Different ROM revisions can move
+ * the exact surrounding instructions, so the hook is deliberately guarded
+ * by the opcode at the expected address before touching a particular PC. */
+static unsigned sml2_hook_base(uint16_t pc)
+{
+    switch (pc) {
+    case 0x401C: return 0x0060u;
+    case 0x4040: return 0x0070u;
+    case 0x4064: return 0x00A0u;
+    default: return 0;
+    }
+}
+
 int wide_intercept_sml2(uint8_t op)
 {
-    if (!sml2_right_extra || op != 0x19 || cpu.pc != 0x401C) return 0;
-    /* $401C is the switchable bank-2 address used by the SML2 entity
-     * activation routine.  Reject the hook if another bank happens to be
-     * mapped there. */
-    if (cart_hi != rom + 0x8000) return 0;
+    if (!sml2_right_extra || op != 0x19) return 0;
+    /* These are the three horizontal ADD HL,DE look-ahead limits in the
+     * bank-2 entity setup routine.  Do not touch similarly shaped code in
+     * another bank or a ROM with a different instruction at the hook PC. */
+    unsigned base = sml2_hook_base(cpu.pc);
+    if (!base || cart_hi != rom + 0x8000) return 0;
+    size_t off = 0x8000u + (size_t)(cpu.pc - 0x4000u);
+    if (rom[off] != 0x19) return 0;
+
     unsigned hl = (unsigned)((cpu.h << 8) | cpu.l);
-    unsigned de = 0x0060u + (unsigned)sml2_right_extra;
-    unsigned r = hl + de;
+    unsigned de = base + (unsigned)sml2_right_extra;
+    unsigned sum = hl + de;
     cpu.f = (uint8_t)((cpu.f & 0x80)
         | ((((hl & 0x0FFFu) + (de & 0x0FFFu)) > 0x0FFFu) ? 0x20 : 0)
-        | ((r > 0xFFFFu) ? 0x10 : 0));
-    cpu.h = (uint8_t)(r >> 8);
-    cpu.l = (uint8_t)r;
+        | ((sum > 0xFFFFu) ? 0x10 : 0));
+    cpu.h = (uint8_t)(sum >> 8);
+    cpu.l = (uint8_t)sum;
     cpu.pc = (uint16_t)(cpu.pc + 1);
     hw_tick(8);
     return 1;
@@ -62,9 +80,9 @@ int wide_install(int game, int l, int r)
     sml2_right_extra = 0;
     if (l + r == 0) return 1;
     if (game == GAME_SML2) {
-        /* SML2's entity activation code lives in bank 2.  Its high bound is
-         * formed by ADD HL,DE at bank:$401C, where DE is normally 0x0060.
-         * We intercept that one interpreter instruction instead of rewriting
+        /* SML2's entity activation code lives in bank 2.  Its horizontal
+         * look-ahead bounds are formed by a small sequence of ADD HL,DE
+         * instructions.  We intercept those instructions instead of rewriting
          * a variable-length instruction stream in the ROM.  This is especially
          * appropriate here because SML2 already runs through the interpreter. */
         if (r > 0x9F || rom[0x801C] != 0x19) return 0;
