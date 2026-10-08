@@ -101,6 +101,7 @@ typedef struct {
 static int mp_active;
 static uint8_t mp_buttons, mp_dpad;
 static int mp_ready;
+static int mp_p2_spawned;
 static uint8_t mp_state[GB_STATE_BYTES];
 static MpPlayerState mp_p2_state;
 static Frame *mp_frame_out;
@@ -220,12 +221,13 @@ int emu_mp_begin(void)
     if (save_path[0]) cart_load_save(save_path);
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
 
-    mp_player_save(&mp_p2_state);
-    /* Give Player 2 its own clean input history. */
-    mp_p2_state.joy_held = 0;
-    mp_p2_state.joy_pressed = 0;
-    /* Start the second Mario a comfortable distance beside Player 1. */
-    mp_p2_state.mario[2] = (uint8_t)(mp_p2_state.mario[2] + 24);
+    /*
+     * Do not copy Mario state here: the reset state has not reached SML1's
+     * level-start initialization yet. Player 2 is spawned from the first real
+     * gameplay frame below, after C200-C20F contain a valid Mario.
+     */
+    memset(&mp_p2_state, 0, sizeof mp_p2_state);
+    mp_p2_spawned = 0;
 
     mp_ready = 1;
     return 0;
@@ -238,6 +240,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
     if (player == 1) {
+        if (!mp_p2_spawned) {
+            memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
+            return 0;
+        }
         /*
          * Run a neutral P2 control frame first. The world progresses exactly
          * once in this control pass, so comparing it with the real-input pass
@@ -326,6 +332,22 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     mp_active = 0;
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
     mp_capture_frame(frame, 0);
+
+    /*
+     * Spawn P2 only once SML1 reaches normal gameplay. This guarantees that
+     * P2 starts from the game's real initialized Mario state, rather than
+     * from the zeroed RAM produced by gb_reset().
+     */
+    if (!mp_p2_spawned && rd8(0xFFB3) == 0) {
+        mp_player_save(&mp_p2_state);
+        mp_p2_state.joy_held = 0;
+        mp_p2_state.joy_pressed = 0;
+        uint8_t x = rd8(0xC202);
+        if (x <= 0x70) x = (uint8_t)(x + 24);
+        else if (x >= 0x30) x = (uint8_t)(x - 24);
+        mp_p2_state.mario[2] = x;
+        mp_p2_spawned = 1;
+    }
     return mp_audio_n;
 }
 
@@ -334,6 +356,7 @@ void emu_mp_end(void)
     if (mp_ready && save_path[0]) cart_write_save(save_path);
     mp_active = 0;
     mp_ready = 0;
+    mp_p2_spawned = 0;
     mp_frame_out = NULL;
     mp_audio_out = NULL;
     mp_audio_max = mp_audio_n = 0;
