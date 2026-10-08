@@ -309,6 +309,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p1_scroll = rd8(0xFFA4);
         uint8_t score_before[3];
         uint8_t coins_before = rd8(0xFFFA);
+        uint8_t p2_life_event_before = rd8(0xC0A3);
         for (int i = 0; i < 3; i++) score_before[i] = rd8((uint16_t)(0xC0A0 + i));
         mp_capture_shared_world_before();
         mp_player_load(&mp_p2_state);
@@ -330,6 +331,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
+        uint8_t p2_life_event_after = rd8(0xC0A3);
+        if (p2_life_event_after != p2_life_event_before &&
+            p2_life_event_after != 0xFF && mp_p2_lives < 99)
+            mp_p2_lives++;
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
 
         int enemy_merged = 0;
