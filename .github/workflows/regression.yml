@@ -145,11 +145,21 @@ jobs:
         run: |
           ./build-windows/gb.exe --headless --frames 2 --no-crc-check --wide 100 ci/sml2_smoke.gb
 
+      - name: Stage Windows runtime and required DLLs
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist/PipeClean-Windows-x64
+          cp build-windows/gb.exe dist/PipeClean-Windows-x64/PipeClean.exe
+          {
+            ldd build-windows/gb.exe
+            ldd /ucrt64/bin/SDL2.dll
+          } | awk '/=> \/ucrt64\// {print $3}' | sort -u | while read -r dll; do
+            cp "$dll" dist/PipeClean-Windows-x64/
+          done
+
       - name: Package Windows runtime artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist\PipeClean-Windows-x64 | Out-Null
-          Copy-Item build-windows\gb.exe dist\PipeClean-Windows-x64\PipeClean.exe
           Copy-Item README.md, INSTALL.md, LEGAL.md, THIRD_PARTY.md dist\PipeClean-Windows-x64\
           Compress-Archive -Path dist\PipeClean-Windows-x64 -DestinationPath PipeClean-Windows-x64.zip -Force
 
