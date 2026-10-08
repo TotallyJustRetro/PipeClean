@@ -288,6 +288,7 @@ typedef struct {
 #define GB_STATE_VERSION 1u
 
 size_t gb_state_size(void) { return GB_STATE_BYTES; }
+size_t gb_state_data_size(void) { return sizeof(CoreState) + ppu_state_size() + apu_state_size(); }
 
 int gb_state_save(void *dst, size_t n)
 {
@@ -302,9 +303,9 @@ int gb_state_save(void *dst, size_t n)
     s.div_counter=div_counter; s.tima=tima; s.tma=tma; s.tac=tac; s.sb=sb; s.sc=sc; s.serial_cycles=serial_cycles;
     s.joy_sel=joy_sel; s.joy_buttons=joy_buttons; s.joy_dpad=joy_dpad;
     size_t off = sizeof s;
-    if (s.cart_n > sizeof s.cart_state || off + s.ppu_n + s.apu_n + s.cart_n > n) return -1;
+    if (s.cart_n > sizeof s.cart_state || gb_state_data_size() > n || off + s.ppu_n + s.apu_n > n) return -1;
     if (cart_state_save(s.cart_state, s.cart_n)) return -1;
-    memcpy(p, &s, sizeof s); off += s.ppu_n;
+    memcpy(p, &s, sizeof s);
     if (ppu_state_save(p + sizeof s, s.ppu_n)) return -1;
     if (apu_state_save(p + sizeof s + s.ppu_n, s.apu_n)) return -1;
     return 0;
