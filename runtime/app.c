@@ -500,13 +500,13 @@ static int play_multiplayer_sml1(int g)
             }
         }
 
+        int ds_rewinding = ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND;
         int now_rewind = app_rewind_held(g) && !paused;
-        if (ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND) {
+        if (ds_rewinding) {
             emu_rewind_step();
             emu_mp_frame_refresh(f);
             have = 1;
-        }
-        if (now_rewind) {
+        } else if (now_rewind) {
             if (!rewind_held) {
                 if (emu_rewind_available()) rewind_held = 1;
                 else game_notice("Rewind buffer is not ready yet.");
