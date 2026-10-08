@@ -203,7 +203,7 @@ static void make_preview(int g)
 {
     char err[256];
     prev_ok[g] = 0;
-    if (!rs[g].ok) return;
+    if (games[g].external_player || !rs[g].ok) return;
     if (launcher_prepare(g, err, sizeof err)) return;
     tex_collect_begin(g);
     emu_preview(games[g].preview_frames);
@@ -263,7 +263,7 @@ void launcher_init(void)
     for (int g = 0; g < N_GAMES; g++)
         if (!rs[g].ok && found[g][0]) { snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", found[g]); rom_check(g); }
     tab = settings.last_tab >= 0 && settings.last_tab < N_TABS ? settings.last_tab : 0;
-    for (int g = 0; g < N_GAMES; g++) if (rs[g].ok && !prev_ok[g]) make_preview(g);
+    for (int g = 0; g < N_GAMES; g++) if (!games[g].external_player && rs[g].ok && !prev_ok[g]) make_preview(g);
     filter_game = 0;
     if (getenv("GBL_TAB")) { int t = 0, u = 0; sscanf(getenv("GBL_TAB"), "%d,%d", &t, &u); tab = t; if (t < N_GAMES) sub[t] = u; }
     audio_menu_apply();

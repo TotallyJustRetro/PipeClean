@@ -1,7 +1,11 @@
 #pragma once
 #include <stdint.h>
 
-enum { GAME_DRMARIO, GAME_SML, GAME_SML2, N_GAMES };
+enum {
+    GAME_DRMARIO, GAME_SML, GAME_SML2,
+    GAME_WARIO_SML3, GAME_WARIO_LAND2_GB, GAME_WARIO_LAND3_GBC, GAME_WARIO_LAND2_GBC,
+    N_GAMES
+};
 
 typedef struct {
     const char *id;
@@ -16,6 +20,7 @@ typedef struct {
     int hud_lines;
     int hud_window;
     int wide_gate;
+    int external_player;              /* launch through the bundled ROM-independent gbrecomp player */
 } GameDef;
 
 extern const GameDef games[N_GAMES];

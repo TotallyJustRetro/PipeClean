@@ -3,6 +3,15 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include <errno.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#endif
 #include "app.h"
 #include "launcher.h"
 #include "ui.h"
@@ -692,10 +701,89 @@ static int play_multiplayer_sml1(int g)
     return quit == 2;
 }
 
+static int play_external_game(int g)
+{
+    if (g < 0 || g >= N_GAMES || !games[g].external_player) return 0;
+    GameCfg *c = &settings.g[g];
+    RomStatus st;
+    if (!c->rom_path[0]) {
+        launcher_toast("Choose this game's ROM on the Game tab first.");
+        return 0;
+    }
+    if (rom_probe(g, c->rom_path, &st)) {
+        launcher_toast(st.msg);
+        return 0;
+    }
+
+    char base[1200] = "";
+    char player[1400];
+    char *base_path = SDL_GetBasePath();
+    if (base_path) {
+        snprintf(base, sizeof base, "%s", base_path);
+        SDL_free(base_path);
+    }
+#ifdef _WIN32
+    snprintf(player, sizeof player, "%sgbplayer.exe", base);
+#else
+    snprintf(player, sizeof player, "%sgbplayer", base);
+#endif
+
+    FILE *test = fopen(player, "rb");
+    if (!test) {
+        launcher_toast("The bundled gbrecomp player is missing. Rebuild or reinstall PipeClean.");
+        return 0;
+    }
+    fclose(test);
+    settings_save();
+    audio_menu_music(0);
+    int ok = 1;
+#ifdef _WIN32
+    char command[4096];
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof si);
+    memset(&pi, 0, sizeof pi);
+    si.cb = sizeof si;
+    /* ROM paths are ordinary Windows paths and are quoted to preserve spaces. */
+    snprintf(command, sizeof command, "\"%s\" \"%s\"", player, c->rom_path);
+    if (CreateProcessA(player, command, NULL, NULL, FALSE, 0, NULL, base[0] ? base : NULL, &si, &pi)) {
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    } else {
+        launcher_toast("Couldn't start the Wario game runtime.");
+        ok = 0;
+    }
+#else
+    pid_t pid = fork();
+    if (pid == 0) {
+        execl(player, player, c->rom_path, (char *)NULL);
+        _exit(127);
+    }
+    if (pid < 0) {
+        launcher_toast("Couldn't start the Wario game runtime.");
+        ok = 0;
+    } else {
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0) {
+            if (errno == EINTR) continue;
+            launcher_toast("Couldn't wait for the Wario game runtime.");
+            ok = 0;
+            break;
+        }
+    }
+#endif
+    audio_menu_music(1);
+    if (ok) settings_save();
+    return 0;
+}
+
 /* returns 0 = back to launcher, 1 = quit */
 static int play(int g)
 {
     ds_menu_close();
+    if (g < 0 || g >= N_GAMES) return 0;
+    if (games[g].external_player) return play_external_game(g);
     char err[256];
     GameCfg *c = &settings.g[g];
     load_state_request_app[g] = 0;

@@ -9,9 +9,13 @@
 #include <dirent.h>
 
 const GameDef games[N_GAMES] = {
-    {"drmario", "Dr. Mario",             "Falling-pill puzzle. Recompiled to native code.", "DR.MARIO",        0xF0225DD0u, 1, 0xE0584C, 200, 0, 0, 0, 0, 0},
-    {"sml",     "Super Mario Land",      "Sarasaland platformer.",                          "SUPER MARIOLAND", 0,           0, 0x4FA85A, 420, 32, 56, 16, 0, 1},
-    {"sml2",    "Super Mario Land 2",    "6 Golden Coins.",                                 "MARIOLAND2",      0,           0, 0xE8B23A, 700, 49, 33, 0, 0, 0},
+    {"drmario",    "Dr. Mario",             "Falling-pill puzzle. Recompiled to native code.",                "DR.MARIO",         0xF0225DD0u, 1, 0xE0584C, 200, 0,  0,  0, 0, 0, 0},
+    {"sml",        "Super Mario Land",      "Sarasaland platformer.",                                          "SUPER MARIOLAND",  0,           0, 0x4FA85A, 420, 32, 56, 16, 0, 1, 0},
+    {"sml2",       "Super Mario Land 2",    "6 Golden Coins.",                                                 "MARIOLAND2",       0,           0, 0xE8B23A, 700, 49, 33,  0, 0, 0, 0},
+    {"wario-sml3", "Wario Land: SML3",      "Wario's first adventure. Runs in the standalone gbrecomp player.", "SUPERMARIOLAND3",  0,           0, 0xE4A144,   0,  0,  0,  0, 0, 0, 1},
+    {"wario2-gb",  "Wario Land II (GB)",    "The monochrome Game Boy release.",                               "WARIOLAND2",       0,           0, 0xC77B44,   0,  0,  0,  0, 0, 0, 1},
+    {"wario3-gbc", "Wario Land 3 (GBC)",    "Wario's color-era adventure.",                                   "WARIOLAND3",       0,           0, 0x58B5C9,   0,  0,  0,  0, 0, 0, 1},
+    {"wario2-gbc", "Wario Land II (GBC)",  "The Game Boy Color release.",                                     "CGBWARIOLAND2",    0,           0, 0x8A80D4,   0,  0,  0,  0, 0, 0, 1},
 };
 
 #define MAX_ROM (8u << 20)
