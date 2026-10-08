@@ -35,7 +35,13 @@ jobs:
             echo "Vendor sources already current."
           else
             git commit -m "Restore bundled third-party source files"
-            git push
+            git fetch origin main
+            git rebase origin/main
+            if git log origin/main..HEAD --oneline | grep -q .; then
+              git push origin HEAD:main
+            else
+              echo "Vendor restoration was already pushed by another run."
+            fi
           fi
 
       - name: Install SDL2 development package
