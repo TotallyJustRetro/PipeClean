@@ -151,14 +151,17 @@ jobs:
       - name: Stage Windows runtime and required DLLs
         shell: msys2 {0}
         run: |
-          mkdir -p dist/PipeClean-Windows-x64
+          mkdir -p dist/PipeClean-Windows-x64/assets
           cp build-windows/PipeClean.exe dist/PipeClean-Windows-x64/PipeClean.exe
+          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg dist/PipeClean-Windows-x64/assets/
           {
             ldd build-windows/PipeClean.exe
             ldd /ucrt64/bin/SDL2.dll
           } | awk '/=> \/ucrt64\// {print $3}' | sort -u | while read -r dll; do
             cp "$dll" dist/PipeClean-Windows-x64/
           done
+          test -s dist/PipeClean-Windows-x64/assets/pipeclean-icon.svg
+          test -s dist/PipeClean-Windows-x64/assets/pipeclean-logo.svg
 
       - name: Package Windows runtime artifact
         shell: pwsh
