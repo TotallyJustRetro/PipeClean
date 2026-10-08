@@ -65,6 +65,52 @@ static void draw_bg_cover(float dim)
     }
 }
 
+static int sml1_oam_anchor(const Frame *f, const uint8_t oam[16], float *gx, float *gy)
+{
+    if (!f || !oam || !gx || !gy || f->w <= 0) return 0;
+    int L = f->xoff;
+    int sprite_neg = L > 8 ? 256 - (L - 8) : 256;
+    int minx = 10000, maxx = -10000, miny = 10000;
+    int count = 0;
+    for (int i = 0; i < 4; i++) {
+        const uint8_t *s = &oam[i * 4];
+        if (!s[0]) continue;
+        int x = s[1];
+        if (x >= sprite_neg) x -= 256;
+        x = x - 8 + L;
+        int y = s[0] - 16;
+        if (x < minx) minx = x;
+        if (x + 8 > maxx) maxx = x + 8;
+        if (y < miny) miny = y;
+        count++;
+    }
+    if (!count) return 0;
+    *gx = (minx + maxx) * 0.5f;
+    *gy = (float)miny;
+    return 1;
+}
+
+static void sml1_draw_player_tag(const Frame *f, const uint8_t oam[16], const SDL_Rect *r,
+                                 const char *label, uint32_t color)
+{
+    float gx, gy;
+    if (!sml1_oam_anchor(f, oam, &gx, &gy) || !r || r->w <= 0 || r->h <= 0) return;
+
+    float sx = r->x + gx / (float)f->w * r->w;
+    float sy = r->y + (gy - 2.0f) / (float)GB_H * r->h;
+    float ux = sx / ui_scale + ui_view_x0();
+    float uy = sy / ui_scale + ui_view_y0();
+
+    float tw = ui_text_w(F_BOLD, 12, label) + 12.0f;
+    float tx = ux - tw * 0.5f;
+    float ty = uy - 22.0f;
+
+    ui_shadow(tx, ty, tw, 18, 6, 3, RGBA(0, 0, 0, 105));
+    ui_rrect(tx, ty, tw, 18, 6, color);
+    ui_text_c(F_BOLD, 12, ux, ty + 1, HEX(0xFFFFFF), label);
+    ui_tri(ux - 5, ty + 16, ux + 5, ty + 16, ux, uy - 1, color);
+}
+
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer_sml1(int g)
 {
@@ -91,7 +137,7 @@ static int play_multiplayer_sml1(int g)
 
     Frame *f = (Frame *)calloc(1, sizeof *f);
     Frame *p2f = (Frame *)calloc(1, sizeof *p2f);
-    int16_t a0[4096 * 2], a1[4096 * 2], mix[4096 * 2];
+    int16_t a0[4096 * 2];
     if (!f || !p2f) {
         free(f);
         free(p2f);
@@ -138,23 +184,20 @@ static int play_multiplayer_sml1(int g)
             if (n0 < 0) {
                 quit = 1;
             } else {
-                int n1 = emu_mp_step(1, b1, d1, p2f, a1, 4096);
+                int n1 = emu_mp_step(1, b1, d1, p2f, NULL, 0);
                 if (n1 < 0) {
                     quit = 1;
                 } else {
                     have = 1;
-                    memcpy(f->mario_oam, p2f->mario_oam, sizeof f->mario_oam);
-                    if (f->game_state == 0) render_overlay_sml1_mario(f, 0, 0);
+                    /*
+                     * The P2 emulation pass is gameplay-only. Do not blend its
+                     * complete APU stream into P1: that makes music/SFX sound
+                     * doubled because the same shared world is simulated again.
+                     */
+                    if (f->game_state == 0)
+                        render_overlay_sml1_mario_oam(f, p2f->mario_oam2, 0, 0);
 
-                    int n = n0 > n1 ? n0 : n1;
-                    if (n > 4096) n = 4096;
-                    for (int i = 0; i < n; i++) {
-                        int l = i < n0 ? a0[i * 2] : 0, r = i < n0 ? a0[i * 2 + 1] : 0;
-                        int l2 = i < n1 ? a1[i * 2] : 0, r2 = i < n1 ? a1[i * 2 + 1] : 0;
-                        mix[i * 2] = (int16_t)((l + l2) / 2);
-                        mix[i * 2 + 1] = (int16_t)((r + r2) / 2);
-                    }
-                    if (n > 0) audio_game_push(mix, n);
+                    if (n0 > 0) audio_game_push(a0, n0);
                     if (audio_ok()) audio_game_wait(audio_game_target());
                 }
             }
@@ -182,12 +225,16 @@ static int play_multiplayer_sml1(int g)
             pad_set_screen_color(render_avg_color());
         }
 
+        ui_begin(W, H, dt);
+        if (have) {
+            sml1_draw_player_tag(f, f->mario_oam, &r, "P1", C_ACCENT);
+            sml1_draw_player_tag(f, p2f->mario_oam2, &r, "P2", C_OK);
+        }
         if (paused) {
-            ui_begin(W, H, dt);
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
-            ui_end();
         }
+        ui_end();
 
         pad_frame(dt);
 
