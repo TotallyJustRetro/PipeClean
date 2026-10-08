@@ -142,9 +142,10 @@ def emit_interp():
         if k in ("seq","halt"):
             return pre + ins.body + f" cpu.pc = (uint16_t)(cpu.pc + {ins.length}); tick({ins.taken});" + (" cpu_halt();" if k == "halt" else "")
         if k == "jp":
+            target = f"0x{ins.target:04X}" if isinstance(ins.target, int) else ins.target
             if ins.cond is None:
-                return pre + f"cpu.pc = {ins.target}; tick({ins.taken});"
-            return pre + f"if ({ins.cond}) {{ cpu.pc = {ins.target}; tick({ins.taken}); }} else {{ cpu.pc = (uint16_t)(cpu.pc + {ins.length}); tick({ins.nt}); }}"
+                return pre + f"cpu.pc = {target}; tick({ins.taken});"
+            return pre + f"if ({ins.cond}) {{ cpu.pc = {target}; tick({ins.taken}); }} else {{ cpu.pc = (uint16_t)(cpu.pc + {ins.length}); tick({ins.nt}); }}"
         if k in ("call","rst"):
             target = f"0x{ins.target:04X}" if isinstance(ins.target, int) else ins.target
             if ins.cond is None:
