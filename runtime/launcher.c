@@ -24,8 +24,8 @@ void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
 enum { TAB_FILTERS = N_GAMES, TAB_AUDIO, N_TABS };
-enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_DUALSENSE, SUB_TEXTURES, SUB_EMULATOR, N_SUB };
-static const char *sub_names[N_SUB] = {"Game", "Display", "Controls", "DualSense", "Textures", "Emulator"};
+enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
+static const char *sub_names[N_SUB] = {"Game", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
 static int tab, sub[N_GAMES];
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
@@ -455,45 +455,101 @@ static void bind_action_cell(int g, float x, float y, float w, int kind, int act
     if (over && !active) ui_hint("Click, then press the key or controller button. Backspace clears, Esc cancels.");
 }
 
-static void sub_emulator(int g, float x, float y)
+static void sub_save_states(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
-    card(x, y, 808, 476, "EMULATOR SHORTCUTS");
+    char path[1200];
+    char text[96];
+
+    card(x, y, 808, 476, "SAVE STATES");
     ui_text(F_REG, 13, x + 18, y + 40, C_DIM,
-            "These actions operate PipeClean's emulator, not the Game Boy controls. Save states persist on disk.");
-    label(x + 18, y + 78, "State slot");
-    ui_slider(x + 110, y + 76, 300, &c->state_slot, 0, 9);
-    char slot[40];
-    snprintf(slot, sizeof slot, "Slot %d", c->state_slot + 1);
-    ui_text_r(F_BOLD, 14, x + 432, y + 78, C_TEXT, slot);
+            "Save states are stored separately for this game. Pick a slot here, then use the Save/Load bindings while playing.");
 
-    ui_text(F_BOLD, 12, x + 18, y + 118, C_MUTED, "Action");
-    ui_text(F_BOLD, 12, x + 270, y + 118, C_MUTED, "Keyboard");
-    ui_text(F_BOLD, 12, x + 480, y + 118, C_MUTED, "Controller");
+    label(x + 18, y + 78, "Current slot");
+    ui_slider(x + 118, y + 76, 300, &c->state_slot, 0, 9);
+    snprintf(text, sizeof text, "Slot %d", c->state_slot + 1);
+    ui_text_r(F_BOLD, 14, x + 432, y + 78, C_TEXT, text);
 
+    ui_text(F_BOLD, 12, x + 18, y + 116, C_MUTED, "State slots");
+    for (int slot = 0; slot < 10; slot++) {
+        int col = slot < 5 ? 0 : 1;
+        int row = slot < 5 ? slot : slot - 5;
+        float bx = x + 18 + col * 386;
+        float by = y + 130 + row * 48;
+        snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), games[g].id, slot);
+        int saved = file_exists(path);
+        int over = 0;
+        int clicked = clickable(bx, by, 368, 40, &over);
+
+        ui_rrect(bx, by, 368, 40, 8,
+                 slot == c->state_slot ? RGBA(255,255,255,12) : (over ? C_BTN_H : RGBA(255,255,255,6)));
+        ui_text(F_BOLD, 13, bx + 14, by + 8, slot == c->state_slot ? HEX(ui_accent) : C_TEXT, "Slot");
+        snprintf(text, sizeof text, "%d", slot + 1);
+        ui_text(F_BOLD, 13, bx + 46, by + 8, slot == c->state_slot ? HEX(ui_accent) : C_TEXT, text);
+        ui_text_r(F_REG, 12, bx + 350, by + 8, saved ? C_OK : C_DIM, saved ? "Saved" : "Empty");
+        if (clicked) c->state_slot = slot;
+    }
+
+    float sy = y + 382;
+    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "Suspend");
+    snprintf(path, sizeof path, "%sstates/%s.suspend.pcs", settings_dir(), games[g].id);
+    int suspended = file_exists(path);
+    ui_text(F_REG, 13, x + 92, sy, suspended ? C_OK : C_DIM,
+            suspended ? "Suspended game available" : "No suspended game");
+
+    ui_text_wrap(F_REG, 12, x + 18, y + 414, 772, C_DIM,
+                 "F5/F8 save and load the selected slot by default. F6 changes slots, F7 rewinds, and F10 suspends. Rebind these actions on the Bindings tab.", 3);
+}
+
+static void sub_bindings(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    card(x, y, 808, 476, "BINDINGS");
+
+    ui_text(F_REG, 13, x + 18, y + 40, C_DIM,
+            "Game Boy controls and PipeClean emulator shortcuts for this game.");
+
+    ui_text(F_BOLD, 12, x + 18, y + 74, C_MUTED, "GAME BOY CONTROLS");
+    static const float colx[5] = {18, 150, 310, 470, 630};
+    ui_text(F_BOLD, 11, x + colx[0], y + 96, C_MUTED, "Button");
+    ui_text(F_BOLD, 11, x + colx[1] + 10, y + 96, C_MUTED, "Keyboard");
+    ui_text(F_BOLD, 11, x + colx[2] + 10, y + 96, C_MUTED, "Keyboard 2");
+    ui_text(F_BOLD, 11, x + colx[3] + 10, y + 96, C_MUTED, "Player 1");
+    ui_text(F_BOLD, 11, x + colx[4] + 10, y + 96, C_MUTED, "Player 2");
+    for (int b = 0; b < N_BTN; b++) {
+        float ry = y + 112 + b * 31;
+        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 31, 8, RGBA(255,255,255,6));
+        ui_text(F_BOLD, 13, x + colx[0], ry + 4, C_TEXT, btn_names[b]);
+        bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
+        bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
+        bind_cell(g, x + colx[3], ry, 150, 2, b, 0);
+        bind_cell(g, x + colx[4], ry, 150, 2, b, 1);
+    }
+
+    float base = y + 112 + N_BTN * 31 + 8;
+    ui_text(F_BOLD, 12, x + 18, base, C_MUTED, "EMULATOR SHORTCUTS");
+    ui_text(F_BOLD, 11, x + 228, base, C_MUTED, "Keyboard");
+    ui_text(F_BOLD, 11, x + 438, base, C_MUTED, "Controller");
     for (int a = 0; a < N_ACTION; a++) {
-        float ry = y + 136 + a * 46;
-        if (a % 2 == 0) ui_rrect(x + 10, ry - 4, 788, 40, 8, RGBA(255, 255, 255, 6));
-        ui_text(F_BOLD, 13, x + 18, ry + 5, C_TEXT, action_names[a]);
+        float ry = base + 18 + a * 38;
+        if (a % 2 == 0) ui_rrect(x + 10, ry - 3, 788, 34, 8, RGBA(255,255,255,6));
+        ui_text(F_BOLD, 12, x + 18, ry + 4, C_TEXT, action_names[a]);
         bind_action_cell(g, x + 228, ry, 190, 3, a);
         bind_action_cell(g, x + 438, ry, 190, 4, a);
     }
 
-    ui_text_wrap(F_REG, 12, x + 18, y + 382, 772, C_DIM,
-                 "Rewind keeps the most recent few seconds in memory. Hold the Rewind binding to move backward; releasing it resumes from the point you reached.", 3);
-    ui_text_wrap(F_REG, 12, x + 18, y + 422, 772, C_DIM,
-                 "DualSense: press or touch the trackpad in-game for the dedicated state menu. Slide to an option and release to confirm.", 3);
-
-    if (ui_button(x + 18, y + 450, 180, 36, "Reset shortcuts", B_NORMAL, 1)) {
+    if (ui_button(x + 18, y + 452, 180, 36, "Reset all bindings", B_NORMAL, 1)) {
+        controls_defaults(c);
         shortcut_defaults(c);
-        launcher_toast("Emulator shortcuts reset.");
+        controller_menu = -1;
+        launcher_toast("Bindings reset.");
     }
 }
 
 static void sub_controls(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
-    card(x, y, 808, 476, "BUTTON LAYOUT");
+    card(x, y, 808, 476, "PLAYER CONTROLLERS");
 
     float my = y + 76;
     label(x + 18, my, "Local multiplayer");
@@ -522,7 +578,7 @@ static void sub_controls(int g, float x, float y)
         bind_cell(g, x + colx[4], ry, 150, 2, b, 1);
     }
     float by = y + 128 + N_BTN * 32 + 8;
-    if (ui_button(x + 18, by, 170, 36, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controls reset."); }
+    if (ui_button(x + 18, by, 170, 36, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controller defaults reset."); }
     label(x + 220, by + 8, "Stick dead zone");
     ui_slider(x + 330, by + 7, 220, &settings.pad_deadzone, 5, 80);
     char t[16]; snprintf(t, sizeof t, "%d%%", settings.pad_deadzone); ui_text(F_REG, 13, x + 566, by + 8, C_TEXT, t);
@@ -876,12 +932,27 @@ LauncherResult launcher_frame(float dt)
         float y = cy + 118;
         pad_set_context(tab, 0);
         switch (sub[tab]) {
-        case SUB_GAME: sub_game(tab, cx, y); break;
-        case SUB_DISPLAY: sub_display(tab, cx, y); break;
-        case SUB_CONTROLS: sub_controls(tab, cx, y); break;
-        case SUB_DUALSENSE: sub_dualsense(tab, cx, y); break;
-        case SUB_EMULATOR: sub_emulator(tab, cx, y); break;
-        default: sub_textures(tab, cx, y); break;
+        case SUB_GAME:
+            sub_game(tab, cx, y);
+            break;
+        case SUB_DISPLAY:
+            sub_display(tab, cx, y);
+            break;
+        case SUB_CONTROLS:
+            sub_controls(tab, cx, y);
+            break;
+        case SUB_BINDINGS:
+            sub_bindings(tab, cx, y);
+            break;
+        case SUB_DUALSENSE:
+            sub_dualsense(tab, cx, y);
+            break;
+        case SUB_SAVE_STATES:
+            sub_save_states(tab, cx, y);
+            break;
+        default:
+            sub_textures(tab, cx, y);
+            break;
         }
     } else if (tab == TAB_FILTERS) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
