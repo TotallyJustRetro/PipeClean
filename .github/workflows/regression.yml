@@ -66,7 +66,7 @@ jobs:
 
       - name: Build full runtime and test target
         run: |
-          cmake --build build-ci --target gb test_sml2_wide --parallel 2
+          cmake --build build-ci --target gb test_sml2_wide test_cart_mbc1 --parallel 2
           ctest --test-dir build-ci --output-on-failure
 
       - name: Smoke-test SML2 interpreter and CLI widescreen path
