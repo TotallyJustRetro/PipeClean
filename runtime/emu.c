@@ -1148,6 +1148,7 @@ int emu_state_load_file(const char *path, int resume_after)
         ok = 0;
     }
 
+    if (ok) audio_game_flush();
     if (was_running && resume_after) {
         if (emu_start_internal(force_interp_flag, 0) != 0) ok = 0;
     }
@@ -1188,6 +1189,7 @@ static int rewind_prime(void)
     rewind_last_loaded = -1;
     rewind_mode = 1;
     rewind_pending = 1;
+    audio_game_flush();
     audio_game_set_paused(1);
     return 0;
 }
@@ -1229,6 +1231,7 @@ void emu_rewind_end(void)
     }
     rewind_mode = 0;
     rewind_pending = 0;
+    audio_game_flush();
     rewind_cursor = -1;
     rewind_last_loaded = -1;
     audio_game_set_paused(0);
