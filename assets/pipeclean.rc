@@ -1,0 +1,2 @@
+#define IDI_PIPECLEAN 101
+IDI_PIPECLEAN ICON DISCARDABLE "pipeclean-icon.ico"
