@@ -20,6 +20,7 @@ int main(void)
     memcpy(img + 0x134, "MBC1 TEST", 9);
     img[0x147] = 0x01; /* MBC1, no RAM */
     img[0x148] = 0x05; /* 1 MiB */
+    img[0x149] = 0x02; /* 8 KiB external SRAM */
 
     for (size_t b = 0; b < banks; b++)
         img[b * 0x4000] = (uint8_t)b;
@@ -52,6 +53,29 @@ int main(void)
     cart_write_ctrl(0x6000, 0);
     if (cart_lo[0] != 0 || cart_hi[0] != 33)
         return fail(9, "MBC1 mode 0 did not restore bank 0 at the low window");
+
+    if (cart_ram_state_size() != 0x2000)
+        return fail(10, "expected 8 KiB cartridge RAM state");
+
+    cart_write_ctrl(0x0000, 0x0A); /* enable external RAM */
+    cart_ram_write(0xA000, 0x12);
+    cart_ram_write(0xA123, 0x34);
+    cart_ram_write(0xBFFF, 0x56);
+    uint8_t *ram_state = (uint8_t *)malloc(cart_ram_state_size());
+    if (!ram_state) return fail(11, "out of memory for RAM state");
+    if (cart_ram_state_save(ram_state, cart_ram_state_size()) != 0)
+        return fail(12, "cartridge RAM state save failed");
+
+    cart_ram_write(0xA000, 0x99);
+    cart_ram_write(0xA123, 0x88);
+    cart_ram_write(0xBFFF, 0x77);
+    if (cart_ram_state_load(ram_state, cart_ram_state_size()) != 0) {
+        free(ram_state);
+        return fail(13, "cartridge RAM state load failed");
+    }
+    free(ram_state);
+    if (cart_ram_read(0xA000) != 0x12 || cart_ram_read(0xA123) != 0x34 || cart_ram_read(0xBFFF) != 0x56)
+        return fail(14, "cartridge RAM contents were not restored");
 
     free(img);
     puts("MBC1 mapper: PASS");
