@@ -155,7 +155,7 @@ typedef struct {
 } MpStateExtra;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 1u
+#define EMU_STATE_VERSION 2u
 #define EMU_STATE_FLAG_MP 1u
 
 static uint8_t *rewind_data;
