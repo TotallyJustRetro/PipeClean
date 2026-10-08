@@ -280,7 +280,7 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
     if (!e || g < 0 || g >= N_GAMES) return 0;
     if (e->type == SDL_CONTROLLERBUTTONDOWN &&
         e->cbutton.button == SDL_CONTROLLER_BUTTON_TOUCHPAD &&
-        pad_is_dualsense_instance(e->cbutton.which)) {
+        pad_is_selected_dualsense_instance(g, e->cbutton.which)) {
         if (ds_menu.open) {
             emu_rewind_end();
             ds_menu_close();
@@ -293,6 +293,8 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
     float x, y;
     int kind;
     if (!pad_touchpad_event(e, &x, &y, &kind)) return 0;
+    /* Touchpad events may originate from multiple DualSense controllers; only P1's selected device may control the menu. */
+    if (!pad_is_selected_dualsense_instance(g, e->ctouchpad.which)) return 0;
 
     if (kind == 0) {
         if (!ds_menu.open) ds_menu_open();
