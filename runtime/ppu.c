@@ -244,4 +244,45 @@ void ppu_tick(int n)
     }
 }
 
+typedef struct {
+    uint8_t vram[0x2000], oam[0xA0];
+    uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
+    uint16_t bgtile[GB_H][GB_WMAX], sprtile[GB_H][GB_WMAX];
+    uint8_t bguv[GB_H][GB_WMAX], spruv[GB_H][GB_WMAX];
+    int ppu_w, ppu_xoff;
+    int hud_lines, hud_shift, wide_r, sprite_neg, win_centre, wide_gate, wide_on, cfg_hud, cfg_win;
+    uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
+    int dot, ly, mode, lcd_on, stat_line, wlc, off_cycles, frame_count;
+} PPUState;
+
+size_t ppu_state_size(void) { return sizeof(PPUState); }
+int ppu_state_save(void *dst, size_t n)
+{
+    if (!dst || n < sizeof(PPUState)) return -1;
+    PPUState *s = (PPUState *)dst;
+    memcpy(s->vram,vram,sizeof vram); memcpy(s->oam,oam,sizeof oam);
+    memcpy(s->shade,ppu_shade,sizeof ppu_shade); memcpy(s->layer,ppu_layer,sizeof ppu_layer);
+    memcpy(s->bgtile,ppu_bgtile,sizeof ppu_bgtile); memcpy(s->sprtile,ppu_sprtile,sizeof ppu_sprtile);
+    memcpy(s->bguv,ppu_bguv,sizeof ppu_bguv); memcpy(s->spruv,ppu_spruv,sizeof ppu_spruv);
+    s->ppu_w=ppu_w; s->ppu_xoff=ppu_xoff; s->hud_lines=hud_lines; s->hud_shift=hud_shift; s->wide_r=wide_r; s->sprite_neg=sprite_neg;
+    s->win_centre=win_centre; s->wide_gate=wide_gate; s->wide_on=wide_on; s->cfg_hud=cfg_hud; s->cfg_win=cfg_win;
+    s->lcdc=lcdc; s->stat_sel=stat_sel; s->scy=scy; s->scx=scx; s->lyc=lyc; s->bgp=bgp; s->obp0=obp0; s->obp1=obp1; s->wy=wy; s->wx=wx;
+    s->dot=dot; s->ly=ly; s->mode=mode; s->lcd_on=lcd_on; s->stat_line=stat_line; s->wlc=wlc; s->off_cycles=off_cycles; s->frame_count=frame_count;
+    return 0;
+}
+int ppu_state_load(const void *src, size_t n)
+{
+    if (!src || n < sizeof(PPUState)) return -1;
+    const PPUState *s = (const PPUState *)src;
+    memcpy(vram,s->vram,sizeof vram); memcpy(oam,s->oam,sizeof oam);
+    memcpy(ppu_shade,s->shade,sizeof ppu_shade); memcpy(ppu_layer,s->layer,sizeof ppu_layer);
+    memcpy(ppu_bgtile,s->bgtile,sizeof ppu_bgtile); memcpy(ppu_sprtile,s->sprtile,sizeof ppu_sprtile);
+    memcpy(ppu_bguv,s->bguv,sizeof ppu_bguv); memcpy(ppu_spruv,s->spruv,sizeof ppu_spruv);
+    ppu_w=s->ppu_w; ppu_xoff=s->ppu_xoff; hud_lines=s->hud_lines; hud_shift=s->hud_shift; wide_r=s->wide_r; sprite_neg=s->sprite_neg;
+    win_centre=s->win_centre; wide_gate=s->wide_gate; wide_on=s->wide_on; cfg_hud=s->cfg_hud; cfg_win=s->cfg_win;
+    lcdc=s->lcdc; stat_sel=s->stat_sel; scy=s->scy; scx=s->scx; lyc=s->lyc; bgp=s->bgp; obp0=s->obp0; obp1=s->obp1; wy=s->wy; wx=s->wx;
+    dot=s->dot; ly=s->ly; mode=s->mode; lcd_on=s->lcd_on; stat_line=s->stat_line; wlc=s->wlc; off_cycles=s->off_cycles; frame_count=s->frame_count;
+    return 0;
+}
+
 int ppu_lcd_is_on(void) { return lcd_on; }
