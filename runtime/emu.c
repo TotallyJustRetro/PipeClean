@@ -107,6 +107,11 @@ static MpPlayerState mp_p2_state;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
+/* Large multiplayer probe buffers live outside the thread stack. */
+static uint8_t mp_p2_probe_state[GB_STATE_BYTES];
+static Frame mp_probe_frame;
+
+
 static void mp_player_save(MpPlayerState *s)
 {
     if (!s) return;
@@ -139,6 +144,46 @@ static int mp_scroll_delta(uint8_t now, uint8_t old)
     if (d > 127) d -= 256;
     if (d < -127) d += 256;
     return d;
+}
+
+typedef struct {
+    uint8_t enemies[0x90]; /* SML1's D100-D18F active enemy/object slots. */
+    uint8_t score[3];      /* C0A0-C0A2. */
+    uint8_t lives_earned;  /* C0A3. */
+    uint8_t coins;         /* FFFA. */
+} MpSharedProbe;
+
+static void mp_shared_probe_capture(MpSharedProbe *p)
+{
+    if (!p) return;
+    for (int i = 0; i < 0x90; i++) p->enemies[i] = rd8((uint16_t)(0xD100 + i));
+    for (int i = 0; i < 3; i++) p->score[i] = rd8((uint16_t)(0xC0A0 + i));
+    p->lives_earned = rd8(0xC0A3);
+    p->coins = rd8(0xFFFA);
+}
+
+static void mp_shared_probe_merge(const MpSharedProbe *before, const MpSharedProbe *after)
+{
+    if (!before || !after) return;
+    /*
+     * The Player 2 pass runs a control simulation with no input, then an
+     * identical simulation with the real P2 input. Only differences between
+     * those two passes are candidates for P2-caused world events. This avoids
+     * copying the whole second frame's enemy simulation and advancing the
+     * shared world twice.
+     */
+    for (int i = 0; i < 0x90; i++) {
+        if (after->enemies[i] != before->enemies[i])
+            wr8((uint16_t)(0xD100 + i), after->enemies[i]);
+    }
+    for (int i = 0; i < 3; i++) {
+        if (after->score[i] != before->score[i])
+            wr8((uint16_t)(0xC0A0 + i), after->score[i]);
+    }
+    if (after->lives_earned != before->lives_earned)
+        wr8(0xC0A3, after->lives_earned);
+    if (after->coins != before->coins)
+        wr8(0xFFFA, after->coins);
 }
 
 static void mp_capture_frame(Frame *f, int screen_dx)
@@ -197,58 +242,22 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     if (player == 1) {
         if (!mp_p2_spawned) {
             memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
-            return 0;
-        }
-        /*
-         * Run a neutral P2 control frame first. The world progresses exactly
-         * once in this control pass, so comparing it with the real-input pass
-         * lets us identify changes caused by P2 instead of copying normal enemy
-         * AI/timer advancement into the authoritative Player 1 world.
-         */
-        MpSharedProbe control = {0}, actual = {0};
-        MpPlayerState probe_player = mp_p2_state;
-
-        if (gb_state_save(mp_p2_probe_state, GB_STATE_BYTES)) return -1;
-
-        /*
-         * Keep the control Mario away from the active play area. His only job
-         * in this pass is to let the shared world advance one frame normally;
-         * otherwise an already-moving P2 could stomp an enemy in both passes
-         * and the interaction delta would disappear.
-         */
-        probe_player.mario[1] = 0x10; /* Y */
-        probe_player.mario[2] = 0x00; /* screen X */
-        probe_player.mario[0x0C] = 0; /* horizontal momentum */
-        probe_player.mario[0x0D] = 0; /* movement direction */
-        probe_player.mario[0x0E] = 0; /* walking/running state */
-        mp_player_load(&probe_player);
-        mp_buttons = 0;
-        mp_dpad = 0;
-        gb_set_input(0, 0);
-        mp_frint emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
-{
-    if (!mp_ready || (player != 0 && player != 1) || !frame) return -1;
-
-    if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-
-    if (player == 1) {
-        if (!mp_p2_spawned) {
-            memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
             memset(frame->mario_oam, 0, sizeof frame->mario_oam);
             return 0;
         }
 
         /*
-         * Player 2 gets one complete SML1 frame using the original game code.
-         * The authoritative Player 1 state stays in mp_state and is restored
-         * after the P2 pass, so P2's movement/collision state can diverge
-         * without creating a second visible world.
+         * Run exactly one complete SML1 frame from Player 2's saved character
+         * state. The authoritative Player 1 world is restored afterward.
          */
         uint8_t p1_scroll = rd8(0xFFA4);
         mp_player_load(&mp_p2_state);
+
+        /* Install P2's physical/keyboard input before the game reads JOYP. */
         mp_buttons = buttons;
         mp_dpad = dpad;
         gb_set_input(mp_buttons, mp_dpad);
+
         mp_frame_out = frame;
         mp_audio_out = audio;
         mp_audio_max = audio_max;
@@ -259,8 +268,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         /*
          * SML1 keeps Mario's X coordinate relative to its own camera. Convert
-         * any camera movement back into the shared Player 1 camera before
-         * storing P2's character state.
+         * any camera movement back into the shared Player 1 camera coordinates.
          */
         int dx = mp_scroll_delta(rd8(0xFFA4), p1_scroll);
         if (dx) {
@@ -272,10 +280,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         memcpy(frame->mario_oam2, frame->mario_oam, sizeof frame->mario_oam2);
         mp_player_save(&mp_p2_state);
 
-        /*
-         * Restore the exact authoritative Player 1 state. P2's character state
-         * survives in mp_p2_state and is used as the starting state next frame.
-         */
+        /* Never commit P2's whole world back into the authoritative P1 state. */
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
         return mp_audio_n;
     }
@@ -295,23 +300,62 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
     /*
      * Spawn P2 only once SML1 reaches normal gameplay. This guarantees that
-     * P2 starts from the game's real initialized Mario state, rather than
-     * from the zeroed RAM produced by gb_reset().
+     * P2 starts from the game's initialized Mario state rather than reset RAM.
      */
     if (!mp_p2_spawned && rd8(0xFFB3) == 0) {
         mp_player_save(&mp_p2_state);
         mp_p2_state.joy_held = 0;
         mp_p2_state.joy_pressed = 0;
+
         uint8_t x = rd8(0xC202);
         if (x <= 0x70) x = (uint8_t)(x + 24);
         else if (x >= 0x30) x = (uint8_t)(x - 24);
         mp_p2_state.mario[2] = x;
         mp_p2_spawned = 1;
     }
+
     return mp_audio_n;
 }
 
-if (yy >= 0 && yy < GB_H && xx >= 0 && xx < W && prevl[yy][xx]) { near = 1; break; }
+
+void emu_mp_end(void)
+{
+    if (mp_ready && save_path[0]) cart_write_save(save_path);
+    mp_active = 0;
+    mp_ready = 0;
+    mp_p2_spawned = 0;
+    mp_frame_out = NULL;
+    mp_audio_out = NULL;
+    mp_audio_max = mp_audio_n = 0;
+}
+
+static void dev_hook(uint8_t *b, uint8_t *d)
+{
+    if (emu_dev.hash || hash_log) {
+        uint64_t h = 1469598103934665603ull;
+        for (int y = 0; y < GB_H; y++)
+            for (int x = 0; x < GB_W; x++) { h ^= ppu_shade[y][x + ppu_xoff]; h *= 1099511628211ull; }
+        chain = (chain ^ h) * 1099511628211ull;
+        if (hash_log) fprintf(hash_log, "%d %016llx %04X\n", frame_count, (unsigned long long)h, cpu.pc);
+    }
+    if (emu_dev.region_on) {
+        static uint64_t last; uint64_t h = 1469598103934665603ull;
+        for (int y = emu_dev.region[1]; y < emu_dev.region[3]; y++)
+            for (int x = emu_dev.region[0]; x < emu_dev.region[2]; x++) { h ^= ppu_shade[y][x + ppu_xoff]; h *= 1099511628211ull; }
+        if (h != last) { fprintf(stderr, "[region] frame %d changed\n", frame_count); last = h; }
+    }
+    if (getenv("GBL_POPIN")) {                 /* dev: sprites that appear out of nowhere inside the picture */
+        static uint8_t prevl[GB_H][GB_WMAX];
+        static int tot, shown;
+        int W = ppu_w;
+        for (int y = 0; y < GB_H; y++)
+            for (int x = 12; x < W - 12; x++) {
+                if (!ppu_layer[y][x]) continue;
+                int near = 0;
+                for (int dy = -6; dy <= 6 && !near; dy++)
+                    for (int dx = -6; dx <= 6; dx++) {
+                        int yy = y + dy, xx = x + dx;
+                        if (yy >= 0 && yy < GB_H && xx >= 0 && xx < W && prevl[yy][xx]) { near = 1; break; }
                     }
                 if (!near && x >= atoi(getenv("GBL_POPIN"))) { tot++; if (shown < 3000) { shown++; fprintf(stderr, "[popin] frame %d x %d y %d (W %d)\n", frame_count, x, y, W); } }
             }
