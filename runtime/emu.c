@@ -107,11 +107,6 @@ static MpPlayerState mp_p2_state;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
-/* Large multiplayer probe buffers live outside the thread stack. */
-static uint8_t mp_p2_probe_state[GB_STATE_BYTES];
-static Frame mp_probe_frame;
-
-
 static void mp_player_save(MpPlayerState *s)
 {
     if (!s) return;
@@ -144,46 +139,6 @@ static int mp_scroll_delta(uint8_t now, uint8_t old)
     if (d > 127) d -= 256;
     if (d < -127) d += 256;
     return d;
-}
-
-typedef struct {
-    uint8_t enemies[0x90]; /* SML1's D100-D18F active enemy/object slots. */
-    uint8_t score[3];      /* C0A0-C0A2. */
-    uint8_t lives_earned;  /* C0A3. */
-    uint8_t coins;         /* FFFA. */
-} MpSharedProbe;
-
-static void mp_shared_probe_capture(MpSharedProbe *p)
-{
-    if (!p) return;
-    for (int i = 0; i < 0x90; i++) p->enemies[i] = rd8((uint16_t)(0xD100 + i));
-    for (int i = 0; i < 3; i++) p->score[i] = rd8((uint16_t)(0xC0A0 + i));
-    p->lives_earned = rd8(0xC0A3);
-    p->coins = rd8(0xFFFA);
-}
-
-static void mp_shared_probe_merge(const MpSharedProbe *before, const MpSharedProbe *after)
-{
-    if (!before || !after) return;
-    /*
-     * The Player 2 pass runs a control simulation with no input, then an
-     * identical simulation with the real P2 input. Only differences between
-     * those two passes are candidates for P2-caused world events. This avoids
-     * copying the whole second frame's enemy simulation and advancing the
-     * shared world twice.
-     */
-    for (int i = 0; i < 0x90; i++) {
-        if (after->enemies[i] != before->enemies[i])
-            wr8((uint16_t)(0xD100 + i), after->enemies[i]);
-    }
-    for (int i = 0; i < 3; i++) {
-        if (after->score[i] != before->score[i])
-            wr8((uint16_t)(0xC0A0 + i), after->score[i]);
-    }
-    if (after->lives_earned != before->lives_earned)
-        wr8(0xC0A3, after->lives_earned);
-    if (after->coins != before->coins)
-        wr8(0xFFFA, after->coins);
 }
 
 static void mp_capture_frame(Frame *f, int screen_dx)
