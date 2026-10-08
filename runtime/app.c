@@ -626,6 +626,7 @@ static int play_multiplayer_sml1(int g)
             pad_set_screen_color(render_avg_color());
         }
 
+        capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (have) {
             sml1_draw_player_tag(f, f->mario_oam, &game_rect, "P1", C_ACCENT);
@@ -655,7 +656,6 @@ static int play_multiplayer_sml1(int g)
             }
         }
 
-        capture_pending_state_thumbnail();
         SDL_RenderPresent(ren);
     }
 
@@ -765,6 +765,7 @@ static int play(int g)
             render_draw(&r, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
+        capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
@@ -781,7 +782,6 @@ static int play(int g)
         if (shot) { shot = 0; SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
                     if (s) { SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch);
                              char p[1200]; snprintf(p, sizeof p, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks()); SDL_SaveBMP(s, p); SDL_FreeSurface(s); } }
-        capture_pending_state_thumbnail();
         SDL_RenderPresent(ren);
     }
     emu_stop();
