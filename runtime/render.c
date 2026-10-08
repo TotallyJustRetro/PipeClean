@@ -177,7 +177,7 @@ static void cpu_filters(const FilterCfg *f, int live, int N)
     free(c);
 }
 
-static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], int dx, int dy)
+static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], int dx, int dy, int luigi)
 {
     if (!f || !src_oam || !f->lcd_on || f->w <= 0) return;
 
@@ -209,6 +209,7 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
                 if (!ci) continue;
                 f->shade[y][x] = (pal >> (ci * 2)) & 3;
                 f->layer[y][x] = (fl & 0x10) ? 2 : 1;
+                if (luigi) f->luigi_mask[y][x] = 1;
                 f->sprtile[y][x] = (uint16_t)(addr >> 4);
                 f->spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
                                            ((fl & 0x20) ? 0x40 : 0) |
@@ -221,12 +222,17 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
 void render_overlay_sml1_mario(Frame *f, int dx, int dy)
 {
     if (!f) return;
-    render_overlay_sml1_mario_src(f, f->mario_oam, dx, dy);
+    render_overlay_sml1_mario_src(f, f->mario_oam, dx, dy, 0);
 }
 
 void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, dx, dy);
+    render_overlay_sml1_mario_src(f, oam, dx, dy, 0);
+}
+
+void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
+{
+    render_overlay_sml1_mario_src(f, oam, dx, dy, 1);
 }
 
 void render_build(const Frame *f, int game, int live)
@@ -253,7 +259,10 @@ void render_build(const Frame *f, int game, int live)
     for (int y = 0; y < GB_H; y++)
         for (int x = 0; x < gw; x++) {
             int layer = f->layer[y][x] % 3;
-            uint32_t col = t[layer][f->shade[y][x] & 3];
+            static const uint32_t luigi_pal[4] = {
+                0xFFF5E0C0u, 0xFF8AE05Au, 0xFF2CA83Du, 0xFF175822u
+            };
+            uint32_t col = f->luigi_mask[y][x] ? luigi_pal[f->shade[y][x] & 3] : t[layer][f->shade[y][x] & 3];
             sr += (col >> 16) & 255; sg += (col >> 8) & 255; sb += col & 255;
             if (N == 1) { img[y * gw + x] = col; continue; }
             const TexTile *tt = NULL;
