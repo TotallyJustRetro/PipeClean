@@ -63,6 +63,53 @@ static int state_file_exists(const char *path)
     return 1;
 }
 
+static int thumb_pending_game = -1;
+static int thumb_pending_slot = -1;
+
+static void state_thumb_path(int g, int slot, char *out, size_t n)
+{
+    char dir[1200];
+    snprintf(dir, sizeof dir, "%sstates/", settings_dir());
+    mkdir_u(dir);
+    snprintf(out, n, "%s%s.slot%d.thumb.bmp", dir, games[g].id, slot);
+}
+
+static void queue_state_thumbnail(int g, int slot)
+{
+    thumb_pending_game = g;
+    thumb_pending_slot = slot;
+}
+
+static void capture_pending_state_thumbnail(void)
+{
+    if (thumb_pending_game < 0 || thumb_pending_slot < 0 || !ren) return;
+    int W, H;
+    if (SDL_GetRendererOutputSize(ren, &W, &H) != 0 || W <= 0 || H <= 0) return;
+
+    SDL_Surface *src = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface *dst = SDL_CreateRGBSurfaceWithFormat(0, 320, 180, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (!src || !dst) {
+        if (src) SDL_FreeSurface(src);
+        if (dst) SDL_FreeSurface(dst);
+        return;
+    }
+    if (SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, src->pixels, src->pitch) == 0) {
+        SDL_FillRect(dst, NULL, SDL_MapRGB(dst->format, 0, 0, 0));
+        float scale = fminf(320.0f / (float)W, 180.0f / (float)H);
+        int dw = (int)(W * scale + 0.5f);
+        int dh = (int)(H * scale + 0.5f);
+        SDL_Rect dr = {(320 - dw) / 2, (180 - dh) / 2, dw, dh};
+        SDL_BlitScaled(src, NULL, dst, &dr);
+        char path[1200];
+        state_thumb_path(thumb_pending_game, thumb_pending_slot, path, sizeof path);
+        SDL_SaveBMP(dst, path);
+    }
+    SDL_FreeSurface(src);
+    SDL_FreeSurface(dst);
+    thumb_pending_game = -1;
+    thumb_pending_slot = -1;
+}
+
 static void state_path(int g, int slot, char *out, size_t n)
 {
     char dir[1200];
@@ -88,6 +135,7 @@ static int game_state_save(int g, int paused)
         game_notice("Couldn't save state.");
         return -1;
     }
+    queue_state_thumbnail(g, settings.g[g].state_slot);
     emu_set_paused(paused);
     char msg[96];
     snprintf(msg, sizeof msg, "State saved — Slot %d", settings.g[g].state_slot + 1);
@@ -177,7 +225,7 @@ static int app_rewind_held(int g)
 
 enum {
     DS_MENU_SAVE, DS_MENU_LOAD, DS_MENU_SLOT_PLUS, DS_MENU_REWIND,
-    DS_MENU_SLOT_MINUS, DS_MENU_SUSPEND, DS_MENU_PAUSE, DS_MENU_CLOSE,
+    DS_MENU_SLOT_MINUS, DS_MENU_SUSPEND, DS_MENU_PAUSE,
     DS_MENU_COUNT
 };
 
@@ -193,9 +241,10 @@ static DsStateMenu ds_menu;
 static int ds_menu_select(float x, float y)
 {
     float dx = x - 0.5f, dy = y - 0.5f;
-    if (dx * dx + dy * dy < 0.12f * 0.12f) return DS_MENU_CLOSE;
-    float a = atan2f(dy, dx) + (float)3.14159265358979323846;
-    int s = (int)floorf(a  / (3.14159265358979323846f / 4.0f) + 0.5f) & 7;
+    if (dx * dx + dy * dy < 0.12f * 0.12f) return -1;
+    float a = atan2f(dy, dx);
+    int s = (int)floorf(((float)3.14159265358979323846f / 8.0f - a) /
+                         (float)(3.14159265358979323846f / 4.0f) + 0.5f) & 7;
     return s;
 }
 
@@ -203,14 +252,14 @@ static void ds_menu_open(void)
 {
     ds_menu.open = 1;
     ds_menu.touch_active = 0;
-    ds_menu.selected = DS_MENU_CLOSE;
+    ds_menu.selected = -1;
 }
 
 static void ds_menu_close(void)
 {
     ds_menu.open = 0;
     ds_menu.touch_active = 0;
-    ds_menu.selected = DS_MENU_CLOSE;
+    ds_menu.selected = -1;
 }
 
 static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
@@ -254,7 +303,6 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
         else if (a == DS_MENU_REWIND) emu_rewind_end();
         else if (a == DS_MENU_SUSPEND) { if (game_suspend(g) == 0 && quit) *quit = 1; }
         else if (a == DS_MENU_PAUSE) { *paused = !*paused; emu_set_paused(*paused); }
-        else if (a != DS_MENU_CLOSE) {}
         if (a != DS_MENU_REWIND) emu_rewind_end();
         ds_menu_close();
     }
@@ -272,10 +320,10 @@ static uint32_t ds_mixc(uint32_t a, uint32_t b, float t)
 static void ds_menu_draw(int g)
 {
     if (!ds_menu.open || g < 0 || g >= N_GAMES) return;
-    static const char *labels[DS_MENU_COUNT] = {"Save", "Load", "Slot +", "Rewind", "Slot -", "Suspend", "Pause", "Close"};
+    static const char *labels[DS_MENU_COUNT] = {"Save", "Load", "Slot +", "Rewind", "Slot -", "Suspend", "Pause"};
     static const char *desc[DS_MENU_COUNT] = {
         "save state", "load state", "next slot", "hold to rewind",
-        "previous slot", "save & return", "pause game", "close"
+        "previous slot", "save & return", "pause game"
     };
     float cx = UI_W * 0.5f, cy = UI_H * 0.5f;
     ui_shadow(cx - 270, cy - 220, 540, 440, 20, 12, RGBA(0, 0, 0, 135));
@@ -446,6 +494,7 @@ static int play_multiplayer_sml1(int g)
     }
     set_game_window(g);
 
+    int requested_load = launcher_take_load_state(g);
     char suspended[1200];
     suspend_path(g, suspended, sizeof suspended);
     int has_suspend = state_file_exists(suspended);
@@ -453,7 +502,10 @@ static int play_multiplayer_sml1(int g)
         launcher_toast("Couldn't start SML1 multiplayer.");
         return 0;
     }
-    if (has_suspend) {
+    if (requested_load >= 0) {
+        c->state_slot = requested_load;
+        (void)game_state_load(g, 0);
+    } else if (has_suspend) {
         if (emu_state_load_file(suspended, 1) == 0) {
             remove(suspended);
         }
@@ -601,6 +653,7 @@ static int play_multiplayer_sml1(int g)
             }
         }
 
+        capture_pending_state_thumbnail();
         SDL_RenderPresent(ren);
     }
 
@@ -637,11 +690,15 @@ static int play(int g)
     render_reset();
     pad_set_context(g, 1);
     set_game_window(g);
+    int requested_load = launcher_take_load_state(g);
     char suspended[1200];
     suspend_path(g, suspended, sizeof suspended);
     int has_suspend = state_file_exists(suspended);
     if (emu_start(0)) { launcher_toast("Couldn't start the game."); return 0; }
-    if (has_suspend) {
+    if (requested_load >= 0) {
+        c->state_slot = requested_load;
+        (void)game_state_load(g, 0);
+    } else if (has_suspend) {
         if (emu_state_load_file(suspended, 1) == 0) remove(suspended);
     }
 
@@ -722,6 +779,7 @@ static int play(int g)
         if (shot) { shot = 0; SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
                     if (s) { SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch);
                              char p[1200]; snprintf(p, sizeof p, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks()); SDL_SaveBMP(s, p); SDL_FreeSurface(s); } }
+        capture_pending_state_thumbnail();
         SDL_RenderPresent(ren);
     }
     emu_stop();

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "launcher.h"
+#include <SDL_image.h>
 #include "ui.h"
 #include "settings.h"
 #include "rom.h"
@@ -47,6 +48,9 @@ static char bg_loaded[512], bg_msg[256];
 static int bg_for_game = -1;
 static float anim_clock;
 static int wide_dirty, wide_note[N_GAMES];
+static SDL_Texture *state_thumb_tex[N_GAMES][10];
+static char state_thumb_path_cache[N_GAMES][10][1200];
+static int load_state_request[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
 static int clickable(float x, float y, float w, float h, int *over_out);
@@ -108,6 +112,48 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
 static int last_game_tab;
 int launcher_current_game(void) { return tab < N_GAMES ? tab : last_game_tab; }
 int launcher_capturing(void) { return cap_kind != 0; }
+
+int launcher_take_load_state(int game)
+{
+    if (game < 0 || game >= N_GAMES) return -1;
+    int slot = load_state_request[game];
+    load_state_request[game] = -1;
+    return slot;
+}
+
+static void clear_state_thumbs(void)
+{
+    for (int g = 0; g < N_GAMES; g++) {
+        for (int slot = 0; slot < 10; slot++) {
+            if (state_thumb_tex[g][slot]) SDL_DestroyTexture(state_thumb_tex[g][slot]);
+            state_thumb_tex[g][slot] = NULL;
+            state_thumb_path_cache[g][slot][0] = 0;
+        }
+    }
+}
+
+static SDL_Texture *state_thumb_get(int g, int slot)
+{
+    if (g < 0 || g >= N_GAMES || slot < 0 || slot >= 10 || !g_ren) return NULL;
+    char path[1200];
+    snprintf(path, sizeof path, "%sstates/%s.slot%d.thumb.bmp", settings_dir(), games[g].id, slot);
+    if (!file_exists(path)) {
+        if (state_thumb_tex[g][slot]) SDL_DestroyTexture(state_thumb_tex[g][slot]);
+        state_thumb_tex[g][slot] = NULL;
+        state_thumb_path_cache[g][slot][0] = 0;
+        return NULL;
+    }
+    if (state_thumb_tex[g][slot] && !strcmp(state_thumb_path_cache[g][slot], path)) return state_thumb_tex[g][slot];
+    if (state_thumb_tex[g][slot]) SDL_DestroyTexture(state_thumb_tex[g][slot]);
+    state_thumb_tex[g][slot] = NULL;
+    SDL_Surface *s = IMG_Load(path);
+    if (!s) return NULL;
+    state_thumb_tex[g][slot] = SDL_CreateTextureFromSurface(g_ren, s);
+    SDL_FreeSurface(s);
+    if (!state_thumb_tex[g][slot]) return NULL;
+    snprintf(state_thumb_path_cache[g][slot], sizeof state_thumb_path_cache[g][slot], "%s", path);
+    return state_thumb_tex[g][slot];
+}
 
 void launcher_toast(const char *m) { snprintf(toast_msg, sizeof toast_msg, "%s", m); toast_t = 3.0f; }
 
@@ -206,6 +252,8 @@ static void ensure_background(int g)
 
 void launcher_init(void)
 {
+    clear_state_thumbs();
+    for (int g = 0; g < N_GAMES; g++) load_state_request[g] = -1;
     for (int g = 0; g < N_GAMES; g++) rom_check(g);
     char found[N_GAMES][512];
     memset(found, 0, sizeof found);
@@ -221,6 +269,7 @@ void launcher_init(void)
 
 void launcher_enter(void)
 {
+    clear_state_thumbs();
     for (int g = 0; g < N_GAMES; g++) rom_check(g);
     for (int g = 0; g < N_GAMES; g++) if (rs[g].ok && !prev_ok[g]) make_preview(g);
     loaded_pack_game = -1;
@@ -229,7 +278,7 @@ void launcher_enter(void)
     audio_menu_music(1);
 }
 
-void launcher_shutdown(void) { tex_collect_save(); }
+void launcher_shutdown(void) { clear_state_thumbs(); tex_collect_save(); }
 
 /* ------------------------------------------------------------------ small drawing helpers */
 static SDL_Rect to_px(float x, float y, float w, float h)
@@ -463,89 +512,109 @@ static void sub_save_states(int g, float x, float y)
 
     card(x, y, 808, 476, "SAVE STATES");
     ui_text(F_REG, 13, x + 18, y + 40, C_DIM,
-            "Save states are stored separately for this game. Pick a slot here, then use the Save/Load bindings while playing.");
+            "Choose a slot here. Saving uses the Save State binding while you are playing; Load can start a game from any saved slot.");
 
-    label(x + 18, y + 78, "Current slot");
-    ui_slider(x + 118, y + 76, 300, &c->state_slot, 0, 9);
+    label(x + 18, y + 70, "Current slot");
+    ui_slider(x + 118, y + 68, 300, &c->state_slot, 0, 9);
     snprintf(text, sizeof text, "Slot %d", c->state_slot + 1);
-    ui_text_r(F_BOLD, 14, x + 432, y + 78, C_TEXT, text);
+    ui_text_r(F_BOLD, 14, x + 432, y + 70, C_TEXT, text);
 
-    ui_text(F_BOLD, 12, x + 18, y + 116, C_MUTED, "State slots");
+    ui_text(F_BOLD, 12, x + 18, y + 100, C_MUTED, "SAVE STATES");
+    ui_text(F_BOLD, 12, x + 286, y + 100, C_MUTED, "LOAD STATES");
+
     for (int slot = 0; slot < 10; slot++) {
         int col = slot < 5 ? 0 : 1;
         int row = slot < 5 ? slot : slot - 5;
         float bx = x + 18 + col * 386;
-        float by = y + 130 + row * 48;
+        float by = y + 112 + row * 64;
+
         snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), games[g].id, slot);
         int saved = file_exists(path);
+        int selected = slot == c->state_slot;
         int over = 0;
-        int clicked = clickable(bx, by, 368, 40, &over);
+        int clicked = clickable(bx, by, 368, 56, &over);
+        ui_rrect(bx, by, 368, 56, 9, selected ? RGBA(255,255,255,14) : (over ? C_BTN_H : RGBA(255,255,255,6)));
+        if (selected) ui_stroke(bx, by, 368, 56, 9, 2, HEX(ui_accent));
 
-        ui_rrect(bx, by, 368, 40, 8,
-                 slot == c->state_slot ? RGBA(255,255,255,12) : (over ? C_BTN_H : RGBA(255,255,255,6)));
-        ui_text(F_BOLD, 13, bx + 14, by + 8, slot == c->state_slot ? HEX(ui_accent) : C_TEXT, "Slot");
-        snprintf(text, sizeof text, "%d", slot + 1);
-        ui_text(F_BOLD, 13, bx + 46, by + 8, slot == c->state_slot ? HEX(ui_accent) : C_TEXT, text);
-        ui_text_r(F_REG, 12, bx + 350, by + 8, saved ? C_OK : C_DIM, saved ? "Saved" : "Empty");
+        SDL_Texture *thumb = saved ? state_thumb_get(g, slot) : NULL;
+        if (thumb) ui_image(thumb, NULL, bx + 8, by + 7, 88, 42);
+        else {
+            ui_rrect(bx + 8, by + 7, 88, 42, 6, RGBA(8,10,15,210));
+            ui_text_c(F_BOLD, 10, bx + 52, by + 18, C_DIM, "NO");
+            ui_text_c(F_REG, 9, bx + 52, by + 29, C_DIM, "THUMBNAIL");
+        }
+
+        snprintf(text, sizeof text, "Slot %d", slot + 1);
+        ui_text(F_BOLD, 12, bx + 106, by + 8, selected ? HEX(ui_accent) : C_TEXT, text);
+        ui_text(F_REG, 10, bx + 106, by + 26, saved ? C_OK : C_DIM, saved ? "Saved state" : "Empty");
+
         if (clicked) c->state_slot = slot;
+        if (ui_button(bx + 278, by + 11, 78, 34, "Load", saved ? B_PRIMARY : B_GHOST, saved)) {
+            c->state_slot = slot;
+            load_state_request[g] = slot;
+        }
     }
 
-    float sy = y + 382;
-    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "Suspend");
     snprintf(path, sizeof path, "%sstates/%s.suspend.pcs", settings_dir(), games[g].id);
     int suspended = file_exists(path);
-    ui_text(F_REG, 13, x + 92, sy, suspended ? C_OK : C_DIM,
-            suspended ? "Suspended game available" : "No suspended game");
-
-    ui_text_wrap(F_REG, 12, x + 18, y + 414, 772, C_DIM,
-                 "F5/F8 save and load the selected slot by default. F6 changes slots, F7 rewinds, and F10 suspends. Rebind these actions on the Bindings tab.", 3);
+    ui_text(F_BOLD, 11, x + 18, y + 443, C_MUTED, "Suspend");
+    ui_text(F_REG, 11, x + 78, y + 443, suspended ? C_OK : C_DIM,
+            suspended ? "A suspended game is available and will resume automatically when no saved-state load is requested." : "No suspended game");
 }
-
 static void sub_bindings(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
-    card(x, y, 808, 476, "BINDINGS");
+    const float left_w = 392.0f;
+    const float right_x = x + 404.0f;
+    const float right_w = 404.0f;
 
-    ui_text(F_REG, 13, x + 18, y + 40, C_DIM,
-            "Game Boy controls and PipeClean emulator shortcuts for this game.");
+    card(x, y, left_w, 476, "GAME BOY CONTROLS");
+    ui_text_wrap(F_REG, 11, x + 14, y + 38, left_w - 28, C_DIM,
+                 "Per-game keyboard and controller bindings. Player 1 and Player 2 stay independent for SML1 multiplayer.", 2);
 
-    ui_text(F_BOLD, 12, x + 18, y + 74, C_MUTED, "GAME BOY CONTROLS");
-    static const float colx[5] = {18, 150, 310, 470, 630};
-    ui_text(F_BOLD, 11, x + colx[0], y + 96, C_MUTED, "Button");
-    ui_text(F_BOLD, 11, x + colx[1] + 10, y + 96, C_MUTED, "Keyboard");
-    ui_text(F_BOLD, 11, x + colx[2] + 10, y + 96, C_MUTED, "Keyboard 2");
-    ui_text(F_BOLD, 11, x + colx[3] + 10, y + 96, C_MUTED, "Player 1");
-    ui_text(F_BOLD, 11, x + colx[4] + 10, y + 96, C_MUTED, "Player 2");
+    static const float colx[5] = {14, 84, 160, 236, 312};
+    ui_text(F_BOLD, 10, x + colx[0], y + 82, C_MUTED, "Button");
+    ui_text(F_BOLD, 10, x + colx[1] + 8, y + 82, C_MUTED, "Key");
+    ui_text(F_BOLD, 10, x + colx[2] + 8, y + 82, C_MUTED, "Key 2");
+    ui_text(F_BOLD, 10, x + colx[3] + 5, y + 82, C_MUTED, "P1");
+    ui_text(F_BOLD, 10, x + colx[4] + 5, y + 82, C_MUTED, "P2");
+
     for (int b = 0; b < N_BTN; b++) {
-        float ry = y + 112 + b * 31;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 31, 8, RGBA(255,255,255,6));
-        ui_text(F_BOLD, 13, x + colx[0], ry + 4, C_TEXT, btn_names[b]);
-        bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
-        bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
-        bind_cell(g, x + colx[3], ry, 150, 2, b, 0);
-        bind_cell(g, x + colx[4], ry, 150, 2, b, 1);
+        float ry = y + 96 + b * 38;
+        if (b % 2 == 0) ui_rrect(x + 8, ry - 3, left_w - 16, 34, 7, RGBA(255,255,255,6));
+        ui_text(F_BOLD, 12, x + colx[0], ry + 5, C_TEXT, btn_names[b]);
+        bind_cell(g, x + colx[1], ry, 70, 1, b, 0);
+        bind_cell(g, x + colx[2], ry, 70, 1, b, 1);
+        bind_cell(g, x + colx[3], ry, 70, 2, b, 0);
+        bind_cell(g, x + colx[4], ry, 70, 2, b, 1);
     }
 
-    float base = y + 112 + N_BTN * 31 + 8;
-    ui_text(F_BOLD, 12, x + 18, base, C_MUTED, "EMULATOR SHORTCUTS");
-    ui_text(F_BOLD, 11, x + 228, base, C_MUTED, "Keyboard");
-    ui_text(F_BOLD, 11, x + 438, base, C_MUTED, "Controller");
+    card(right_x, y, right_w, 476, "EMULATOR SHORTCUTS");
+    ui_text_wrap(F_REG, 11, right_x + 14, y + 38, right_w - 28, C_DIM,
+                 "Save state, load state, rewind, suspend and state-slot shortcuts for this game.", 2);
+    ui_text(F_BOLD, 10, right_x + 14, y + 82, C_MUTED, "Action");
+    ui_text(F_BOLD, 10, right_x + 148, y + 82, C_MUTED, "Keyboard");
+    ui_text(F_BOLD, 10, right_x + 270, y + 82, C_MUTED, "Controller");
+
     for (int a = 0; a < N_ACTION; a++) {
-        float ry = base + 18 + a * 38;
-        if (a % 2 == 0) ui_rrect(x + 10, ry - 3, 788, 34, 8, RGBA(255,255,255,6));
-        ui_text(F_BOLD, 12, x + 18, ry + 4, C_TEXT, action_names[a]);
-        bind_action_cell(g, x + 228, ry, 190, 3, a);
-        bind_action_cell(g, x + 438, ry, 190, 4, a);
+        float ry = y + 96 + a * 48;
+        if (a % 2 == 0) ui_rrect(right_x + 8, ry - 3, right_w - 16, 42, 8, RGBA(255,255,255,6));
+        ui_text(F_BOLD, 11, right_x + 14, ry + 6, C_TEXT, action_names[a]);
+        bind_action_cell(g, right_x + 140, ry + 4, 112, 3, a);
+        bind_action_cell(g, right_x + 262, ry + 4, 124, 4, a);
     }
 
-    if (ui_button(x + 18, y + 452, 180, 36, "Reset all bindings", B_NORMAL, 1)) {
+    ui_text_wrap(F_REG, 10, right_x + 14, y + 348, right_w - 28, C_DIM,
+                 "Rewind moves through the recent in-memory history. DualSense also exposes these actions from its touchpad menu.", 3);
+    if (ui_button(right_x + 14, y + 396, 180, 36, "Reset all bindings", B_NORMAL, 1)) {
         controls_defaults(c);
         shortcut_defaults(c);
         controller_menu = -1;
         launcher_toast("Bindings reset.");
     }
+    ui_text_fit(F_REG, 10, right_x + 14, y + 444, right_w - 28, C_DIM,
+                "Backspace/Delete clears a binding. Esc cancels capture.");
 }
-
 static void sub_controls(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
@@ -954,6 +1023,7 @@ LauncherResult launcher_frame(float dt)
             sub_textures(tab, cx, y);
             break;
         }
+        if (load_state_request[tab] >= 0) res.play = tab;
     } else if (tab == TAB_FILTERS) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Make the screen look like a real Game Boy, a CRT TV, or something glowing.");
