@@ -449,6 +449,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
      * P2 starts from the game's initialized Mario state rather than reset RAM.
      */
     if (!mp_p2_spawned && rd8(0xFFB3) == 0) {
+        if (mp_p2_lives == 0) {
+            mp_p2_lives = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
+            if (mp_p2_lives == 0) mp_p2_lives = 1;
+        }
         mp_player_save(&mp_p2_state);
         mp_p2_state.joy_held = 0;
         mp_p2_state.joy_pressed = 0;
