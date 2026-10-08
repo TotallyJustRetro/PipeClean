@@ -185,7 +185,6 @@ static int play_multiplayer_sml1(int g)
     Frame *f = (Frame *)calloc(1, sizeof *f);
     Frame *p2f = (Frame *)calloc(1, sizeof *p2f);
     int16_t a0[4096 * 2];
-    int16_t a1[4096 * 2];
     if (!f || !p2f) {
         free(f);
         free(p2f);
@@ -232,7 +231,7 @@ static int play_multiplayer_sml1(int g)
             if (n0 < 0) {
                 quit = 1;
             } else {
-                int n1 = emu_mp_step(1, b1, d1, p2f, a1, 4096);
+                int n1 = emu_mp_step(1, b1, d1, p2f, NULL, 0);
                 if (n1 < 0) {
                     quit = 1;
                 } else {
@@ -246,7 +245,6 @@ static int play_multiplayer_sml1(int g)
                         render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
 
                     if (n0 > 0) audio_game_push(a0, n0);
-                    if (p2f->p2_sound_event && n1 > 0) audio_game_push(a1, n1);
                     if (audio_ok()) audio_game_wait(audio_game_target());
                 }
             }
