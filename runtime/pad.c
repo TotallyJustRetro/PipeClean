@@ -318,12 +318,28 @@ int pad_has_light(void)
     return 0;
 }
 
+static void pad_rumble_device(int device, int pct, int ms)
+{
+    if (pct <= 0 || device < 0 || device >= n_pads) return;
+    if (pct > 100) pct = 100;
+    Pad *p = &pads[device];
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc)) {
+        Uint16 lo = (Uint16)(pct * 655);
+        Uint16 hi = (Uint16)(pct * 655 * 0.8f);
+        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms);
+    }
+}
+
 void pad_rumble(int pct, int ms)
 {
     if (pct <= 0) return;
-    if (pct > 100) pct = 100;
-    Uint16 lo = (Uint16)(pct * 655), hi = (Uint16)(pct * 655 * 0.8);
-    for (int i = 0; i < n_pads; i++) if (pads[i].mapped && SDL_GameControllerHasRumble(pads[i].gc)) SDL_GameControllerRumble(pads[i].gc, lo, hi, (Uint32)ms);
+    for (int i = 0; i < n_pads; i++) pad_rumble_device(i, pct, ms);
+}
+
+void pad_rumble_selected(int game, int pct, int ms)
+{
+    if (game < 0 || game >= N_GAMES) return;
+    pad_rumble_device(settings.g[game].pad_device[0], pct, ms);
 }
 
 void pad_event_fx(int game, int ev)
@@ -331,7 +347,8 @@ void pad_event_fx(int game, int ev)
     const EventDef *d = events_def(game, ev);
     if (!d) return;
     const GameCfg *c = &settings.g[game];
-    if ((c->ds_ev_rumble >> ev) & 1) pad_rumble(c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
+    if ((c->ds_ev_rumble >> ev) & 1)
+        pad_rumble_selected(game, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
     if ((c->ds_ev_led >> ev) & 1) pad_flash(d->color);
 }
 
@@ -363,5 +380,7 @@ void pad_frame(float dt)
     if (out == last_sent || send_acc < 0.033f) return;
     send_acc = 0;
     last_sent = out;
-    for (int i = 0; i < n_pads; i++) if (pads[i].mapped && SDL_GameControllerHasLED(pads[i].gc)) SDL_GameControllerSetLED(pads[i].gc, (Uint8)(out >> 16), (Uint8)(out >> 8), (Uint8)out);
+    int device = settings.g[ctx_game].pad_device[0];
+    if (device >= 0 && device < n_pads && pads[device].mapped && SDL_GameControllerHasLED(pads[device].gc))
+        SDL_GameControllerSetLED(pads[device].gc, (Uint8)(out >> 16), (Uint8)(out >> 8), (Uint8)out);
 }
