@@ -10,6 +10,7 @@ typedef struct { SDL_GameController *gc; SDL_Joystick *joy; int mapped; } Pad;
 static Pad pads[MAXPADS];
 static int n_pads;
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
+static int pad_instance_device(SDL_JoystickID which);
 static void rescan(void)
 {
     for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
@@ -74,7 +75,6 @@ int pad_is_edge(int i)
     return SDL_GameControllerGetVendor(pads[i].gc) == 0x054C && SDL_GameControllerGetProduct(pads[i].gc) == 0x0DF2;
 }
 
-static int pad_instance_device(SDL_JoystickID which);
 
 int pad_is_dualsense_instance(SDL_JoystickID which)
 {
