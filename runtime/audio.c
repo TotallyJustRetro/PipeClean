@@ -315,6 +315,19 @@ void audio_game_end(void)
 
 void audio_game_set_paused(int p) { if (dev) { SDL_LockMutex(mx); g_paused = p; SDL_UnlockMutex(mx); } }
 
+void audio_game_flush(void)
+{
+    if (!dev) return;
+    SDL_LockMutex(mx);
+    /* A save-state/rewind jumps the emulated timeline. Any queued PCM and
+     * callback-held sample belong to the old timeline and must be discarded. */
+    g_r = g_w = 0;
+    g_playing = 0;
+    g_last_l = g_last_r = 0;
+    g_ramp = 0;
+    SDL_UnlockMutex(mx);
+}
+
 void audio_game_push(const int16_t *st, int frames)
 {
     if (!dev) return;
