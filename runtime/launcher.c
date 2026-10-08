@@ -692,7 +692,7 @@ static void sub_dualsense(int g, float x, float y)
     snprintf(t, sizeof t, "%d%%", c->ds_speaker_vol); ui_text_r(F_REG, 13, x + lw - 18, y + 290, C_TEXT, t);
     float bw = (lw - 36 - 16) / 3;
     if (ui_button(x + 18, y + 334, bw, 36, "Test light", B_NORMAL, 1)) { pad_set_context(g, 0); pad_flash(0xFFFFFF); }
-    if (ui_button(x + 18 + bw + 8, y + 334, bw, 36, "Test rumble", B_NORMAL, 1)) pad_rumble(c->ds_rumble, 350);
+    if (ui_button(x + 18 + bw + 8, y + 334, bw, 36, "Test rumble", B_NORMAL, 1)) pad_rumble_selected(g, c->ds_rumble, 350);
     if (ui_button(x + 18 + (bw + 8) * 2, y + 334, bw, 36, "Test speaker", B_NORMAL, 1)) {
         if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(0); } else launcher_toast("Speaker not found. Connect the controller with the USB cable.");
     }
@@ -725,7 +725,7 @@ static void sub_dualsense(int g, float x, float y)
         if (ui_button(c3 + 52, ry + 6, 46, 30, "Try", B_GHOST, 1)) {
             pad_set_context(g, 0);
             pad_flash(d->color);
-            pad_rumble(c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
+            pad_rumble_selected(g, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
             if ((c->ds_ev_speaker >> i) & 1 || 1) { if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(d->beep ? d->beep : 0); } }
         }
     }
