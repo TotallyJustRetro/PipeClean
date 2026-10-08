@@ -24,8 +24,8 @@ void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
 enum { TAB_FILTERS = N_GAMES, TAB_AUDIO, N_TABS };
-enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_DUALSENSE, SUB_TEXTURES, N_SUB };
-static const char *sub_names[N_SUB] = {"Game", "Display", "Controls", "DualSense", "Textures"};
+enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_DUALSENSE, SUB_TEXTURES, SUB_EMULATOR, N_SUB };
+static const char *sub_names[N_SUB] = {"Game", "Display", "Controls", "DualSense", "Textures", "Emulator"};
 
 static int tab, sub[N_GAMES];
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
@@ -436,6 +436,60 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
     if (over && !active) ui_hint("Click, then press the key or button you want. Backspace clears, Esc cancels.");
 }
 
+static void bind_action_cell(int g, float x, float y, float w, int kind, int action)
+{
+    GameCfg *c = &settings.g[g];
+    int over;
+    int clicked = clickable(x, y, w, 32, &over);
+    int active = (cap_kind == kind && cap_btn == action);
+    ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
+    char b[64];
+    if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 3 ? "press a key…" : "press a button…");
+    else {
+        if (kind == 3) key_code_name(c->action_key[action], b, sizeof b);
+        else pad_code_name(c->action_pad[action], b, sizeof b);
+        int none = kind == 3 ? !c->action_key[action] : c->action_pad[action] < 0;
+        ui_text_c(F_REG, 12, x + w / 2, y + 7, none ? C_DIM : C_TEXT, b);
+    }
+    if (clicked) { cap_kind = kind; cap_btn = action; cap_slot = 0; }
+    if (over && !active) ui_hint("Click, then press the key or controller button. Backspace clears, Esc cancels.");
+}
+
+static void sub_emulator(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    card(x, y, 808, 476, "EMULATOR SHORTCUTS");
+    ui_text(F_REG, 13, x + 18, y + 40, C_DIM,
+            "These actions operate PipeClean's emulator, not the Game Boy controls. Save states persist on disk.");
+    label(x + 18, y + 78, "State slot");
+    ui_slider(x + 110, y + 76, 300, &c->state_slot, 0, 9);
+    char slot[40];
+    snprintf(slot, sizeof slot, "Slot %d", c->state_slot + 1);
+    ui_text_r(F_BOLD, 14, x + 432, y + 78, C_TEXT, slot);
+
+    ui_text(F_BOLD, 12, x + 18, y + 118, C_MUTED, "Action");
+    ui_text(F_BOLD, 12, x + 270, y + 118, C_MUTED, "Keyboard");
+    ui_text(F_BOLD, 12, x + 480, y + 118, C_MUTED, "Controller");
+
+    for (int a = 0; a < N_ACTION; a++) {
+        float ry = y + 136 + a * 46;
+        if (a % 2 == 0) ui_rrect(x + 10, ry - 4, 788, 40, 8, RGBA(255, 255, 255, 6));
+        ui_text(F_BOLD, 13, x + 18, ry + 5, C_TEXT, action_names[a]);
+        bind_action_cell(g, x + 228, ry, 190, 32, 3, a);
+        bind_action_cell(g, x + 438, ry, 190, 32, 4, a);
+    }
+
+    ui_text_wrap(F_REG, 12, x + 18, y + 382, 772, C_DIM,
+                 "Rewind keeps the most recent few seconds in memory. Hold the Rewind binding to move backward; releasing it resumes from the point you reached.", 3);
+    ui_text_wrap(F_REG, 12, x + 18, y + 422, 772, C_DIM,
+                 "DualSense: press or touch the trackpad in-game for the dedicated state menu. Slide to an option and release to confirm.", 3);
+
+    if (ui_button(x + 18, y + 450, 180, 36, "Reset shortcuts", B_NORMAL, 1)) {
+        shortcut_defaults(c);
+        launcher_toast("Emulator shortcuts reset.");
+    }
+}
+
 static void sub_controls(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
@@ -826,6 +880,7 @@ LauncherResult launcher_frame(float dt)
         case SUB_DISPLAY: sub_display(tab, cx, y); break;
         case SUB_CONTROLS: sub_controls(tab, cx, y); break;
         case SUB_DUALSENSE: sub_dualsense(tab, cx, y); break;
+        case SUB_EMULATOR: sub_emulator(tab, cx, y); break;
         default: sub_textures(tab, cx, y); break;
         }
     } else if (tab == TAB_FILTERS) {
@@ -854,7 +909,10 @@ LauncherResult launcher_frame(float dt)
     }
 
     /* binding capture hint */
-    if (cap_kind) ui_hint(cap_kind == 1 ? "Press a key. Backspace clears the slot, Esc cancels." : "Press a controller button or trigger. Esc (keyboard) cancels.");
+    if (cap_kind) {
+        if (cap_kind == 1 || cap_kind == 3) ui_hint("Press a key. Backspace clears the slot, Esc cancels.");
+        else ui_hint("Press a controller button or trigger. Esc (keyboard) cancels.");
+    }
 
     if (wide_dirty && !ui_mouse.down) { make_preview(wide_dirty - 1); wide_dirty = 0; }
     if (ui_mouse.released) click_id = 0;
@@ -878,10 +936,20 @@ void launcher_event(const SDL_Event *e)
             if (cap_kind == 1) {
                 c->key[cap_btn][cap_slot] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
-            } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) { c->pad[cap_btn][cap_slot] = -1; cap_kind = 0; }
+            } else if (cap_kind == 3) {
+                c->action_key[cap_btn] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
+                cap_kind = 0;
+            } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
+                if (cap_kind == 2) c->pad[cap_btn][cap_slot] = -1;
+                else if (cap_kind == 4) c->action_pad[cap_btn] = -1;
+                cap_kind = 0;
+            }
         } else if (cap_kind == 2) {
             int code = pad_capture(e);
             if (code >= 0) { c->pad[cap_btn][cap_slot] = code; cap_kind = 0; }
+        } else if (cap_kind == 4) {
+            int code = pad_capture(e);
+            if (code >= 0) { c->action_pad[cap_btn] = code; cap_kind = 0; }
         }
         return;
     }
