@@ -194,7 +194,7 @@ static int ds_menu_select(float x, float y)
 {
     float dx = x - 0.5f, dy = y - 0.5f;
     if (dx * dx + dy * dy < 0.12f * 0.12f) return DS_MENU_CLOSE;
-    float a = atan2f(dy, dx) + (float)M_PI;
+    float a = atan2f(dy, dx) + (float)3.14159265358979323846;
     int s = (int)floorf(a / ((float)M_PI / 4.0f) + 0.5f) & 7;
     return s;
 }
