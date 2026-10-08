@@ -12,6 +12,7 @@ int  pad_is_edge(int i);
 const char *pad_status(char *buf, size_t n);
 
 void pad_poll(int game, uint8_t *buttons, uint8_t *dpad);
+void pad_poll_player(int game, int player, uint8_t *buttons, uint8_t *dpad);
 int  pad_capture(const SDL_Event *e);
 const char *pad_code_name(int code, char *buf, size_t n);
 const char *key_code_name(int key, char *buf, size_t n);
