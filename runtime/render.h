@@ -4,7 +4,7 @@
 
 void render_init(SDL_Renderer *r);
 void render_shutdown(void);
-void render_reset(void);                                   /* forget ghost trails */
+void render_reset(void);                                   /* invalidate temporal/rendered frame history */
 /* Build the picture for `game` from a frame. live != 0 applies temporal effects (ghosting). */
 void render_build(const Frame *f, int game, int live);
 void render_overlay_sml1_mario(Frame *f, int dx, int dy);
