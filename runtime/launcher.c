@@ -101,12 +101,9 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
         }
         ui_text_fit(F_REG, 13, x + 14, oy + 7, w - 28, (o == (*sel + 1)) ? HEX(0xFFFFFF) : C_TEXT, label_text);
         if (pick) {
-            *sel = o - 1;
-            if (*sel >= 0) {
-                pad_device_guid(*sel, c->pad_guid[player], sizeof c->pad_guid[player]);
-            } else {
-                c->pad_guid[player][0] = 0;
-            }
+            int device = o - 1;
+            if (!pad_assign_device(g, player, device))
+                launcher_toast("That controller is already assigned to the other player.");
             controller_menu = -1;
         }
     }
@@ -476,31 +473,44 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
 {
     GameCfg *c = &settings.g[g];
     int pad_device = slot >= 0 && slot < 2 ? c->pad_device[slot] : -1;
-    int over;
-    int clicked = clickable(x, y, w, 32, &over);
+    int available = kind != 2 || (pad_device >= 0 && pad_device < pad_count());
+    int over = 0;
+    int clicked = available ? clickable(x, y, w, 32, &over) : 0;
     int active = cap_kind == kind && cap_btn == btn && cap_slot == slot;
-    ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
+    uint32_t fill = !available ? RGBA(255,255,255,3) :
+                    (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
+    ui_rrect(x, y, w, 32, 8, fill);
     char b[48];
-    if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
+    if (!available) {
+        snprintf(b, sizeof b, "—");
+        ui_text_c(F_REG, 13, x + w / 2, y + 7, C_DIM, b);
+    } else if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
     else {
         if (kind == 1) key_code_name(c->key[btn][slot], b, sizeof b); else pad_code_name_device(pad_device, c->pad[btn][slot], b, sizeof b);
         int none = kind == 1 ? !c->key[btn][slot] : c->pad[btn][slot] < 0;
         ui_text_c(F_REG, 13, x + w / 2, y + 7, none ? C_DIM : C_TEXT, b);
     }
     if (clicked) { cap_kind = kind; cap_btn = btn; cap_slot = slot; }
-    if (over && !active) ui_hint("Click, then press the key or button you want. Backspace clears, Esc cancels.");
+    if (over && !active && available) ui_hint("Click, then press the key or button you want. Backspace clears, Esc cancels.");
+    else if (!available && ui_hover(x, y, w, 32)) ui_hint("Assign a controller to this player to enable its button bindings.");
 }
 
 static void bind_action_cell(int g, float x, float y, float w, int kind, int action)
 {
     GameCfg *c = &settings.g[g];
     int pad_device = c->pad_device[0];
-    int over;
-    int clicked = clickable(x, y, w, 32, &over);
+    int available = kind != 4 || (pad_device >= 0 && pad_device < pad_count());
+    int over = 0;
+    int clicked = available ? clickable(x, y, w, 32, &over) : 0;
     int active = (cap_kind == kind && cap_btn == action);
-    ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
+    uint32_t fill = !available ? RGBA(255,255,255,3) :
+                    (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
+    ui_rrect(x, y, w, 32, 8, fill);
     char b[64];
-    if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 3 ? "press a key…" : "press a button…");
+    if (!available) {
+        snprintf(b, sizeof b, "—");
+        ui_text_c(F_REG, 12, x + w / 2, y + 7, C_DIM, b);
+    } else if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 3 ? "press a key…" : "press a button…");
     else {
         if (kind == 3) key_code_name(c->action_key[action], b, sizeof b);
         else pad_code_name_device(pad_device, c->action_pad[action], b, sizeof b);
@@ -508,7 +518,8 @@ static void bind_action_cell(int g, float x, float y, float w, int kind, int act
         ui_text_c(F_REG, 12, x + w / 2, y + 7, none ? C_DIM : C_TEXT, b);
     }
     if (clicked) { cap_kind = kind; cap_btn = action; cap_slot = 0; }
-    if (over && !active) ui_hint("Click, then press the key or controller button. Backspace clears, Esc cancels.");
+    if (over && !active && available) ui_hint("Click, then press the key or controller button. Backspace clears, Esc cancels.");
+    else if (!available && ui_hover(x, y, w, 32)) ui_hint("Assign a controller to Player 1 to enable controller shortcuts.");
 }
 
 static void sub_save_states(int g, float x, float y)
@@ -571,7 +582,7 @@ static void sub_save_states(int g, float x, float y)
 static void sub_bindings(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
-    card(x, y, 808, 476, "SAVE STATE BINDINGS");
+    card(x, y, 808, 450, "SAVE STATE BINDINGS");
 
     ui_text_wrap(F_REG, 12, x + 18, y + 40, 772, C_DIM,
                  "These bindings are only for PipeClean's save-state controls. Game Boy button and controller bindings stay on the Controllers tab.", 2);
@@ -588,13 +599,13 @@ static void sub_bindings(int g, float x, float y)
         bind_action_cell(g, x + 490, ry + 3, 190, 4, a);
     }
 
-    ui_text_wrap(F_REG, 11, x + 18, y + 372, 772, C_DIM,
+    ui_text_wrap(F_REG, 11, x + 18, y + 350, 772, C_DIM,
                  "Save State stores the selected slot, Load State restores it, Rewind moves backward through recent history, Suspend saves and returns to the launcher, and Next State Slot changes the active slot.", 3);
 
-    label(x + 18, y + 430, "Current slot");
-    ui_text(F_BOLD, 13, x + 118, y + 430, HEX(ui_accent), "Change slots on Save States");
+    label(x + 18, y + 394, "Current slot");
+    ui_text(F_BOLD, 13, x + 118, y + 394, HEX(ui_accent), "Change slots on Save States");
 
-    if (ui_button(x + 18, y + 452, 180, 36, "Reset state bindings", B_NORMAL, 1)) {
+    if (ui_button(x + 18, y + 410, 180, 36, "Reset state bindings", B_NORMAL, 1)) {
         shortcut_defaults(c);
         launcher_toast("Save-state bindings reset.");
     }
@@ -1053,6 +1064,13 @@ LauncherResult launcher_frame(float dt)
 /* ------------------------------------------------------------------ events */
 void launcher_event(const SDL_Event *e)
 {
+    if (cap_kind) {
+        GameCfg *current = &settings.g[launcher_current_game()];
+        if ((cap_kind == 2 && (cap_slot < 0 || cap_slot > 1 ||
+                               current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())) ||
+            (cap_kind == 4 && (current->pad_device[0] < 0 || current->pad_device[0] >= pad_count())))
+            cap_kind = 0;
+    }
     if (cap_kind) {
         GameCfg *c = &settings.g[launcher_current_game()];
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {

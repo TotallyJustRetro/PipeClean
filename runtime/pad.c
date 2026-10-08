@@ -9,9 +9,92 @@
 typedef struct { SDL_GameController *gc; SDL_Joystick *joy; int mapped; } Pad;
 static Pad pads[MAXPADS];
 static int n_pads;
+static SDL_JoystickID assigned_instance[N_GAMES][2];
+static int sync_initialized;
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
 static int pad_instance_device(SDL_JoystickID which);
-static int pad_find_guid(const char *guid);
+static SDL_Joystick *joystick_for_device(int device)
+{
+    if (device < 0 || device >= n_pads) return NULL;
+    return pads[device].mapped ? SDL_GameControllerGetJoystick(pads[device].gc) : pads[device].joy;
+}
+static SDL_JoystickID device_instance(int device)
+{
+    SDL_Joystick *j = joystick_for_device(device);
+    return j ? SDL_JoystickInstanceID(j) : (SDL_JoystickID)-1;
+}
+static int pad_find_instance(SDL_JoystickID which)
+{
+    if (which < 0) return -1;
+    for (int i = 0; i < n_pads; i++) if (device_instance(i) == which) return i;
+    return -1;
+}
+static int pad_device_raw_guid(int device, char *buf, size_t n)
+{
+    SDL_Joystick *j = joystick_for_device(device);
+    if (!buf || !n) return 0;
+    buf[0] = 0;
+    if (!j) return 0;
+    SDL_JoystickGUID guid = SDL_JoystickGetGUID(j);
+    SDL_JoystickGetGUIDString(guid, buf, (int)n);
+    return buf[0] != 0;
+}
+static int identity_is_strong(const char *s)
+{
+    return s && (s[0] == 'S' || s[0] == 'P') && s[1] == ':';
+}
+/* Old configs contain a bare 32-character GUID. New fallback identities start G:<guid>|<name>. */
+static int identity_weak_guid(const char *s, char out[33])
+{
+    if (!s || !s[0] || !out) return 0;
+    if (strlen(s) == 32) {
+        memcpy(out, s, 32); out[32] = 0;
+        return 1;
+    }
+    if (s[0] == 'G' && s[1] == ':' && strlen(s) >= 35 && s[34] == '|') {
+        memcpy(out, s + 2, 32); out[32] = 0;
+        return 1;
+    }
+    return 0;
+}
+static int identity_matches_device(const char *identity, int device)
+{
+    if (!identity || !identity[0]) return 0;
+    if (identity_is_strong(identity)) {
+        char current[512];
+        return pad_device_identity(device, current, sizeof current) && !strcmp(identity, current);
+    }
+    char want[33], got[40];
+    if (!identity_weak_guid(identity, want) || !pad_device_raw_guid(device, got, sizeof got)) return 0;
+    return !strcmp(want, got);
+}
+static int weak_guid_candidate_count(const char *guid, const int claimed[MAXPADS])
+{
+    int count = 0;
+    char got[40];
+    for (int i = 0; i < n_pads; i++)
+        if ((!claimed || !claimed[i]) && pad_device_raw_guid(i, got, sizeof got) && !strcmp(guid, got)) count++;
+    return count;
+}
+static int unique_unclaimed_identity(const char *identity, const int claimed[MAXPADS])
+{
+    int found = -1, count = 0;
+    for (int i = 0; i < n_pads; i++) {
+        if (claimed[i] || !identity_matches_device(identity, i)) continue;
+        found = i; count++;
+    }
+    return count == 1 ? found : -1;
+}
+static void remember_assigned_instances(void)
+{
+    for (int g = 0; g < N_GAMES; g++) {
+        for (int player = 0; player < 2; player++) {
+            int device = settings.g[g].pad_device[player];
+            SDL_JoystickID instance = device_instance(device);
+            if (instance >= 0) assigned_instance[g][player] = instance;
+        }
+    }
+}
 static void rescan(void)
 {
     for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
@@ -30,6 +113,10 @@ void pad_init(void)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
+    for (int g = 0; g < N_GAMES; g++)
+        for (int player = 0; player < 2; player++)
+            assigned_instance[g][player] = (SDL_JoystickID)-1;
+    sync_initialized = 0;
     rescan();
     pad_sync_assignments();
 }
@@ -45,6 +132,8 @@ void pad_event(const SDL_Event *e)
 {
     if (e->type == SDL_CONTROLLERDEVICEADDED || e->type == SDL_CONTROLLERDEVICEREMOVED ||
         e->type == SDL_JOYDEVICEADDED || e->type == SDL_JOYDEVICEREMOVED) {
+        /* Snapshot live player-to-instance ownership before device indices change. */
+        remember_assigned_instances();
         rescan();
         pad_sync_assignments();
         if (e->type == SDL_CONTROLLERDEVICEADDED && pad_is_dualsense(0) + pad_is_dualsense(1) > 0)
@@ -52,45 +141,183 @@ void pad_event(const SDL_Event *e)
     }
 }
 
-int pad_device_guid(int device, char *buf, size_t n)
+int pad_device_identity(int device, char *buf, size_t n)
 {
+    SDL_Joystick *j = joystick_for_device(device);
     if (!buf || !n) return 0;
     buf[0] = 0;
-    if (device < 0 || device >= n_pads) return 0;
-    SDL_Joystick *j = pads[device].mapped ? SDL_GameControllerGetJoystick(pads[device].gc) : pads[device].joy;
     if (!j) return 0;
-    SDL_JoystickGUID guid = SDL_JoystickGetGUID(j);
-    SDL_JoystickGetGUIDString(guid, buf, n);
-    return buf[0] != 0;
-}
 
-static int pad_find_guid(const char *guid)
-{
-    if (!guid || !guid[0]) return -1;
-    char cur[33];
-    for (int i = 0; i < n_pads; i++) {
-        if (pad_device_guid(i, cur, sizeof cur) && !strcmp(cur, guid)) return i;
+    /* Prefer per-physical-device metadata. A GUID alone identifies only a model. */
+    const char *serial = SDL_JoystickGetSerial(j);
+    if (serial && serial[0]) {
+        snprintf(buf, n, "S:%s", serial);
+        return buf[0] != 0;
     }
-    return -1;
+    const char *path = SDL_JoystickPath(j);
+    if (path && path[0]) {
+        snprintf(buf, n, "P:%s", path);
+        return buf[0] != 0;
+    }
+
+    char guid[40];
+    if (!pad_device_raw_guid(device, guid, sizeof guid)) return 0;
+    snprintf(buf, n, "G:%s|%s", guid, name_of(&pads[device]));
+    return buf[0] != 0;
 }
 
 void pad_sync_assignments(void)
 {
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &settings.g[g];
+        int chosen[2] = {-1, -1};
+        int claimed[MAXPADS] = {0, 0, 0, 0};
+
+        /* First preserve the actual live joystick instance for each player. */
         for (int player = 0; player < 2; player++) {
-            int *sel = &c->pad_device[player];
-            if (c->pad_guid[player][0]) {
-                *sel = pad_find_guid(c->pad_guid[player]);
+            SDL_JoystickID instance = assigned_instance[g][player];
+            int device = pad_find_instance(instance);
+            if (instance >= 0 && device >= 0 && !claimed[device]) {
+                chosen[player] = device;
+                claimed[device] = 1;
+            } else if (instance >= 0) {
+                assigned_instance[g][player] = (SDL_JoystickID)-1;
+            }
+        }
+
+        /* Serial/path identities reconnect safely even if SDL changes slot order. */
+        for (int player = 0; player < 2; player++) {
+            if (chosen[player] >= 0 || !identity_is_strong(c->pad_guid[player])) continue;
+            int device = unique_unclaimed_identity(c->pad_guid[player], claimed);
+            if (device >= 0) {
+                chosen[player] = device;
+                claimed[device] = 1;
+                assigned_instance[g][player] = device_instance(device);
+            }
+        }
+
+        /* On first launch, resolve duplicated legacy GUIDs only when safe. */
+        if (!sync_initialized) {
+            for (int player = 0; player < 2; player++) {
+                if (chosen[player] >= 0) continue;
+                char guid[33];
+                if (!identity_weak_guid(c->pad_guid[player], guid)) continue;
+                int owners = 0, owner_other = -1;
+                for (int other = 0; other < 2; other++) {
+                    char other_guid[33];
+                    if (identity_weak_guid(c->pad_guid[other], other_guid) && !strcmp(guid, other_guid)) {
+                        owners++;
+                        if (other != player) owner_other = other;
+                    }
+                }
+                if (owners <= 1) continue;
+                int total = weak_guid_candidate_count(guid, NULL);
+                if (total >= owners) {
+                    for (int other = 0; other < 2; other++) {
+                        char other_guid[33];
+                        if (chosen[other] >= 0 || !identity_weak_guid(c->pad_guid[other], other_guid) || strcmp(guid, other_guid)) continue;
+                        int hint = c->pad_device[other];
+                        char got[40];
+                        if (hint >= 0 && hint < n_pads && !claimed[hint] &&
+                            pad_device_raw_guid(hint, got, sizeof got) && !strcmp(guid, got)) {
+                            chosen[other] = hint;
+                            claimed[hint] = 1;
+                            assigned_instance[g][other] = device_instance(hint);
+                        }
+                    }
+                } else if (owner_other >= 0 && c->pad_device[player] >= 0 &&
+                           c->pad_device[owner_other] < 0) {
+                    int hint = c->pad_device[player];
+                    char got[40];
+                    if (hint < n_pads && !claimed[hint] &&
+                        pad_device_raw_guid(hint, got, sizeof got) && !strcmp(guid, got)) {
+                        chosen[player] = hint;
+                        claimed[hint] = 1;
+                        assigned_instance[g][player] = device_instance(hint);
+                    }
+                }
+            }
+        }
+
+        /* Migrate older configs that never stored a device identity. */
+        if (!sync_initialized) {
+            for (int player = 0; player < 2; player++) {
+                if (chosen[player] >= 0 || c->pad_guid[player][0]) continue;
+                int hint = c->pad_device[player];
+                if (hint >= 0 && hint < n_pads && !claimed[hint]) {
+                    chosen[player] = hint;
+                    claimed[hint] = 1;
+                    assigned_instance[g][player] = device_instance(hint);
+                }
+            }
+        }
+
+        /* Weak GUID matching is safe only if ownership is unambiguous or every
+           other player with that GUID is already attached to their live instance. */
+        for (int player = 0; player < 2; player++) {
+            if (chosen[player] >= 0) continue;
+            char guid[33];
+            if (!identity_weak_guid(c->pad_guid[player], guid)) continue;
+            int other_owners = 0, all_other_owners_live = 1;
+            for (int other = 0; other < 2; other++) {
+                char other_guid[33];
+                if (other == player || !identity_weak_guid(c->pad_guid[other], other_guid) || strcmp(guid, other_guid)) continue;
+                other_owners++;
+                if (chosen[other] < 0) all_other_owners_live = 0;
+            }
+            int available = weak_guid_candidate_count(guid, claimed);
+            if (other_owners == 0 || all_other_owners_live) {
+                if (available == 1) {
+                    for (int d = 0; d < n_pads; d++) {
+                        if (!claimed[d] && identity_matches_device(c->pad_guid[player], d)) {
+                            chosen[player] = d;
+                            claimed[d] = 1;
+                            assigned_instance[g][player] = device_instance(d);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        for (int player = 0; player < 2; player++) {
+            c->pad_device[player] = chosen[player];
+            if (chosen[player] < 0) {
+                assigned_instance[g][player] = (SDL_JoystickID)-1;
                 continue;
             }
-            if (*sel >= 0 && *sel < n_pads) {
-                pad_device_guid(*sel, c->pad_guid[player], sizeof c->pad_guid[player]);
-            } else if (*sel >= n_pads) {
-                *sel = -1;
+            assigned_instance[g][player] = device_instance(chosen[player]);
+            char current[512];
+            if (pad_device_identity(chosen[player], current, sizeof current)) {
+                if (!c->pad_guid[player][0] ||
+                    (identity_is_strong(current) && !identity_is_strong(c->pad_guid[player])) ||
+                    (strlen(c->pad_guid[player]) == 32 && !identity_is_strong(current)))
+                    snprintf(c->pad_guid[player], sizeof c->pad_guid[player], "%s", current);
             }
         }
     }
+    sync_initialized = 1;
+}
+
+int pad_assign_device(int game, int player, int device)
+{
+    if (game < 0 || game >= N_GAMES || player < 0 || player > 1) return 0;
+    if (device < -1 || device >= n_pads) return 0;
+    GameCfg *c = &settings.g[game];
+    if (device >= 0) {
+        int other = 1 - player;
+        if (c->pad_device[other] == device) return 0;
+        char identity[512];
+        if (!pad_device_identity(device, identity, sizeof identity)) return 0;
+        c->pad_device[player] = device;
+        snprintf(c->pad_guid[player], sizeof c->pad_guid[player], "%s", identity);
+        assigned_instance[game][player] = device_instance(device);
+    } else {
+        c->pad_device[player] = -1;
+        c->pad_guid[player][0] = 0;
+        assigned_instance[game][player] = (SDL_JoystickID)-1;
+    }
+    return 1;
 }
 
 int pad_count(void) { return n_pads; }
