@@ -102,6 +102,8 @@ void controls_defaults(GameCfg *c)
         {SDL_CONTROLLER_BUTTON_DPAD_UP, -1}, {SDL_CONTROLLER_BUTTON_DPAD_DOWN, -1}};
     memcpy(c->key, key, sizeof key);
     memcpy(c->pad, pad, sizeof pad);
+    c->pad_device[0] = 0;
+    c->pad_device[1] = -1;
 }
 
 void game_cfg_defaults(GameCfg *c, int game)
@@ -180,6 +182,7 @@ static int field_table(Field *t, int cap)
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
         GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("tex_collect", c->tex_collect, 0, 1);
+        GI("pad_device1", c->pad_device[0], -1, 3); GI("pad_device2", c->pad_device[1], -1, 3);
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
         GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
