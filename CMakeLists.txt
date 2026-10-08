@@ -1,26 +1,21 @@
 cmake_minimum_required(VERSION 3.16)
 project(gb_recomp C)
-set(ROM "" CACHE FILEPATH "ROM to recompile")
+# cmake -S . -B build -DROM=path/to/game.gb && cmake --build build
+set(ROM "" CACHE FILEPATH "ROM to recompile (32 KB, no bank switching)")
 if(NOT ROM)
   message(FATAL_ERROR "pass -DROM=path/to/game.gb")
 endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(SDL2 REQUIRED)
 set(GEN ${CMAKE_BINARY_DIR}/generated)
-set(ROOTS ${CMAKE_SOURCE_DIR}/roots.txt)
+set(ROOTS ${CMAKE_SOURCE_DIR}/roots.txt)   # optional: output of tools/discover.py
 set(ROOT_ARGS "")
 if(EXISTS ${ROOTS})
   set(ROOT_ARGS --roots ${ROOTS})
 endif()
-file(SIZE "${ROM}" ROM_SIZE)
-set(RECOMP_MODE_ARGS "")
-if(ROM_SIZE GREATER 32768)
-  message(STATUS "Banked ROM detected (${ROM_SIZE} bytes): using interpreter-only mode")
-  set(RECOMP_MODE_ARGS --interp-only)
-endif()
 add_custom_command(
   OUTPUT ${GEN}/game.c ${GEN}/interp.c ${GEN}/game_info.h
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/recomp.py ${ROM} -o ${GEN} ${RECOMP_MODE_ARGS} ${ROOT_ARGS}
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/recomp.py ${ROM} -o ${GEN} ${ROOT_ARGS}
   DEPENDS ${ROM} tools/recomp.py tools/sm83.py)
 file(GLOB RT runtime/*.c)
 add_executable(gb ${RT} ${GEN}/game.c ${GEN}/interp.c)
