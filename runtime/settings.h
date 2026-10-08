@@ -18,6 +18,7 @@ enum { SCALE_PIXEL, SCALE_SMOOTH, SCALE_STRETCH, N_SCALE };
 enum { SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_FULLSCREEN, N_SIZE };
 enum { BTN_A, BTN_B, BTN_SELECT, BTN_START, BTN_RIGHT, BTN_LEFT, BTN_UP, BTN_DOWN, N_BTN };
 enum { LED_OFF, LED_PALETTE, LED_CUSTOM, LED_SCREEN, N_LED };
+enum { ACT_SAVE_STATE, ACT_LOAD_STATE, ACT_REWIND, ACT_SUSPEND, ACT_NEXT_SLOT, N_ACTION };
 enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 
 #define PAD_AXIS_BASE 100               /* controller binding codes >= 100 are triggers: 100 = L2, 101 = R2 */
@@ -31,6 +32,9 @@ typedef struct {
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
     int multiplayer;                    /* local two-player mode; default off */
+    int state_slot;                      /* save-state slot 0..9 */
+    int action_key[N_ACTION];            /* emulator shortcut keyboard bindings */
+    int action_pad[N_ACTION];            /* emulator shortcut controller bindings */
     int key[N_BTN][2];                  /* SDL keycodes, 0 = unbound */
     int pad[N_BTN][2];                  /* SDL_GameControllerButton or PAD_AXIS_BASE+n, -1 = unbound */
     int pad_device[2];                  /* controller slot used by Player 1 / Player 2, -1 = none */
@@ -64,6 +68,7 @@ extern const char *aspect_names[], *scale_names[], *size_names[], *btn_names[], 
 void settings_defaults(Settings *s);
 void game_cfg_defaults(GameCfg *c, int game);
 void controls_defaults(GameCfg *c);
+void shortcut_defaults(GameCfg *c);
 void filter_preset(FilterCfg *f, int preset);
 extern const char *filter_preset_names[];
 extern const int n_filter_presets;
