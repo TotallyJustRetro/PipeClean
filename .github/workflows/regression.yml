@@ -84,17 +84,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up MSYS2 UCRT64 with SDL2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-cmake
+
       - name: Verify Windows toolchain
-        shell: pwsh
+        shell: msys2 {0}
         run: |
           gcc --version
           cmake --version
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" version
-
-      - name: Install SDL2 for MinGW
-        shell: pwsh
-        run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install sdl2:x64-mingw-static
+          pkg-config --modversion sdl2
 
       - name: Generate synthetic SML2-shaped 512 KiB ROM
         shell: pwsh
@@ -110,20 +115,19 @@ jobs:
           [IO.File]::WriteAllBytes("$PWD\ci\sml2_smoke.gb", $rom)
 
       - name: Configure Windows build
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $toolchain = "$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake"
-          cmake -G "MinGW Makefiles" -S . -B build-windows -DROM="$PWD\ci\sml2_smoke.gb" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DVCPKG_TARGET_TRIPLET=x64-mingw-static
+          cmake -S . -B build-windows -DROM="$PWD/ci/sml2_smoke.gb" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build Windows runtime
-        shell: pwsh
+        shell: msys2 {0}
         run: |
           cmake --build build-windows --target gb --parallel 2
 
       - name: Smoke-test Windows runtime
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          & "$PWD\build-windows\gb.exe" --headless --frames 2 --no-crc-check --wide 100 "$PWD\ci\sml2_smoke.gb"
+          ./build-windows/gb.exe --headless --frames 2 --no-crc-check --wide 100 ci/sml2_smoke.gb
 
       - name: Package Windows runtime artifact
         shell: pwsh
