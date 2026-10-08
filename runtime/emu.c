@@ -134,6 +134,36 @@ static int mp_vblank_waiting;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
+
+#define REWIND_SLOTS 96
+#define REWIND_CAPTURE_INTERVAL 2
+
+typedef struct {
+    uint32_t magic, version, flags, game_id, core_bytes, extra_bytes;
+} EmuStateHeader;
+
+typedef struct {
+    MpPlayerState p2;
+    uint8_t p2_lives;
+    uint8_t p2_spawned;
+    uint8_t reserved[2];
+} MpStateExtra;
+
+#define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
+#define EMU_STATE_VERSION 1u
+#define EMU_STATE_FLAG_MP 1u
+
+static uint8_t *rewind_data;
+static size_t rewind_stride;
+static int rewind_head = -1;
+static int rewind_count;
+static int rewind_oldest = -1;
+static int rewind_cursor = -1;
+static int rewind_last_loaded = -1;
+static int rewind_capture_skip;
+static int rewind_mode;
+static int rewind_pending;
+
 static void mp_player_save(MpPlayerState *s);
 
 static int mp_bcd_to_int(uint8_t b)
@@ -408,6 +438,14 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     f->sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     f->lcd_on = ppu_lcd_is_on();
     f->seq = (uint64_t)frame_count;
+}
+
+void emu_mp_frame_refresh(Frame *frame)
+{
+    if (!mp_ready || !frame) return;
+    mp_capture_frame(frame, 0);
+    if (mp_p2_spawned && mp_p2_lives > 0)
+        memcpy(frame->mario_oam2, mp_p2_state.mario_oam, sizeof frame->mario_oam2);
 }
 
 int emu_mp_begin(void)
@@ -869,6 +907,7 @@ void emu_mp_end(void)
     gb_mp_vblank_watch = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
     mp_p1_lives_seen = 0;
+    rewind_free();
     mp_frame_out = NULL;
     mp_audio_out = NULL;
     mp_audio_max = mp_audio_n = 0;
@@ -948,6 +987,151 @@ static void pace_without_audio(void)
     }
 }
 
+static size_t emu_state_blob_size(void)
+{
+    return sizeof(EmuStateHeader) + gb_state_data_size() + sizeof(MpStateExtra);
+}
+
+static int emu_state_save_blob(void *dst, size_t n)
+{
+    if (!dst || n < emu_state_blob_size()) return -1;
+    EmuStateHeader h = {EMU_STATE_MAGIC, EMU_STATE_VERSION, mp_active ? EMU_STATE_FLAG_MP : 0u,
+                        (uint32_t)rom_loaded_game(), (uint32_t)gb_state_data_size(),
+                        mp_active ? (uint32_t)sizeof(MpStateExtra) : 0u};
+    memcpy(dst, &h, sizeof h);
+    if (gb_state_save((uint8_t *)dst + sizeof h, n - sizeof h)) return -1;
+    if (mp_active) {
+        MpStateExtra x;
+        memset(&x, 0, sizeof x);
+        x.p2 = mp_p2_state;
+        x.p2_lives = mp_p2_lives;
+        x.p2_spawned = (uint8_t)mp_p2_spawned;
+        memcpy((uint8_t *)dst + sizeof h + h.core_bytes, &x, sizeof x);
+    }
+    return 0;
+}
+
+static int emu_state_load_blob(const void *src, size_t n)
+{
+    if (!src || n < sizeof(EmuStateHeader)) return -1;
+    EmuStateHeader h;
+    memcpy(&h, src, sizeof h);
+    if (h.magic != EMU_STATE_MAGIC || h.version != EMU_STATE_VERSION) return -1;
+    if ((int)h.game_id != rom_loaded_game()) return -1;
+    if (((h.flags & EMU_STATE_FLAG_MP) != 0) != (mp_active != 0)) return -1;
+    if (h.core_bytes != gb_state_data_size() || h.extra_bytes > sizeof(MpStateExtra)) return -1;
+    if (sizeof h + h.core_bytes + h.extra_bytes > n) return -1;
+    if (gb_state_load((const uint8_t *)src + sizeof h, h.core_bytes)) return -1;
+    if (mp_active) {
+        if (h.extra_bytes != sizeof(MpStateExtra)) return -1;
+        MpStateExtra x;
+        memcpy(&x, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof x);
+        mp_p2_state = x.p2;
+        mp_p2_lives = x.p2_lives;
+        mp_p2_spawned = x.p2_spawned != 0;
+        mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
+        mp_pending_block = 0;
+        mp_vblank_waiting = 0;
+        gb_mp_vblank_watch = 0;
+        if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+    }
+    return 0;
+}
+
+static void rewind_free(void)
+{
+    free(rewind_data);
+    rewind_data = NULL;
+    rewind_stride = 0;
+    rewind_head = rewind_count = -1;
+    rewind_count = 0;
+    rewind_oldest = rewind_cursor = rewind_last_loaded = -1;
+    rewind_capture_skip = 0;
+    rewind_mode = rewind_pending = 0;
+}
+
+static void rewind_init(void)
+{
+    rewind_free();
+    rewind_stride = emu_state_blob_size();
+    rewind_data = (uint8_t *)malloc((size_t)REWIND_SLOTS * rewind_stride);
+    if (!rewind_data) { rewind_stride = 0; return; }
+    memset(rewind_data, 0, (size_t)REWIND_SLOTS * rewind_stride);
+    rewind_head = -1;
+    rewind_count = 0;
+    rewind_capture_skip = 0;
+}
+
+static void rewind_capture_if_due(void)
+{
+    if (!rewind_data || !rewind_stride || rewind_mode) return;
+    if (++rewind_capture_skip < REWIND_CAPTURE_INTERVAL) return;
+    rewind_capture_skip = 0;
+    int idx = (rewind_head + 1) % REWIND_SLOTS;
+    if (emu_state_save_blob(rewind_data + (size_t)idx * rewind_stride, rewind_stride)) return;
+    rewind_head = idx;
+    if (rewind_count < REWIND_SLOTS) rewind_count++;
+    rewind_oldest = (rewind_head - rewind_count + 1 + REWIND_SLOTS) % REWIND_SLOTS;
+}
+
+static int rewind_load_previous(void)
+{
+    if (!rewind_data || rewind_count < 2 || rewind_cursor < 0) return -1;
+    size_t n = emu_state_blob_size();
+    if (emu_state_load_blob(rewind_data + (size_t)rewind_cursor * rewind_stride, n)) return -1;
+    rewind_last_loaded = rewind_cursor;
+    int oldest = rewind_oldest;
+    int distance = (rewind_cursor - oldest + REWIND_SLOTS) % REWIND_SLOTS;
+    if (distance <= 0) rewind_cursor = -1;
+    else rewind_cursor = (rewind_cursor - 1 + REWIND_SLOTS) % REWIND_SLOTS;
+    (void)distance;
+    return 0;
+}
+
+static int rewind_prime(void)
+{
+    if (!rewind_data || rewind_count < 2) return -1;
+    rewind_oldest = (rewind_head - rewind_count + 1 + REWIND_SLOTS) % REWIND_SLOTS;
+    rewind_cursor = (rewind_head - 1 + REWIND_SLOTS) % REWIND_SLOTS;
+    rewind_last_loaded = -1;
+    rewind_mode = 1;
+    rewind_pending = 1;
+    audio_game_set_paused(1);
+    return 0;
+}
+
+int emu_rewind_step(void)
+{
+    if (!rewind_mode && rewind_prime()) return -1;
+    if (mp_active) {
+        rewind_pending = 0;
+        if (rewind_load_previous()) return -1;
+    } else {
+        rewind_pending = 1;
+    }
+    return 0;
+}
+
+void emu_rewind_end(void)
+{
+    if (!rewind_mode) return;
+    if (rewind_last_loaded >= 0 && rewind_oldest >= 0) {
+        int new_count = (rewind_last_loaded - rewind_oldest + REWIND_SLOTS) % REWIND_SLOTS + 1;
+        rewind_head = rewind_last_loaded;
+        rewind_count = new_count;
+    }
+    rewind_mode = 0;
+    rewind_pending = 0;
+    rewind_cursor = -1;
+    rewind_last_loaded = -1;
+    audio_game_set_paused(0);
+}
+
+int emu_rewind_available(void)
+{
+    return rewind_count >= 2;
+}
+
 void frame_hook(void)
 {
     static int16_t abuf[4096 * 2];
@@ -994,6 +1178,19 @@ void frame_hook(void)
         return;
     }
     if (abort_flag) longjmp(stop_jmp, 1);
+    if (rewind_mode) {
+        if (rewind_pending) {
+            rewind_pending = 0;
+            if (rewind_load_previous()) rewind_mode = 0;
+        }
+        publish();
+        events_frame();
+        apu_drain(abuf, 4096);
+        gb_set_input(0, 0);
+        SDL_Delay(8);
+        return;
+    }
+    rewind_capture_if_due();
     publish();
     events_frame();
     int n = apu_drain(abuf, 4096);
@@ -1018,21 +1215,29 @@ static int thread_main(void *u)
     return 0;
 }
 
-int emu_start(int force_interp)
+static int emu_start_internal(int force_interp, int reset)
 {
     if (thr) return 0;
     if (!fmx) fmx = SDL_CreateMutex();
     force_interp_flag = force_interp;
     abort_flag = 0; paused = 0; turbo = 0; save_tick = 0; pace_next = 0;
-    gb_reset();
-    if (save_path[0]) cart_load_save(save_path);
+    if (reset) {
+        gb_reset();
+        if (save_path[0]) cart_load_save(save_path);
+    }
     memset(&pub, 0, sizeof pub);
     apu_set_volume(settings.volume / 100.0f);
     audio_game_begin();
     events_begin();
+    rewind_init();
     thr = SDL_CreateThread(thread_main, "emulation", NULL);
-    if (!thr) { audio_game_end(); events_end(); return -1; }
+    if (!thr) { audio_game_end(); events_end(); rewind_free(); return -1; }
     return 0;
+}
+
+int emu_start(int force_interp)
+{
+    return emu_start_internal(force_interp, 1);
 }
 
 void emu_stop(void)
@@ -1044,6 +1249,7 @@ void emu_stop(void)
     thr = NULL;
     audio_game_end();
     events_end();
+    rewind_free();
 }
 
 void emu_preview(int frames)
