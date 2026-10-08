@@ -106,6 +106,9 @@ static MpPlayerState mp_p2_state;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
 static int mp_audio_max, mp_audio_n;
+/* Large multiplayer probe buffers live outside the thread stack. */
+static uint8_t mp_p2_probe_state[GB_STATE_BYTES];
+static Frame mp_probe_frame;
 
 
 static void mp_player_save(MpPlayerState *s)
@@ -240,22 +243,20 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * lets us identify changes caused by P2 instead of copying normal enemy
          * AI/timer advancement into the authoritative Player 1 world.
          */
-        uint8_t p2_start_state[GB_STATE_BYTES];
         MpSharedProbe control = {0}, actual = {0};
-        Frame control_frame = {0};
 
-        if (gb_state_save(p2_start_state, GB_STATE_BYTES)) return -1;
+        if (gb_state_save(mp_p2_probe_state, GB_STATE_BYTES)) return -1;
 
         mp_player_load(&mp_p2_state);
         mp_buttons = 0; mp_dpad = 0;
         gb_set_input(0, 0);
-        mp_frame_out = &control_frame; mp_audio_out = NULL; mp_audio_max = 0; mp_audio_n = 0;
+        mp_frame_out = &mp_probe_frame; mp_audio_out = NULL; mp_audio_max = 0; mp_audio_n = 0;
         mp_active = 1;
         if (setjmp(stop_jmp) == 0) run_core(0);
         mp_active = 0;
         mp_shared_probe_capture(&control);
 
-        if (gb_state_load(p2_start_state, GB_STATE_BYTES)) return -1;
+        if (gb_state_load(mp_p2_probe_state, GB_STATE_BYTES)) return -1;
 
         uint8_t p1_scroll = rd8(0xFFA4);
         mp_player_load(&mp_p2_state);
