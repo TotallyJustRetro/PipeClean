@@ -302,6 +302,7 @@ static int mp_merge_tilemap_local_edits(int allow_full)
             uint8_t before = mp_tilemap_before[idx];
             uint8_t after = mp_tilemap_after[idx];
             if (before == after) continue;
+            /* Never import SML1's temporary solid->blank block-hit result. */
             if (before >= 0x60 && before != 0xF4 && after == 0x20)
                 continue;
             vram[0x1800 + idx] = after;
@@ -433,11 +434,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p2_scroll_after = rd8(0xFFA4);
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
-        uint8_t p2_floaty_control = rd8(0xFFED);
-        uint8_t p2_floaty_x = rd8(0xFFEB);
-        uint8_t p2_floaty_y = rd8(0xFFEC);
-        uint8_t p2_square_sfx = rd8(0xDFE0);
-        uint8_t p2_noise_sfx = rd8(0xDFF8);
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
         int p2_world_lives_after = mp_bcd_to_int(rd8(0xDA15));
         int life_delta = p2_world_lives_after - p2_world_lives_before;
@@ -459,7 +455,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int dx = mp_scroll_delta(p2_scroll_after, p1_scroll);
         int enemy_merged = 0;
         int enemy_sound_event = 0;
-        int p2_enemy_score = mp_score_points(p2_floaty_control) > 0;
         memset(mp_enemy_merge_mask, 0, sizeof mp_enemy_merge_mask);
         for (int slot = 0; slot < 10; slot++) {
             uint8_t before_type = mp_enemy_before[slot * 0x10];
@@ -469,16 +464,15 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                                      before_type != 0xFF &&
                                      !mp_is_pickup(before_type) &&
                                      !mp_is_pickup(after_type);
-            int enemy_kill = enemy_death || (enemy_state_change && p2_enemy_score);
             int pickup_consumed = mp_is_pickup(before_type) && before_type != after_type;
             int pickup_spawned = before_type == 0xFF && mp_is_pickup(after_type);
-            if (enemy_kill || pickup_consumed || pickup_spawned) {
+            if (enemy_death || enemy_state_change || pickup_consumed || pickup_spawned) {
                 mp_enemy_merge_mask[slot] = 1;
                 memcpy(&mp_enemy_merge[slot * 0x10], &mp_enemy_after[slot * 0x10], 0x10);
                 int ex = (int)mp_enemy_merge[slot * 0x10 + 3] + dx;
                 mp_enemy_merge[slot * 0x10 + 3] = (uint8_t)ex;
                 enemy_merged = 1;
-                if (enemy_kill) enemy_sound_event = 1;
+                if (enemy_death) enemy_sound_event = 1;
             }
         }
         frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
@@ -504,31 +498,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
         /*
-         * Preserve SML1's own sound and score requests. These requests normally
-         * get consumed by the game's next timer/gameplay update, so keep them
-         * in the authoritative P1 state after Luigi's isolated pass.
-         */
-        if (rd8(0xDFE0) == 0) {
-            if (coins_after != coins_before)
-                wr8(0xDFE0, 0x05); /* SFX_COIN */
-            else if (enemy_sound_event)
-                wr8(0xDFE0, 0x03); /* SFX_STOMP */
-            else if (p2_square_sfx)
-                wr8(0xDFE0, p2_square_sfx);
-        }
-        if (rd8(0xDFF8) == 0 && p2_noise_sfx)
-            wr8(0xDFF8, p2_noise_sfx);
-
-        /* FFED is SML1's queued score/floaty control. Keep it when P1 does not
-         * already have a floaty pending, allowing the original SML1 update to
-         * award and display Luigi's points on the shared state. */
-        if (p2_floaty_control && rd8(0xFFED) == 0) {
-            wr8(0xFFEB, p2_floaty_x);
-            wr8(0xFFEC, p2_floaty_y);
-            wr8(0xFFED, p2_floaty_control);
-        }
-
-        /*
          * Shared level edits. A same-camera frame can safely merge the entire
          * tile map. During a private-camera move, merge only small local edits;
          * the exact tile touched by SML1's VBlank collision routine is handled
@@ -539,7 +508,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                          mp_vblank_collision == 0x02 ||
                          mp_vblank_collision == 0x04);
         if (p2_state_before == 0 && !block_hit)
-            tile_changed = mp_merge_tilemap_local_edits(0);
+            tile_changed = mp_merge_tilemap_local_edits(dx == 0);
 
         int collision_changed = 0;
         if (p2_state_before == 0 &&
