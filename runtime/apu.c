@@ -339,3 +339,47 @@ void apu_write(uint16_t a, uint8_t v)
     case 0xFF25: nr51 = v; break;
     }
 }
+typedef struct {
+    Chan ch[4];
+    uint8_t regs[0x30], wave_ram[16];
+    int power, fs_cycles, fs_step;
+    uint8_t nr50, nr51;
+    int16_t ring[RING * 2];
+    int ring_r, ring_w;
+    double period_steps, step_t;
+    float acc_l, acc_r, dc_l, dc_r, prev_l, prev_r;
+    int acc_n;
+    int16_t tring[TRING * 2];
+    int tring_r, tring_w, tap_mask;
+    float tacc_l, tacc_r, tdc_l, tdc_r, tprev_l, tprev_r;
+    int sub_cycles;
+    float master_vol;
+} APUState;
+
+size_t apu_state_size(void) { return sizeof(APUState); }
+int apu_state_save(void *dst, size_t n)
+{
+    if (!dst || n < sizeof(APUState)) return -1;
+    APUState *s = (APUState *)dst;
+    memcpy(s->ch,ch,sizeof ch); memcpy(s->regs,regs,sizeof regs); memcpy(s->wave_ram,wave_ram,sizeof wave_ram);
+    s->power=power; s->fs_cycles=fs_cycles; s->fs_step=fs_step; s->nr50=nr50; s->nr51=nr51;
+    memcpy(s->ring,ring,sizeof ring); s->ring_r=ring_r; s->ring_w=ring_w; s->period_steps=period_steps; s->step_t=step_t;
+    s->acc_l=acc_l; s->acc_r=acc_r; s->dc_l=dc_l; s->dc_r=dc_r; s->prev_l=prev_l; s->prev_r=prev_r; s->acc_n=acc_n;
+    memcpy(s->tring,tring,sizeof tring); s->tring_r=tring_r; s->tring_w=tring_w; s->tap_mask=tap_mask;
+    s->tacc_l=tacc_l; s->tacc_r=tacc_r; s->tdc_l=tdc_l; s->tdc_r=tdc_r; s->tprev_l=tprev_l; s->tprev_r=tprev_r;
+    s->sub_cycles=sub_cycles; s->master_vol=master_vol;
+    return 0;
+}
+int apu_state_load(const void *src, size_t n)
+{
+    if (!src || n < sizeof(APUState)) return -1;
+    const APUState *s = (const APUState *)src;
+    memcpy(ch,s->ch,sizeof ch); memcpy(regs,s->regs,sizeof regs); memcpy(wave_ram,s->wave_ram,sizeof wave_ram);
+    power=s->power; fs_cycles=s->fs_cycles; fs_step=s->fs_step; nr50=s->nr50; nr51=s->nr51;
+    memcpy(ring,s->ring,sizeof ring); ring_r=s->ring_r; ring_w=s->ring_w; period_steps=s->period_steps; step_t=s->step_t;
+    acc_l=s->acc_l; acc_r=s->acc_r; dc_l=s->dc_l; dc_r=s->dc_r; prev_l=s->prev_l; prev_r=s->prev_r; acc_n=s->acc_n;
+    memcpy(tring,s->tring,sizeof tring); tring_r=s->tring_r; tring_w=s->tring_w; tap_mask=s->tap_mask;
+    tacc_l=s->tacc_l; tacc_r=s->tacc_r; tdc_l=s->tdc_l; tdc_r=s->tdc_r; tprev_l=s->tprev_l; tprev_r=s->tprev_r;
+    sub_cycles=s->sub_cycles; master_vol=s->master_vol;
+    return 0;
+}
