@@ -7,7 +7,7 @@ PipeClean is split into a toolchain and a native runtime.
 ### `tools/sm83.py`
 Defines the Game Boy SM83 instruction set and instruction decoding support.
 
-### `tools/dis.py`
+### `tools/gbdis.py`
 Provides a small command-line disassembler for inspecting Game Boy machine code, including switchable ROM banks.
 
 ### `tools/discover.py`

@@ -1,6 +1,6 @@
 # Installation & Build
 
-PipeClean is currently a development project. There is not yet a polished one-click Windows release.
+PipeClean is currently a development project. A tested Windows x64 build is also produced by GitHub Actions, but PipeClean is not yet a polished one-click release.
 
 ## Requirements
 
@@ -22,6 +22,12 @@ PipeClean is currently a development project. There is not yet a polished one-cl
 ### SDL2 note
 
 A runtime `SDL2.dll` is **not** enough to compile PipeClean. You need the SDL2 development package with headers and linker/import files.
+
+## Windows CI build
+
+Each successful GitHub Actions run produces a PipeClean-Windows-x64 artifact. It contains PipeClean.exe, the Windows runtime DLLs used by the build, and the project documentation. The CI package uses a synthetic test cartridge only; commercial ROMs are never included.
+
+For development builds, use the normal CMake instructions below.
 
 ## Build with CMake
 

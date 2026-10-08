@@ -67,6 +67,7 @@ CI validates:
 - the complete native runtime link
 - CTest
 - a headless launch of the built runtime with SML2-style widescreen enabled
+- a Windows x64 runtime build, smoke test, dependency staging and ZIP artifact
 
 The synthetic ROM is generated during CI and contains only test data; it is not a game dump.
 
@@ -92,6 +93,9 @@ Command-line entry point and developer switches.
 
 `tools/recomp.py`  
 SM83 static recompiler/interpreter generator.
+
+`tools/gbdis.py`  
+Small command-line SM83 disassembler, including switchable ROM-bank addressing.
 
 `tests/test_sml2_wide.c`  
 Focused widescreen regression test.
