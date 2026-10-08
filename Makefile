@@ -34,7 +34,6 @@ $(GEN)/game.c $(GEN)/interp.c $(GEN)/game_info.h: $(ROM) tools/recomp.py tools/s
 $(BUILD)/PipeClean: $(RT_SRC) $(wildcard runtime/*.h) $(GEN_SRC) $(GEN)/game_info.h
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) $(DEFS) $(SDL_CFLAGS) -Iruntime -I$(GEN) $(RT_SRC) $(GEN_SRC) -o $@ $(SDL_LIBS) -lm $(EXTRA_LIBS)
-	@mkdir -p $(BUILD)/assets && cp -f assets/pipeclean-icon.bmp $(BUILD)/assets/pipeclean-icon.bmp
 
 run: $(BUILD)/PipeClean
 	$(BUILD)/PipeClean $(ROM)
