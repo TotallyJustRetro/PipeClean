@@ -192,6 +192,29 @@ int cart_state_load(const void *src, size_t n)
 }
 
 
+size_t cart_ram_state_size(void)
+{
+    return ram_alloc;
+}
+
+int cart_ram_state_save(void *dst, size_t n)
+{
+    if (ram_alloc == 0) return 0;
+    if (!dst || !cart_ram || n < ram_alloc) return -1;
+    memcpy(dst, cart_ram, ram_alloc);
+    return 0;
+}
+
+int cart_ram_state_load(const void *src, size_t n)
+{
+    if (ram_alloc == 0) return 0;
+    if (!src || !cart_ram || n < ram_alloc) return -1;
+    memcpy(cart_ram, src, ram_alloc);
+    /* State restoration should not immediately overwrite the user's battery save. */
+    ram_dirty = 0;
+    return 0;
+}
+
 int cart_write_save(const char *path)
 {
     if (!info.battery || !cart_ram_on || !ram_dirty) return 0;
