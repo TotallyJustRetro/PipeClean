@@ -14,6 +14,7 @@ typedef struct {
     uint8_t luigi_mask[GB_H][GB_WMAX]; /* Pixels belonging to the Luigi overlay */
     uint8_t p1_lives;             /* Authoritative SML1 lives, decoded to 0..99 */
     uint8_t p2_lives;             /* PipeClean Player 2 lives, decoded to 0..99 */
+    uint8_t p2_game_state;        /* Private SML1 state: 0 normal, 3/4 death animation */
     uint8_t p2_visible;           /* 1 while Luigi is active on the shared screen */
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
