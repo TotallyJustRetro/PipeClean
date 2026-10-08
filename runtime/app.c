@@ -263,6 +263,14 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
     return 1;
 }
 
+static uint32_t ds_mixc(uint32_t a, uint32_t b, float t)
+{
+    return RGBA((int)(((a >> 24) & 255) * (1 - t) + ((b >> 24) & 255) * t),
+                (int)(((a >> 16) & 255) * (1 - t) + ((b >> 16) & 255) * t),
+                (int)(((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t),
+                (int)((a & 255) * (1 - t) + (b & 255) * t));
+}
+
 static void ds_menu_draw(int g)
 {
     if (!ds_menu.open || g < 0 || g >= N_GAMES) return;
@@ -282,7 +290,7 @@ static void ds_menu_draw(int g)
         float a = -(3.14159265358979323846f * 2.0f * i / DS_MENU_COUNT) + 3.14159265358979323846f / 8.0f;
         float x = cx + cosf(a) * 180.0f, y = cy + sinf(a) * 140.0f;
         int hot = i == ds_menu.selected;
-        ui_rrect(x - 68, y - 27, 136, 54, 12, hot ? mixc(C_BTN_H, HEX(ui_accent), 0.28f) : C_BTN);
+        ui_rrect(x - 68, y - 27, 136, 54, 12, hot ? ds_mixc(C_BTN_H, HEX(ui_accent), 0.28f) : C_BTN);
         if (hot) ui_stroke(x - 68, y - 27, 136, 54, 12, 2, HEX(ui_accent));
         ui_text_c(F_BOLD, 13, x, y - 15, hot ? C_TEXT : C_MUTED, labels[i]);
         ui_text_c(F_REG, 9, x, y + 4, C_DIM, desc[i]);
