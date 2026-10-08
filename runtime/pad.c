@@ -75,15 +75,15 @@ const char *pad_status(char *buf, size_t n)
 }
 
 /* ---------------------------------------------------------------- input */
-static int pad_down(int code)
+static int pad_down(int device, int code)
 {
-    for (int i = 0; i < n_pads; i++) {
-        if (code >= PAD_AXIS_BASE) {
-            int v = SDL_GameControllerGetAxis(pads[i], code == PAD_AXIS_BASE ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
-            if (v > 12000) return 1;
-        } else if (code >= 0 && SDL_GameControllerGetButton(pads[i], (SDL_GameControllerButton)code)) return 1;
+    if (device < 0 || device >= n_pads) return 0;
+    SDL_GameController *pad = pads[device];
+    if (code >= PAD_AXIS_BASE) {
+        int v = SDL_GameControllerGetAxis(pad, code == PAD_AXIS_BASE ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+        return v > 12000;
     }
-    return 0;
+    return code >= 0 && SDL_GameControllerGetButton(pad, (SDL_GameControllerButton)code) != 0;
 }
 
 void pad_poll(int game, uint8_t *b, uint8_t *d)
@@ -94,7 +94,7 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
     for (int i = 0; i < N_BTN; i++) {
         for (int s = 0; s < 2; s++) {
             if (c->key[i][s]) { SDL_Scancode sc = SDL_GetScancodeFromKey(c->key[i][s]); if (sc != SDL_SCANCODE_UNKNOWN && ks[sc]) bits[i] = 1; }
-            if (c->pad[i][s] >= 0 && pad_down(c->pad[i][s])) bits[i] = 1;
+            if (c->pad[i][s] >= 0 && pad_down(c->pad_device[s], c->pad[i][s])) bits[i] = 1;
         }
     }
     /* left stick = d-pad */
