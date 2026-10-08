@@ -30,6 +30,7 @@ typedef struct {
     int bg_dim;                         /* 0..80 percent darkening of the background image */
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
+    int multiplayer;                    /* local two-player mode; default off */
     int key[N_BTN][2];                  /* SDL keycodes, 0 = unbound */
     int pad[N_BTN][2];                  /* SDL_GameControllerButton or PAD_AXIS_BASE+n, -1 = unbound */
     int pad_device[2];                  /* controller slot used by Player 1 / Player 2, -1 = none */
