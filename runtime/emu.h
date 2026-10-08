@@ -37,6 +37,14 @@ uint64_t emu_frames(void);
 int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
+void emu_mp_frame_refresh(Frame *frame);
+
+/* Emulator state features */
+int emu_state_save_file(const char *path, int resume_after);
+int emu_state_load_file(const char *path, int resume_after);
+int emu_rewind_step(void);
+void emu_rewind_end(void);
+int emu_rewind_available(void);
 
 void emu_preview(int frames);
 void emu_run_blocking(int force_interp);
