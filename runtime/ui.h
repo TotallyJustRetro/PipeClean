@@ -4,7 +4,7 @@
 #include <SDL.h>
 #include <stdint.h>
 
-#define RGBA(r, g, b, a) ((uint32_t)(((uint32_t)(r) << 24) | ((uint32_t)(g) << 16) | ((uint32_t)(b) << 8) | ((uint32_t)(a)))
+#define RGBA(r, g, b, a) ((uint32_t)(((uint32_t)(r) << 24) | ((uint32_t)(g) << 16) | ((uint32_t)(b) << 8) | (uint32_t)(a)))
 #define RGB(r, g, b) RGBA(r, g, b, 255)
 #define HEX(h) RGBA(((h) >> 16) & 255, ((h) >> 8) & 255, (h) & 255, 255)
 #define HEXA(h, a) RGBA(((h) >> 16) & 255, ((h) >> 8) & 255, (h) & 255, (a))
@@ -56,8 +56,8 @@ float ui_text_w(int font, float size, const char *s);
 void  ui_text_c(int font, float size, float cx, float y, uint32_t c, const char *s);
 void  ui_text_r(int font, float size, float rx, float y, uint32_t c, const char *s);
 float ui_line_h(float size);
-void ui_text_fit(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);   /* "…" if too long */
-void ui_text_wrap(int font, float size, float x, float y, float w, uint32_t c, const char *s, float line_gap);   /* returns nothing; wraps on spaces */
+void  ui_text_fit(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);   /* "…" if too long */
+void  ui_text_wrap(int font, float size, float x, float y, float w, uint32_t c, const char *s, float line_gap);   /* returns nothing; wraps on spaces */
 int   ui_wrap_lines(int font, float size, float w, const char *s);
 
 /* widgets */
