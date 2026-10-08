@@ -175,6 +175,8 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
 }
 
 
+static int pad_instance_device(SDL_JoystickID which);
+
 int pad_binding_down(int game, int action)
 {
     if (game < 0 || game >= N_GAMES || action < 0 || action >= N_ACTION) return 0;
