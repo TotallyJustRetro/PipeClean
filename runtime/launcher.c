@@ -50,7 +50,7 @@ static int wide_dirty, wide_note[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
 
-static void controller_name(int slot, int device, char *out, size_t n)
+static void controller_name(int device, char *out, size_t n)
 {
     if (device < 0) { snprintf(out, n, "Not assigned"); return; }
     if (device >= pad_count()) { snprintf(out, n, "Controller %d (not connected)", device + 1); return; }
@@ -62,7 +62,7 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
     GameCfg *c = &settings.g[g];
     int *sel = &c->pad_device[player];
     char name[96];
-    controller_name(player, *sel, name, sizeof name);
+    controller_name(*sel, name, sizeof name);
 
     int over = 0;
     int clicked = clickable(x, y, w, 34, &over);
