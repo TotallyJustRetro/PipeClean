@@ -498,17 +498,33 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * tile map is merged only when P2 did not move the camera, avoiding a
          * second scroll/render pass from becoming a world mutation.
          */
-        if (p2_game_state == 0 && dx == 0) {
-            int tile_changed = memcmp(mp_tilemap_before, mp_tilemap_after, sizeof mp_tilemap_after) != 0;
-            if (tile_changed)
-                memcpy(&vram[0x1800], mp_tilemap_after, sizeof mp_tilemap_after);
+        if (p2_game_state == 0) {
+            int tile_changed = 0;
 
+            /*
+             * Tile-map edits are safe to merge wholesale when Luigi did not
+             * move his private camera. When he did scroll his private pass,
+             * leave the streamed map alone; the object/counter merges below
+             * still persist the actual gameplay interaction.
+             */
+            if (dx == 0) {
+                tile_changed = memcmp(mp_tilemap_before, mp_tilemap_after, sizeof mp_tilemap_after) != 0;
+                if (tile_changed)
+                    memcpy(&vram[0x1800], mp_tilemap_after, sizeof mp_tilemap_after);
+            }
+
+            /* Coins and score are global counters, not player-local state. */
             for (int i = 0; i < 3; i++)
                 if (score_after[i] != score_before[i])
                     wr8((uint16_t)(0xC0A0 + i), score_after[i]);
             if (coins_after != coins_before)
                 wr8(0xFFFA, coins_after);
 
+            /*
+             * Enemy death animations and consumed pickups are world objects.
+             * Persist the changed object slot so Mario cannot hit/collect the
+             * same object a second time after Luigi already did.
+             */
             for (int slot = 0; slot < 10; slot++) {
                 if (mp_enemy_merge_mask[slot])
                     for (int i = 0; i < 0x10; i++)
