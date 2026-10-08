@@ -2,6 +2,7 @@ name: Regression Tests
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -33,17 +34,36 @@ jobs:
         run: |
           python3 -m py_compile             tools/recomp.py             tools/sm83.py             tools/dis.py             tools/discover.py             tools/make_font.py
 
-      - name: Configure full runtime with synthetic 512 KiB ROM
+      - name: Generate synthetic SML2-shaped 512 KiB ROM
         run: |
-          mkdir -p ci build-ci
-          truncate -s 524288 ci/smoke_512k.gb
-          cmake -S . -B build-ci -DROM="$GITHUB_WORKSPACE/ci/smoke_512k.gb"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rom = bytearray(512 * 1024)
+
+          # DMG header fields needed by PipeClean's cartridge parser.
+          rom[0x134:0x134 + 10] = b"MARIOLAND2"
+          rom[0x147] = 0x01   # MBC1 + no RAM
+          rom[0x148] = 0x04   # 512 KiB ROM
+          rom[0x149] = 0x00   # no external RAM
+
+          # SML2 widescreen hook signature:
+          # bank 2, address $401C -> file offset $801C.
+          rom[0x801C] = 0x19   # ADD HL,DE
+
+          Path("ci/sml2_smoke.gb").parent.mkdir(parents=True, exist_ok=True)
+          Path("ci/sml2_smoke.gb").write_bytes(rom)
+          PY
+
+      - name: Configure full runtime
+        run: |
+          cmake -S . -B build-ci -DROM="$GITHUB_WORKSPACE/ci/sml2_smoke.gb"
 
       - name: Build full runtime and test target
         run: |
           cmake --build build-ci --target gb test_sml2_wide --parallel 2
           ctest --test-dir build-ci --output-on-failure
 
-      - name: Smoke-test the built runtime
+      - name: Smoke-test SML2 interpreter and CLI widescreen path
         run: |
-          timeout 15s build-ci/gb --headless --frames 2 --no-crc-check ci/smoke_512k.gb
+          timeout 15s build-ci/gb             --headless             --frames 2             --no-crc-check             --wide 100             ci/sml2_smoke.gb
