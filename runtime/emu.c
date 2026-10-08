@@ -160,6 +160,7 @@ static void mp_respawn_p2_from_p1(void)
     mp_p2_state.death_anim_counter = 0;
     mp_p2_state.invincibility = 0;
     mp_p2_state.superball_ttl = 0;
+    memset(mp_p2_state.projectile_status, 0, sizeof mp_p2_state.projectile_status);
     mp_p2_state.super_status = 0;
     mp_p2_state.superball = 0;
     mp_p2_state.joy_held = 0;
@@ -194,6 +195,9 @@ static void mp_player_save(MpPlayerState *s)
     for (int i = 0; i < 16; i++) s->mario_oam[i] = rd8((uint16_t)(0xC00C + i));
     s->invincibility = rd8(0xC0D3);
     s->superball_ttl = rd8(0xC0A9);
+    s->projectile_status[0] = rd8(0xFFA9);
+    s->projectile_status[1] = rd8(0xFFAA);
+    s->projectile_status[2] = rd8(0xFFAB);
     s->death_y = rd8(0xC0DD);
     s->super_status = rd8(0xFF99);
     s->superball = rd8(0xFFB5);
@@ -211,6 +215,9 @@ static void mp_player_load(const MpPlayerState *s)
     for (int i = 0; i < 16; i++) wr8((uint16_t)(0xC00C + i), s->mario_oam[i]);
     wr8(0xC0D3, s->invincibility);
     wr8(0xC0A9, s->superball_ttl);
+    wr8(0xFFA9, s->projectile_status[0]);
+    wr8(0xFFAA, s->projectile_status[1]);
+    wr8(0xFFAB, s->projectile_status[2]);
     wr8(0xC0DD, s->death_y);
     wr8(0xFF99, s->super_status);
     wr8(0xFFB5, s->superball);
@@ -818,6 +825,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_p2_state.death_anim_counter = 0;
         mp_p2_state.invincibility = 0;
         mp_p2_state.superball_ttl = 0;
+        memset(mp_p2_state.projectile_status, 0, sizeof mp_p2_state.projectile_status);
         mp_p2_state.super_status = 0;
         mp_p2_state.superball = 0;
         mp_p2_state.joy_held = 0;
