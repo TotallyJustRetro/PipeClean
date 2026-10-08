@@ -407,6 +407,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int p2_world_lives_before = mp_bcd_to_int(rd8(0xDA15));
         uint8_t score_before[3];
         uint8_t coins_before = rd8(0xFFFA);
+        uint8_t p1_floaty_before = rd8(0xFFED);
+        uint8_t p1_square_sfx_before = rd8(0xDFE0);
+        uint8_t p1_noise_sfx_before = rd8(0xDFF8);
         for (int i = 0; i < 3; i++) score_before[i] = rd8((uint16_t)(0xC0A0 + i));
 
         mp_capture_shared_world_before();
@@ -434,6 +437,11 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p2_scroll_after = rd8(0xFFA4);
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
+        uint8_t p2_floaty_control = rd8(0xFFED);
+        uint8_t p2_floaty_x = rd8(0xFFEB);
+        uint8_t p2_floaty_y = rd8(0xFFEC);
+        uint8_t p2_square_sfx = rd8(0xDFE0);
+        uint8_t p2_noise_sfx = rd8(0xDFF8);
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
         int p2_world_lives_after = mp_bcd_to_int(rd8(0xDA15));
         int life_delta = p2_world_lives_after - p2_world_lives_before;
@@ -496,6 +504,42 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
 
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+
+        /*
+         * Transfer Luigi's newly generated SML1 sound requests to the
+         * authoritative P1 state. Coin and stomp have stable original IDs;
+         * block hits use the game's noise SFX.
+         */
+        int p2_new_floaty = (p1_floaty_before == 0 && p2_floaty_control != 0);
+        if (rd8(0xDFE0) == 0) {
+            if (coins_after != coins_before)
+                wr8(0xDFE0, 0x05); /* SFX_COIN */
+            else if (enemy_sound_event)
+                wr8(0xDFE0, 0x03); /* SFX_STOMP */
+            else if (p1_square_sfx_before == 0 && p2_square_sfx)
+                wr8(0xDFE0, p2_square_sfx);
+        }
+
+        int p2_block_hit = (mp_vblank_collision == 0x01 ||
+                            mp_vblank_collision == 0x02 ||
+                            mp_vblank_collision == 0x04);
+        if (rd8(0xDFF8) == 0) {
+            if (p2_block_hit)
+                wr8(0xDFF8, 0x02); /* SML1 block-hit noise */
+            else if (p1_noise_sfx_before == 0 && p2_noise_sfx)
+                wr8(0xDFF8, p2_noise_sfx);
+        }
+
+        /*
+         * FFED is the original score/floaty queue. Preserve only a newly
+         * created P2 event, never a pending P1 event inherited by the clone.
+         * The normal SML1 code will process it on the authoritative update.
+         */
+        if (p2_new_floaty && rd8(0xFFED) == 0) {
+            wr8(0xFFEB, p2_floaty_x);
+            wr8(0xFFEC, p2_floaty_y);
+            wr8(0xFFED, p2_floaty_control);
+        }
 
         /*
          * Shared level edits. A same-camera frame can safely merge the entire
