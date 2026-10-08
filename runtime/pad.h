@@ -10,6 +10,7 @@ const char *pad_name(int i);
 int  pad_is_dualsense(int i);
 int  pad_is_edge(int i);
 int  pad_is_dualsense_instance(SDL_JoystickID which);
+int  pad_is_selected_dualsense_instance(int game, SDL_JoystickID which);
 int  pad_touchpad_event(const SDL_Event *e, float *x, float *y, int *kind);
 const char *pad_status(char *buf, size_t n);
 
