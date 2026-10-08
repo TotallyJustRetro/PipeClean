@@ -1,4 +1,4 @@
-/* Application loop: launcher <-> game. */
+/* Application loop: launcher <-> game. Save states, rewind and suspend are handled here. */
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
