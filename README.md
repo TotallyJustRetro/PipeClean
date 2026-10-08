@@ -121,3 +121,5 @@ Read **[Contributing](CONTRIBUTING.md)** before submitting changes.
 
 **PipeClean**  
 *Classic Game Boy behavior. Modern runtime.*
+
+<!-- Temporary build verification marker. --> Rewind verification.
