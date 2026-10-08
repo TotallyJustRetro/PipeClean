@@ -61,6 +61,7 @@ extern uint16_t ppu_bgtile[GB_H][GB_WMAX], ppu_sprtile[GB_H][GB_WMAX];
 extern uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];   /* sprites: bit6 = X flip, bit7 = Y flip */
 void ppu_tile_hashes(uint64_t out[384]);
 int  ppu_lcd_is_on(void);
+uint8_t ppu_sprite_shade(uint8_t ci, uint8_t attr);
 
 /* ---- APU ---- */
 void apu_reset(void);
