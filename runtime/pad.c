@@ -177,11 +177,18 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
 }
 
 
-int pad_is_selected_dualsense_instance(int game, SDL_JoystickID which)
+int pad_is_selected_instance(int game, SDL_JoystickID which)
 {
     if (game < 0 || game >= N_GAMES) return 0;
     int device = settings.g[game].pad_device[0];
-    return device >= 0 && device < n_pads && pad_is_dualsense(device) && pad_instance_device(which) == device;
+    return device >= 0 && device < n_pads && pad_instance_device(which) == device;
+}
+
+int pad_is_selected_dualsense_instance(int game, SDL_JoystickID which)
+{
+    if (!pad_is_selected_instance(game, which)) return 0;
+    int device = settings.g[game].pad_device[0];
+    return pad_is_dualsense(device);
 }
 
 int pad_binding_down(int game, int action)
