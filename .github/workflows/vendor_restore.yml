@@ -1,0 +1,55 @@
+name: Restore bundled third-party sources
+
+on:
+  push:
+    paths:
+      - ci/vendor_sync.trigger
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore upstream single-file libraries
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_image.h -o runtime/stb_image.h
+          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_image_write.h -o runtime/stb_image_write.h
+          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_truetype.h -o runtime/stb_truetype.h
+          curl -fsSL https://raw.githubusercontent.com/nothings/stb/master/stb_vorbis.c -o runtime/stb_vorbis.inc
+          curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_wav.h -o runtime/dr_wav.h
+          curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_mp3.h -o runtime/dr_mp3.h
+          curl -fsSL https://raw.githubusercontent.com/mackron/dr_libs/master/dr_flac.h -o runtime/dr_flac.h
+
+      - name: Verify restored headers are structurally complete
+        run: |
+          set -euo pipefail
+          grep -q "stb_image - v2.30" runtime/stb_image.h
+          grep -q "stb_image_write - v1.16" runtime/stb_image_write.h
+          grep -q "STB truetype" runtime/stb_truetype.h
+          grep -q "Ogg Vorbis audio decoder - v1.22" runtime/stb_vorbis.inc
+          grep -q "dr_wav - v0.14.6" runtime/dr_wav.h
+          grep -q "dr_mp3 - v0.7.4" runtime/dr_mp3.h
+          grep -q "dr_flac - v0.13.4" runtime/dr_flac.h
+          test `tail -c 2 runtime/stb_image.h | wc -c` -eq 2
+          test `tail -c 2 runtime/dr_wav.h | wc -c` -eq 2
+          test `tail -c 2 runtime/dr_mp3.h | wc -c` -eq 2
+          test `tail -c 2 runtime/dr_flac.h | wc -c` -eq 2
+
+      - name: Commit restored sources
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runtime/stb_image.h runtime/stb_image_write.h runtime/stb_truetype.h                   runtime/stb_vorbis.inc runtime/dr_wav.h runtime/dr_mp3.h runtime/dr_flac.h
+          if git diff --cached --quiet; then
+            echo "Bundled sources already match upstream."
+            exit 0
+          fi
+          git commit -m "Restore bundled third-party source files"
+          git push
