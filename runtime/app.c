@@ -17,6 +17,7 @@
 #include "events.h"
 #include "util.h"
 #include "branding.h"
+#include <SDL_image.h>
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
@@ -164,6 +165,10 @@ int app_run(const char *autorun, const char *hack)
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
+    int img_flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP;
+    if ((IMG_Init(img_flags) & img_flags) != img_flags) {
+        fprintf(stderr, "SDL_image: %s\\n", IMG_GetError());
+    }
     settings_load();
     win = SDL_CreateWindow("PipeClean", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
                            SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
@@ -250,6 +255,7 @@ int app_run(const char *autorun, const char *hack)
     ui_shutdown();
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
+    IMG_Quit();
     SDL_Quit();
     return 0;
 }
