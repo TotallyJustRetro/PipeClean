@@ -30,6 +30,11 @@ jobs:
       - name: Run SML2 widescreen regression test
         run: ./test_sml2_wide
 
+      - name: Build and run SML1 widescreen regression
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_sml_wide.c runtime/widescreen.c             -o test_sml_wide
+          ./test_sml_wide
+
       - name: Build and run MBC1 mapper regression
         run: |
           gcc -std=c11 -Wall -Wextra -Iruntime             tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c             -o test_cart_mbc1
@@ -66,7 +71,7 @@ jobs:
 
       - name: Build full runtime and test target
         run: |
-          cmake --build build-ci --target gb test_sml2_wide test_cart_mbc1 --parallel 2
+          cmake --build build-ci --target gb test_sml2_wide test_sml_wide test_cart_mbc1 --parallel 2
           ctest --test-dir build-ci --output-on-failure
 
       - name: Smoke-test SML2 interpreter and CLI widescreen path
