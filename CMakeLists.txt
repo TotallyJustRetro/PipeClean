@@ -37,11 +37,8 @@ file(GLOB RT CONFIGURE_DEPENDS runtime/*.c)
 add_executable(gb ${RT} ${GEN}/game.c ${GEN}/interp.c)
 target_include_directories(gb PRIVATE runtime ${GEN})
 target_compile_definitions(gb PRIVATE USE_SDL)
-if(WIN32 AND TARGET SDL2::SDL2main)
-  # MinGW requires SDL2main to precede SDL2 so its wrapper can resolve
-  # SDL symbols from the SDL2 import library.
-  target_link_libraries(gb PRIVATE SDL2::SDL2main)
-endif()
+# runtime/main.c intentionally defines SDL_MAIN_HANDLED, so PipeClean owns
+# the normal C entry point and does not link SDL2main on Windows.
 target_link_libraries(gb PRIVATE SDL2::SDL2)
 if(NOT WIN32)
   target_link_libraries(gb PRIVATE m)
