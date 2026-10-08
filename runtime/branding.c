@@ -1,6 +1,7 @@
 #include "branding.h"
 #include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
 
 static SDL_Texture *icon_tex;
 
@@ -22,6 +23,18 @@ static void disc(uint32_t *p, int w, int h, int cx, int cy, int r, uint32_t c)
             if (x * x + y * y <= r * r) put_px(p, w, h, cx + x, cy + y, c);
 }
 
+static void thick_line(uint32_t *p, int w, int h, int x0, int y0, int x1, int y1,
+                       int r, uint32_t c)
+{
+    int dx = x1 - x0, dy = y1 - y0;
+    int steps = abs(dx) > abs(dy) ? abs(dx) : abs(dy);
+    if (!steps) { disc(p, w, h, x0, y0, r, c); return; }
+    for (int i = 0; i <= steps; i++) {
+        int x = x0 + dx * i / steps, y = y0 + dy * i / steps;
+        disc(p, w, h, x, y, r, c);
+    }
+}
+
 static void rounded_box(uint32_t *p, int w, int h, int x0, int y0, int x1, int y1,
                         int r, uint32_t c)
 {
@@ -36,45 +49,81 @@ static void rounded_box(uint32_t *p, int w, int h, int x0, int y0, int x1, int y
 
 static SDL_Surface *make_icon_surface(void)
 {
-    const int n = 64;
+    const int n = 96;
     uint32_t *p = (uint32_t *)calloc((size_t)n * n, sizeof *p);
     if (!p) return NULL;
 
-    const uint32_t bg = rgba8(73, 49, 180, 255);
-    const uint32_t edge = rgba8(183, 139, 255, 255);
-    const uint32_t pipe = rgba8(99, 61, 224, 255);
-    const uint32_t pipe_hi = rgba8(168, 117, 255, 255);
-    const uint32_t dark = rgba8(16, 13, 45, 255);
-    const uint32_t white = rgba8(248, 249, 255, 255);
-    const uint32_t water = rgba8(101, 220, 255, 255);
-    const uint32_t shine = rgba8(224, 251, 255, 255);
+    const uint32_t bg0 = rgba8(87, 54, 229, 255);
+    const uint32_t bg1 = rgba8(68, 43, 176, 255);
+    const uint32_t edge = rgba8(191, 150, 255, 255);
+    const uint32_t dark = rgba8(8, 7, 36, 255);
+    const uint32_t pipe = rgba8(103, 66, 232, 255);
+    const uint32_t pipe2 = rgba8(125, 77, 240, 255);
+    const uint32_t hi = rgba8(201, 181, 255, 255);
+    const uint32_t white = rgba8(249, 250, 255, 255);
+    const uint32_t water = rgba8(91, 213, 255, 255);
+    const uint32_t water2 = rgba8(207, 249, 255, 255);
 
-    rounded_box(p, n, n, 2, 2, 61, 61, 12, bg);
-    rounded_box(p, n, n, 3, 3, 60, 60, 11, edge);
-    rounded_box(p, n, n, 8, 26, 50, 53, 16, dark);
-    rounded_box(p, n, n, 11, 28, 48, 51, 14, pipe);
-    rounded_box(p, n, n, 14, 30, 43, 36, 7, pipe_hi);
+    /* Purple rounded-square badge. */
+    rounded_box(p, n, n, 2, 2, 93, 93, 18, bg0);
+    rounded_box(p, n, n, 4, 4, 91, 91, 16, bg1);
+    rounded_box(p, n, n, 6, 6, 89, 89, 14, edge);
 
-    disc(p, n, n, 35, 22, 10, dark);
-    disc(p, n, n, 35, 22, 8, white);
-    disc(p, n, n, 38, 22, 3, dark);
-    disc(p, n, n, 31, 18, 2, white);
+    /* Water splashes behind the pipe. */
+    thick_line(p, n, n, 15, 30, 22, 18, 6, water);
+    thick_line(p, n, n, 22, 18, 28, 11, 4, water);
+    thick_line(p, n, n, 72, 17, 82, 12, 5, water);
+    thick_line(p, n, n, 77, 25, 86, 21, 5, water);
+    thick_line(p, n, n, 22, 82, 31, 86, 6, water);
+    thick_line(p, n, n, 61, 83, 72, 79, 6, water);
+    disc(p, n, n, 13, 52, 4, water);
+    disc(p, n, n, 84, 57, 5, water);
+    disc(p, n, n, 29, 12, 3, water2);
+    disc(p, n, n, 80, 13, 3, water2);
+    disc(p, n, n, 74, 88, 3, water2);
+    disc(p, n, n, 16, 76, 2, water2);
 
-    disc(p, n, n, 47, 36, 10, dark);
-    disc(p, n, n, 47, 36, 6, rgba8(9, 8, 28, 255));
-    disc(p, n, n, 43, 31, 2, pipe_hi);
+    /*
+     * The pipe is a bent, heavy cartoon tube. Draw the dark silhouette first,
+     * then the purple body slightly inset so the black outline stays visible.
+     */
+    thick_line(p, n, n, 25, 63, 20, 53, 10, dark);
+    thick_line(p, n, n, 20, 53, 29, 42, 10, dark);
+    thick_line(p, n, n, 29, 42, 43, 34, 10, dark);
+    thick_line(p, n, n, 43, 34, 61, 36, 10, dark);
+    thick_line(p, n, n, 61, 36, 73, 43, 10, dark);
 
-    disc(p, n, n, 9, 13, 4, water);
-    disc(p, n, n, 13, 9, 3, water);
-    disc(p, n, n, 55, 14, 4, water);
-    disc(p, n, n, 53, 9, 2, water);
-    disc(p, n, n, 13, 53, 4, water);
-    disc(p, n, n, 19, 56, 3, water);
-    disc(p, n, n, 54, 51, 4, water);
-    disc(p, n, n, 49, 56, 2, water);
-    disc(p, n, n, 9, 14, 1, shine);
-    disc(p, n, n, 55, 13, 1, shine);
-    disc(p, n, n, 13, 52, 1, shine);
+    thick_line(p, n, n, 25, 63, 20, 53, 7, pipe);
+    thick_line(p, n, n, 20, 53, 29, 42, 7, pipe);
+    thick_line(p, n, n, 29, 42, 43, 34, 7, pipe);
+    thick_line(p, n, n, 43, 34, 61, 36, 7, pipe);
+    thick_line(p, n, n, 61, 36, 73, 43, 7, pipe2);
+
+    /* Lower purple shading and bright upper rim. */
+    thick_line(p, n, n, 24, 65, 21, 55, 3, rgba8(53, 31, 150, 255));
+    thick_line(p, n, n, 25, 48, 39, 39, 2, hi);
+    thick_line(p, n, n, 41, 37, 59, 39, 2, hi);
+
+    /* Open end of the pipe. */
+    disc(p, n, n, 73, 43, 13, dark);
+    disc(p, n, n, 73, 43, 9, rgba8(15, 11, 54, 255));
+    thick_line(p, n, n, 65, 36, 69, 33, 2, hi);
+
+    /* Two oversized expressive eyes. */
+    disc(p, n, n, 46, 24, 12, dark);
+    disc(p, n, n, 46, 24, 9, white);
+    disc(p, n, n, 55, 24, 5, dark);
+    disc(p, n, n, 42, 19, 2, white);
+
+    disc(p, n, n, 36, 28, 11, dark);
+    disc(p, n, n, 36, 28, 8, white);
+    disc(p, n, n, 39, 28, 4, dark);
+    disc(p, n, n, 33, 23, 2, white);
+
+    /* Small cyan droplets in the negative spaces. */
+    disc(p, n, n, 12, 30, 3, water2);
+    disc(p, n, n, 83, 31, 3, water2);
+    disc(p, n, n, 33, 86, 2, water2);
 
     SDL_Surface *s = SDL_CreateRGBSurfaceWithFormatFrom(
         p, n, n, 32, n * (int)sizeof(uint32_t), SDL_PIXELFORMAT_RGBA8888);
@@ -94,7 +143,7 @@ int branding_init(SDL_Renderer *renderer, SDL_Window *window)
         icon_tex = SDL_CreateTextureFromSurface(renderer, s);
         if (icon_tex) {
             SDL_SetTextureBlendMode(icon_tex, SDL_BLENDMODE_BLEND);
-            SDL_SetTextureScaleMode(icon_tex, SDL_ScaleModeLinear);
+            SDL_SetTextureScaleMode(icon_tex, SDL_ScaleModeNearest);
         }
     }
     SDL_FreeSurface(s);
