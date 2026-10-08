@@ -195,7 +195,7 @@ static int ds_menu_select(float x, float y)
     float dx = x - 0.5f, dy = y - 0.5f;
     if (dx * dx + dy * dy < 0.12f * 0.12f) return DS_MENU_CLOSE;
     float a = atan2f(dy, dx) + (float)3.14159265358979323846;
-    int s = (int)floorf(a / ((float)M_PI / 4.0f) + 0.5f) & 7;
+    int s = (int)floorf(a  / (3.14159265358979323846f / 4.0f) + 0.5f) & 7;
     return s;
 }
 
@@ -255,7 +255,7 @@ static int ds_menu_event(int g, const SDL_Event *e, int *paused, int *quit)
         else if (a == DS_MENU_SLOT_MINUS) { settings.g[g].state_slot = (settings.g[g].state_slot + 9) % 10; game_notice("Previous state slot"); }
         else if (a == DS_MENU_REWIND) emu_rewind_end();
         else if (a == DS_MENU_SUSPEND) { if (game_suspend(g) == 0 && quit) *quit = 1; }
-        else if (a == DS_MENU_PAUSE && paused) { *paused = !*paused; emu_set_paused(*paused); }
+        else if (a == DS_MENU_PAUSE) { *paused = !*paused; emu_set_paused(*paused); }
         else if (a != DS_MENU_CLOSE) {}
         if (a != DS_MENU_REWIND) emu_rewind_end();
         ds_menu_close();
