@@ -49,6 +49,7 @@ static float anim_clock;
 static int wide_dirty, wide_note[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
+static int clickable(float x, float y, float w, float h, int *over_out);
 
 static void controller_name(int device, char *out, size_t n)
 {
