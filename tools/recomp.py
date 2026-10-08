@@ -171,7 +171,7 @@ def emit_interp():
         else:
             ins = decode(op, dyn=True)
             out.append(f"    case 0x{op:02X}: {{ {body(ins)} break; }}")
-    out += ["    }", "}"]
+    out += ["    }", "}", "", "/* Interpreter-only builds have no statically lifted code. */", "const unsigned char recomp_code_mask[0x1000] = {0};"]
     return "\n".join(out) + "\n"
 
 def main():
