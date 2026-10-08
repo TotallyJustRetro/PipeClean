@@ -146,7 +146,7 @@ def emit_interp():
                 return pre + f"cpu.pc = {ins.target}; tick({ins.taken});"
             return pre + f"if ({ins.cond}) {{ cpu.pc = {ins.target}; tick({ins.taken}); }} else {{ cpu.pc = (uint16_t)(cpu.pc + {ins.length}); tick({ins.nt}); }}"
         if k in ("call","rst"):
-            target = f"0x{ins.target:04X}"
+            target = f"0x{ins.target:04X}" if isinstance(ins.target, int) else ins.target
             if ins.cond is None:
                 return pre + f"cpu.pc = (uint16_t)(cpu.pc + {ins.length}); push16(cpu.pc); cpu.pc = {target}; tick({ins.taken});"
             return pre + f"cpu.pc = (uint16_t)(cpu.pc + {ins.length}); if ({ins.cond}) {{ push16(cpu.pc); cpu.pc = {target}; tick({ins.taken}); }} else tick({ins.nt});"
