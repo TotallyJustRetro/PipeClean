@@ -82,12 +82,12 @@ jobs:
 
       - name: Build full runtime and test target
         run: |
-          cmake --build build-ci --target gb test_sml2_wide test_sml_wide test_cart_mbc1 --parallel 2
+          cmake --build build-ci --target PipeClean test_sml2_wide test_sml_wide test_cart_mbc1 --parallel 2
           ctest --test-dir build-ci --output-on-failure
 
       - name: Smoke-test SML2 interpreter and CLI widescreen path
         run: |
-          timeout 15s build-ci/gb \
+          timeout 15s build-ci/PipeClean \
             --headless \
             --frames 2 \
             --no-crc-check \
@@ -138,18 +138,18 @@ jobs:
       - name: Build Windows runtime
         shell: msys2 {0}
         run: |
-          cmake --build build-windows --target gb --parallel 2
+          cmake --build build-windows --target PipeClean --parallel 2
 
       - name: Smoke-test Windows runtime
         shell: msys2 {0}
         run: |
-          ./build-windows/gb.exe --headless --frames 2 --no-crc-check --wide 100 ci/sml2_smoke.gb
+          ./build-windows/PipeClean.exe --headless --frames 2 --no-crc-check --wide 100 ci/sml2_smoke.gb
 
       - name: Stage Windows runtime and required DLLs
         shell: msys2 {0}
         run: |
           mkdir -p dist/PipeClean-Windows-x64
-          cp build-windows/gb.exe dist/PipeClean-Windows-x64/PipeClean.exe
+          cp build-windows/PipeClean.exe dist/PipeClean-Windows-x64/PipeClean.exe
           {
             ldd build-windows/gb.exe
             ldd /ucrt64/bin/SDL2.dll
