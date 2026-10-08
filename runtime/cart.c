@@ -173,6 +173,25 @@ int cart_load_save(const char *path)
     return n > 0;
 }
 
+typedef struct { int ram_enable, bank1, bank2, mode, rambank, mbc_ramsel; } CartState;
+size_t cart_state_size(void) { return sizeof(CartState); }
+int cart_state_save(void *dst, size_t n)
+{
+    if (!dst || n < sizeof(CartState)) return -1;
+    CartState s = {ram_enable, bank1, bank2, mode, rambank, mbc_ramsel};
+    memcpy(dst, &s, sizeof s);
+    return 0;
+}
+int cart_state_load(const void *src, size_t n)
+{
+    if (!src || n < sizeof(CartState)) return -1;
+    CartState s; memcpy(&s, src, sizeof s);
+    ram_enable=s.ram_enable; bank1=s.bank1; bank2=s.bank2; mode=s.mode; rambank=s.rambank; mbc_ramsel=s.mbc_ramsel;
+    remap();
+    return 0;
+}
+
+
 int cart_write_save(const char *path)
 {
     if (!info.battery || !cart_ram_on || !ram_dirty) return 0;
