@@ -65,6 +65,105 @@ static void draw_bg_cover(float dim)
     }
 }
 
+/* Local SML1 multiplayer: each controller owns an independent SML1 state.
+ * The original cartridge remains untouched; PipeClean supplies the multiplayer
+ * session layer around two normal game instances. */
+static void draw_mp_game(const Frame *f, int g, const GameCfg *c, int W, int H, int player)
+{
+    int pane_w = W / 2;
+    int pane_x = player * pane_w;
+    render_build(f, g, 1);
+    SDL_Rect r;
+    render_fit(pane_w, H - 28, c->aspect, c->scaling, &r);
+    r.x += pane_x + (pane_w - r.w) / 2;
+    r.y += 24 + (H - 28 - r.h) / 2;
+    render_draw(&r, c->scaling);
+}
+
+static int play_multiplayer_sml1(int g)
+{
+    GameCfg *c = &settings.g[g];
+    if (emu_mp_begin()) { launcher_toast("Couldn't start SML1 multiplayer."); return 0; }
+
+    SDL_SetWindowFullscreen(win, 0);
+    set_game_window(g);
+    audio_game_begin();
+
+    Frame f[2];
+    memset(f, 0, sizeof f);
+    int16_t a[2][2048 * 2], mix[2048 * 2];
+    int quit = 0, paused = 0, have[2] = {0, 0};
+    Uint64 last = SDL_GetPerformanceCounter();
+
+    while (!quit) {
+        SDL_Event e;
+        while (SDL_PollEvent(&e)) {
+            pad_event(&e);
+            if (e.type == SDL_QUIT) quit = 2;
+            else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
+                switch (e.key.keysym.sym) {
+                case SDLK_ESCAPE: quit = 1; break;
+                case SDLK_F11: SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP); break;
+                case SDLK_p: paused = !paused; break;
+                }
+            }
+        }
+
+        if (!paused) {
+            uint8_t b[2], d[2];
+            int na[2];
+            for (int p = 0; p < 2; p++) {
+                pad_poll_player(g, p, &b[p], &d[p]);
+                na[p] = emu_mp_step(p, b[p], d[p], &f[p], a[p], 2048);
+                if (na[p] < 0) { quit = 1; break; }
+                have[p] = 1;
+            }
+            if (quit) break;
+
+            int n = na[0] > na[1] ? na[0] : na[1];
+            if (n > 2048) n = 2048;
+            for (int i = 0; i < n; i++) {
+                int l = i < na[0] ? a[0][i * 2] : 0, r = i < na[0] ? a[0][i * 2 + 1] : 0;
+                int l2 = i < na[1] ? a[1][i * 2] : 0, r2 = i < na[1] ? a[1][i * 2 + 1] : 0;
+                mix[i * 2] = (int16_t)((l + l2) / 2);
+                mix[i * 2 + 1] = (int16_t)((r + r2) / 2);
+            }
+            if (n > 0) audio_game_push(mix, n);
+            if (audio_ok()) audio_game_wait(audio_game_target());
+        }
+
+        int nowW, nowH;
+        out_size(&nowW, &nowH);
+        SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+        SDL_RenderClear(ren);
+        draw_bg_cover((float)c->bg_dim);
+        if (have[0]) draw_mp_game(&f[0], g, c, nowW, nowH, 0);
+        if (have[1]) draw_mp_game(&f[1], g, c, nowW, nowH, 1);
+
+        ui_begin(nowW, nowH, (float)(SDL_GetPerformanceCounter() - last) / SDL_GetPerformanceFrequency());
+        ui_rect(0, 0, nowW, 22, RGBA(0, 0, 0, 175));
+        ui_text(F_BOLD, 12, 18, 5, C_TEXT, "PLAYER 1");
+        ui_text(F_BOLD, 12, nowW / 2 + 18, 5, C_TEXT, "PLAYER 2");
+        ui_rect(nowW / 2 - 1, 22, 2, nowH - 22, C_LINE);
+        if (paused) {
+            ui_rect(0, 0, nowW, nowH, RGBA(0, 0, 0, 120));
+            ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
+        }
+        ui_end();
+
+        Uint64 now = SDL_GetPerformanceCounter();
+        last = now;
+        SDL_RenderPresent(ren);
+    }
+
+    audio_game_end();
+    emu_mp_end();
+    SDL_SetWindowFullscreen(win, 0);
+    SDL_SetWindowSize(win, win_w, win_h);
+    SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    return quit == 2;
+}
+
 /* returns 0 = back to launcher, 1 = quit */
 static int play(int g)
 {
@@ -72,6 +171,7 @@ static int play(int g)
     GameCfg *c = &settings.g[g];
     if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
     audio_menu_music(0);
+    if (g == GAME_SML && c->pad_device[1] >= 0) return play_multiplayer_sml1(g);
     char sp[1200];
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);
