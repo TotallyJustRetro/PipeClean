@@ -9,9 +9,11 @@ on:
 permissions:
   contents: read
 
+# Do not cancel a regression run just because another commit lands on main.
+# This keeps uploads/large source commits from leaving the latest run stuck as cancelled.
 concurrency:
   group: regression-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   regression:
