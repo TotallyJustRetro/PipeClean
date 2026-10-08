@@ -500,6 +500,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         int collision_changed = 0;
         if (p2_state_before == 0 &&
+            (mp_vblank_collision == 0x01 || mp_vblank_collision == 0x02 ||
+             mp_vblank_collision == 0x04 || mp_vblank_collision == 0xC0) &&
             mp_vblank_collision_addr >= 0x9800 &&
             mp_vblank_collision_addr < 0x9C00) {
             int p2idx = (int)mp_vblank_collision_addr - 0x9800;
@@ -550,7 +552,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * Let the original code draw those four falling OAM objects. When the
          * life is finally consumed, respawn from the authoritative P1 state.
          */
-        if (life_delta < 0 || p2_game_state == 39 || p2_game_state == 58) {
+        if (life_delta < 0 || p2_game_state == 0x39 || p2_game_state == 0x3A) {
             frame->p1_lives = rd8(0xDA15);
             frame->p2_lives = mp_p2_lives;
             frame->p2_game_state = p2_game_state;
