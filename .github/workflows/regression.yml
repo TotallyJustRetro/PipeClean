@@ -37,7 +37,9 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runtime/stb_image.h runtime/stb_image_write.h runtime/stb_truetype.h                   runtime/stb_vorbis.inc runtime/dr_wav.h runtime/dr_mp3.h runtime/dr_flac.h
+          git add runtime/stb_image.h runtime/stb_image_write.h runtime/stb_truetype.h \
+                  runtime/stb_vorbis.inc runtime/dr_wav.h runtime/dr_mp3.h runtime/dr_flac.h \
+                  runtime/font_data.c
           if git diff --cached --quiet; then
             echo "Vendor sources already current."
           else
