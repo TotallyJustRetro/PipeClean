@@ -273,6 +273,39 @@ static void mp_capture_shared_world_after(void)
     for (int i = 0; i < 0xA0; i++) mp_enemy_after[i] = rd8((uint16_t)(0xD100 + i));
 }
 
+/*
+ * Merge local level edits made by Luigi without importing the columns that
+ * were rewritten only because his isolated simulation scrolled its private
+ * camera. A broken block/collected coin normally changes only a few cells in
+ * one 32-byte column, while DrawColumn replaces a whole column of level data.
+ */
+static int mp_merge_tilemap_local_edits(int allow_full)
+{
+    if (allow_full) {
+        if (!memcmp(mp_tilemap_before, mp_tilemap_after, sizeof mp_tilemap_after)) return 0;
+        memcpy(&vram[0x1800], mp_tilemap_after, sizeof mp_tilemap_after);
+        return 1;
+    }
+
+    int changed = 0;
+    for (int col = 0; col < 32; col++) {
+        int n = 0;
+        for (int row = 0; row < 32; row++) {
+            int idx = row * 32 + col;
+            if (mp_tilemap_before[idx] != mp_tilemap_after[idx]) n++;
+        }
+        if (n == 0 || n > 4) continue;
+        for (int row = 0; row < 32; row++) {
+            int idx = row * 32 + col;
+            if (mp_tilemap_before[idx] != mp_tilemap_after[idx]) {
+                vram[0x1800 + idx] = mp_tilemap_after[idx];
+                changed = 1;
+            }
+        }
+    }
+    return changed;
+}
+
 static int mp_scroll_delta(uint8_t now, uint8_t old)
 {
     int d = (int)now - (int)old;
@@ -502,16 +535,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             int tile_changed = 0;
 
             /*
-             * Tile-map edits are safe to merge wholesale when Luigi did not
-             * move his private camera. When he did scroll his private pass,
-             * leave the streamed map alone; the object/counter merges below
-             * still persist the actual gameplay interaction.
+             * Merge small local tile edits even when Luigi's private camera
+             * moved. Full-column streaming remains isolated to P1's world.
              */
-            if (dx == 0) {
-                tile_changed = memcmp(mp_tilemap_before, mp_tilemap_after, sizeof mp_tilemap_after) != 0;
-                if (tile_changed)
-                    memcpy(&vram[0x1800], mp_tilemap_after, sizeof mp_tilemap_after);
-            }
+            tile_changed = mp_merge_tilemap_local_edits(dx == 0);
 
             /* Coins and score are global counters, not player-local state. */
             for (int i = 0; i < 3; i++)
