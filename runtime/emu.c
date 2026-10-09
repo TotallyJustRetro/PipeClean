@@ -862,9 +862,8 @@ static void mp_sml2_capture_oam(uint8_t out[16])
     const int sy = 8;
     uint8_t used[40] = {0};
     for (int slot = 0; slot < 4; slot++) {
-        /* Game coordinates omit the Game Boy's hardware OAM offsets (+8 X, +16 Y). */
-        int tx = bx + 8 + ((slot & 1) ? 8 : 0);
-        int ty = by + 16 + ((slot & 2) ? sy : 0);
+        int tx = bx + ((slot & 1) ? 8 : 0);
+        int ty = by + ((slot & 2) ? sy : 0);
         int best = -1, best_score = 1000;
         for (int i = 0; i < 40; i++) {
             if (used[i]) continue;
@@ -875,7 +874,7 @@ static void mp_sml2_capture_oam(uint8_t out[16])
             if (score < best_score) { best_score = score; best = i; }
         }
         /* Prefer omitting a piece over stealing a nearby enemy/effect sprite. */
-        if (best < 0 || best_score > 8) continue;
+        if (best < 0 || best_score > 4) continue;
         used[best] = 1;
         memcpy(&out[slot * 4], &oam[best * 4], 4);
     }
