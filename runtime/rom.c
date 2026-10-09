@@ -207,14 +207,16 @@ int rom_apply_hack(const char *path, RomStatus *st)
         olen == 0x40000 && source_crc != 0x90776841u) {
         free(out);
         snprintf(st->msg, sizeof st->msg,
-                 "This Super Mario Land DX patch requires the clean World v1.0 ROM (CRC32 90776841).");
+                 "Super Mario Land DX IPS needs clean World v1.0 (expected CRC32 90776841; this ROM is %08X).",
+                 source_crc);
         return 1;
     }
     if (is_ips_patch && base_game == GAME_SML2 && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
         olen == 0x100000 && source_crc != 0xD5EC24E4u) {
         free(out);
         snprintf(st->msg, sizeof st->msg,
-                 "Super Mario Land 2 DX v1.8.1 requires the clean USA/Europe v1.0 ROM (CRC32 D5EC24E4).");
+                 "Super Mario Land 2 DX v1.8.1 IPS needs clean USA/Europe v1.0 (expected CRC32 D5EC24E4; this ROM is %08X).",
+                 source_crc);
         return 1;
     }
 
