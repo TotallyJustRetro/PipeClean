@@ -209,6 +209,9 @@ static int field_table(Field *t, int cap)
 #define GI(nm, p, l, h) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
 #define GS(nm, p) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
         GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path); GS("p2_name", c->p2_name);
+        GS("p2_sfx_jump", c->p2_sfx_path[P2_SFX_JUMP]); GS("p2_sfx_fireball", c->p2_sfx_path[P2_SFX_FIREBALL]);
+        GS("p2_sfx_power_up", c->p2_sfx_path[P2_SFX_POWER_UP]); GS("p2_sfx_power_down", c->p2_sfx_path[P2_SFX_POWER_DOWN]);
+        GS("p2_sfx_die", c->p2_sfx_path[P2_SFX_DIE]);
         GI("p2_color", c->p2_color, 0, N_LUIGI_COLORS - 1);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
