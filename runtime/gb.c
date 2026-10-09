@@ -10,6 +10,7 @@ uint64_t total_cycles;
 static uint8_t wram[0x8000];
 static uint8_t cgb_svbk = 1;
 static uint8_t cgb_key1;
+static uint8_t cgb_hdma[5];
 static int cgb_mode;
 static uint8_t hram[0x80];
 static uint8_t io_misc[0x80];
@@ -67,6 +68,8 @@ static uint8_t io_read(uint8_t r)
     case 0x0F: return io_if | 0xE0;
     case 0x4D: return cgb_mode ? (uint8_t)(0x7E | cgb_key1) : 0xFF;
     case 0x4F: return cgb_mode ? ppu_vram_bank_read() : 0xFF;
+    case 0x51: case 0x52: case 0x53: case 0x54: return cgb_mode ? cgb_hdma[r - 0x51] : 0xFF;
+    case 0x55: return cgb_mode ? cgb_hdma[4] : 0xFF;
     case 0x70: return cgb_mode ? (uint8_t)(0xF8 | cgb_svbk) : 0xFF;
     default: break;
     }
@@ -110,6 +113,28 @@ static void io_write(uint8_t r, uint8_t v)
     case 0x0F: io_if = v & 0x1F; return;
     case 0x4D: if (cgb_mode) cgb_key1 = (uint8_t)((cgb_key1 & 0x80) | (v & 1)); return;
     case 0x4F: if (cgb_mode) ppu_vram_bank_write(v); return;
+    case 0x51: case 0x52: case 0x53: case 0x54:
+        if (cgb_mode) cgb_hdma[r - 0x51] = (r == 0x52 || r == 0x54) ? (v & 0xF0) : (r == 0x53 ? (v & 0x1F) : v);
+        return;
+    case 0x55:
+        if (cgb_mode) {
+            uint16_t src = (uint16_t)(((uint16_t)cgb_hdma[0] << 8) | cgb_hdma[1]);
+            uint16_t dst = (uint16_t)(0x8000 | (((uint16_t)cgb_hdma[2] << 8 | cgb_hdma[3]) & 0x1FF0));
+            unsigned blocks = (unsigned)(v & 0x7F) + 1u;
+            /* Initial compatibility path: perform both GDMA and HDMA requests
+             * immediately. Full HBlank scheduling is added with PPU mode hooks. */
+            for (unsigned i = 0; i < blocks * 16u; i++) {
+                uint8_t data = rd8((uint16_t)(src + i));
+                ppu_vram_write((uint16_t)((dst + i) & 0x1FFF), data);
+            }
+            cgb_hdma[0] = (uint8_t)((src + blocks * 16u) >> 8);
+            cgb_hdma[1] = (uint8_t)((src + blocks * 16u) & 0xF0);
+            uint16_t end = (uint16_t)(dst + blocks * 16u);
+            cgb_hdma[2] = (uint8_t)((end >> 8) & 0x1F);
+            cgb_hdma[3] = (uint8_t)(end & 0xF0);
+            cgb_hdma[4] = 0xFF;
+        }
+        return;
     case 0x70: if (cgb_mode) { cgb_svbk = v & 7; if (!cgb_svbk) cgb_svbk = 1; } return;
     default: break;
     }
@@ -388,7 +413,7 @@ void gb_reset(void)
      * some of them deliberately stop with a "Game Boy Color only" message. */
     const CartInfo *ci = cart_info();
     cgb_mode = ci && (ci->cgb_flag & 0x80) != 0;
-    cgb_svbk = 1; cgb_key1 = 0;
+    cgb_svbk = 1; cgb_key1 = 0; memset(cgb_hdma, 0xFF, sizeof cgb_hdma);
     if (ci && (ci->cgb_flag & 0x80) != 0) {
         cpu.a = 0x11; cpu.f = 0x80; cpu.b = 0x00; cpu.c = 0x00;
         cpu.d = 0xFF; cpu.e = 0x56; cpu.h = 0x00; cpu.l = 0x0D;
