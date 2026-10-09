@@ -422,10 +422,8 @@ static int mp_merge_tilemap_local_edits(int allow_full, uint8_t p2_scroll, uint8
 
 static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
                                        uint8_t before, uint8_t after,
-                                       uint8_t p2_block_sprite,
                                        uint8_t p2_scroll, uint8_t p1_scroll)
 {
-    (void)before;
     if (addr < 0x9800 || addr >= 0x9C00) return 0;
 
     int p2idx = (int)addr - 0x9800;
@@ -440,20 +438,23 @@ static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
         /* A real breakable block is destroyed immediately. */
         vram[0x1800 + p1idx] = after;
         return 1;
-    case 0x02:
+    case 0x02: {
         /*
-         * P2's game instance is isolated and restored from P1 every frame, so
-         * the original multi-frame FFEE=02 -> 03 -> 04 block animation cannot
-         * advance reliably in the cloned world. Consume the block in the shared
-         * map now, otherwise the next isolated P2 frame sees it untouched and
-         * spawns the same item again. The original routine uses C02E to decide
-         * whether this is a reusable breakable block (82) or a spent item block
-         * (7F).
+         * FFEE=02 is a bump, not always a block destruction. The map tile at
+         * the saved collision address tells us which block was hit; C02E is an
+         * OAM sprite tile, not the world-map block ID. Item/mystery blocks
+         * (80/81) become the game's used-block tile (7F). A breakable brick
+         * (82) remains intact when only bumped by small Mario. Other terrain is
+         * restored exactly as it was, avoiding accidental holes in the level.
          */
-        vram[0x1800 + p1idx] = p2_block_sprite == 0x82 ? 0x82 : 0x7F;
+        uint8_t final_tile = before;
+        if (before == 0x80 || before == 0x81) final_tile = 0x7F;
+        if (before == 0x82) final_tile = 0x82;
+        vram[0x1800 + p1idx] = final_tile;
         mp_pending_block = 0;
         mp_pending_block_idx = 0;
-        return 1;
+        return final_tile != before;
+    }
     case 0x04:
         /*
          * The animation has finished. SML1 has now decided whether this is
@@ -635,7 +636,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_capture_shared_world_after();
         uint8_t p2_game_state = rd8(0xFFB3);
         uint8_t p2_scroll_after = rd8(0xFFA4);
-        uint8_t p2_block_sprite = rd8(0xC02E);
         uint8_t score_after[3];
         uint8_t coins_after = rd8(0xFFFA);
         uint8_t p2_floaty_control = mp_vblank_floaty_control ? mp_vblank_floaty_control : rd8(0xFFED);
@@ -665,7 +665,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int enemy_merged = 0;
         int enemy_sound_event = 0;
         int p2_stomp_event = (p2_square_sfx == 0x03);
-        int p2_jump_event = (mp_p2_jump_before == 0 && rd8(0xC207) != 0);
+        int p2_jump_event = (mp_p2_jump_before == 0 && rd8(0xC207) != 0) ||
+                            (p2_state_before == 0 && (buttons & 0x01u) &&
+                             !(mp_p2_state.joy_held & 0x01u) &&
+                             mp_p2_state.mario[10] != 0 && rd8(0xC207) != 0);
 
         /*
          * A stomp sound belongs to one collision, not every enemy whose AI
@@ -802,7 +805,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                 (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
                     ? mp_tilemap_after[mp_vblank_collision_addr - 0x9800]
                     : 0,
-                p2_block_sprite,
                 p2_scroll_after,
                 p1_scroll);
 
