@@ -1,5 +1,6 @@
 #pragma once
 #include "gb.h"
+#include "games.h"
 
 #define P2_SFX_EVENT_JUMP       (1u << 0)
 #define P2_SFX_EVENT_FIREBALL   (1u << 1)
