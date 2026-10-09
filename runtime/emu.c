@@ -926,7 +926,7 @@ static int mp_sml2_capture_mapping_oam(uint8_t mapping,
     return count;
 }
 
-static void mp_sml2_save_player(MpSml2Player *p)
+static void mp_sml2_save_player(MpSml2Player *p, int player)
 {
     if (!p) return;
     for (unsigned a = 0xA200; a <= 0xA2DE; a++)
@@ -939,6 +939,19 @@ static void mp_sml2_save_player(MpSml2Player *p)
     p->lives = rd8(0xA22C);
     p->spawned = 1;
     mp_sml2_capture_oam(p->oam);
+    if (player > 0 && player < MAX_MP_PLAYERS) {
+        int mapped = mp_sml2_capture_mapping_oam(
+            p->h_c6, mp_sml2_render_oam[player]);
+        /* Fall back to the stable four-piece matcher if the ROM map cannot
+         * be read or doesn't match the live OAM for this game frame. */
+        if (mapped >= 2) {
+            mp_sml2_render_oam_count[player] = (uint8_t)mapped;
+        } else {
+            memset(mp_sml2_render_oam[player], 0,
+                   sizeof mp_sml2_render_oam[player]);
+            mp_sml2_render_oam_count[player] = 0;
+        }
+    }
 }
 
 static void mp_sml2_load_player(const MpSml2Player *p)
@@ -1100,7 +1113,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
         int n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
-        mp_sml2_save_player(&mp_sml2_players[0]);
+        mp_sml2_save_player(&mp_sml2_players[0], 0);
         mp_sml2_update_gameplay_stability();
         int camera_dx = mp_scroll_delta(rd8(0xA2B1), scroll_before);
         if (camera_dx && mp_sml2_initialized && mp_sml2_gameplay_active()) {
@@ -1168,7 +1181,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xA2B1);
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_after[i] = cart_ram_read((uint16_t)(0xA800 + i));
     memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
-    mp_sml2_save_player(p);
+    mp_sml2_save_player(p, player);
     int gameplay_after = mp_sml2_gameplay_active();
     int same_level = level_before == rd8(0xA269) &&
                      level_bank_before == rd8(0xA258);
