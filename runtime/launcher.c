@@ -56,6 +56,7 @@ static int controller_menu = -1;
 static int multiplayer_name_editing;
 static int multiplayer_count_menu = -1;
 static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
+static int mp_config_game = GAME_SML;
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -922,17 +923,32 @@ static void mp_name_field(GameCfg *c, int player_number, float x, float y, float
     }
 }
 
+
+static void mp_game_target_button(float x, float y, float w, float h)
+{
+    const char *text = mp_config_game == GAME_SML ? "Game Target: SML1" : "Game Target: SML2";
+    if (ui_button(x, y, w, h, text, B_NORMAL, 1)) {
+        mp_config_game = mp_config_game == GAME_SML ? GAME_SML2 : GAME_SML;
+        multiplayer_count_menu = -1;
+        audio_mp_set_game(mp_config_game);
+        settings_save();
+    }
+}
+
 static void tab_multiplayer(float x, float y)
 {
-    GameCfg *c = &settings.g[GAME_SML];
-    card(x, y, 808, 512, "SUPER MARIO LAND — MULTIPLAYER");
+    GameCfg *c = &settings.g[mp_config_game];
+    card(x, y, 808, 512, mp_config_game == GAME_SML ?
+         "SUPER MARIO LAND 1 — MULTIPLAYER" : "SUPER MARIO LAND 2 — MULTIPLAYER");
 
     label(x + 18, y + 42, "Local multiplayer");
     if (ui_toggle(x + 178, y + 38, &c->multiplayer) && c->multiplayer)
-        launcher_toast("Local multiplayer enabled for Super Mario Land 1.");
-    ui_text_fit(F_REG, 12, x + 238, y + 43, 548, C_DIM,
-                c->multiplayer ? "Independent players share one SML1 world." :
-                                 "Off by default; enable this to start local co-op.");
+        launcher_toast(mp_config_game == GAME_SML ? "Local multiplayer enabled for SML1." :
+                                                   "Local multiplayer enabled for SML2.");
+    ui_text_fit(F_REG, 12, x + 238, y + 43, 246, C_DIM,
+                c->multiplayer ? "Shared-world local co-op." :
+                                 "Off by default.");
+    mp_game_target_button(x + 520, y + 38, 248, 32);
 
     label(x + 18, y + 86, "Players");
     int over = 0;
@@ -1009,15 +1025,17 @@ static void tab_multiplayer(float x, float y)
 /* ------------------------------------------------------------------ game tab: DualSense */
 static void tab_mp_controllers(float x, float y)
 {
-    GameCfg *c = &settings.g[GAME_SML];
-    card(x, y, 808, 512, "MULTIPLAYER CONTROLLERS");
+    GameCfg *c = &settings.g[mp_config_game];
+    card(x, y, 808, 512, mp_config_game == GAME_SML ?
+         "SML1 MULTIPLAYER CONTROLLERS" : "SML2 MULTIPLAYER CONTROLLERS");
+    mp_game_target_button(x + 592, y + 7, 196, 28);
 
     for (int player = 0; player < MAX_MP_PLAYERS; player++) {
         float bx = x + 18 + player * 192.0f;
         char title[24];
         snprintf(title, sizeof title, "Player %d", player + 1);
         label(bx, y + 38, title);
-        controller_dropdown(GAME_SML, player, bx, y + 56, 180);
+        controller_dropdown(mp_config_game, player, bx, y + 56, 180);
     }
 
     if (ui_button(x + 18, y + 100, 180, 30, "Control bindings",
@@ -1049,8 +1067,8 @@ static void tab_mp_controllers(float x, float y)
             for (int btn = 0; btn < N_BTN; btn++) {
                 float ry = y + 168 + btn * 29.0f;
                 ui_text_fit(F_REG, 10, bx, ry + 8, 34, C_TEXT, control_labels[btn]);
-                bind_cell(GAME_SML, bx + 36, ry, 69, 1, btn, player);
-                bind_cell(GAME_SML, bx + 109, ry, 74, 2, btn, player);
+                bind_cell(mp_config_game, bx + 36, ry, 69, 1, btn, player);
+                bind_cell(mp_config_game, bx + 109, ry, 74, 2, btn, player);
             }
         }
 
@@ -1063,8 +1081,8 @@ static void tab_mp_controllers(float x, float y)
             char title[18];
             snprintf(title, sizeof title, "P%d respawn", player + 1);
             ui_text_fit(F_REG, 10, x + 18, ry + 7, 72, C_TEXT, title);
-            bind_mp_respawn_cell(GAME_SML, player, x + 92, ry, 150, 5);
-            bind_mp_respawn_cell(GAME_SML, player, x + 250, ry, 168, 6);
+            bind_mp_respawn_cell(mp_config_game, player, x + 92, ry, 150, 5);
+            bind_mp_respawn_cell(mp_config_game, player, x + 250, ry, 168, 6);
         }
     } else {
         label(x + 18, y + 142, "Independent character sound banks");
@@ -1405,9 +1423,9 @@ LauncherResult launcher_frame(float dt)
     LauncherResult res = {-1, 0};
     launcher_controller_update(dt);
     anim_clock += dt;
-    int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? GAME_SML : launcher_current_game();
+    int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? mp_config_game : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
-    ui_accent = tab < N_GAMES ? games[tab].accent : ((tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? games[GAME_SML].accent : 0x4C8DFF);
+    ui_accent = tab < N_GAMES ? games[tab].accent : ((tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? games[mp_config_game].accent : 0x4C8DFF);
     ensure_background(g);
     bg_update(dt);
 
@@ -1448,7 +1466,7 @@ LauncherResult launcher_frame(float dt)
     ui_rect(sx + 8, y2, 208, 1, C_LINE);
     for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
         float y = y2 + 12 + (i - TAB_MULTIPLAYER) * 52;
-        uint32_t accent = i == TAB_MULTIPLAYER ? games[GAME_SML].accent : 0x4C8DFF;
+        uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
         if (tab_button(sx, y, 224, 44, tab == i, accent)) tab = i;
         ui_text(F_BOLD, 15, sx + 18, y + 11, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
     }
@@ -1563,7 +1581,7 @@ void launcher_event(const SDL_Event *e)
         launcher_leave_controller_cursor();
     }
     if (multiplayer_name_editing) {
-        GameCfg *mc = &settings.g[GAME_SML];
+        GameCfg *mc = &settings.g[mp_config_game];
         char *name = mp_name_ptr(mc, multiplayer_name_editing);
         const char *fallback = mp_default_name(multiplayer_name_editing);
         if (!name) { multiplayer_name_editing = 0; SDL_StopTextInput(); return; }
@@ -1607,7 +1625,7 @@ void launcher_event(const SDL_Event *e)
         return;
     }
     if (cap_kind) {
-        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
+        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? mp_config_game : launcher_current_game();
         GameCfg *current = &settings.g[cap_game];
         if ((cap_kind == 2 && (cap_slot < 0 || cap_slot >= MAX_MP_PLAYERS ||
                                current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())) ||
@@ -1617,7 +1635,7 @@ void launcher_event(const SDL_Event *e)
             cap_kind = 0;
     }
     if (cap_kind) {
-        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
+        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? mp_config_game : launcher_current_game();
         GameCfg *c = &settings.g[cap_game];
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {
             SDL_Keycode k = e->key.keysym.sym;
