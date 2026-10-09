@@ -406,6 +406,7 @@ static void launcher_controller_update(float dt)
         cancel.key.keysym.sym = SDLK_ESCAPE;
         launcher_event(&cancel);
         if (controller_menu >= 0) controller_menu = -1;
+        if (multiplayer_count_menu >= 0) multiplayer_count_menu = -1;
     }
     launcher_controller_back_was_down = back;
 }
