@@ -97,6 +97,15 @@ static uint32_t cgb_rgb(const uint8_t *palette, unsigned pal, unsigned ci)
     return (r << 16) | (g << 8) | b;
 }
 
+/* Snapshot the active CGB OBJ palette as RGB24 for separately rendered P2 sprites. */
+void ppu_cgb_obj_palette_copy(uint32_t out[32])
+{
+    if (!out) return;
+    for (unsigned pal = 0; pal < 8; pal++)
+        for (unsigned ci = 0; ci < 4; ci++)
+            out[pal * 4 + ci] = cgb_rgb(cgb_obj_palette, pal, ci);
+}
+
 /* Resolve one BG/window pixel, including CGB tile attributes. */
 static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *tile_out)
 {
