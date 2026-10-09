@@ -463,9 +463,9 @@ static int sml1_bcd_to_int(uint8_t b)
     return ((b >> 4) & 0x0F) * 10 + (b & 0x0F);
 }
 
-static const char *sml1_mp_player_name(int player)
+static const char *mp_player_name(int game, int player)
 {
-    const GameCfg *c = &settings.g[GAME_SML];
+    const GameCfg *c = &settings.g[game];
     switch (player) {
     case 0: return "Mario";
     case 1: return c->p2_name[0] ? c->p2_name : "Luigi";
@@ -475,7 +475,7 @@ static const char *sml1_mp_player_name(int player)
     }
 }
 
-static int sml1_mp_respawn_key(const GameCfg *c, int player)
+static int mp_respawn_key(const GameCfg *c, int player)
 {
     if (!c) return 0;
     switch (player) {
@@ -486,7 +486,7 @@ static int sml1_mp_respawn_key(const GameCfg *c, int player)
     }
 }
 
-static int sml1_mp_respawn_pad(const GameCfg *c, int player)
+static int mp_respawn_pad(const GameCfg *c, int player)
 {
     if (!c) return -1;
     switch (player) {
@@ -497,7 +497,7 @@ static int sml1_mp_respawn_pad(const GameCfg *c, int player)
     }
 }
 
-static void sml1_draw_coop_hud(const Frame *f)
+static void draw_coop_hud(int game, const Frame *f)
 {
     if (!f) return;
     int count = f->mp_player_count;
@@ -518,7 +518,7 @@ static void sml1_draw_coop_hud(const Frame *f)
         ui_rrect(x, y, w, h, 8, RGBA(22, 25, 34, 235));
         uint32_t color = player == 0 ? C_ACCENT : render_sml1_mp_player_color(player);
         char title[48], lives[16];
-        snprintf(title, sizeof title, "P%d  %.20s", player + 1, sml1_mp_player_name(player));
+        snprintf(title, sizeof title, "P%d  %.20s", player + 1, mp_player_name(game, player));
         int life_count = player == 0 ? sml1_bcd_to_int(f->p1_lives) : f->mp_player_lives[player];
         snprintf(lives, sizeof lives, "x %d", life_count);
         ui_text_fit(F_BOLD, 11, x + 8, y + 4, w - 40, color, title);
@@ -531,7 +531,7 @@ static void sml1_draw_coop_hud(const Frame *f)
 /* Local SML1 multiplayer: Mario owns the shared world; up to three extra
  * characters each run through an isolated clone of the original SML1 logic. */
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
-static int play_multiplayer_sml1(int g)
+static int play_multiplayer(int g)
 {
     ds_menu_close();
     GameCfg *c = &settings.g[g];
@@ -556,8 +556,11 @@ static int play_multiplayer_sml1(int g)
     char suspended[1200];
     suspend_path(g, suspended, sizeof suspended);
     int has_suspend = state_file_exists(suspended);
+    render_set_mp_game(g);
+    audio_mp_set_game(g);
+    audio_menu_apply();
     if (emu_mp_begin()) {
-        launcher_toast("Couldn't start SML1 multiplayer.");
+        launcher_toast("Couldn't start multiplayer.");
         return 0;
     }
     if (requested_load >= 0) {
@@ -584,7 +587,7 @@ static int play_multiplayer_sml1(int g)
         emu_mp_end();
         tex_collect_save();
         pad_set_context(g, 0);
-        launcher_toast("Not enough memory for SML1 multiplayer.");
+        launcher_toast("Not enough memory for multiplayer.");
         return 0;
     }
 
@@ -603,23 +606,23 @@ static int play_multiplayer_sml1(int g)
 
             if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 for (int player = 1; player < player_count; player++) {
-                    int key = sml1_mp_respawn_key(c, player);
+                    int key = mp_respawn_key(c, player);
                     if (key && e.key.keysym.sym == key) {
                         emu_mp_request_respawn(player);
                         char msg[96];
-                        snprintf(msg, sizeof msg, "%s respawn requested.", sml1_mp_player_name(player));
+                        snprintf(msg, sizeof msg, "%s respawn requested.", mp_player_name(g, player));
                         game_notice(msg);
                     }
                 }
             }
             for (int player = 1; player < player_count; player++) {
-                int binding = sml1_mp_respawn_pad(c, player);
+                int binding = mp_respawn_pad(c, player);
                 int device = c->pad_device[player];
                 if (binding >= 0 && device >= 0 && device < pad_count() &&
                     pad_capture(device, &e) == binding) {
                     emu_mp_request_respawn(player);
                     char msg[96];
-                    snprintf(msg, sizeof msg, "%s respawn requested.", sml1_mp_player_name(player));
+                    snprintf(msg, sizeof msg, "%s respawn requested.", mp_player_name(g, player));
                     game_notice(msg);
                 }
             }
@@ -698,11 +701,13 @@ static int play_multiplayer_sml1(int g)
                         have = 1;
                         emu_rewind_capture();
 
-                        if (f->game_state == 0) {
+                        if (g == GAME_SML2 || f->game_state == 0) {
                             for (int player = 1; player < player_count; player++) {
                                 if (!f->mp_player_visible[player]) continue;
-                                render_overlay_sml1_effect_oam(f, f->mp_player_effect_oam[player], 0, 0);
-                                render_overlay_sml1_projectile_oam(f, f->mp_player_projectile_oam[player], 0, 0);
+                                if (g == GAME_SML) {
+                                    render_overlay_sml1_effect_oam(f, f->mp_player_effect_oam[player], 0, 0);
+                                    render_overlay_sml1_projectile_oam(f, f->mp_player_projectile_oam[player], 0, 0);
+                                }
                                 if (!f->mp_player_blink_hidden[player])
                                     render_overlay_sml1_mp_oam(f, f->mp_player_oam[player], 0, 0, player);
                             }
@@ -742,9 +747,9 @@ static int play_multiplayer_sml1(int g)
             for (int player = 1; player < player_count; player++) {
                 if (!f->mp_player_visible[player] || f->mp_player_blink_hidden[player]) continue;
                 sml1_draw_player_tag(f, f->mp_player_oam[player], &game_rect,
-                                    sml1_mp_player_name(player), render_sml1_mp_player_color(player));
+                                    mp_player_name(g, player), render_sml1_mp_player_color(player));
             }
-            sml1_draw_coop_hud(f);
+            draw_coop_hud(g, f);
         }
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
@@ -871,7 +876,7 @@ static int play(int g)
     load_state_request_app[g] = 0;
     if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
     audio_menu_music(0);
-    if (g == GAME_SML && c->multiplayer) return play_multiplayer_sml1(g);
+    if ((g == GAME_SML || g == GAME_SML2) && c->multiplayer) return play_multiplayer(g);
     char sp[1200];
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);
