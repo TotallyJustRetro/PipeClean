@@ -559,6 +559,19 @@ static int play_multiplayer_sml1(int g)
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
+            if (g == GAME_SML && c->multiplayer) {
+                int respawn_key = e.type == SDL_KEYDOWN && !e.key.repeat &&
+                                  c->p2_respawn_key != 0 &&
+                                  e.key.keysym.sym == c->p2_respawn_key;
+                int respawn_pad = c->p2_respawn_pad >= 0 &&
+                                  c->pad_device[1] >= 0 &&
+                                  c->pad_device[1] < pad_count() &&
+                                  pad_capture(c->pad_device[1], &e) == c->p2_respawn_pad;
+                if (respawn_key || respawn_pad) {
+                    emu_mp_request_respawn();
+                    game_notice("Luigi respawn requested.");
+                }
+            }
             int action = app_handle_action_event(g, &e, &paused, &quit);
             if (e.type == SDL_QUIT) quit = 2;
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
@@ -623,7 +636,7 @@ static int play_multiplayer_sml1(int g)
                     } else {
                         have = 1;
                         emu_rewind_capture();
-                        if (f->game_state == 0 && f->p2_visible)
+                        if (f->game_state == 0 && f->p2_visible && !f->p2_blink_hidden)
                             render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
                         if (n0 > 0) audio_game_push(a0, n0);
                         if (audio_ok()) audio_game_wait(audio_game_target());
@@ -658,7 +671,7 @@ static int play_multiplayer_sml1(int g)
         ui_begin(W, H, dt);
         if (have) {
             sml1_draw_player_tag(f, f->mario_oam, &game_rect, "P1", C_ACCENT);
-            if (f->p2_visible)
+            if (f->p2_visible && !f->p2_blink_hidden)
                 sml1_draw_player_tag(f, p2f->mario_oam2, &game_rect, "P2", C_OK);
             sml1_draw_coop_hud(f);
         }
