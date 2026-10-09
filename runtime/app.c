@@ -636,8 +636,13 @@ static int play_multiplayer_sml1(int g)
                     } else {
                         have = 1;
                         emu_rewind_capture();
-                        if (f->game_state == 0 && f->p2_visible && !f->p2_blink_hidden)
-                            render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
+                        if (f->game_state == 0 && f->p2_visible) {
+                            /* Projectile OAM uses the first three sprite slots, separate
+                             * from Luigi's four body sprites. Render it with real CGB palettes. */
+                            render_overlay_sml1_projectile_oam(f, p2f->p2_projectile_oam, 0, 0);
+                            if (!f->p2_blink_hidden)
+                                render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
+                        }
                         if (n0 > 0) audio_game_push(a0, n0);
                         if (audio_ok()) audio_game_wait(audio_game_target());
                     }
