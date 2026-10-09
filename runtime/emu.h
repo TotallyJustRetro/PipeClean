@@ -8,6 +8,7 @@
 #define P2_SFX_EVENT_POWER_DOWN (1u << 3)
 #define P2_SFX_EVENT_DIE        (1u << 4)
 #define P2_SFX_EVENT_RESPAWN    (1u << 5)
+#define MP_MAX_OAM_SPRITES 40 /* Game Boy OAM contains 40 four-byte entries. */
 
 typedef struct {
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
@@ -36,7 +37,8 @@ typedef struct {
     uint8_t mp_player_game_state[MAX_MP_PLAYERS];
     uint8_t mp_player_visible[MAX_MP_PLAYERS];
     uint8_t mp_player_blink_hidden[MAX_MP_PLAYERS];
-    uint8_t mp_player_oam[MAX_MP_PLAYERS][16];       /* player 2..4 character OAM */
+    uint8_t mp_player_oam[MAX_MP_PLAYERS][MP_MAX_OAM_SPRITES * 4]; /* player 2..4 sprite pieces */
+    uint8_t mp_player_sprite_count[MAX_MP_PLAYERS]; /* valid OAM entries per player */
     uint8_t mp_player_projectile_oam[MAX_MP_PLAYERS][12];
     uint8_t mp_player_effect_oam[MAX_MP_PLAYERS][52];
     uint8_t mp_player_sfx_events[MAX_MP_PLAYERS];
