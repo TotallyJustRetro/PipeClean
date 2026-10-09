@@ -854,7 +854,8 @@ static void mp_sml2_offset_player(MpSml2Player *p, int dx)
     p->ram[0x3C] = (uint8_t)(p->ram[0x3C] + dx);
     p->h_c2 = (uint8_t)(p->h_c2 + dx);
     p->h_c5 = (uint8_t)(p->h_c5 + dx);
-    p->ram[0x00] = 0x80;
+    p->ram[0x00] = 0x80; /* A200: stationary horizontal-velocity sentinel */
+    p->ram[0x21] = 0;    /* A221: don't inherit Mario's pipe/level transition */
     p->previous_a = 0;
     p->invulnerability_frames = 90;
 }
@@ -866,7 +867,7 @@ static int mp_sml2_gameplay_active(void)
      * change before the level timer and tile data are fully initialized.
      * Don't spawn/run clone simulations until the timer is live. */
     uint16_t timer = (uint16_t)rd8(0xA254) | ((uint16_t)rd8(0xA255) << 8);
-    return rd8(0xFF9B) == 4 && timer != 0 &&
+    return rd8(0xFF9B) == 4 && timer != 0 && rd8(0xA221) == 0 &&
            rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
 }
 
