@@ -214,9 +214,14 @@ int rom_apply_hack(const char *path, RomStatus *st)
     if (is_ips_patch && base_game == GAME_SML2 && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
         olen == 0x100000 && source_crc != 0xD5EC24E4u) {
         free(out);
-        snprintf(st->msg, sizeof st->msg,
-                 "Super Mario Land 2 DX v1.8.1 IPS needs clean USA/Europe v1.0 (expected CRC32 D5EC24E4; this ROM is %08X).",
-                 source_crc);
+        if (source_crc == 0xE6F886E5u) {
+            snprintf(st->msg, sizeof st->msg,
+                     "Recognized SML2 USA/Europe Rev A, but DX v1.8.1 IPS requires v1.0 (CRC32 D5EC24E4). Use a v1.0 ROM or an already-patched DX ROM.");
+        } else {
+            snprintf(st->msg, sizeof st->msg,
+                     "SML2 DX v1.8.1 IPS requires clean USA/Europe v1.0 (CRC32 D5EC24E4); this ROM has CRC32 %08X.",
+                     source_crc);
+        }
         return 1;
     }
 
