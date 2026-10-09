@@ -157,6 +157,9 @@ static int mp_active;
 static int mp_game = GAME_SML;
 static MpSml2Player mp_sml2_players[MAX_MP_PLAYERS];
 static int mp_sml2_initialized;
+static unsigned mp_sml2_stable_frames;
+static uint8_t mp_sml2_stable_level;
+static uint8_t mp_sml2_stable_bank;
 static uint8_t mp_sml2_map_before[0x1800];
 static uint8_t mp_sml2_map_after[0x1800];
 static uint8_t mp_sml2_vram_before[0x400];
@@ -878,10 +881,6 @@ static void mp_sml2_shift_screen_x(MpSml2Player *p, int dx)
             sprite[1] = (uint8_t)(sprite[1] + dx);
     }
 }
-
-static unsigned mp_sml2_stable_frames;
-static uint8_t mp_sml2_stable_level;
-static uint8_t mp_sml2_stable_bank;
 
 static int mp_sml2_gameplay_candidate(void)
 {
