@@ -80,6 +80,7 @@ void frame_from_ppu(Frame *f)
     memcpy(f->tiles, vram, sizeof f->tiles);
     ppu_cgb_obj_palette_copy(f->cgb_obj_palette);
     memset(f->p2_projectile_oam, 0, sizeof f->p2_projectile_oam);
+    memset(f->p2_effect_oam, 0, sizeof f->p2_effect_oam);
     ppu_vram_bank1_copy(f->tiles_cgb1);
     f->lcd_on = ppu_lcd_is_on();
     f->w = ppu_w; f->xoff = ppu_xoff;
@@ -289,6 +290,13 @@ void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int 
 void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy)
 {
     render_overlay_sml1_mario_src(f, oam, 3, dx, dy, 0);
+}
+
+void render_overlay_sml1_effect_oam(Frame *f, const uint8_t oam[52], int dx, int dy)
+{
+    /* Overlay only Player 2's effect pool (slots 7-19); enemy sprites remain
+     * authoritative in Player 1's shared world and must not be duplicated. */
+    render_overlay_sml1_mario_src(f, oam, 13, dx, dy, 0);
 }
 
 void render_build(const Frame *f, int game, int live)
