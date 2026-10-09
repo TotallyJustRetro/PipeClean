@@ -37,6 +37,7 @@ void gb_watch_set(const uint16_t *addrs, int n, void (*cb)(uint16_t addr, uint8_
 /* ---- core ---- */
 void gb_reset(void);
 void hw_tick(int tcycles);              /* advance timer/PPU/APU/serial */
+void gb_stop(void);                     /* CGB speed switch, if prepared through KEY1 */
 void cpu_halt(void);
 void cpu_service_irq(void);
 void cpu_lockup(uint8_t op, uint16_t pc) __attribute__((noreturn));
