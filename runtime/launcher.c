@@ -364,6 +364,41 @@ static void draw_preview(int g, float x, float y, float w, float h, int use_cfg_
     render_draw(&r, c->scaling == SCALE_PIXEL ? SCALE_PIXEL : SCALE_SMOOTH);
 }
 
+/* External Wario entries use the ROM-independent gbrecomp player for now. */
+static void sub_external_game(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    card(x, y, 808, 476, "GAME ROM");
+    label(x + 18, y + 42, "Game Boy / Game Boy Color ROM");
+    path_box(x + 18, y + 64, 808 - 36 - 110, c->rom_path, "Drop a ROM here or browse");
+    if (ui_button(x + 808 - 18 - 100, y + 64, 100, 36, "Browse…", B_NORMAL, 1)) {
+        char p[1100];
+        if (dlg_pick(DLG_ROM, "Choose this game's ROM", p, sizeof p)) {
+            int id = rom_identify_file(p);
+            if (id >= 0 && id != g) {
+                snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", p);
+                rom_check(id);
+                tab = id;
+                launcher_toast("That ROM belongs to a different game. Switched tabs.");
+            } else {
+                set_rom(g, p);
+            }
+        }
+    }
+    status_line(x + 18, y + 108, 772, rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2),
+                rs[g].ok ? "ROM detected and ready to launch." : (c->rom_path[0] ? rs[g].msg : "Choose a ROM to enable Play."));
+
+    ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
+    ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
+                 "These four Wario Land entries currently run in the separate gbrecomp compatibility player while we work through game-specific issues. PipeClean's rendering filters, save-state slots and per-game controller bindings do not apply to that separate player window yet.", 4);
+
+    ui_text(F_BOLD, 12, x + 18, y + 276, C_MUTED, "CONTROLS");
+    ui_text_wrap(F_REG, 12, x + 18, y + 300, 772, C_TEXT,
+                 "Keyboard: arrows or WASD to move, Z/J for A, X/K for B, Enter/Space for Start, Backspace/Tab/Right Shift for Select. Controller: D-pad or left stick, A/Y for Game Boy A, B/X for B, Start and Back.", 3);
+    ui_text_wrap(F_REG, 12, x + 18, y + 382, 772, C_DIM,
+                 "Battery saves are written alongside the selected ROM as a .sav file. Keep each ROM and its save file together.", 2);
+}
+
 /* ------------------------------------------------------------------ game tab: Game */
 static void sub_game(int g, float x, float y)
 {
@@ -839,8 +874,8 @@ static void tab_filters(float x, float y)
 
     float rx = x + 440, rw = 808 - 440;
     card(rx, y, rw, 504, "PREVIEW");
-    for (int i = 0; i < N_GAMES; i++) {
-        static const char *short_names[N_GAMES] = {"Dr. Mario", "Mario Land", "Mario Land 2"};
+    static const char *short_names[] = {"Dr. Mario", "Mario Land", "Mario Land 2"};
+    for (int i = 0; i < GAME_WARIO_SML3; i++) {
         float cw = (rw - 36 - 16) / 3;
         if (ui_chip(rx + 18 + i * (cw + 8), y + 38, cw, 30, short_names[i], filter_game == i)) filter_game = i;
     }
@@ -963,13 +998,23 @@ LauncherResult launcher_frame(float dt)
 
     /* sidebar */
     float sx = 24, sy = 108;
+    int compact_games = N_GAMES > 4;
+    float game_row = compact_games ? 46.0f : 76.0f;
+    float game_h = compact_games ? 42.0f : 68.0f;
     for (int i = 0; i < N_GAMES; i++) {
-        float y = sy + i * 76;
-        if (tab_button(sx, y, 224, 68, tab == i, games[i].accent)) { tab = i; }
-        ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
-        status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, rs[i].ok ? (settings.g[i].hack_path[0] && hack_ok[i] ? "Ready with romhack" : "Ready to play") : "ROM needed");
+        float y = sy + i * game_row;
+        if (tab_button(sx, y, 224, game_h, tab == i, games[i].accent)) { tab = i; }
+        if (compact_games) {
+            ui_text_fit(F_BOLD, 13, sx + 14, y + 4, 202, tab == i ? C_TEXT : C_MUTED, games[i].name);
+            int kind = rs[i].ok ? 1 : (settings.g[i].rom_path[0] ? 3 : 2);
+            const char *msg = rs[i].ok ? "Ready to play" : (settings.g[i].rom_path[0] ? "ROM issue" : "ROM needed");
+            status_line(sx + 14, y + 23, 202, kind, msg);
+        } else {
+            ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
+            status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, rs[i].ok ? (settings.g[i].hack_path[0] && hack_ok[i] ? "Ready with romhack" : "Ready to play") : "ROM needed");
+        }
     }
-    float y2 = sy + N_GAMES * 76 + 8;
+    float y2 = sy + N_GAMES * game_row + 8;
     ui_rect(sx + 8, y2, 208, 1, C_LINE);
     for (int i = TAB_FILTERS; i < N_TABS; i++) {
         float y = y2 + 12 + (i - TAB_FILTERS) * 52;
@@ -985,10 +1030,13 @@ LauncherResult launcher_frame(float dt)
         int can = rs[tab].ok;
         if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? "Play" : "Needs ROM", B_PRIMARY, can)) res.play = tab;
         if (!can) hint_area(cx + 808 - 176, cy + 2, 176, 52, "Choose your ROM on the Game tab (or drop it on this window)");
-        ui_seg(cx, cy + 66, 808, 38, sub_names, N_SUB, &sub[tab]);
         float y = cy + 118;
         pad_set_context(tab, 0);
-        switch (sub[tab]) {
+        if (games[tab].external_player) {
+            sub_external_game(tab, cx, y);
+        } else {
+            ui_seg(cx, cy + 66, 808, 38, sub_names, N_SUB, &sub[tab]);
+            switch (sub[tab]) {
         case SUB_GAME:
             sub_game(tab, cx, y);
             break;
@@ -1007,9 +1055,10 @@ LauncherResult launcher_frame(float dt)
         case SUB_SAVE_STATES:
             sub_save_states(tab, cx, y);
             break;
-        default:
-            sub_textures(tab, cx, y);
-            break;
+            default:
+                sub_textures(tab, cx, y);
+                break;
+            }
         }
         if (load_state_request[tab] >= 0) res.play = tab;
     } else if (tab == TAB_FILTERS) {
