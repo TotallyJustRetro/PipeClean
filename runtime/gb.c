@@ -362,12 +362,22 @@ void gb_reset(void)
 {
     memset(&cpu, 0, sizeof cpu);
     cart_reset();
-    /* state after the DMG boot ROM hands over */
-    cpu.a = 0x01; cpu.f = 0xB0; cpu.b = 0x00; cpu.c = 0x13;
-    cpu.d = 0x00; cpu.e = 0xD8; cpu.h = 0x01; cpu.l = 0x4D;
+    /* Model the CPU state left by the boot ROM before entry at 0100.
+     * CGB-only cartridges need the Color boot state; the DMG values make
+     * some of them deliberately stop with a "Game Boy Color only" message. */
+    const CartInfo *ci = cart_info();
+    if (ci && (ci->cgb_flag & 0xC0) == 0xC0) {
+        cpu.a = 0x11; cpu.f = 0x80; cpu.b = 0x00; cpu.c = 0x00;
+        cpu.d = 0xFF; cpu.e = 0x56; cpu.h = 0x00; cpu.l = 0x0D;
+        div_counter = 0x1EA0;
+    } else {
+        cpu.a = 0x01; cpu.f = 0xB0; cpu.b = 0x00; cpu.c = 0x13;
+        cpu.d = 0x00; cpu.e = 0xD8; cpu.h = 0x01; cpu.l = 0x4D;
+        div_counter = 0xABCC;
+    }
     cpu.sp = 0xFFFE; cpu.pc = 0x0100;
     io_if = 0x01; io_ie = 0;
-    div_counter = 0xABCC; tima = tma = tac = 0;
+    tima = tma = tac = 0;
     sb = 0; sc = 0x7E; serial_cycles = 0;
     joy_sel = 0x30; joy_buttons = joy_dpad = 0;
     gb_mp_vblank_watch = 0;
