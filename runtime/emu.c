@@ -707,17 +707,21 @@ static void mp_capture_frame(Frame *f, int screen_dx)
 static void mp_capture_mp_player_data(Frame *frame)
 {
     if (!frame) return;
+    memset(frame->mp_player_oam, 0, sizeof frame->mp_player_oam);
+    memset(frame->mp_player_sprite_count, 0, sizeof frame->mp_player_sprite_count);
     frame->mp_player_count = (uint8_t)mp_player_count;
     frame->mp_player_lives[0] = frame->p1_lives;
     frame->mp_player_game_state[0] = frame->game_state;
     frame->mp_player_visible[0] = 1;
     frame->mp_player_blink_hidden[0] = 0;
+    frame->mp_player_sprite_count[0] = 4;
     memcpy(frame->mp_player_oam[0], frame->mario_oam, sizeof frame->mario_oam);
 
     frame->mp_player_lives[1] = mp_p2_lives;
     frame->mp_player_game_state[1] = mp_p2_state.game_state;
     frame->mp_player_visible[1] = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0);
     frame->mp_player_blink_hidden[1] = (uint8_t)(mp_p2_invulnerability_frames > 0 && ((frame_count / 4) & 1));
+    frame->mp_player_sprite_count[1] = 4;
     memcpy(frame->mp_player_oam[1], mp_p2_state.mario_oam, sizeof mp_p2_state.mario_oam);
     memcpy(frame->mp_player_projectile_oam[1], mp_p2_state.projectile_oam, sizeof mp_p2_state.projectile_oam);
     memcpy(frame->mp_player_effect_oam[1], mp_p2_state.effect_oam, sizeof mp_p2_state.effect_oam);
@@ -728,6 +732,7 @@ static void mp_capture_mp_player_data(Frame *frame)
         frame->mp_player_game_state[player] = extra->state.game_state;
         frame->mp_player_visible[player] = (uint8_t)(extra->spawned && extra->lives > 0);
         frame->mp_player_blink_hidden[player] = (uint8_t)(extra->invulnerability_frames > 0 && ((frame_count / 4) & 1));
+        frame->mp_player_sprite_count[player] = 4;
         memcpy(frame->mp_player_oam[player], extra->state.mario_oam, sizeof extra->state.mario_oam);
         memcpy(frame->mp_player_projectile_oam[player], extra->state.projectile_oam, sizeof extra->state.projectile_oam);
         memcpy(frame->mp_player_effect_oam[player], extra->state.effect_oam, sizeof extra->state.effect_oam);
@@ -993,6 +998,14 @@ static void mp_sml2_shift_screen_x(MpSml2Player *p, int dx)
         if (sprite[0] && sprite[1])
             sprite[1] = (uint8_t)(sprite[1] + dx);
     }
+    int player = (int)(p - mp_sml2_players);
+    if (player > 0 && player < MAX_MP_PLAYERS) {
+        for (int i = 0; i < mp_sml2_render_oam_count[player]; i++) {
+            uint8_t *sprite = &mp_sml2_render_oam[player][i * 4];
+            if (sprite[0] && sprite[1])
+                sprite[1] = (uint8_t)(sprite[1] + dx);
+        }
+    }
 }
 
 static int mp_sml2_gameplay_candidate(void)
@@ -1067,7 +1080,16 @@ static void mp_sml2_capture_frame(Frame *frame)
         frame->mp_player_visible[player] = (uint8_t)(p->spawned && lives > 0);
         frame->mp_player_blink_hidden[player] = (uint8_t)(
             p->invulnerability_frames > 0 && ((frame_count / 4) & 1));
-        memcpy(frame->mp_player_oam[player], p->oam, sizeof p->oam);
+        if (mp_sml2_render_oam_count[player] > 0) {
+            unsigned bytes = (unsigned)mp_sml2_render_oam_count[player] * 4u;
+            memcpy(frame->mp_player_oam[player],
+                   mp_sml2_render_oam[player], bytes);
+            frame->mp_player_sprite_count[player] =
+                mp_sml2_render_oam_count[player];
+        } else {
+            memcpy(frame->mp_player_oam[player], p->oam, sizeof p->oam);
+            frame->mp_player_sprite_count[player] = 4;
+        }
         frame->mp_player_sfx_events[player] = p->sfx_events;
     }
     frame->p1_lives = rd8(0xA22C);
@@ -1089,6 +1111,8 @@ static void mp_sml2_spawn_player(int player)
     uint8_t lives = p->lives;
     *p = mp_sml2_players[0];
     mp_sml2_offset_player(p, 24 * player);
+    memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+    mp_sml2_render_oam_count[player] = 0;
     if (lives) p->lives = lives;
     p->ram[0x2C] = p->lives;
     p->spawned = 1;
