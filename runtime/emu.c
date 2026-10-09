@@ -808,11 +808,16 @@ static int mp_sml2_private_addr(unsigned address)
     case 0xA200: case 0xA201: case 0xA202:
     case 0xA20C: case 0xA20D: case 0xA20E:
     case 0xA214: case 0xA215: case 0xA216: case 0xA217:
-    case 0xA219: case 0xA220: case 0xA221: case 0xA222:
+    case 0xA218: case 0xA219: case 0xA220: case 0xA222:
+    case 0xA223: case 0xA224:
     case 0xA227: case 0xA228: case 0xA229: case 0xA22A:
-    case 0xA22B: case 0xA22C: case 0xA23B: case 0xA23C:
-    case 0xA25A: case 0xA25C: case 0xA268: case 0xA285:
-    case 0xA291: case 0xA2B2:
+    case 0xA22B: case 0xA22C: case 0xA232: case 0xA233:
+    case 0xA235: case 0xA236: case 0xA237: case 0xA238:
+    case 0xA23B: case 0xA23C: case 0xA23D: case 0xA24F:
+    case 0xA25A: case 0xA25C: case 0xA268: case 0xA26B:
+    case 0xA26D: case 0xA271: case 0xA272: case 0xA279:
+    case 0xA27A: case 0xA283: case 0xA284: case 0xA285:
+    case 0xA291: case 0xA2A0: case 0xA2B2:
         return 1;
     default:
         return 0;
@@ -829,7 +834,9 @@ static void mp_sml2_capture_oam(uint8_t out[16])
 {
     memset(out, 0, 16);
     int bx = rd8(0xA23C), by = rd8(0xA23B);
-    int sy = (ppu_read(0x40) & 0x04) ? 16 : 8;
+    /* SML2 builds Mario from 8x8 OAM pieces; LCDC bit 2 must not change
+     * the spacing used to find those pieces in the shared OAM table. */
+    const int sy = 8;
     uint8_t used[40] = {0};
     for (int slot = 0; slot < 4; slot++) {
         int tx = bx + ((slot & 1) ? 8 : 0);
@@ -843,7 +850,8 @@ static void mp_sml2_capture_oam(uint8_t out[16])
                         mp_sml2_distance((uint8_t)y, ty);
             if (score < best_score) { best_score = score; best = i; }
         }
-        if (best < 0 || best_score > 8) continue;
+        /* Prefer omitting a piece over stealing a nearby enemy/effect sprite. */
+        if (best < 0 || best_score > 4) continue;
         used[best] = 1;
         memcpy(&out[slot * 4], &oam[best * 4], 4);
     }
@@ -957,6 +965,8 @@ static void mp_sml2_capture_frame(Frame *frame)
     frame->player_x = rd8(0xA227);
     frame->player_y = rd8(0xA229);
     frame->scroll_x = rd8(0xA2B1);
+    /* SML2 maps its character as four 8x8 OAM entries. */
+    frame->sprite_size16 = 0;
     frame->game_state = 0;
     frame->p1_lives = rd8(0xA22C);
     frame->mp_player_lives[0] = (uint8_t)mp_sml2_bcd_to_int(rd8(0xA22C));
