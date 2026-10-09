@@ -14,10 +14,28 @@ static int gacc_valid;
 static uint32_t avg_rgb;
 static FilterCfg cur_f; /* filters used for the current picture */
 
-/* PipeClean's Luigi recolor: color 0 is transparent, 1..3 are Luigi greens. */
-static const uint32_t luigi_overlay_palette[4] = {
-    0xF5E0C0u, 0x8AE05Au, 0x2CA83Du, 0x175822u
-};
+static const LuigiColor *active_luigi_color(void)
+{
+    int index = settings.g[GAME_SML].p2_color;
+    if (index < 0 || index >= N_LUIGI_COLORS) index = LUIGI_GREEN;
+    return &luigi_colors[index];
+}
+
+static uint32_t luigi_overlay_pixel(int ci)
+{
+    const LuigiColor *c = active_luigi_color();
+    switch (ci & 3) {
+    case 1: return c->light;
+    case 2: return c->mid;
+    case 3: return c->dark;
+    default: return 0xF5E0C0u;
+    }
+}
+
+uint32_t render_sml1_luigi_color(void)
+{
+    return active_luigi_color()->swatch;
+}
 
 void render_init(SDL_Renderer *r) { ren = r; }
 
@@ -239,7 +257,7 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int 
                 /* Separate overlays don't pass through the native PPU sprite
                  * compositor, so apply the original CGB OBJ palette directly. */
                 if (f->cgb_mode) {
-                    uint32_t rgb = luigi ? luigi_overlay_palette[ci] :
+                    uint32_t rgb = luigi ? luigi_overlay_pixel(ci) :
                         f->cgb_obj_palette[((unsigned)(fl & 7) * 4u) + (unsigned)ci];
                     f->rgb[y][x] = rgb & 0xFFFFFFu;
                 }
@@ -298,7 +316,7 @@ void render_build(const Frame *f, int game, int live)
         for (int x = 0; x < gw; x++) {
             int layer = f->layer[y][x] % 3;
             uint32_t col = f->cgb_mode ? (0xFF000000u | (f->rgb[y][x] & 0xFFFFFFu)) :
-                           (f->luigi_mask[y][x] ? (0xFF000000u | luigi_overlay_palette[f->shade[y][x] & 3])
+                           (f->luigi_mask[y][x] ? (0xFF000000u | luigi_overlay_pixel(f->shade[y][x] & 3))
                                                 : t[layer][f->shade[y][x] & 3]);
             sr += (col >> 16) & 255; sg += (col >> 8) & 255; sb += col & 255;
             if (N == 1) { img[y * gw + x] = col; continue; }
