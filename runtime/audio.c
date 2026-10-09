@@ -245,7 +245,8 @@ static void synth_p2_sfx(Clip *c, int which)
 
     int duration_ms = which == P2_SFX_FIREBALL ? 190 :
                       which == P2_SFX_POWER_UP ? 430 :
-                      which == P2_SFX_POWER_DOWN ? 360 : 690;
+                      which == P2_SFX_POWER_DOWN ? 360 :
+                      which == P2_SFX_RESPAWN ? 285 : 690;
     long total = (long)((double)duration_ms * rate / 1000.0);
     if (!clip_alloc(c, total)) return;
 
@@ -278,6 +279,14 @@ static void synth_p2_sfx(Clip *c, int which)
         add_note(c, (long)(rate * 0.370), 0.190, 55, W_PULSE50, 0.19f, 0.0f, 0.003, 0.075);
         add_note(c, (long)(rate * 0.480), 0.150, 48, W_TRI, 0.16f, 0.0f, 0.004, 0.100);
         add_drum(c, (long)(rate * 0.350), 2, 0.10f);
+        break;
+    case P2_SFX_RESPAWN:
+        /* A fresh, buoyant three-note pickup that marks Luigi re-entering play. */
+        add_note(c, 0, 0.075, 64, W_TRI, 0.18f, 0.0f, 0.002, 0.025);
+        add_note(c, (long)(rate * 0.060), 0.080, 76, W_PULSE25, 0.23f, 0.0f, 0.002, 0.025);
+        add_note(c, (long)(rate * 0.125), 0.105, 83, W_PULSE50, 0.25f, 0.0f, 0.002, 0.035);
+        add_note(c, (long)(rate * 0.195), 0.085, 88, W_TRI, 0.12f, 0.0f, 0.003, 0.055);
+        add_drum(c, 0, 1, 0.045f);
         break;
     default:
         break;
