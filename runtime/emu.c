@@ -977,12 +977,12 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
                                                 candidate);
     if (count > 0) {
         memcpy(out, candidate, (size_t)count * 4u);
-        /* An exact match for the live selector is the most trustworthy map;
-         * don't let a larger unrelated mapping steal nearby OAM pieces. */
-        return count;
+        best_count = count;
     }
 
-    /* Search mapping IDs at the saved origin first. */
+    /* The selector is scratch state and may already have been reused after
+     * sprite emission. Compare every map at this origin and keep the largest
+     * complete match; exact piece count/positions/tiles disambiguate the pose. */
     for (int mapping = 0; mapping < 0xF2; mapping++) {
         if (mapping == preferred) continue;
         count = mp_sml2_capture_mapping_oam_at((uint8_t)mapping, hram_x,
