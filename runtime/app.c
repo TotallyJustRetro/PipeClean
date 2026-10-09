@@ -819,6 +819,7 @@ static int play(int g)
     Uint64 last = SDL_GetPerformanceCounter();
     int shot = 0;
     while (!quit) {
+        if (emu_cpu_faulted()) { quit = 1; break; }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             pad_event(&e);
@@ -911,6 +912,12 @@ static int play(int g)
         SDL_RenderPresent(ren);
     }
     emu_stop();
+    if (emu_cpu_faulted()) {
+        uint8_t opcode = 0; uint16_t pc = 0; char msg[144];
+        emu_cpu_fault_info(&opcode, &pc);
+        snprintf(msg, sizeof msg, "Game stopped at unsupported opcode %02X (%04X); check the ROM or hack revision.", opcode, pc);
+        launcher_toast(msg);
+    }
     SDL_free(f);
     tex_collect_save();
     pad_set_context(g, 0);
