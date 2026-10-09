@@ -737,7 +737,7 @@ static void sub_controls(int g, float x, float y)
 static void tab_multiplayer(float x, float y)
 {
     GameCfg *c = &settings.g[GAME_SML];
-    card(x, y, 808, 476, "SUPER MARIO LAND — MULTIPLAYER");
+    card(x, y, 808, 512, "SUPER MARIO LAND — MULTIPLAYER");
 
     label(x + 18, y + 42, "Local multiplayer");
     if (ui_toggle(x + 178, y + 38, &c->multiplayer) && c->multiplayer)
@@ -794,11 +794,42 @@ static void tab_multiplayer(float x, float y)
     bind_p2_respawn_cell(GAME_SML, x + 150, y + 264, 190, 5);
     bind_p2_respawn_cell(GAME_SML, x + 630, y + 264, 150, 6);
 
-    ui_text_wrap(F_REG, 12, x + 18, y + 314, 770, C_DIM,
-                 "Controller assignment and Player 2's Game Boy buttons remain on Super Mario Land's Controllers sub-tab. Luigi's name and color are cosmetic; his physics, items, and state are still handled by the original game code.", 3);
-    char status[128];
-    pad_status(status, sizeof status);
-    ui_text_fit(F_REG, 11, x + 18, y + 390, 770, C_DIM, status);
+    ui_rect(x + 18, y + 304, 772, 1, C_LINE);
+    label(x + 18, y + 312, "Imported sounds");
+    ui_text_fit(F_REG, 10, x + 140, y + 313, 640, C_DIM,
+                "Optional custom files; Reset restores PipeClean's built-in sound.");
+
+    static const char *p2_sfx_names[N_P2_SFX] = {
+        "Jump", "Fireball", "Power up", "Power down", "Death"
+    };
+    for (int i = 0; i < N_P2_SFX; i++) {
+        float ry = y + 332 + i * 33.0f;
+        ui_text_fit(F_BOLD, 12, x + 18, ry + 7, 106, C_TEXT, p2_sfx_names[i]);
+        ui_text_fit_tail(F_REG, 10, x + 132, ry + 7, 320, C_DIM,
+                         c->p2_sfx_path[i][0] ? path_base(c->p2_sfx_path[i]) : "Built-in original sound");
+
+        if (ui_button(x + 458, ry, 56, 27, "Test", B_NORMAL, 1))
+            audio_p2_sfx_preview(i);
+        if (ui_button(x + 520, ry, 72, 27, "Import", B_NORMAL, 1)) {
+            char sound_path[1200];
+            char title[96];
+            snprintf(title, sizeof title, "Choose Player 2 %s sound", p2_sfx_names[i]);
+            if (dlg_pick(DLG_AUDIO, title, sound_path, sizeof sound_path)) {
+                snprintf(c->p2_sfx_path[i], sizeof c->p2_sfx_path[i], "%s", sound_path);
+                audio_menu_apply();
+                settings_save();
+                launcher_toast(c->p2_sfx_path[i][0] ? "Player 2 sound imported." : "Could not load sound; using built-in.");
+            }
+        }
+        if (ui_button(x + 598, ry, 62, 27, "Reset", B_GHOST, c->p2_sfx_path[i][0] != 0)) {
+            c->p2_sfx_path[i][0] = 0;
+            audio_menu_apply();
+            settings_save();
+            launcher_toast("Using built-in Player 2 sound.");
+        }
+    }
+    ui_text_fit(F_REG, 10, x + 18, y + 500, 770, C_DIM,
+                "Supported formats: WAV, MP3, OGG and FLAC. Keep sounds short for responsive effects.");
 }
  
 /* ------------------------------------------------------------------ game tab: DualSense */
