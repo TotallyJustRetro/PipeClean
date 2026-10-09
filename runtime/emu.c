@@ -679,8 +679,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p2_floaty_control = mp_vblank_floaty_control ? mp_vblank_floaty_control : rd8(0xFFED);
         uint8_t p2_floaty_x = mp_vblank_floaty_control ? mp_vblank_floaty_x : rd8(0xFFEB);
         uint8_t p2_floaty_y = mp_vblank_floaty_control ? mp_vblank_floaty_y : rd8(0xFFEC);
-        uint8_t p2_square_sfx = mp_vblank_square_sfx ? mp_vblank_square_sfx : rd8(0xDFE0);
-        uint8_t p2_noise_sfx = mp_vblank_noise_sfx ? mp_vblank_noise_sfx : rd8(0xDFF8);
+        uint8_t p2_square_current = rd8(0xDFE0);
+        uint8_t p2_noise_current = rd8(0xDFF8);
+        /* Never mistake Mario's already-pending sound for a sound Luigi made. */
+        uint8_t p2_square_sfx = mp_vblank_square_sfx ? mp_vblank_square_sfx :
+                                (p2_square_current != p1_square_sfx_before ? p2_square_current : 0);
+        uint8_t p2_noise_sfx = mp_vblank_noise_sfx ? mp_vblank_noise_sfx :
+                               (p2_noise_current != p1_noise_sfx_before ? p2_noise_current : 0);
         for (int i = 0; i < 3; i++) score_after[i] = rd8((uint16_t)(0xC0A0 + i));
         int p2_world_lives_after = mp_bcd_to_int(rd8(0xDA15));
         int life_delta = p2_world_lives_after - p2_world_lives_before;
@@ -711,7 +716,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p2_sfx_events = 0;
         uint8_t jump_status_after = rd8(0xC207);
         if (p2_state_before == 0 && p2_grounded_before && p2_jump_status_before == 0 &&
-            jump_status_after == 1 && (buttons & 0x01u) && !p2_a_was_down_before)
+            jump_status_after != 0 && (buttons & 0x01u) && !p2_a_was_down_before)
             p2_sfx_events |= P2_SFX_EVENT_JUMP;
 
         for (int i = 0; i < 3; i++) {
