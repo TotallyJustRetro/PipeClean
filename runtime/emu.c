@@ -27,6 +27,9 @@ static int rewind_step_result;
 static char save_path[1100];
 static int save_tick;
 static int force_interp_flag;
+static volatile int core_faulted;
+static volatile uint8_t core_fault_opcode;
+static volatile uint16_t core_fault_pc;
 static Uint64 pace_next;
 
 static uint64_t chain = 1469598103934665603ull;
@@ -44,6 +47,20 @@ static uint8_t fz_b, fz_d;
 static uint32_t xr(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
 
 uint64_t emu_frames(void) { return pub.seq; }
+int emu_cpu_faulted(void) { return core_faulted; }
+void emu_cpu_fault_info(uint8_t *opcode, uint16_t *pc)
+{
+    if (opcode) *opcode = core_fault_opcode;
+    if (pc) *pc = core_fault_pc;
+}
+
+static void abort_on_cpu_fault(uint8_t opcode, uint16_t pc)
+{
+    core_fault_opcode = opcode;
+    core_fault_pc = pc;
+    core_faulted = 1;
+    longjmp(stop_jmp, 4);
+}
 void emu_input(uint8_t b, uint8_t d) { input_word = (uint32_t)b | ((uint32_t)d << 8); }
 void emu_set_paused(int p) { paused = p; audio_game_set_paused(p); }
 void emu_set_turbo(int t) { turbo = t; }
@@ -52,6 +69,7 @@ int emu_running(void) { return thr != NULL; }
 
 static void run_core(int force_interp)
 {
+    gb_set_cpu_fault_hook(abort_on_cpu_fault);
     if (force_interp || rom_needs_interpreter()) run_interpreter();
     else recomp_run();
 }
@@ -1345,6 +1363,7 @@ static int emu_start_internal(int force_interp, int reset)
     if (thr) return 0;
     if (!fmx) fmx = SDL_CreateMutex();
     force_interp_flag = force_interp;
+    core_faulted = 0; core_fault_opcode = 0; core_fault_pc = 0;
     abort_flag = 0; paused = 0; turbo = 0; save_tick = 0; pace_next = 0;
     if (reset) {
         gb_reset();
@@ -1389,6 +1408,7 @@ void emu_stop(void)
 void emu_preview(int frames)
 {
     if (!fmx) fmx = SDL_CreateMutex();
+    core_faulted = 0; core_fault_opcode = 0; core_fault_pc = 0;
     previewing = 1; preview_target = frames;
     gb_reset();
     if (setjmp(stop_jmp) == 0) run_core(0);
@@ -1397,6 +1417,7 @@ void emu_preview(int frames)
 
 void emu_run_blocking(int force_interp)
 {
+    core_faulted = 0; core_fault_opcode = 0; core_fault_pc = 0;
     thread_mode = 0;
     events_begin();
     if (setjmp(stop_jmp) == 0) run_core(force_interp);
