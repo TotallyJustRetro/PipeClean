@@ -12,7 +12,12 @@ static uint32_t *img;
 static float *gacc;                      /* ghost accumulator, 3 floats per pixel */
 static int gacc_valid;
 static uint32_t avg_rgb;
-static FilterCfg cur_f;                  /* filters used for the current picture */
+static FilterCfg cur_f;
+
+/* PipeClean's Luigi recolor: color 0 is transparent, 1..3 are Luigi greens. */
+static const uint32_t luigi_overlay_palette[4] = {
+    0xF5E0C0u, 0x8AE05Au, 0x2CA83Du, 0x175822u
+};                  /* filters used for the current picture */
 
 void render_init(SDL_Renderer *r) { ren = r; }
 
@@ -55,6 +60,7 @@ void frame_from_ppu(Frame *f)
     memcpy(f->bgtile, ppu_bgtile, sizeof f->bgtile);
     memcpy(f->sprtile, ppu_sprtile, sizeof f->sprtile);
     memcpy(f->tiles, vram, sizeof f->tiles);
+    ppu_vram_bank1_copy(f->tiles_cgb1);
     f->lcd_on = ppu_lcd_is_on();
     f->w = ppu_w; f->xoff = ppu_xoff;
     f->player_x = rd8(0xC202); f->player_y = rd8(0xC201);
@@ -215,15 +221,25 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
             if (fl & 0x40) row = h - 1 - row;
             uint8_t t = (uint8_t)(h == 16 ? (tile & 0xFE) : tile);
             int addr = (t + (row >> 3)) * 16 + (row & 7) * 2;
+            /* DX is CGB-only: OBJ attribute bit 3 selects tile data in VRAM bank 1. */
+            const uint8_t *tile_bank = (f->cgb_mode && (fl & 0x08))
+                ? f->tiles_cgb1 : f->tiles;
             for (int px = 0; px < 8; px++) {
                 int x = sx + px;
                 if (x < 0 || x >= W) continue;
                 int bit = (fl & 0x20) ? px : 7 - px;
-                int ci = (((f->tiles[addr + 1] >> bit) & 1) << 1) | ((f->tiles[addr] >> bit) & 1);
+                int ci = (((tile_bank[addr + 1] >> bit) & 1) << 1) |
+                         ((tile_bank[addr] >> bit) & 1);
                 if (!ci) continue;
                 f->shade[y][x] = (pal >> (ci * 2)) & 3;
                 f->layer[y][x] = (fl & 0x10) ? 2 : 1;
-                if (luigi) f->luigi_mask[y][x] = 1;
+                if (luigi) {
+                    f->luigi_mask[y][x] = 1;
+                    /* CGB rendering uses rgb[], not shade[]/luigi_mask[].
+                     * Write the recolored pixel into the color framebuffer too. */
+                    if (f->cgb_mode)
+                        f->rgb[y][x] = luigi_overlay_palette[ci] & 0xFFFFFFu;
+                }
                 f->sprtile[y][x] = (uint16_t)(addr >> 4);
                 f->spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
                                            ((fl & 0x20) ? 0x40 : 0) |
@@ -273,11 +289,9 @@ void render_build(const Frame *f, int game, int live)
     for (int y = 0; y < GB_H; y++)
         for (int x = 0; x < gw; x++) {
             int layer = f->layer[y][x] % 3;
-            static const uint32_t luigi_pal[4] = {
-                0xFFF5E0C0u, 0xFF8AE05Au, 0xFF2CA83Du, 0xFF175822u
-            };
             uint32_t col = f->cgb_mode ? (0xFF000000u | (f->rgb[y][x] & 0xFFFFFFu)) :
-                           (f->luigi_mask[y][x] ? luigi_pal[f->shade[y][x] & 3] : t[layer][f->shade[y][x] & 3]);
+                           (f->luigi_mask[y][x] ? (0xFF000000u | luigi_overlay_palette[f->shade[y][x] & 3])
+                                                : t[layer][f->shade[y][x] & 3]);
             sr += (col >> 16) & 255; sg += (col >> 8) & 255; sb += col & 255;
             if (N == 1) { img[y * gw + x] = col; continue; }
             const TexTile *tt = NULL;
