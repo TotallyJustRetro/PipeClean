@@ -637,7 +637,10 @@ static int play_multiplayer_sml1(int g)
                     if (n1 < 0) {
                         quit = 1;
                     } else {
-                        if (p2f->p2_jump_sfx_event) audio_p2_jump_sfx();
+                        for (int sfx_event = 0; sfx_event < N_P2_SFX; sfx_event++) {
+                            if (p2f->p2_sfx_events & (1u << sfx_event))
+                                audio_p2_sfx(sfx_event);
+                        }
                         have = 1;
                         emu_rewind_capture();
                         if (f->game_state == 0 && f->p2_visible) {
