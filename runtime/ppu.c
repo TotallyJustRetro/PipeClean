@@ -7,6 +7,8 @@
 uint8_t vram[0x2000], oam[0xA0];
 static uint8_t vram_cgb1[0x2000];
 static uint8_t vram_bank;
+static uint8_t cgb_bg_palette[64], cgb_obj_palette[64];
+static uint8_t cgb_bgpi, cgb_obpi, cgb_opri;
 uint8_t ppu_shade[GB_H][GB_WMAX];
 uint8_t ppu_layer[GB_H][GB_WMAX];
 uint16_t ppu_bgtile[GB_H][GB_WMAX], ppu_sprtile[GB_H][GB_WMAX];   /* tile number 0..383, 0xFFFF = none */
@@ -35,6 +37,9 @@ void ppu_reset(void)
     memset(vram, 0, sizeof vram);
     memset(vram_cgb1, 0, sizeof vram_cgb1);
     vram_bank = 0;
+    memset(cgb_bg_palette, 0xFF, sizeof cgb_bg_palette);
+    memset(cgb_obj_palette, 0xFF, sizeof cgb_obj_palette);
+    cgb_bgpi = cgb_obpi = cgb_opri = 0;
     memset(oam, 0, sizeof oam);
     memset(ppu_shade, 0, sizeof ppu_shade);
     memset(ppu_layer, 0, sizeof ppu_layer);
@@ -68,6 +73,35 @@ void ppu_vram_write(uint16_t a, uint8_t value)
 
 uint8_t ppu_vram_bank_read(void) { return (uint8_t)(0xFE | (vram_bank & 1)); }
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
+
+uint8_t ppu_cgb_read(uint8_t r)
+{
+    switch (r) {
+    case 0x68: return (uint8_t)(cgb_bgpi | 0x40);
+    case 0x69: return cgb_bg_palette[cgb_bgpi & 0x3F];
+    case 0x6A: return (uint8_t)(cgb_obpi | 0x40);
+    case 0x6B: return cgb_obj_palette[cgb_obpi & 0x3F];
+    case 0x6C: return (uint8_t)(0xFE | (cgb_opri & 1));
+    default: return 0xFF;
+    }
+}
+
+void ppu_cgb_write(uint8_t r, uint8_t value)
+{
+    switch (r) {
+    case 0x68: cgb_bgpi = value & 0xBF; break;
+    case 0x69:
+        cgb_bg_palette[cgb_bgpi & 0x3F] = value;
+        if (cgb_bgpi & 0x80) cgb_bgpi = (uint8_t)(0x80 | ((cgb_bgpi + 1) & 0x3F));
+        break;
+    case 0x6A: cgb_obpi = value & 0xBF; break;
+    case 0x6B:
+        cgb_obj_palette[cgb_obpi & 0x3F] = value;
+        if (cgb_obpi & 0x80) cgb_obpi = (uint8_t)(0x80 | ((cgb_obpi + 1) & 0x3F));
+        break;
+    case 0x6C: cgb_opri = value & 1; break;
+    }
+}
 
 uint8_t ppu_read(uint8_t r)
 {
@@ -266,6 +300,7 @@ void ppu_tick(int n)
 
 typedef struct {
     uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
+    uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
     uint16_t bgtile[GB_H][GB_WMAX], sprtile[GB_H][GB_WMAX];
     uint8_t bguv[GB_H][GB_WMAX], spruv[GB_H][GB_WMAX];
@@ -280,7 +315,7 @@ int ppu_state_save(void *dst, size_t n)
 {
     if (!dst || n < sizeof(PPUState)) return -1;
     PPUState *s = (PPUState *)dst;
-    memcpy(s->vram,vram,sizeof vram); memcpy(s->vram_cgb1,vram_cgb1,sizeof vram_cgb1); s->vram_bank=vram_bank; memcpy(s->oam,oam,sizeof oam);
+    memcpy(s->vram,vram,sizeof vram); memcpy(s->vram_cgb1,vram_cgb1,sizeof vram_cgb1); s->vram_bank=vram_bank; memcpy(s->cgb_bg_palette,cgb_bg_palette,sizeof cgb_bg_palette); memcpy(s->cgb_obj_palette,cgb_obj_palette,sizeof cgb_obj_palette); s->cgb_bgpi=cgb_bgpi; s->cgb_obpi=cgb_obpi; s->cgb_opri=cgb_opri; memcpy(s->oam,oam,sizeof oam);
     memcpy(s->shade,ppu_shade,sizeof ppu_shade); memcpy(s->layer,ppu_layer,sizeof ppu_layer);
     memcpy(s->bgtile,ppu_bgtile,sizeof ppu_bgtile); memcpy(s->sprtile,ppu_sprtile,sizeof ppu_sprtile);
     memcpy(s->bguv,ppu_bguv,sizeof ppu_bguv); memcpy(s->spruv,ppu_spruv,sizeof ppu_spruv);
@@ -294,7 +329,7 @@ int ppu_state_load(const void *src, size_t n)
 {
     if (!src || n < sizeof(PPUState)) return -1;
     const PPUState *s = (const PPUState *)src;
-    memcpy(vram,s->vram,sizeof vram); memcpy(vram_cgb1,s->vram_cgb1,sizeof vram_cgb1); vram_bank=s->vram_bank & 1; memcpy(oam,s->oam,sizeof oam);
+    memcpy(vram,s->vram,sizeof vram); memcpy(vram_cgb1,s->vram_cgb1,sizeof vram_cgb1); vram_bank=s->vram_bank & 1; memcpy(cgb_bg_palette,s->cgb_bg_palette,sizeof cgb_bg_palette); memcpy(cgb_obj_palette,s->cgb_obj_palette,sizeof cgb_obj_palette); cgb_bgpi=s->cgb_bgpi; cgb_obpi=s->cgb_obpi; cgb_opri=s->cgb_opri; memcpy(oam,s->oam,sizeof oam);
     memcpy(ppu_shade,s->shade,sizeof ppu_shade); memcpy(ppu_layer,s->layer,sizeof ppu_layer);
     memcpy(ppu_bgtile,s->bgtile,sizeof ppu_bgtile); memcpy(ppu_sprtile,s->sprtile,sizeof ppu_sprtile);
     memcpy(ppu_bguv,s->bguv,sizeof ppu_bguv); memcpy(ppu_spruv,s->spruv,sizeof ppu_spruv);
