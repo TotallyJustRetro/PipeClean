@@ -411,18 +411,7 @@ static void pad_poll_one(int game, const GameCfg *c, int player, uint8_t *b, uin
         if (c->pad[i][player] >= 0 && pad_down(device, c->pad[i][player])) bits[i] = 1;
     }
 
-    /*
-     * SML1 multiplayer always keeps a guaranteed Player 2 keyboard fallback.
-     * This also repairs older INI files that predate the second-player bindings.
-     */
-    if (player == 1 && c->multiplayer) {
-        if (ks[SDL_SCANCODE_J]) bits[BTN_A] = 1;
-        if (ks[SDL_SCANCODE_K]) bits[BTN_B] = 1;
-        if (ks[SDL_SCANCODE_D]) bits[BTN_RIGHT] = 1;
-        if (ks[SDL_SCANCODE_A]) bits[BTN_LEFT] = 1;
-        if (ks[SDL_SCANCODE_W]) bits[BTN_UP] = 1;
-        if (ks[SDL_SCANCODE_S]) bits[BTN_DOWN] = 1;
-    }
+    /* All keyboard input comes from the configurable per-player bindings. */
     float dz = settings.pad_deadzone / 100.0f * 32767.0f;
     if (device >= 0 && device < n_pads) {
         int ax = pads[device].mapped ? SDL_GameControllerGetAxis(pads[device].gc, SDL_CONTROLLER_AXIS_LEFTX) :
