@@ -910,16 +910,16 @@ static void mp_sml2_update_gameplay_stability(void)
         return;
     }
 
-    /* Require eight consecutive authoritative P1 frames with the same
-     * level, level bank and active-play signature before clone simulations
-     * or shared-world merging are allowed. This prevents a transient during
-     * level entry from being mistaken for a fully initialized level. */
-    if (mp_sml2_stable_frames < 8) mp_sml2_stable_frames++;
+    /* Require half a second of consecutive authoritative P1 frames with
+     * the same level, level bank and active-play signature before clone
+     * simulations or shared-world merging are allowed. This keeps transient
+     * level-entry and level-loading states out of the cloned game loop. */
+    if (mp_sml2_stable_frames < 30) mp_sml2_stable_frames++;
 }
 
 static int mp_sml2_gameplay_active(void)
 {
-    return mp_sml2_stable_frames >= 8 &&
+    return mp_sml2_stable_frames >= 30 &&
            mp_sml2_gameplay_candidate() &&
            rd8(0xA269) == mp_sml2_stable_level &&
            rd8(0xA258) == mp_sml2_stable_bank;
