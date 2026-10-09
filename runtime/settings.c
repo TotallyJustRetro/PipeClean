@@ -115,12 +115,24 @@ void controls_defaults(GameCfg *c)
         {SDL_CONTROLLER_BUTTON_BACK, SDL_CONTROLLER_BUTTON_BACK}, {SDL_CONTROLLER_BUTTON_START, SDL_CONTROLLER_BUTTON_START},
         {SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SDL_CONTROLLER_BUTTON_DPAD_RIGHT}, {SDL_CONTROLLER_BUTTON_DPAD_LEFT, SDL_CONTROLLER_BUTTON_DPAD_LEFT},
         {SDL_CONTROLLER_BUTTON_DPAD_UP, SDL_CONTROLLER_BUTTON_DPAD_UP}, {SDL_CONTROLLER_BUTTON_DPAD_DOWN, SDL_CONTROLLER_BUTTON_DPAD_DOWN}};
-    memcpy(c->key, key, sizeof key);
-    memcpy(c->pad, pad, sizeof pad);
-    c->pad_device[0] = 0;
-    c->pad_device[1] = -1;
+    for (int b = 0; b < N_BTN; b++) {
+        for (int player = 0; player < 2; player++) {
+            c->key[b][player] = key[b][player];
+            c->pad[b][player] = pad[b][player];
+        }
+        for (int player = 2; player < MAX_MP_PLAYERS; player++) {
+            c->key[b][player] = 0;
+            c->pad[b][player] = pad[b][0];
+        }
+    }
+    for (int player = 0; player < MAX_MP_PLAYERS; player++)
+        c->pad_device[player] = player == 0 ? 0 : -1;
     c->p2_respawn_key = SDLK_r;
     c->p2_respawn_pad = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
+    c->p3_respawn_key = SDLK_t;
+    c->p3_respawn_pad = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
+    c->p4_respawn_key = SDLK_y;
+    c->p4_respawn_pad = SDL_CONTROLLER_BUTTON_RIGHTSTICK;
 }
 
 
@@ -143,7 +155,14 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->wide = 0;
     c->state_slot = 0;
     c->p2_color = LUIGI_GREEN;
-    if (game == GAME_SML) snprintf(c->p2_name, sizeof c->p2_name, "Luigi");
+    c->p3_color = LUIGI_BLUE;
+    c->p4_color = LUIGI_YELLOW;
+    c->multiplayer_players = 2;
+    if (game == GAME_SML) {
+        snprintf(c->p2_name, sizeof c->p2_name, "Luigi");
+        snprintf(c->p3_name, sizeof c->p3_name, "Bunzo");
+        snprintf(c->p4_name, sizeof c->p4_name, "Florbo");
+    }
     shortcut_defaults(c);
     c->tex_collect = 1;
     c->ds_led_mode = LED_PALETTE; c->ds_bright = 60; c->ds_color = 0x40A0FF;
@@ -201,23 +220,40 @@ static int field_table(Field *t, int cap)
     I("f_mask", f->mask, 0, 100); I("f_curve", f->curve, 0, 100); I("f_bloom", f->bloom, 0, 100);
     I("f_hdr", f->hdr, 0, 100); I("f_vignette", f->vignette, 0, 100); I("f_blur", f->blur, 0, 100);
     I("f_preset", f->preset, 0, n_filter_presets - 1);
-    static char gn[N_GAMES][40][32];
+    static char gn[N_GAMES][72][40];
     static int gi = 0; (void)gi;
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &s->g[g];
         int k = 0;
 #define GI(nm, p, l, h) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
 #define GS(nm, p) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
-        GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path); GS("p2_name", c->p2_name);
+        GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path);
+        GS("p2_name", c->p2_name);
         GS("p2_sfx_jump", c->p2_sfx_path[P2_SFX_JUMP]); GS("p2_sfx_fireball", c->p2_sfx_path[P2_SFX_FIREBALL]);
         GS("p2_sfx_power_up", c->p2_sfx_path[P2_SFX_POWER_UP]); GS("p2_sfx_power_down", c->p2_sfx_path[P2_SFX_POWER_DOWN]);
         GS("p2_sfx_die", c->p2_sfx_path[P2_SFX_DIE]); GS("p2_sfx_respawn", c->p2_sfx_path[P2_SFX_RESPAWN]);
         GI("p2_color", c->p2_color, 0, N_LUIGI_COLORS - 1);
+        GS("p3_name", c->p3_name);
+        GS("p3_sfx_jump", c->p3_sfx_path[P2_SFX_JUMP]); GS("p3_sfx_fireball", c->p3_sfx_path[P2_SFX_FIREBALL]);
+        GS("p3_sfx_power_up", c->p3_sfx_path[P2_SFX_POWER_UP]); GS("p3_sfx_power_down", c->p3_sfx_path[P2_SFX_POWER_DOWN]);
+        GS("p3_sfx_die", c->p3_sfx_path[P2_SFX_DIE]); GS("p3_sfx_respawn", c->p3_sfx_path[P2_SFX_RESPAWN]);
+        GI("p3_color", c->p3_color, 0, N_LUIGI_COLORS - 1);
+        GS("p4_name", c->p4_name);
+        GS("p4_sfx_jump", c->p4_sfx_path[P2_SFX_JUMP]); GS("p4_sfx_fireball", c->p4_sfx_path[P2_SFX_FIREBALL]);
+        GS("p4_sfx_power_up", c->p4_sfx_path[P2_SFX_POWER_UP]); GS("p4_sfx_power_down", c->p4_sfx_path[P2_SFX_POWER_DOWN]);
+        GS("p4_sfx_die", c->p4_sfx_path[P2_SFX_DIE]); GS("p4_sfx_respawn", c->p4_sfx_path[P2_SFX_RESPAWN]);
+        GI("p4_color", c->p4_color, 0, N_LUIGI_COLORS - 1);
+        GI("multiplayer_players", c->multiplayer_players, 2, MAX_MP_PLAYERS);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
-        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1); GI("p2_respawn_key", c->p2_respawn_key, 0, 0x7FFFFFFF); GI("p2_respawn_pad", c->p2_respawn_pad, -1, PAD_AXIS_BASE + 1);
+        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1);
+        GI("p2_respawn_key", c->p2_respawn_key, 0, 0x7FFFFFFF); GI("p2_respawn_pad", c->p2_respawn_pad, -1, PAD_AXIS_BASE + 1);
+        GI("p3_respawn_key", c->p3_respawn_key, 0, 0x7FFFFFFF); GI("p3_respawn_pad", c->p3_respawn_pad, -1, PAD_AXIS_BASE + 1);
+        GI("p4_respawn_key", c->p4_respawn_key, 0, 0x7FFFFFFF); GI("p4_respawn_pad", c->p4_respawn_pad, -1, PAD_AXIS_BASE + 1);
         GI("pad_device1", c->pad_device[0], -1, 3); GI("pad_device2", c->pad_device[1], -1, 3);
+        GI("pad_device3", c->pad_device[2], -1, 3); GI("pad_device4", c->pad_device[3], -1, 3);
         GS("pad_guid1", c->pad_guid[0]); GS("pad_guid2", c->pad_guid[1]);
+        GS("pad_guid3", c->pad_guid[2]); GS("pad_guid4", c->pad_guid[3]);
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
         GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
@@ -261,15 +297,15 @@ void settings_load(void)
             if (strncmp(line, games[g].id, gl) || line[gl] != '.') continue;
             const char *k = line + gl + 1;
             int b, s2;
-            if (sscanf(k, "key%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < 2) settings.g[g].key[b][s2] = atoi(v);
-            else if (sscanf(k, "pad%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < 2) settings.g[g].pad[b][s2] = atoi(v);
+            if (sscanf(k, "key%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < MAX_MP_PLAYERS) settings.g[g].key[b][s2] = atoi(v);
+            else if (sscanf(k, "pad%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < MAX_MP_PLAYERS) settings.g[g].pad[b][s2] = atoi(v);
             else if (sscanf(k, "actionkey%d", &b) == 1 && b >= 0 && b < N_ACTION) settings.g[g].action_key[b] = atoi(v);
             else if (sscanf(k, "actionpad%d", &b) == 1 && b >= 0 && b < N_ACTION) settings.g[g].action_pad[b] = atoi(v);
             else if (!strcmp(k, "ledcolor")) settings.g[g].ds_color = (uint32_t)strtoul(v, NULL, 16) & 0xFFFFFF;
         }
     }
     fclose(f);
-    if (settings.last_tab > N_GAMES + 2) settings.last_tab = 0;
+    if (settings.last_tab > N_GAMES + 3) settings.last_tab = 0;
 }
 
 void settings_save(void)
@@ -286,7 +322,7 @@ void settings_save(void)
     }
     for (int g = 0; g < N_GAMES; g++) {
         for (int b = 0; b < N_BTN; b++)
-            for (int s = 0; s < 2; s++) {
+            for (int s = 0; s < MAX_MP_PLAYERS; s++) {
                 fprintf(f, "%s.key%d_%d=%d\n", games[g].id, b, s, settings.g[g].key[b][s]);
                 fprintf(f, "%s.pad%d_%d=%d\n", games[g].id, b, s, settings.g[g].pad[b][s]);
             }
