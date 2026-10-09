@@ -10,6 +10,7 @@ uint64_t total_cycles;
 static uint8_t wram[0x8000];
 static uint8_t cgb_svbk = 1;
 static uint8_t cgb_key1;
+static int cgb_mode;
 static uint8_t hram[0x80];
 static uint8_t io_misc[0x80];
 
@@ -64,14 +65,14 @@ static uint8_t io_read(uint8_t r)
     case 0x06: return tma;
     case 0x07: return tac | 0xF8;
     case 0x0F: return io_if | 0xE0;
-    case 0x4D: return (uint8_t)(0x7E | cgb_key1);
-    case 0x4F: return ppu_vram_bank_read();
-    case 0x70: return (uint8_t)(0xF8 | cgb_svbk);
+    case 0x4D: return cgb_mode ? (uint8_t)(0x7E | cgb_key1) : 0xFF;
+    case 0x4F: return cgb_mode ? ppu_vram_bank_read() : 0xFF;
+    case 0x70: return cgb_mode ? (uint8_t)(0xF8 | cgb_svbk) : 0xFF;
     default: break;
     }
     if (r >= 0x10 && r <= 0x3F) return apu_read(0xFF00 | r);
     if (r >= 0x40 && r <= 0x4B) return ppu_read(r);
-    if (r >= 0x68 && r <= 0x6C) return ppu_cgb_read(r);
+    if (r >= 0x68 && r <= 0x6C) return cgb_mode ? ppu_cgb_read(r) : 0xFF;
     return 0xFF;
 }
 
@@ -87,7 +88,7 @@ static size_t wram_offset(uint16_t a)
 {
     if (a >= 0xE000) a = (uint16_t)(a - 0x2000);
     if (a < 0xD000) return (size_t)(a - 0xC000);
-    return 0x1000u + (size_t)(cgb_svbk - 1u) * 0x1000u + (size_t)(a - 0xD000);
+    return 0x1000u + (size_t)((cgb_mode ? cgb_svbk : 1u) - 1u) * 0x1000u + (size_t)(a - 0xD000);
 }
 
 static void io_write(uint8_t r, uint8_t v)
@@ -107,15 +108,15 @@ static void io_write(uint8_t r, uint8_t v)
     case 0x06: tma = v; return;
     case 0x07: tac = v & 7; return;
     case 0x0F: io_if = v & 0x1F; return;
-    case 0x4D: cgb_key1 = (uint8_t)((cgb_key1 & 0x80) | (v & 1)); return;
-    case 0x4F: ppu_vram_bank_write(v); return;
-    case 0x70: cgb_svbk = v & 7; if (!cgb_svbk) cgb_svbk = 1; return;
+    case 0x4D: if (cgb_mode) cgb_key1 = (uint8_t)((cgb_key1 & 0x80) | (v & 1)); return;
+    case 0x4F: if (cgb_mode) ppu_vram_bank_write(v); return;
+    case 0x70: if (cgb_mode) { cgb_svbk = v & 7; if (!cgb_svbk) cgb_svbk = 1; } return;
     default: break;
     }
     if (r >= 0x10 && r <= 0x3F) { apu_write(0xFF00 | r, v); return; }
     if (r == 0x46) { io_misc[r] = v; dma_start(v); return; }
     if (r >= 0x40 && r <= 0x4B) { ppu_write(r, v); return; }
-    if (r >= 0x68 && r <= 0x6C) { ppu_cgb_write(r, v); return; }
+    if (r >= 0x68 && r <= 0x6C) { if (cgb_mode) ppu_cgb_write(r, v); return; }
     io_misc[r] = v;
 }
 
@@ -386,6 +387,7 @@ void gb_reset(void)
      * CGB-only cartridges need the Color boot state; the DMG values make
      * some of them deliberately stop with a "Game Boy Color only" message. */
     const CartInfo *ci = cart_info();
+    cgb_mode = ci && (ci->cgb_flag & 0x80) != 0;
     cgb_svbk = 1; cgb_key1 = 0;
     if (ci && (ci->cgb_flag & 0x80) != 0) {
         cpu.a = 0x11; cpu.f = 0x80; cpu.b = 0x00; cpu.c = 0x00;
