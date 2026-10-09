@@ -24,7 +24,7 @@ static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
-enum { TAB_MULTIPLAYER = N_GAMES, TAB_FILTERS, TAB_AUDIO, N_TABS };
+enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, N_TABS };
 enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
 static const char *sub_names[N_SUB] = {"Game", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
@@ -54,6 +54,7 @@ static int load_state_request[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
 static int multiplayer_name_editing;
+static int multiplayer_count_menu = -1;
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -1196,6 +1197,7 @@ static void tab_audio(float x, float y)
 /* ------------------------------------------------------------------ frame */
 static const char *tab_labels[N_TABS] = {
     [TAB_MULTIPLAYER] = "Multiplayer",
+    [TAB_MP_CONTROLLERS] = "MP Controllers",
     [TAB_FILTERS] = "Filters",
     [TAB_AUDIO] = "Audio & menu"
 };
@@ -1215,9 +1217,9 @@ LauncherResult launcher_frame(float dt)
     LauncherResult res = {-1, 0};
     launcher_controller_update(dt);
     anim_clock += dt;
-    int g = (tab == TAB_MULTIPLAYER) ? GAME_SML : launcher_current_game();
+    int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? GAME_SML : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
-    ui_accent = tab < N_GAMES ? games[tab].accent : (tab == TAB_MULTIPLAYER ? games[GAME_SML].accent : 0x4C8DFF);
+    ui_accent = tab < N_GAMES ? games[tab].accent : ((tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? games[GAME_SML].accent : 0x4C8DFF);
     ensure_background(g);
     bg_update(dt);
 
