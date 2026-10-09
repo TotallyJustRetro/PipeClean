@@ -1049,7 +1049,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     /* Clone simulations can scroll locally. Do not import that camera into
      * the shared world: transform the captured sprite/cache X positions back
      * into Player 1's camera before the authoritative state is restored. */
-    if (camera_dx) mp_sml2_shift_screen_x(p, -camera_dx);
+    if (camera_dx) mp_sml2_shift_screen_x(p, camera_dx);
     int same_camera = camera_dx == 0;
     int map_changed = merge_world && same_camera &&
         memcmp(mp_sml2_map_before, mp_sml2_map_after, sizeof mp_sml2_map_before) != 0;
