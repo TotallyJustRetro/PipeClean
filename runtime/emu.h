@@ -19,10 +19,12 @@ typedef struct {
     uint8_t p2_game_state;        /* Private SML1 state: 0 normal, 3/4 death animation */
     uint8_t p2_visible;           /* 1 while Luigi is active on the shared screen */
     uint8_t p2_blink_hidden;      /* Temporary flicker during Luigi's post-respawn invulnerability */
+    uint8_t p2_projectile_oam[12]; /* Three private projectile sprites from Player 2. */
     uint8_t p2_sound_event;       /* P2 triggered a one-shot interaction SFX */
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
     uint8_t tiles_cgb1[0x1800]; /* CGB VRAM bank 1 for color-mode sprite overlays. */
+    uint32_t cgb_obj_palette[32]; /* Eight CGB OBJ palettes, four RGB24 colors each. */
     uint64_t seq;
     int lcd_on;
 } Frame;
