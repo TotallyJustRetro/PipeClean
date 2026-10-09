@@ -912,11 +912,17 @@ static int mp_sml2_capture_mapping_oam(uint8_t mapping,
     uint8_t used[40] = {0};
     int count = 0;
     for (int entry = 0; entry < MP_MAX_OAM_SPRITES; entry++) {
-        uint8_t dy = cart_rom_read_bank(1, map++);
-        if (dy == 0x80) break;
-        uint8_t dx = cart_rom_read_bank(1, map++);
+        uint8_t raw_dy = cart_rom_read_bank(1, map++);
+        if (raw_dy == 0x80) break;
+        uint8_t raw_dx = cart_rom_read_bank(1, map++);
         uint8_t tile = cart_rom_read_bank(1, map++);
         (void)cart_rom_read_bank(1, map++); /* Attributes can be toggled at runtime. */
+
+        /* Mapping offsets are signed 8-bit values. Common poses use F8 (-8)
+         * and FC (-4); treating them as unsigned shifts pieces far away and
+         * makes the matcher fall back to an incomplete guessed 2x2 sprite. */
+        int dy = raw_dy < 0x80 ? (int)raw_dy : (int)raw_dy - 256;
+        int dx = raw_dx < 0x80 ? (int)raw_dx : (int)raw_dx - 256;
         uint8_t want_y = (uint8_t)(base_y + dy);
         uint8_t want_x = (uint8_t)(base_x + dx);
         for (int i = 0; i < 40; i++) {
