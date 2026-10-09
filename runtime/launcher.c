@@ -893,6 +893,33 @@ static void sub_controls(int g, float x, float y)
 }
 
 /* ------------------------------------------------------------------ dedicated local multiplayer tab */
+static void mp_name_field(GameCfg *c, int player_number, float x, float y, float w)
+{
+    char *name = mp_name_ptr(c, player_number);
+    if (!name) return;
+    int over = 0;
+    int clicked = clickable(x, y, w, 32, &over);
+    int active = multiplayer_name_editing == player_number;
+    int ci = mp_color_index(c, player_number);
+    ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
+             (over ? C_BTN_H : C_BTN));
+    const char *current = name[0] ? name : (active ? "Type a name…" : "Click to rename");
+    ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, name[0] ? C_TEXT : C_DIM, current);
+    ui_rrect(x + w - 25, y + 6, 14, 20, 5, HEX(luigi_colors[ci].swatch));
+    if (active) ui_hint("Type the name. Enter/Escape finishes; Backspace deletes.");
+    else if (over) {
+        char hint[100];
+        snprintf(hint, sizeof hint, "Click to rename Player %d, then type.", player_number);
+        ui_hint(hint);
+    }
+    if (clicked) {
+        cap_kind = 0;
+        multiplayer_name_editing = player_number;
+        name[0] = 0;
+        SDL_StartTextInput();
+    }
+}
+
 static void tab_multiplayer(float x, float y)
 {
     GameCfg *c = &settings.g[GAME_SML];
@@ -902,93 +929,79 @@ static void tab_multiplayer(float x, float y)
     if (ui_toggle(x + 178, y + 38, &c->multiplayer) && c->multiplayer)
         launcher_toast("Local multiplayer enabled for Super Mario Land 1.");
     ui_text_fit(F_REG, 12, x + 238, y + 43, 548, C_DIM,
-                c->multiplayer ? "Two independent players share one SML1 world." :
-                                 "Off by default; the game starts in single-player mode.");
+                c->multiplayer ? "Independent players share one SML1 world." :
+                                 "Off by default; enable this to start local co-op.");
 
-    label(x + 18, y + 82, "Player 2 name");
-    int name_over = 0;
-    int name_clicked = clickable(x + 18, y + 98, 430, 34, &name_over);
-    ui_rrect(x + 18, y + 98, 430, 34, 8,
-             multiplayer_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
-             (name_over ? C_BTN_H : C_BTN));
-    const char *name_value = c->p2_name[0] ? c->p2_name : (multiplayer_name_editing ? "Type a name…" : "Click to rename Luigi");
-    ui_text_fit(F_REG, 14, x + 30, y + 106, 402,
-                c->p2_name[0] ? C_TEXT : C_DIM, name_value);
-    if (multiplayer_name_editing) {
-        ui_text_r(F_REG, 11, x + 432, y + 108, HEX(ui_accent), "EDITING");
-        ui_hint("Type Player 2's name. Enter/Escape finishes; Backspace deletes.");
-    } else if (name_over) {
-        ui_hint("Click to replace Luigi's name, then type. Press Enter when you're done.");
-    }
-    if (name_clicked) {
-        cap_kind = 0;
-        multiplayer_name_editing = 1;
-        c->p2_name[0] = 0;
-        SDL_StartTextInput();
-    }
+    label(x + 18, y + 86, "Players");
+    int over = 0;
+    int opened = clickable(x + 540, y + 74, 228, 34, &over);
+    char count_text[64];
+    snprintf(count_text, sizeof count_text, "%d Players", c->multiplayer_players);
+    ui_rrect(x + 540, y + 74, 228, 34, 8,
+             (over || multiplayer_count_menu >= 0) ? C_BTN_H : C_BTN);
+    ui_text_fit(F_REG, 13, x + 552, y + 83, 188, C_TEXT, count_text);
+    ui_tri(x + 746, y + 87, x + 758, y + 87, x + 752, y + 94, C_MUTED);
+    if (opened) multiplayer_count_menu = multiplayer_count_menu < 0 ? 1 : -1;
+    ui_text_fit(F_REG, 11, x + 18, y + 78, 460, C_DIM,
+                "Choose 2–4 independent character simulations.");
 
-    label(x + 18, y + 146, "Luigi color");
-    ui_text_fit(F_REG, 11, x + 112, y + 147, 650, C_DIM,
-                "Choose a tint for Player 2; it applies to Luigi's sprite and name tag.");
-    for (int i = 0; i < N_LUIGI_COLORS; i++) {
-        float bx = x + 18 + i * 128.0f, by = y + 166;
-        int over = 0;
-        int clicked = clickable(bx, by, 120, 42, &over);
-        int selected = c->p2_color == i;
-        ui_rrect(bx, by, 120, 42, 8, selected ? RGBA(255,255,255,18) :
-                 (over ? C_BTN_H : C_BTN));
-        ui_rrect(bx + 5, by + 5, 18, 32, 6, HEX(luigi_colors[i].swatch));
-        if (selected) ui_stroke(bx, by, 120, 42, 8, 2, HEX(luigi_colors[i].swatch));
-        ui_text_fit(F_BOLD, 12, bx + 29, by + 13, 86,
-                    selected ? HEX(0xFFFFFF) : C_TEXT, luigi_colors[i].name);
-        if (clicked) c->p2_color = i;
+    label(x + 18, y + 120, "Player names");
+    for (int i = 0; i < 3; i++) {
+        int p = i + 2;
+        float ry = y + 140 + i * 40.0f;
+        char row_label[24];
+        snprintf(row_label, sizeof row_label, "Player %d", p);
+        ui_text(F_BOLD, 12, x + 18, ry + 8, C_MUTED, row_label);
+        mp_name_field(c, p, x + 100, ry, 350);
+        const char *role = p == 2 ? "Luigi" : (p == 3 ? "Blue • Bunzo" : "Yellow • Florbo");
+        ui_text_fit(F_REG, 11, x + 464, ry + 8, 300, C_DIM, role);
     }
 
-    ui_rect(x + 18, y + 222, 772, 1, C_LINE);
-    label(x + 18, y + 236, "Respawn Luigi if stuck");
-    ui_text_fit(F_REG, 11, x + 218, y + 238, 560, C_DIM,
-                "After respawning, Luigi flashes briefly like an item effect.");
-    label(x + 18, y + 270, "Keyboard");
-    label(x + 470, y + 270, "Player 2 controller");
-    bind_p2_respawn_cell(GAME_SML, x + 150, y + 264, 190, 5);
-    bind_p2_respawn_cell(GAME_SML, x + 630, y + 264, 150, 6);
-
-    ui_rect(x + 18, y + 304, 772, 1, C_LINE);
-    label(x + 18, y + 312, "Imported sounds");
-    ui_text_fit(F_REG, 10, x + 140, y + 313, 640, C_DIM,
-                "Optional custom files; Reset restores PipeClean's built-in sound.");
-
-    static const char *p2_sfx_names[N_P2_SFX] = {
-        "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn"
-    };
-    for (int i = 0; i < N_P2_SFX; i++) {
-        float ry = y + 326 + i * 29.0f;
-        ui_text_fit(F_BOLD, 12, x + 18, ry + 7, 106, C_TEXT, p2_sfx_names[i]);
-        ui_text_fit_tail(F_REG, 10, x + 132, ry + 7, 320, C_DIM,
-                         c->p2_sfx_path[i][0] ? path_base(c->p2_sfx_path[i]) : "Built-in original sound");
-
-        if (ui_button(x + 458, ry, 56, 27, "Test", B_NORMAL, 1))
-            audio_p2_sfx_preview(i);
-        if (ui_button(x + 520, ry, 72, 27, "Import", B_NORMAL, 1)) {
-            char sound_path[1200];
-            char title[96];
-            snprintf(title, sizeof title, "Choose Player 2 %s sound", p2_sfx_names[i]);
-            if (dlg_pick(DLG_AUDIO, title, sound_path, sizeof sound_path)) {
-                snprintf(c->p2_sfx_path[i], sizeof c->p2_sfx_path[i], "%s", sound_path);
-                audio_menu_apply();
+    if (multiplayer_count_menu >= 0) {
+        const int options[3] = {2, 3, 4};
+        float mx = x + 540, my = y + 110;
+        ui_shadow(mx, my, 228, 3 * 32 + 8, 9, 7, RGBA(0,0,0,100));
+        ui_rrect(mx, my, 228, 3 * 32 + 8, 9, C_BG2);
+        for (int i = 0; i < 3; i++) {
+            float oy = my + 4 + i * 32;
+            int ov = 0;
+            int pick = clickable(mx + 4, oy, 220, 30, &ov);
+            int selected = c->multiplayer_players == options[i];
+            ui_rrect(mx + 4, oy, 220, 30, 6,
+                     selected ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (ov ? C_BTN_H : C_BTN));
+            char label_text[32];
+            snprintf(label_text, sizeof label_text, "%d Players", options[i]);
+            ui_text_fit(F_REG, 13, mx + 14, oy + 7, 198, selected ? HEX(0xFFFFFF) : C_TEXT, label_text);
+            if (pick) {
+                c->multiplayer_players = options[i];
+                multiplayer_count_menu = -1;
                 settings_save();
-                launcher_toast(c->p2_sfx_path[i][0] ? "Player 2 sound imported." : "Could not load sound; using built-in.");
+                launcher_toast("Multiplayer player count saved.");
             }
         }
-        if (ui_button(x + 598, ry, 62, 27, "Reset", B_GHOST, c->p2_sfx_path[i][0] != 0)) {
-            c->p2_sfx_path[i][0] = 0;
-            audio_menu_apply();
-            settings_save();
-            launcher_toast("Using built-in Player 2 sound.");
-        }
     }
-    ui_text_fit(F_REG, 10, x + 18, y + 500, 770, C_DIM,
-                "Supported formats: WAV, MP3, OGG and FLAC. Keep sounds short for responsive effects.");
+
+    ui_rect(x + 18, y + 270, 772, 1, C_LINE);
+    label(x + 18, y + 281, "Player 2 color");
+    ui_text_fit(F_REG, 11, x + 148, y + 282, 630, C_DIM,
+                "P3 Bunzo starts blue; P4 Florbo starts yellow. Rename them above.");
+    for (int i = 0; i < N_LUIGI_COLORS; i++) {
+        float bx = x + 18 + i * 128.0f, by = y + 304;
+        int hov = 0;
+        int clicked = clickable(bx, by, 120, 38, &hov);
+        int selected = c->p2_color == i;
+        ui_rrect(bx, by, 120, 38, 8, selected ? RGBA(255,255,255,18) : (hov ? C_BTN_H : C_BTN));
+        ui_rrect(bx + 5, by + 5, 18, 28, 6, HEX(luigi_colors[i].swatch));
+        if (selected) ui_stroke(bx, by, 120, 38, 8, 2, HEX(luigi_colors[i].swatch));
+        ui_text_fit(F_BOLD, 12, bx + 29, by + 11, 86, selected ? HEX(0xFFFFFF) : C_TEXT, luigi_colors[i].name);
+        if (clicked) c->p2_color = i;
+    }
+    ui_rect(x + 18, y + 356, 772, 1, C_LINE);
+    ui_text_wrap(F_REG, 12, x + 18, y + 370, 772, C_DIM,
+                 "Use Multiplayer Controllers for independent controller assignments, respawn bindings, and six customizable sound events per character.",
+                 3);
+    ui_text_fit(F_REG, 11, x + 18, y + 446, 770, C_DIM,
+                "Defaults: Luigi (green), Bunzo (blue), and Florbo (yellow).");
 }
  
 /* ------------------------------------------------------------------ game tab: DualSense */
