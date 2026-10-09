@@ -81,6 +81,7 @@ uint8_t ppu_vram_read(uint16_t address);
 void ppu_vram_write(uint16_t address, uint8_t value);
 uint8_t ppu_vram_bank_read(void);
 void ppu_vram_bank1_copy(uint8_t out[0x1800]);
+void ppu_cgb_obj_palette_copy(uint32_t out[32]);
 void ppu_set_cgb_mode(int enabled);
 int ppu_cgb_mode_enabled(void);
 extern uint32_t ppu_rgb[GB_H][GB_WMAX];
