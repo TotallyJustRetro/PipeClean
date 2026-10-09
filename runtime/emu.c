@@ -463,13 +463,17 @@ static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
          * (82) remains intact when only bumped by small Mario. Other terrain is
          * restored exactly as it was, avoiding accidental holes in the level.
          */
-        uint8_t final_tile = before;
-        if (before == 0x80 || before == 0x81) final_tile = 0x7F;
-        if (before == 0x82) final_tile = 0x82;
+        /* The interrupt watch sees the tile AFTER the cloned game's VBlank
+         * logic has temporarily blanked it. Read the pre-simulation shared map
+         * instead, translated into P1's authoritative tilemap coordinates. */
+        uint8_t original_tile = mp_tilemap_before[p1idx];
+        uint8_t final_tile = original_tile;
+        if (original_tile == 0x80 || original_tile == 0x81) final_tile = 0x7F;
+        if (original_tile == 0x82) final_tile = 0x82;
         vram[0x1800 + p1idx] = final_tile;
         mp_pending_block = 0;
         mp_pending_block_idx = 0;
-        return final_tile != before;
+        return final_tile != original_tile;
     }
     case 0x04:
         /*
@@ -617,6 +621,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         uint8_t p1_scroll = rd8(0xFFA4);
         uint8_t p2_state_before = mp_p2_state.game_state;
+        /* Keep these from BEFORE the simulation updates MpPlayerState. */
+        uint8_t p2_a_held_before = mp_p2_state.joy_held & 0x01u;
+        int p2_was_grounded = mp_p2_state.mario[10] != 0;
         int p2_world_lives_before = mp_bcd_to_int(rd8(0xDA15));
         uint8_t score_before[3];
         uint8_t coins_before = rd8(0xFFFA);
@@ -689,8 +696,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * to knockback/falling, which is not a jump input. */
         int p2_jump_event = (p2_state_before == 0 &&
                              (buttons & 0x01u) &&
-                             !(mp_p2_state.joy_held & 0x01u) &&
-                             mp_p2_state.mario[10] != 0) ||
+                             !p2_a_held_before &&
+                             p2_was_grounded) ||
                             (mp_p2_jump_before == 0 && rd8(0xC207) != 0);
 
         /*
