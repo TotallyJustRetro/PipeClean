@@ -69,6 +69,8 @@ int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
 void emu_mp_frame_refresh(Frame *frame);
+/* SML2 multiplayer's cloned PPU has separate sprite graphics per player. */
+const uint8_t *emu_mp_player_sprite_tiles(int player, int bank);
 void emu_mp_request_respawn(int player);
 
 /* Emulator state features */
