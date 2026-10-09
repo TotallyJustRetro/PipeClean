@@ -437,7 +437,7 @@ static int mp_merge_tilemap_local_edits(int allow_full, uint8_t p2_scroll, uint8
 }
 
 static int mp_merge_block_vblank_event(uint8_t event, uint16_t addr,
-                                       uint8_t before, uint8_t after,
+                                       uint8_t after,
                                        uint8_t p2_scroll, uint8_t p1_scroll)
 {
     if (addr < 0x9800 || addr >= 0x9C00) return 0;
@@ -834,7 +834,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             tile_changed |= mp_merge_block_vblank_event(
                 mp_vblank_collision,
                 mp_vblank_collision_addr,
-                mp_vblank_collision_before,
                 (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
                     ? mp_tilemap_after[mp_vblank_collision_addr - 0x9800]
                     : 0,
