@@ -34,7 +34,7 @@ static uint32_t luigi_overlay_pixel(int ci)
 
 uint32_t render_sml1_luigi_color(void)
 {
-    return active_luigi_color()->swatch;
+    return 0xFF000000u | active_luigi_color()->swatch;
 }
 
 void render_init(SDL_Renderer *r) { ren = r; }
