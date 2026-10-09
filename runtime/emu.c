@@ -160,6 +160,11 @@ static MpSml2Player mp_sml2_players[MAX_MP_PLAYERS];
  * Kept separately so multiplayer save-state layouts remain backward compatible. */
 static uint8_t mp_sml2_render_oam[MAX_MP_PLAYERS][MP_MAX_OAM_SPRITES * 4];
 static uint8_t mp_sml2_render_oam_count[MAX_MP_PLAYERS];
+/* Each simulated clone has its own transient VRAM contents. Save the tile
+ * patterns used by its OAM before restoring Player 1's complete GB state. */
+static uint8_t mp_sml2_render_tiles[MAX_MP_PLAYERS][0x1000];
+static uint8_t mp_sml2_render_tiles_cgb1[MAX_MP_PLAYERS][0x1000];
+static uint8_t mp_sml2_render_tiles_valid[MAX_MP_PLAYERS];
 static int mp_sml2_initialized;
 static unsigned mp_sml2_stable_frames;
 static uint8_t mp_sml2_stable_level;
@@ -747,6 +752,14 @@ static void mp_capture_mp_player_data(Frame *frame)
     memcpy(frame->p2_effect_oam, frame->mp_player_effect_oam[1], sizeof frame->p2_effect_oam);
 }
 
+const uint8_t *emu_mp_player_sprite_tiles(int player, int bank)
+{
+    if (mp_game != GAME_SML2 || player < 1 || player >= MAX_MP_PLAYERS ||
+        !mp_sml2_render_tiles_valid[player])
+        return NULL;
+    return bank ? mp_sml2_render_tiles_cgb1[player] : mp_sml2_render_tiles[player];
+}
+
 void emu_mp_frame_refresh(Frame *frame)
 {
     if (!mp_ready || !frame) return;
@@ -791,6 +804,7 @@ int emu_mp_begin(void)
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
+    memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
     mp_sml2_initialized = 0;
     mp_sml2_stable_frames = 0;
     mp_sml2_stable_level = 0;
@@ -954,6 +968,17 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
     p->spawned = 1;
     mp_sml2_capture_oam(p->oam);
     if (player > 0 && player < MAX_MP_PLAYERS) {
+        /* OAM tile IDs belong to the cloned PPU state. Copy their graphics
+         * before the caller reloads Player 1's state, otherwise those IDs
+         * are rendered using a different character's/pose's VRAM contents. */
+        memcpy(mp_sml2_render_tiles[player], vram,
+               sizeof mp_sml2_render_tiles[player]);
+        uint8_t bank1[0x1800];
+        ppu_vram_bank1_copy(bank1);
+        memcpy(mp_sml2_render_tiles_cgb1[player], bank1,
+               sizeof mp_sml2_render_tiles_cgb1[player]);
+        mp_sml2_render_tiles_valid[player] = 1;
+
         int mapped = mp_sml2_capture_mapping_oam(
             p->h_c6, mp_sml2_render_oam[player]);
         /* Fall back to the stable four-piece matcher if the ROM map cannot
@@ -1122,6 +1147,7 @@ static void mp_sml2_spawn_player(int player)
     mp_sml2_offset_player(p, 24 * player);
     memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
     mp_sml2_render_oam_count[player] = 0;
+    mp_sml2_render_tiles_valid[player] = 0;
     if (lives) p->lives = lives;
     p->ram[0x2C] = p->lives;
     p->spawned = 1;
@@ -1864,6 +1890,7 @@ void emu_mp_end(void)
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
+    memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
     mp_ready = 0;
     mp_player_count = 2;
     mp_current_player = 0;
@@ -2035,6 +2062,7 @@ static int emu_state_load_blob(const void *src, size_t n)
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
+    memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
             mp_sml2_initialized = 0;
         } else if (h.version == 6u) {
             MpStateExtraV6 old;
@@ -2051,6 +2079,7 @@ static int emu_state_load_blob(const void *src, size_t n)
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
+    memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
             mp_sml2_initialized = 0;
         } else if (h.version == 7u) {
             MpStateExtraV7 old;
@@ -2065,6 +2094,7 @@ static int emu_state_load_blob(const void *src, size_t n)
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
+    memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
             for (int i = 0; i < MAX_MP_PLAYERS; i++) {
                 memcpy(mp_sml2_players[i].ram, old.sml2[i].ram, sizeof old.sml2[i].ram);
                 mp_sml2_players[i].keys_held = old.sml2[i].keys_held;
@@ -2101,6 +2131,7 @@ static int emu_state_load_blob(const void *src, size_t n)
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
+    memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
             for (int i = 0; i < MAX_MP_PLAYERS; i++) {
                 memcpy(mp_sml2_players[i].ram, old.sml2[i].ram, sizeof old.sml2[i].ram);
                 mp_sml2_players[i].keys_held = old.sml2[i].keys_held;
