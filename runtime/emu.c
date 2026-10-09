@@ -922,7 +922,10 @@ static int mp_sml2_capture_mapping_oam(uint8_t mapping,
     uint16_t map = (uint16_t)(lo | ((uint16_t)hi << 8));
     if (map < 0x41E4 || map >= 0x8000) return 0;
 
-    int base_x = rd8(0xA23C), base_y = rd8(0xA23B);
+    /* The game builds OAM from the live mapping origin in HRAM C5/C4.
+     * A23C/A23B are the logical screen coordinates and can differ for
+     * crouch, damage, bounce, and other animation-specific poses. */
+    int base_x = rd8(0xFFC5), base_y = rd8(0xFFC4);
     uint8_t used[40] = {0};
     int count = 0, expected = 0;
     for (int entry = 0; entry < MP_MAX_OAM_SPRITES; entry++) {
