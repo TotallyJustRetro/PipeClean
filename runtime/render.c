@@ -232,7 +232,11 @@ static void cpu_filters(const FilterCfg *f, int live, int N)
     free(c);
 }
 
-static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int sprite_count, int dx, int dy, int mp_player)
+static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam,
+                                                int sprite_count, int dx, int dy,
+                                                int mp_player,
+                                                const uint8_t *sprite_tiles,
+                                                const uint8_t *sprite_tiles_cgb1)
 {
     if (!f || !src_oam || !f->lcd_on || f->w <= 0) return;
 
@@ -258,7 +262,8 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int 
             int addr = (t + (row >> 3)) * 16 + (row & 7) * 2;
             /* DX is CGB-only: OBJ attribute bit 3 selects tile data in VRAM bank 1. */
             const uint8_t *tile_bank = (f->cgb_mode && (fl & 0x08))
-                ? f->tiles_cgb1 : f->tiles;
+                ? (sprite_tiles_cgb1 ? sprite_tiles_cgb1 : f->tiles_cgb1)
+                : (sprite_tiles ? sprite_tiles : f->tiles);
             for (int px = 0; px < 8; px++) {
                 int x = sx + px;
                 if (x < 0 || x >= W) continue;
@@ -288,17 +293,17 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int 
 void render_overlay_sml1_mario(Frame *f, int dx, int dy)
 {
     if (!f) return;
-    render_overlay_sml1_mario_src(f, f->mario_oam, 4, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, f->mario_oam, 4, dx, dy, 0, NULL, NULL);
 }
 
 void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 0, NULL, NULL);
 }
 
 void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 1);
+    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 1, NULL, NULL);
 }
 
 void render_overlay_sml1_mp_oam(Frame *f, const uint8_t *oam, int dx, int dy, int player)
@@ -306,19 +311,21 @@ void render_overlay_sml1_mp_oam(Frame *f, const uint8_t *oam, int dx, int dy, in
     if (!f || player < 1 || player >= MAX_MP_PLAYERS) return;
     int count = f->mp_player_sprite_count[player];
     if (count < 1 || count > MP_MAX_OAM_SPRITES) return;
-    render_overlay_sml1_mario_src(f, oam, count, dx, dy, player);
+    render_overlay_sml1_mario_src(f, oam, count, dx, dy, player,
+                                   emu_mp_player_sprite_tiles(player, 0),
+                                   emu_mp_player_sprite_tiles(player, 1));
 }
 
 void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, 3, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, oam, 3, dx, dy, 0, NULL, NULL);
 }
 
 void render_overlay_sml1_effect_oam(Frame *f, const uint8_t oam[52], int dx, int dy)
 {
     /* Overlay only Player 2's effect pool (slots 7-19); enemy sprites remain
      * authoritative in Player 1's shared world and must not be duplicated. */
-    render_overlay_sml1_mario_src(f, oam, 13, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, oam, 13, dx, dy, 0, NULL, NULL);
 }
 
 void render_build(const Frame *f, int game, int live)
