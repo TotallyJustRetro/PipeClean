@@ -665,10 +665,14 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int enemy_merged = 0;
         int enemy_sound_event = 0;
         int p2_stomp_event = (p2_square_sfx == 0x03);
-        int p2_jump_event = (mp_p2_jump_before == 0 && rd8(0xC207) != 0) ||
-                            (p2_state_before == 0 && (buttons & 0x01u) &&
+        /* Use the actual Player 2 A-button press while grounded as the sound
+         * trigger; the copied game-state byte may already have advanced due
+         * to knockback/falling, which is not a jump input. */
+        int p2_jump_event = (p2_state_before == 0 &&
+                             (buttons & 0x01u) &&
                              !(mp_p2_state.joy_held & 0x01u) &&
-                             mp_p2_state.mario[10] != 0 && rd8(0xC207) != 0);
+                             mp_p2_state.mario[10] != 0) ||
+                            (mp_p2_jump_before == 0 && rd8(0xC207) != 0);
 
         /*
          * A stomp sound belongs to one collision, not every enemy whose AI
