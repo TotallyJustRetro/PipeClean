@@ -794,7 +794,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t square_request = 0;
         if (coins_after != coins_before) square_request = 0x05; /* SFX_COIN */
         else if (enemy_sound_event) square_request = 0x03; /* SFX_STOMP */
-        else if (p1_square_sfx_before == 0 && p2_square_sfx) square_request = p2_square_sfx;
+        else if (p1_square_sfx_before == 0 && p2_square_sfx && p2_square_sfx != 0x01)
+            square_request = p2_square_sfx; /* Keep ROM jump SFX out; use the custom sound instead. */
         /* Jump sound is synthesized by PipeClean and triggered from the frame flag. */
         mp_queue_sfx(0xDFE0, &mp_pending_square_sfx, square_request);
 
