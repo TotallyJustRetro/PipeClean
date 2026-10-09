@@ -156,6 +156,10 @@ typedef struct {
 static int mp_active;
 static int mp_game = GAME_SML;
 static MpSml2Player mp_sml2_players[MAX_MP_PLAYERS];
+/* Exact visible OAM pieces captured from the active SML2 character mapping.
+ * Kept separately so multiplayer save-state layouts remain backward compatible. */
+static uint8_t mp_sml2_render_oam[MAX_MP_PLAYERS][MP_MAX_OAM_SPRITES * 4];
+static uint8_t mp_sml2_render_oam_count[MAX_MP_PLAYERS];
 static int mp_sml2_initialized;
 static unsigned mp_sml2_stable_frames;
 static uint8_t mp_sml2_stable_level;
@@ -857,8 +861,6 @@ static void mp_sml2_capture_oam(uint8_t out[16])
 {
     memset(out, 0, 16);
     int bx = rd8(0xA23C), by = rd8(0xA23B);
-    /* SML2 builds Mario from 8x8 OAM pieces; LCDC bit 2 must not change
-     * the spacing used to find those pieces in the shared OAM table. */
     const int sy = 8;
     uint8_t used[40] = {0};
     for (int slot = 0; slot < 4; slot++) {
@@ -870,24 +872,58 @@ static void mp_sml2_capture_oam(uint8_t out[16])
             if (used[i]) continue;
             int y = oam[i * 4], x = oam[i * 4 + 1];
             if (!y || y >= 160 || !x || x >= 168) continue;
-            /* SML2's cached screen coordinates can refer to the sprite's
-             * logical origin, while OAM uses the Game Boy's +8/+16 bias.
-             * Score both conventions so animation/layout differences don't
-             * make a valid player piece disappear. */
             int sx0 = mp_sml2_distance((uint8_t)x, tx);
             int sy0 = mp_sml2_distance((uint8_t)y, ty);
             int sx1 = mp_sml2_distance((uint8_t)x, tx + 8);
             int sy1 = mp_sml2_distance((uint8_t)y, ty + 16);
-            int score0 = sx0 + sy0;
-            int score1 = sx1 + sy1;
+            int score0 = sx0 + sy0, score1 = sx1 + sy1;
             int score = score0 < score1 ? score0 : score1;
             if (score < best_score) { best_score = score; best = i; }
         }
-        /* Allow small animation offsets but avoid distant unrelated sprites. */
         if (best < 0 || best_score > 12) continue;
         used[best] = 1;
         memcpy(&out[slot * 4], &oam[best * 4], 4);
     }
+}
+
+/* SML2's player renderer indexes a pointer table at $4000 in ROM bank 1.
+ * Decode that exact mapping (Y offset, X offset, tile, attributes) and match
+ * its pieces against hardware OAM, rather than assuming every pose is a 2x2. */
+static int mp_sml2_capture_mapping_oam(uint8_t mapping,
+                                       uint8_t out[MP_MAX_OAM_SPRITES * 4])
+{
+    memset(out, 0, MP_MAX_OAM_SPRITES * 4);
+    if (mapping >= 0xF2) return 0; /* 242 pointers occupy $4000-$41E3. */
+
+    uint16_t pointer_address = (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
+    uint8_t lo = cart_rom_read_bank(1, pointer_address);
+    uint8_t hi = cart_rom_read_bank(1, (uint16_t)(pointer_address + 1u));
+    uint16_t map = (uint16_t)(lo | ((uint16_t)hi << 8));
+    if (map < 0x41E4 || map >= 0x8000) return 0;
+
+    int base_x = rd8(0xA23C), base_y = rd8(0xA23B);
+    uint8_t used[40] = {0};
+    int count = 0;
+    for (int entry = 0; entry < MP_MAX_OAM_SPRITES; entry++) {
+        uint8_t dy = cart_rom_read_bank(1, map++);
+        if (dy == 0x80) break;
+        uint8_t dx = cart_rom_read_bank(1, map++);
+        uint8_t tile = cart_rom_read_bank(1, map++);
+        (void)cart_rom_read_bank(1, map++); /* Attributes can be toggled at runtime. */
+        uint8_t want_y = (uint8_t)(base_y + dy);
+        uint8_t want_x = (uint8_t)(base_x + dx);
+        for (int i = 0; i < 40; i++) {
+            if (used[i]) continue;
+            const uint8_t *src = &oam[i * 4];
+            if (src[0] != want_y || src[1] != want_x || src[2] != tile) continue;
+            memcpy(&out[count * 4], src, 4);
+            used[i] = 1;
+            count++;
+            break;
+        }
+        if (count >= MP_MAX_OAM_SPRITES) break;
+    }
+    return count;
 }
 
 static void mp_sml2_save_player(MpSml2Player *p)
