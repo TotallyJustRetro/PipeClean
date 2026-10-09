@@ -158,7 +158,7 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->p3_color = LUIGI_BLUE;
     c->p4_color = LUIGI_YELLOW;
     c->multiplayer_players = 2;
-    if (game == GAME_SML) {
+    if (game == GAME_SML || game == GAME_SML2) {
         snprintf(c->p2_name, sizeof c->p2_name, "Luigi");
         snprintf(c->p3_name, sizeof c->p3_name, "Bunzo");
         snprintf(c->p4_name, sizeof c->p4_name, "Florbo");
