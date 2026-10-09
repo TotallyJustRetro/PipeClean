@@ -21,6 +21,7 @@ typedef struct {
     uint8_t p2_sound_event;       /* P2 triggered a one-shot interaction SFX */
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
+    uint8_t tiles_cgb1[0x1800]; /* CGB VRAM bank 1 for color-mode sprite overlays. */
     uint64_t seq;
     int lcd_on;
 } Frame;
