@@ -141,7 +141,24 @@ typedef struct {
     uint8_t pending_square_sfx, pending_noise_sfx;
 } MpExtraPlayer;
 
+/* SML2 keeps Mario's motion/animation state in cartridge RAM, not SML1's
+ * work-RAM structure. Preserve the known character block and movement scratch. */
+typedef struct {
+    uint8_t ram[0x54]; /* sparse whitelist only; not copied as one RAM block */
+    uint8_t keys_held, keys_pressed;
+    uint8_t h_c0, h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7;
+    uint8_t oam[16];
+    uint16_t invulnerability_frames;
+    uint8_t lives; /* BCD at A22C */
+    uint8_t spawned, respawn_requested, previous_a, sfx_events;
+} MpSml2Player;
+
 static int mp_active;
+static int mp_game = GAME_SML;
+static MpSml2Player mp_sml2_players[MAX_MP_PLAYERS];
+static int mp_sml2_initialized;
+static uint8_t mp_sml2_map_before[0x1800];
+static uint8_t mp_sml2_map_after[0x1800];
 static uint8_t mp_buttons, mp_dpad;
 static int mp_ready;
 static int mp_player_count = 2;
@@ -195,6 +212,19 @@ typedef struct {
     uint8_t p2_a_was_down;
     uint8_t pending_square_sfx, pending_noise_sfx;
     MpExtraPlayer extra[MAX_MP_PLAYERS - 2];
+} MpStateExtraV6;
+
+typedef struct {
+    MpPlayerState p2;
+    uint8_t p2_lives;
+    uint8_t p2_spawned;
+    uint16_t p2_invulnerability_frames;
+    uint8_t p2_last_oam[16];
+    uint8_t p2_a_was_down;
+    uint8_t pending_square_sfx, pending_noise_sfx;
+    MpExtraPlayer extra[MAX_MP_PLAYERS - 2];
+    MpSml2Player sml2[MAX_MP_PLAYERS];
+    uint8_t sml2_initialized;
 } MpStateExtra;
 
 typedef struct {
@@ -206,7 +236,7 @@ typedef struct {
 } MpStateExtraV5;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 6u
+#define EMU_STATE_VERSION 7u
 #define EMU_STATE_FLAG_MP 1u
 
 static uint8_t *rewind_data;
@@ -225,6 +255,7 @@ static void mp_capture_mp_player_data(Frame *frame);
 static void rewind_free(void);
 static void rewind_init(void);
 static int emu_start_internal(int force_interp, int reset);
+static void mp_sml2_capture_frame(Frame *frame);
 
 static int mp_bcd_to_int(uint8_t b)
 {
@@ -659,6 +690,10 @@ static void mp_capture_mp_player_data(Frame *frame)
 void emu_mp_frame_refresh(Frame *frame)
 {
     if (!mp_ready || !frame) return;
+    if (mp_game == GAME_SML2) {
+        mp_sml2_capture_frame(frame);
+        return;
+    }
     mp_capture_frame(frame, 0);
     if (mp_p2_spawned && mp_p2_lives > 0) {
         memcpy(frame->mario_oam2, mp_p2_state.mario_oam, sizeof frame->mario_oam2);
@@ -669,7 +704,8 @@ void emu_mp_frame_refresh(Frame *frame)
 
 int emu_mp_begin(void)
 {
-    if (thr || mp_ready || rom_loaded_game() != GAME_SML) return -1;
+    mp_game = rom_loaded_game();
+    if (thr || mp_ready || (mp_game != GAME_SML && mp_game != GAME_SML2)) return -1;
     if (!fmx) fmx = SDL_CreateMutex();
     gb_reset();
     if (save_path[0]) cart_load_save(save_path);
@@ -682,7 +718,7 @@ int emu_mp_begin(void)
      */
     memset(&mp_p2_state, 0, sizeof mp_p2_state);
     memset(mp_extra_players, 0, sizeof mp_extra_players);
-    mp_player_count = settings.g[GAME_SML].multiplayer_players;
+    mp_player_count = settings.g[mp_game].multiplayer_players;
     if (mp_player_count < 2) mp_player_count = 2;
     if (mp_player_count > MAX_MP_PLAYERS) mp_player_count = MAX_MP_PLAYERS;
     mp_current_player = 0;
@@ -692,6 +728,18 @@ int emu_mp_begin(void)
     mp_pending_square_sfx = mp_pending_noise_sfx = 0;
     mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     mp_p2_lives = mp_p1_lives_seen;
+    memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    mp_sml2_initialized = 0;
+    if (mp_game == GAME_SML2) {
+        mp_vblank_waiting = 0;
+        gb_mp_vblank_watch = 0;
+        mp_frame_out = NULL;
+        mp_audio_out = NULL;
+        mp_audio_max = mp_audio_n = 0;
+        mp_ready = 1;
+        rewind_init();
+        return 0;
+    }
     for (int player = 2; player < MAX_MP_PLAYERS; player++)
         mp_extra_players[player - 2].lives = mp_p1_lives_seen;
     mp_vblank_life_event = 0;
@@ -712,6 +760,266 @@ int emu_mp_begin(void)
 
     mp_ready = 1;
     rewind_init();
+    return 0;
+}
+
+
+static int mp_sml2_bcd_to_int(uint8_t b)
+{
+    return ((b >> 4) & 0x0F) * 10 + (b & 0x0F);
+}
+
+static int mp_sml2_private_addr(unsigned address)
+{
+    /* Character movement/animation addresses identified from the SML2
+     * disassembly. Do not copy adjacent enemy, level or timer RAM. */
+    switch (address) {
+    case 0xA200: case 0xA201: case 0xA202:
+    case 0xA20C: case 0xA20D: case 0xA20E:
+    case 0xA214: case 0xA215: case 0xA216: case 0xA217:
+    case 0xA219: case 0xA220: case 0xA221: case 0xA222:
+    case 0xA227: case 0xA228: case 0xA229: case 0xA22A:
+    case 0xA22B: case 0xA22C: case 0xA23B: case 0xA23C:
+    case 0xA25A: case 0xA25C: case 0xA268: case 0xA285:
+    case 0xA291: case 0xA2B2:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int mp_sml2_distance(uint8_t a, int b)
+{
+    int d = abs((int)a - (b & 0xFF));
+    return d > 128 ? 256 - d : d;
+}
+
+static void mp_sml2_capture_oam(uint8_t out[16])
+{
+    memset(out, 0, 16);
+    int bx = rd8(0xA23C), by = rd8(0xA23B);
+    int sy = (ppu_read(0x40) & 0x04) ? 16 : 8;
+    uint8_t used[40] = {0};
+    for (int slot = 0; slot < 4; slot++) {
+        int tx = bx + ((slot & 1) ? 8 : 0);
+        int ty = by + ((slot & 2) ? sy : 0);
+        int best = -1, best_score = 1000;
+        for (int i = 0; i < 40; i++) {
+            if (used[i]) continue;
+            int y = oam[i * 4], x = oam[i * 4 + 1];
+            if (!y || y >= 160 || !x || x >= 168) continue;
+            int score = mp_sml2_distance((uint8_t)x, tx) +
+                        mp_sml2_distance((uint8_t)y, ty);
+            if (score < best_score) { best_score = score; best = i; }
+        }
+        if (best < 0 || best_score > 8) continue;
+        used[best] = 1;
+        memcpy(&out[slot * 4], &oam[best * 4], 4);
+    }
+}
+
+static void mp_sml2_save_player(MpSml2Player *p)
+{
+    if (!p) return;
+    for (unsigned a = 0xA200; a <= 0xA253; a++)
+        if (mp_sml2_private_addr(a)) p->ram[a - 0xA200] = rd8((uint16_t)a);
+    p->keys_held = rd8(0xFF80); p->keys_pressed = rd8(0xFF81);
+    p->h_c0 = rd8(0xFFC0); p->h_c1 = rd8(0xFFC1);
+    p->h_c2 = rd8(0xFFC2); p->h_c3 = rd8(0xFFC3);
+    p->h_c4 = rd8(0xFFC4); p->h_c5 = rd8(0xFFC5);
+    p->h_c6 = rd8(0xFFC6); p->h_c7 = rd8(0xFFC7);
+    p->lives = rd8(0xA22C);
+    p->spawned = 1;
+    mp_sml2_capture_oam(p->oam);
+}
+
+static void mp_sml2_load_player(const MpSml2Player *p)
+{
+    if (!p) return;
+    for (unsigned a = 0xA200; a <= 0xA253; a++)
+        if (mp_sml2_private_addr(a)) wr8((uint16_t)a, p->ram[a - 0xA200]);
+    wr8(0xFF80, p->keys_held); wr8(0xFF81, p->keys_pressed);
+    wr8(0xFFC0, p->h_c0); wr8(0xFFC1, p->h_c1);
+    wr8(0xFFC2, p->h_c2); wr8(0xFFC3, p->h_c3);
+    wr8(0xFFC4, p->h_c4); wr8(0xFFC5, p->h_c5);
+    wr8(0xFFC6, p->h_c6); wr8(0xFFC7, p->h_c7);
+}
+
+static void mp_sml2_offset_player(MpSml2Player *p, int dx)
+{
+    if (!p) return;
+    p->ram[0x27] = (uint8_t)(p->ram[0x27] + dx);
+    p->ram[0x3C] = (uint8_t)(p->ram[0x3C] + dx);
+    p->h_c2 = (uint8_t)(p->h_c2 + dx);
+    p->h_c5 = (uint8_t)(p->h_c5 + dx);
+    p->ram[0x00] = 0x80;
+    p->previous_a = 0;
+    p->invulnerability_frames = 90;
+}
+
+static int mp_sml2_gameplay_active(void)
+{
+    return (rd8(0xA254) != 0 || rd8(0xA255) != 0) &&
+           rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
+}
+
+static void mp_sml2_capture_frame(Frame *frame)
+{
+    if (!frame) return;
+    mp_capture_frame(frame, 0);
+    memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
+    frame->mp_player_count = (uint8_t)mp_player_count;
+    frame->player_x = rd8(0xA227);
+    frame->player_y = rd8(0xA229);
+    frame->scroll_x = rd8(0xA2B1);
+    frame->game_state = 0;
+    frame->p1_lives = rd8(0xA22C);
+    frame->mp_player_lives[0] = (uint8_t)mp_sml2_bcd_to_int(rd8(0xA22C));
+    frame->mp_player_game_state[0] = 0;
+    frame->mp_player_visible[0] = 1;
+    frame->mp_player_blink_hidden[0] = 0;
+    mp_sml2_capture_oam(frame->mario_oam);
+    memcpy(frame->mp_player_oam[0], frame->mario_oam, sizeof frame->mario_oam);
+    memset(frame->mp_player_sfx_events, 0, sizeof frame->mp_player_sfx_events);
+    memset(frame->mp_player_sound_event, 0, sizeof frame->mp_player_sound_event);
+    for (int player = 1; player < MAX_MP_PLAYERS; player++) {
+        MpSml2Player *p = &mp_sml2_players[player];
+        int lives = mp_sml2_bcd_to_int(p->lives);
+        frame->mp_player_lives[player] = (uint8_t)lives;
+        frame->mp_player_game_state[player] = 0;
+        frame->mp_player_visible[player] = (uint8_t)(p->spawned && lives > 0);
+        frame->mp_player_blink_hidden[player] = (uint8_t)(
+            p->invulnerability_frames > 0 && ((frame_count / 4) & 1));
+        memcpy(frame->mp_player_oam[player], p->oam, sizeof p->oam);
+        frame->mp_player_sfx_events[player] = p->sfx_events;
+    }
+    frame->p1_lives = rd8(0xA22C);
+    frame->p2_lives = frame->mp_player_lives[1];
+    frame->p2_game_state = 0;
+    frame->p2_visible = frame->mp_player_visible[1];
+    frame->p2_blink_hidden = frame->mp_player_blink_hidden[1];
+    memcpy(frame->mario_oam2, frame->mp_player_oam[1], sizeof frame->mario_oam2);
+    frame->p2_sfx_events = mp_current_player > 0
+        ? mp_sml2_players[mp_current_player].sfx_events : 0;
+    memset(frame->p2_projectile_oam, 0, sizeof frame->p2_projectile_oam);
+    memset(frame->p2_effect_oam, 0, sizeof frame->p2_effect_oam);
+}
+
+static void mp_sml2_spawn_player(int player)
+{
+    if (player < 1 || player >= MAX_MP_PLAYERS) return;
+    MpSml2Player *p = &mp_sml2_players[player];
+    uint8_t lives = p->lives;
+    *p = mp_sml2_players[0];
+    mp_sml2_offset_player(p, 24 * player);
+    if (lives) p->lives = lives;
+    p->ram[0x2C] = p->lives;
+    p->spawned = 1;
+    p->respawn_requested = 0;
+    p->sfx_events = 0;
+}
+
+static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
+                            Frame *frame, int16_t *audio, int audio_max)
+{
+    if (!mp_ready || player < 0 || player >= mp_player_count || !frame) return -1;
+    if (player == 0) {
+        if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+        gb_set_input(buttons, dpad);
+        mp_vblank_waiting = 0;
+        gb_mp_vblank_watch = 0;
+        mp_active = 1;
+        int status = setjmp(stop_jmp);
+        if (status == 0) run_core(0);
+        mp_active = 0;
+        if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
+        int n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
+        if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+        mp_sml2_save_player(&mp_sml2_players[0]);
+        if (mp_sml2_gameplay_active()) {
+            if (!mp_sml2_initialized) {
+                for (int i = 1; i < mp_player_count; i++) mp_sml2_spawn_player(i);
+                mp_sml2_initialized = 1;
+            }
+        } else {
+            mp_sml2_initialized = 0;
+            for (int i = 1; i < MAX_MP_PLAYERS; i++) mp_sml2_players[i].spawned = 0;
+        }
+        mp_sml2_capture_frame(frame);
+        return n;
+    }
+
+    if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+    MpSml2Player *p = &mp_sml2_players[player];
+    p->sfx_events = 0;
+    if (!mp_sml2_initialized) {
+        mp_sml2_capture_frame(frame);
+        return 0;
+    }
+    if (p->respawn_requested) {
+        uint8_t lives = p->lives ? p->lives : mp_sml2_players[0].lives;
+        mp_sml2_spawn_player(player);
+        p->lives = lives;
+        p->ram[0x2C] = lives;
+        p->sfx_events |= P2_SFX_EVENT_RESPAWN;
+    }
+    if (!p->spawned) {
+        mp_sml2_capture_frame(frame);
+        return 0;
+    }
+
+    mp_sml2_load_player(p);
+    uint8_t old_a = p->previous_a;
+    uint8_t old_ground = rd8(0xA214);
+    uint8_t old_air = rd8(0xA215);
+    uint8_t old_power = rd8(0xA216);
+    uint8_t old_lives = rd8(0xA22C);
+    uint8_t coins_low = rd8(0xA262), coins_high = rd8(0xA263);
+    uint8_t kills = rd8(0xA28D);
+    uint8_t scroll = rd8(0xA2B1);
+    for (int i = 0; i < 0x1800; i++) mp_sml2_map_before[i] = cart_ram_read((uint16_t)(0xA800 + i));
+    gb_set_input(buttons, dpad);
+    mp_vblank_waiting = 0;
+    gb_mp_vblank_watch = 0;
+    mp_active = 1;
+    int status = setjmp(stop_jmp);
+    if (status == 0) run_core(0);
+    mp_active = 0;
+    if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
+    uint8_t coins_low_after = rd8(0xA262), coins_high_after = rd8(0xA263);
+    uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xA2B1);
+    for (int i = 0; i < 0x1800; i++) mp_sml2_map_after[i] = cart_ram_read((uint16_t)(0xA800 + i));
+    mp_sml2_save_player(p);
+    p->previous_a = (uint8_t)((buttons & 0x01u) != 0);
+    if ((buttons & 0x01u) && !old_a && old_ground && !old_air)
+        p->sfx_events |= P2_SFX_EVENT_JUMP;
+    if (old_power != rd8(0xA216))
+        p->sfx_events |= rd8(0xA216) > old_power ? P2_SFX_EVENT_POWER_UP : P2_SFX_EVENT_POWER_DOWN;
+    if (old_lives != p->lives &&
+        mp_sml2_bcd_to_int(p->lives) < mp_sml2_bcd_to_int(old_lives)) {
+        p->sfx_events |= P2_SFX_EVENT_DIE;
+        p->spawned = 0;
+        if (mp_sml2_bcd_to_int(p->lives) > 0) p->respawn_requested = 1;
+    }
+    if ((buttons & 0x02u) && rd8(0xA216) == 3)
+        p->sfx_events |= P2_SFX_EVENT_FIREBALL;
+    int map_changed = scroll_after == scroll &&
+                      memcmp(mp_sml2_map_before, mp_sml2_map_after, sizeof mp_sml2_map_before) != 0;
+
+    if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+    if (map_changed) {
+        for (int i = 0; i < 0x1800; i++)
+            if (mp_sml2_map_before[i] != mp_sml2_map_after[i])
+                wr8((uint16_t)(0xA800 + i), mp_sml2_map_after[i]);
+    }
+    if (coins_low_after != coins_low) wr8(0xA262, coins_low_after);
+    if (coins_high_after != coins_high) wr8(0xA263, coins_high_after);
+    if (kills_after != kills) wr8(0xA28D, kills_after);
+    if (map_changed || coins_low_after != coins_low || coins_high_after != coins_high || kills_after != kills) {
+        if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+    }
+    if (p->invulnerability_frames > 0) p->invulnerability_frames--;
+    mp_sml2_capture_frame(frame);
     return 0;
 }
 
@@ -1241,7 +1549,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         return -1;
     mp_current_player = player;
     int result;
-    if (player <= 1) {
+    if (mp_game == GAME_SML2) {
+        result = emu_mp_step_sml2(player, buttons, dpad, frame, audio, audio_max);
+    } else if (player <= 1) {
         result = emu_mp_step_internal(player, buttons, dpad, frame, audio, audio_max);
     } else {
         MpExtraPlayer saved;
@@ -1252,9 +1562,14 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_extra_to_working(&saved);
     }
     if (result >= 0) {
-        mp_capture_mp_player_data(frame);
-        frame->mp_player_sfx_events[player] = frame->p2_sfx_events;
-        frame->mp_player_sound_event[player] = frame->p2_sound_event;
+        if (mp_game == GAME_SML2) {
+            mp_sml2_capture_frame(frame);
+            frame->mp_player_sfx_events[player] = frame->p2_sfx_events;
+        } else {
+            mp_capture_mp_player_data(frame);
+            frame->mp_player_sfx_events[player] = frame->p2_sfx_events;
+            frame->mp_player_sound_event[player] = frame->p2_sound_event;
+        }
     }
     mp_current_player = 0;
     return result;
@@ -1263,6 +1578,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 void emu_mp_request_respawn(int player)
 {
     if (!mp_ready || player < 1 || player >= mp_player_count) return;
+    if (mp_game == GAME_SML2) {
+        if (mp_sml2_initialized) mp_sml2_players[player].respawn_requested = 1;
+        return;
+    }
     if (player == 1) {
         if (mp_p2_spawned) mp_p2_respawn_requested = 1;
         return;
@@ -1275,6 +1594,9 @@ void emu_mp_end(void)
 {
     if (mp_ready && save_path[0]) cart_write_save(save_path);
     mp_active = 0;
+    mp_game = GAME_SML;
+    mp_sml2_initialized = 0;
+    memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     mp_ready = 0;
     mp_player_count = 2;
     mp_current_player = 0;
@@ -1404,6 +1726,8 @@ static int emu_state_save_blob(void *dst, size_t n)
         memcpy(x.extra, mp_extra_players, sizeof x.extra);
         x.pending_square_sfx = mp_pending_square_sfx;
         x.pending_noise_sfx = mp_pending_noise_sfx;
+        memcpy(x.sml2, mp_sml2_players, sizeof x.sml2);
+        x.sml2_initialized = (uint8_t)mp_sml2_initialized;
         memcpy((uint8_t *)dst + sizeof h + h.core_bytes, &x, sizeof x);
     }
     return 0;
@@ -1414,14 +1738,15 @@ static int emu_state_load_blob(const void *src, size_t n)
     if (!src || n < sizeof(EmuStateHeader)) return -1;
     EmuStateHeader h;
     memcpy(&h, src, sizeof h);
-    if (h.magic != EMU_STATE_MAGIC || (h.version != EMU_STATE_VERSION && h.version != 5u)) return -1;
+    if (h.magic != EMU_STATE_MAGIC || (h.version != EMU_STATE_VERSION && h.version != 6u && h.version != 5u)) return -1;
     if ((int)h.game_id != rom_loaded_game()) return -1;
     int mp_context = mp_ready || mp_active;
     if (((h.flags & EMU_STATE_FLAG_MP) != 0) != (mp_context != 0)) return -1;
     if (h.core_bytes != gb_state_data_size() || h.extra_bytes > sizeof(MpStateExtra)) return -1;
     if (sizeof h + h.core_bytes + h.extra_bytes > n) return -1;
     if (mp_context) {
-        size_t expected = h.version == 5u ? sizeof(MpStateExtraV5) : sizeof(MpStateExtra);
+        size_t expected = h.version == 5u ? sizeof(MpStateExtraV5) :
+                           (h.version == 6u ? sizeof(MpStateExtraV6) : sizeof(MpStateExtra));
         if (h.extra_bytes != expected) return -1;
     } else if (h.extra_bytes != 0) return -1;
     if (gb_state_load((const uint8_t *)src + sizeof h, h.core_bytes)) return -1;
@@ -1438,6 +1763,22 @@ static int emu_state_load_blob(const void *src, size_t n)
             mp_pending_square_sfx = old.pending_square_sfx;
             mp_pending_noise_sfx = old.pending_noise_sfx;
             memset(mp_extra_players, 0, sizeof mp_extra_players);
+            memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+            mp_sml2_initialized = 0;
+        } else if (h.version == 6u) {
+            MpStateExtraV6 old;
+            memcpy(&old, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof old);
+            mp_p2_state = old.p2;
+            mp_p2_lives = old.p2_lives;
+            mp_p2_spawned = old.p2_spawned != 0;
+            mp_p2_invulnerability_frames = old.p2_invulnerability_frames;
+            memcpy(mp_p2_last_oam, old.p2_last_oam, sizeof mp_p2_last_oam);
+            mp_p2_a_was_down = old.p2_a_was_down;
+            memcpy(mp_extra_players, old.extra, sizeof mp_extra_players);
+            mp_pending_square_sfx = old.pending_square_sfx;
+            mp_pending_noise_sfx = old.pending_noise_sfx;
+            memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+            mp_sml2_initialized = 0;
         } else {
             MpStateExtra x;
             memcpy(&x, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof x);
@@ -1448,6 +1789,8 @@ static int emu_state_load_blob(const void *src, size_t n)
             memcpy(mp_p2_last_oam, x.p2_last_oam, sizeof mp_p2_last_oam);
             mp_p2_a_was_down = x.p2_a_was_down;
             memcpy(mp_extra_players, x.extra, sizeof mp_extra_players);
+            memcpy(mp_sml2_players, x.sml2, sizeof mp_sml2_players);
+            mp_sml2_initialized = x.sml2_initialized != 0;
             mp_pending_square_sfx = x.pending_square_sfx;
             mp_pending_noise_sfx = x.pending_noise_sfx;
         }
@@ -1670,29 +2013,24 @@ void frame_hook(void)
         return;
     }
     if (mp_active) {
-        /*
-         * PPU reaches frame_hook at the VBlank boundary, before the SML1
-         * VBlank interrupt executes. Let that ISR run to completion so
-         * Call_1B86, UpdateLives, DMA and the rest of the original frame are
-         * processed. gb_mp_vblank_done() yields immediately after RETI.
-         */
         if (!mp_vblank_waiting) {
             mp_vblank_waiting = 1;
-            mp_vblank_life_event = rd8(0xC0A3);
-            mp_vblank_collision = rd8(0xFFEE);
-            mp_vblank_collision_addr = (uint16_t)(((uint16_t)rd8(0xFFEF) << 8) | rd8(0xFFF0));
-            mp_vblank_square_sfx = rd8(0xDFE0);
-            mp_vblank_noise_sfx = rd8(0xDFF8);
-            mp_vblank_floaty_control = rd8(0xFFED);
-            mp_vblank_floaty_x = rd8(0xFFEB);
-            mp_vblank_floaty_y = rd8(0xFFEC);
-            mp_vblank_collision_before = 0;
-            if (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
-                mp_vblank_collision_before = rd8(mp_vblank_collision_addr);
+            if (mp_game == GAME_SML) {
+                mp_vblank_life_event = rd8(0xC0A3);
+                mp_vblank_collision = rd8(0xFFEE);
+                mp_vblank_collision_addr = (uint16_t)(((uint16_t)rd8(0xFFEF) << 8) | rd8(0xFFF0));
+                mp_vblank_square_sfx = rd8(0xDFE0);
+                mp_vblank_noise_sfx = rd8(0xDFF8);
+                mp_vblank_floaty_control = rd8(0xFFED);
+                mp_vblank_floaty_x = rd8(0xFFEB);
+                mp_vblank_floaty_y = rd8(0xFFEC);
+                mp_vblank_collision_before = 0;
+                if (mp_vblank_collision_addr >= 0x9800 && mp_vblank_collision_addr < 0x9C00)
+                    mp_vblank_collision_before = rd8(mp_vblank_collision_addr);
+            }
             gb_mp_vblank_arm();
             return;
         }
-
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
         mp_audio_n = 0;
