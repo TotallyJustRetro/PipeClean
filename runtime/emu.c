@@ -613,6 +613,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                 if (mp_p2_lives == 0) mp_p2_lives = 1;
             }
             mp_respawn_p2_from_p1();
+            frame->p2_sfx_events |= P2_SFX_EVENT_RESPAWN;
         }
         if (!mp_p2_spawned || mp_p2_lives == 0) {
             memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
@@ -745,7 +746,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         if (p2_sfx_events & P2_SFX_EVENT_DIE)
             p2_sfx_events &= (uint8_t)~P2_SFX_EVENT_POWER_DOWN;
-        frame->p2_sfx_events = p2_sfx_events;
+        frame->p2_sfx_events |= p2_sfx_events;
 
         /*
          * A stomp sound belongs to one collision, not every enemy whose AI
