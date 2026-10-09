@@ -3,7 +3,6 @@
 #include "cart.h"
 #include "patch.h"
 #include "settings.h"
-#include "game_info.h"
 #include "recomp_guard.h"
 #include <stdio.h>
 #include <string.h>
