@@ -37,6 +37,9 @@ void gb_mp_vblank_arm(void)
 
 void gb_serial_hook(void (*fn)(uint8_t)) { serial_cb = fn; }
 
+static GbCpuFaultHook cpu_fault_hook;
+void gb_set_cpu_fault_hook(GbCpuFaultHook hook) { cpu_fault_hook = hook; }
+
 /* ------------------------------------------------------------------ */
 static uint8_t joyp_read(void)
 {
@@ -293,7 +296,9 @@ void cpu_service_irq(void)
 void cpu_lockup(uint8_t op, uint16_t pc)
 {
     fprintf(stderr, "CPU locked up: illegal opcode %02X at %04X\n", op, pc);
-    fflush(stdout);
+    fflush(stderr);
+    if (cpu_fault_hook) cpu_fault_hook(op, pc);
+    /* Keep the CLI fail-fast when no emulator run loop owns this CPU. */
     exit(2);
 }
 
