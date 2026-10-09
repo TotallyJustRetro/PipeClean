@@ -10,6 +10,7 @@ void render_build(const Frame *f, int game, int live);
 void render_overlay_sml1_mario(Frame *f, int dx, int dy);
 void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int dy);
 void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int dy);
+void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy);
 /* Where the picture goes in a W x H area for the chosen window shape and scaling. */
 void render_fit(int W, int H, int aspect, int scaling, SDL_Rect *out);
 /* Draw the picture (with the screen filters) into r. */
