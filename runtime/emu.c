@@ -862,11 +862,8 @@ static void mp_sml2_capture_oam(uint8_t out[16])
     const int sy = 8;
     uint8_t used[40] = {0};
     for (int slot = 0; slot < 4; slot++) {
-        /* Game Boy OAM stores sprite coordinates with hardware offsets:
-         * OAM X is screen X + 8 and OAM Y is screen Y + 16. A23C/A23B
-         * are SML2's screen-space character coordinates, not raw OAM bytes. */
-        int tx = bx + 8 + ((slot & 1) ? 8 : 0);
-        int ty = by + 16 + ((slot & 2) ? sy : 0);
+        int tx = bx + ((slot & 1) ? 8 : 0);
+        int ty = by + ((slot & 2) ? sy : 0);
         int best = -1, best_score = 1000;
         for (int i = 0; i < 40; i++) {
             if (used[i]) continue;
