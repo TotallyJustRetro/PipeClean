@@ -482,7 +482,10 @@ static void sml1_draw_coop_hud(const Frame *f)
 
     ui_shadow(rx, y, w, h, 10, 4, RGBA(0, 0, 0, 110));
     ui_rrect(rx, y, w, h, 10, RGBA(22, 25, 34, 235));
-    ui_text(F_BOLD, 14, rx + 12, y + 5, C_OK, "P2  LUIGI");
+    char p2_title[64];
+    const char *p2_name = settings.g[GAME_SML].p2_name[0] ? settings.g[GAME_SML].p2_name : "Luigi";
+    snprintf(p2_title, sizeof p2_title, "P2  %.24s", p2_name);
+    ui_text_fit(F_BOLD, 14, rx + 12, y + 5, w - 58, render_sml1_luigi_color(), p2_title);
     snprintf(lives, sizeof lives, "x %d", f->p2_lives);
     ui_text_r(F_BOLD, 16, rx + w - 12, y + 3, C_TEXT, lives);
 
@@ -676,8 +679,10 @@ static int play_multiplayer_sml1(int g)
         ui_begin(W, H, dt);
         if (have) {
             sml1_draw_player_tag(f, f->mario_oam, &game_rect, "P1", C_ACCENT);
-            if (f->p2_visible && !f->p2_blink_hidden)
-                sml1_draw_player_tag(f, p2f->mario_oam2, &game_rect, "P2", C_OK);
+            if (f->p2_visible && !f->p2_blink_hidden) {
+                const char *p2_name = settings.g[GAME_SML].p2_name[0] ? settings.g[GAME_SML].p2_name : "Luigi";
+                sml1_draw_player_tag(f, p2f->mario_oam2, &game_rect, p2_name, render_sml1_luigi_color());
+            }
             sml1_draw_coop_hud(f);
         }
         if (paused) {
