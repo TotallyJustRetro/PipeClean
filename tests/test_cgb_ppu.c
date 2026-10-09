@@ -23,6 +23,10 @@ int main(void)
     ppu_vram_write(0x0000, 0x00);
     ppu_vram_write(0x0001, 0xFF);
     ppu_vram_write(0x1800, 0x08);
+    uint8_t bank1_snapshot[0x1800];
+    ppu_vram_bank1_copy(bank1_snapshot);
+    assert(bank1_snapshot[0] == 0x00);
+    assert(bank1_snapshot[1] == 0xFF);
     ppu_vram_bank_write(0);
     set_bg_color(1, 0x001F); /* red */
     set_bg_color(2, 0x03E0); /* green */
