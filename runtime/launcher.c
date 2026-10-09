@@ -35,7 +35,7 @@ static int hack_ok[N_GAMES];
 static Frame prev[N_GAMES];
 static int prev_ok[N_GAMES];
 static int filter_game;                  /* which game the Filters tab previews */
-static int cap_kind, cap_btn, cap_slot;  /* binding capture: 1 = key, 2 = pad */
+static int cap_kind, cap_btn, cap_slot;  /* 1 key, 2 pad, 3 shortcut key, 4 shortcut pad, 5 P2 key, 6 P2 pad */
 static char toast_msg[200];
 static float toast_t;
 static int click_id;
@@ -528,24 +528,50 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
     int pad_device = slot >= 0 && slot < 2 ? c->pad_device[slot] : -1;
     int available = kind != 2 || (pad_device >= 0 && pad_device < pad_count());
     int over = 0;
-    int clicked = available ? clickable(x, y, w, 32, &over) : 0;
+    int clicked = available ? clickable(x, y, w, 28, &over) : 0;
     int active = cap_kind == kind && cap_btn == btn && cap_slot == slot;
     uint32_t fill = !available ? RGBA(255,255,255,3) :
                     (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
-    ui_rrect(x, y, w, 32, 8, fill);
+    ui_rrect(x, y, w, 28, 7, fill);
     char b[48];
     if (!available) {
         snprintf(b, sizeof b, "—");
-        ui_text_c(F_REG, 13, x + w / 2, y + 7, C_DIM, b);
-    } else if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
+        ui_text_c(F_REG, 13, x + w / 2, y + 5, C_DIM, b);
+    } else if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 5, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
     else {
         if (kind == 1) key_code_name(c->key[btn][slot], b, sizeof b); else pad_code_name_device(pad_device, c->pad[btn][slot], b, sizeof b);
         int none = kind == 1 ? !c->key[btn][slot] : c->pad[btn][slot] < 0;
-        ui_text_c(F_REG, 13, x + w / 2, y + 7, none ? C_DIM : C_TEXT, b);
+        ui_text_c(F_REG, 13, x + w / 2, y + 5, none ? C_DIM : C_TEXT, b);
     }
     if (clicked) { cap_kind = kind; cap_btn = btn; cap_slot = slot; }
     if (over && !active && available) ui_hint("Click, then press the key or button you want. Backspace clears, Esc cancels.");
-    else if (!available && ui_hover(x, y, w, 32)) ui_hint("Assign a controller to this player to enable its button bindings.");
+    else if (!available && ui_hover(x, y, w, 28)) ui_hint("Assign a controller to this player to enable its button bindings.");
+}
+
+static void bind_p2_respawn_cell(int g, float x, float y, float w, int kind)
+{
+    GameCfg *c = &settings.g[g];
+    int device = c->pad_device[1];
+    int available = kind != 6 || (device >= 0 && device < pad_count());
+    int over = 0;
+    int clicked = available ? clickable(x, y, w, 28, &over) : 0;
+    int active = cap_kind == kind;
+    ui_rrect(x, y, w, 28, 7, !available ? RGBA(255,255,255,3) :
+             (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN)));
+    char value[48];
+    if (!available) snprintf(value, sizeof value, "—");
+    else if (active) snprintf(value, sizeof value, kind == 5 ? "press a key…" : "press a button…");
+    else if (kind == 5) key_code_name(c->p2_respawn_key, value, sizeof value);
+    else pad_code_name_device(device, c->p2_respawn_pad, value, sizeof value);
+    int none = kind == 5 ? !c->p2_respawn_key : c->p2_respawn_pad < 0;
+    ui_text_c(F_REG, 12, x + w / 2, y + 5,
+              (!available || (none && !active)) ? C_DIM : C_TEXT, value);
+    if (clicked) { cap_kind = kind; cap_btn = 0; cap_slot = 1; }
+    if (over && available && !active)
+        ui_hint(kind == 5 ? "Click, then press the key for respawning Luigi. Backspace clears, Esc cancels."
+                          : "Click, then press a button on Player 2's assigned controller. Backspace clears, Esc cancels.");
+    else if (!available && ui_hover(x, y, w, 28))
+        ui_hint("Assign a controller to Player 2 to bind the Luigi respawn button.");
 }
 
 static void bind_action_cell(int g, float x, float y, float w, int kind, int action)
@@ -686,23 +712,33 @@ static void sub_controls(int g, float x, float y)
     ui_text(F_BOLD, 12, x + colx[3] + 10, y + 112, C_MUTED, "Player 1 controller");
     ui_text(F_BOLD, 12, x + colx[4] + 10, y + 112, C_MUTED, "Player 2 controller");
     for (int b = 0; b < N_BTN; b++) {
-        float ry = y + 128 + b * 32;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 32, 8, RGBA(255, 255, 255, 6));
-        ui_text(F_BOLD, 14, x + colx[0], ry + 4, C_TEXT, btn_names[b]);
+        float ry = y + 128 + b * 28;
+        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 28, 7, RGBA(255, 255, 255, 6));
+        ui_text(F_BOLD, 14, x + colx[0], ry + 2, C_TEXT, btn_names[b]);
         bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
         bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
         bind_cell(g, x + colx[3], ry, 150, 2, b, 0);
         bind_cell(g, x + colx[4], ry, 150, 2, b, 1);
     }
-    float by = y + 128 + N_BTN * 32 + 8;
-    if (ui_button(x + 18, by, 170, 36, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controller defaults reset."); }
+    float by = y + 128 + N_BTN * 28 + 4;
+    if (ui_button(x + 18, by, 170, 30, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controller bindings reset."); }
     label(x + 220, by + 8, "Stick dead zone");
     ui_slider(x + 330, by + 7, 220, &settings.pad_deadzone, 5, 80);
     char t[16]; snprintf(t, sizeof t, "%d%%", settings.pad_deadzone); ui_text(F_REG, 13, x + 566, by + 8, C_TEXT, t);
+
+    if (g == GAME_SML) {
+        float ry = by + 38;
+        label(x + 18, ry + 5, "Respawn Luigi");
+        bind_p2_respawn_cell(g, x + 150, ry, 190, 5);
+        bind_p2_respawn_cell(g, x + 470, ry, 190, 6);
+    } else {
+        ui_text(F_REG, 11, x + 18, by + 44, C_DIM, "Luigi respawn binding is only used in SML1 multiplayer.");
+    }
+
     char st[128];
     pad_status(st, sizeof st);
-    ui_text_fit(F_REG, 12, x + 18, by + 46, 770, C_DIM, st);
-    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. For SML1, turn on Local multiplayer to add Player 2 to the same game screen.");
+    ui_text_fit(F_REG, 11, x + 18, by + 72, 770, C_DIM, st);
+    ui_text_fit(F_REG, 11, x + 18, by + 88, 770, C_DIM, "Enable SML1 multiplayer; Player 2 uses Keyboard 2 or the assigned second controller.");
 
     /*
      * Draw the controller menus last so their popups sit above the binding
@@ -1106,7 +1142,7 @@ LauncherResult launcher_frame(float dt)
 
     /* binding capture hint */
     if (cap_kind) {
-        if (cap_kind == 1 || cap_kind == 3) ui_hint("Press a key. Backspace clears the slot, Esc cancels.");
+        if (cap_kind == 1 || cap_kind == 3 || cap_kind == 5) ui_hint("Press a key. Backspace clears the slot, Esc cancels.");
         else ui_hint("Press a controller button or trigger. Esc (keyboard) cancels.");
     }
 
@@ -1128,7 +1164,8 @@ void launcher_event(const SDL_Event *e)
         GameCfg *current = &settings.g[launcher_current_game()];
         if ((cap_kind == 2 && (cap_slot < 0 || cap_slot > 1 ||
                                current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())) ||
-            (cap_kind == 4 && (current->pad_device[0] < 0 || current->pad_device[0] >= pad_count())))
+            (cap_kind == 4 && (current->pad_device[0] < 0 || current->pad_device[0] >= pad_count())) ||
+            (cap_kind == 6 && (current->pad_device[1] < 0 || current->pad_device[1] >= pad_count())))
             cap_kind = 0;
     }
     if (cap_kind) {
@@ -1142,9 +1179,13 @@ void launcher_event(const SDL_Event *e)
             } else if (cap_kind == 3) {
                 c->action_key[cap_btn] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
+            } else if (cap_kind == 5) {
+                c->p2_respawn_key = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
+                cap_kind = 0;
             } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
                 if (cap_kind == 2) c->pad[cap_btn][cap_slot] = -1;
                 else if (cap_kind == 4) c->action_pad[cap_btn] = -1;
+                else if (cap_kind == 6) c->p2_respawn_pad = -1;
                 cap_kind = 0;
             }
         } else if (cap_kind == 2) {
@@ -1153,6 +1194,9 @@ void launcher_event(const SDL_Event *e)
         } else if (cap_kind == 4) {
             int code = pad_capture(c->pad_device[0], e);
             if (code >= 0) { c->action_pad[cap_btn] = code; cap_kind = 0; }
+        } else if (cap_kind == 6) {
+            int code = pad_capture(c->pad_device[1], e);
+            if (code >= 0) { c->p2_respawn_pad = code; cap_kind = 0; }
         }
         return;
     }
