@@ -444,6 +444,7 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     memcpy(f->bgtile, ppu_bgtile, sizeof f->bgtile);
     memcpy(f->sprtile, ppu_sprtile, sizeof f->sprtile);
     memcpy(f->tiles, vram, sizeof f->tiles);
+    ppu_vram_bank1_copy(f->tiles_cgb1);
     memcpy(f->bg_map, &vram[0x1800], sizeof f->bg_map);
     memcpy(f->mario_oam, &oam[0x0C], sizeof f->mario_oam);
     memset(f->mario_oam2, 0, sizeof f->mario_oam2);
