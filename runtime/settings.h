@@ -19,6 +19,7 @@ enum { SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_FULLSCREEN, N_SIZE };
 enum { BTN_A, BTN_B, BTN_SELECT, BTN_START, BTN_RIGHT, BTN_LEFT, BTN_UP, BTN_DOWN, N_BTN };
 enum { LED_OFF, LED_PALETTE, LED_CUSTOM, LED_SCREEN, N_LED };
 enum { LUIGI_GREEN, LUIGI_BLUE, LUIGI_RED, LUIGI_PURPLE, LUIGI_ORANGE, LUIGI_YELLOW, N_LUIGI_COLORS };
+enum { P2_SFX_JUMP, P2_SFX_FIREBALL, P2_SFX_POWER_UP, P2_SFX_POWER_DOWN, P2_SFX_DIE, N_P2_SFX };
 
 typedef struct {
     const char *name;
@@ -43,6 +44,7 @@ typedef struct {
     int p2_color;                        /* LUIGI_* sprite recolor preset */
     int p2_respawn_key;                  /* keyboard key to recover Luigi in SML1 multiplayer */
     int p2_respawn_pad;                  /* button/trigger on Player 2's assigned controller; -1 = unbound */
+    char p2_sfx_path[N_P2_SFX][512];       /* Optional imported sounds; empty = built-in original sound. */
     int state_slot;                      /* save-state slot 0..9 */
     int action_key[N_ACTION];            /* emulator shortcut keyboard bindings */
     int action_pad[N_ACTION];            /* emulator shortcut controller bindings */
