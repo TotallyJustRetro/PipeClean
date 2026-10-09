@@ -800,10 +800,10 @@ static void tab_multiplayer(float x, float y)
                 "Optional custom files; Reset restores PipeClean's built-in sound.");
 
     static const char *p2_sfx_names[N_P2_SFX] = {
-        "Jump", "Fireball", "Power up", "Power down", "Death"
+        "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn"
     };
     for (int i = 0; i < N_P2_SFX; i++) {
-        float ry = y + 332 + i * 33.0f;
+        float ry = y + 326 + i * 29.0f;
         ui_text_fit(F_BOLD, 12, x + 18, ry + 7, 106, C_TEXT, p2_sfx_names[i]);
         ui_text_fit_tail(F_REG, 10, x + 132, ry + 7, 320, C_DIM,
                          c->p2_sfx_path[i][0] ? path_base(c->p2_sfx_path[i]) : "Built-in original sound");
