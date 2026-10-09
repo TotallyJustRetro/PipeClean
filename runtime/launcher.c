@@ -1208,7 +1208,7 @@ LauncherResult launcher_frame(float dt)
     if (ui_mouse.released) click_id = 0;
     settings.last_tab = tab;
     save_timer += dt;
-    if (save_timer > 2.0f && !ui_mouse.down) { save_timer = 0; settings_save(); }
+    if (save_timer > 2.0f && !ui_mouse.down && !multiplayer_name_editing) { save_timer = 0; settings_save(); }
 
     /* pad light follows the tab while in the launcher */
     pad_frame(dt);
