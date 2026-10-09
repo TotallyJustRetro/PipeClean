@@ -130,15 +130,28 @@ typedef struct {
     uint8_t joy_pressed;     /* FF81 */
 } MpPlayerState;
 
+typedef struct {
+    MpPlayerState state;
+    uint8_t lives;
+    uint8_t spawned;
+    uint8_t respawn_requested;
+    uint16_t invulnerability_frames;
+    uint8_t last_oam[16];
+    uint8_t a_was_down;
+} MpExtraPlayer;
+
 static int mp_active;
 static uint8_t mp_buttons, mp_dpad;
 static int mp_ready;
+static int mp_player_count = 2;
+static int mp_current_player;
 static int mp_p2_spawned;
 static int mp_p2_respawn_requested;
 static uint16_t mp_p2_invulnerability_frames;
 static uint8_t mp_pending_square_sfx, mp_pending_noise_sfx;
 static uint8_t mp_state[GB_STATE_BYTES];
 static MpPlayerState mp_p2_state;
+static MpExtraPlayer mp_extra_players[MAX_MP_PLAYERS - 2];
 static uint8_t mp_tilemap_before[0x400];
 static uint8_t mp_tilemap_after[0x400];
 static uint8_t mp_enemy_before[0xA0];
@@ -177,11 +190,22 @@ typedef struct {
     uint8_t p2_lives;
     uint8_t p2_spawned;
     uint16_t p2_invulnerability_frames;
+    uint8_t p2_last_oam[16];
+    uint8_t p2_a_was_down;
     uint8_t pending_square_sfx, pending_noise_sfx;
+    MpExtraPlayer extra[MAX_MP_PLAYERS - 2];
 } MpStateExtra;
 
+typedef struct {
+    MpPlayerState p2;
+    uint8_t p2_lives;
+    uint8_t p2_spawned;
+    uint16_t p2_invulnerability_frames;
+    uint8_t pending_square_sfx, pending_noise_sfx;
+} MpStateExtraV5;
+
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 5u
+#define EMU_STATE_VERSION 6u
 #define EMU_STATE_FLAG_MP 1u
 
 static uint8_t *rewind_data;
@@ -196,6 +220,7 @@ static int rewind_mode;
 static int rewind_pending;
 
 static void mp_player_save(MpPlayerState *s);
+static void mp_capture_mp_player_data(Frame *frame);
 static void rewind_free(void);
 static void rewind_init(void);
 static int emu_start_internal(int force_interp, int reset);
@@ -217,7 +242,7 @@ static void mp_oam_offset_x(uint8_t oam16[16], int dx)
     }
 }
 
-static void mp_respawn_p2_from_p1(void)
+static void mp_respawn_p2_from_p1(int player)
 {
     mp_player_save(&mp_p2_state);
     mp_p2_state.game_state = 0;
@@ -242,10 +267,8 @@ static void mp_respawn_p2_from_p1(void)
     /* Start Luigi from Mario's current location, then let SML1 rebuild his
      * small-Mario OAM on the next real gameplay frame. */
     int p1x = rd8(0xC202);
-    int x = p1x;
-    if (x <= 0x78) x += 24;
-    else if (x >= 0x28) x -= 24;
-    else x = 0x50;
+    int offset = player <= 1 ? 24 : (player == 2 ? 40 : 56);
+    int x = p1x + (p1x <= 0xC8 - offset ? offset : -offset);
     if (x < 0x18) x = 0x18;
     if (x > 0xC8) x = 0xC8;
     memcpy(mp_p2_state.mario_oam, &oam[0x0C], sizeof mp_p2_state.mario_oam);
@@ -300,6 +323,50 @@ static void mp_player_load(const MpPlayerState *s)
     wr8(0xFFB3, s->game_state);
     wr8(0xFF80, s->joy_held);
     wr8(0xFF81, s->joy_pressed);
+}
+
+static void mp_working_to_extra(MpExtraPlayer *slot)
+{
+    if (!slot) return;
+    slot->state = mp_p2_state;
+    slot->lives = mp_p2_lives;
+    slot->spawned = (uint8_t)mp_p2_spawned;
+    slot->respawn_requested = (uint8_t)mp_p2_respawn_requested;
+    slot->invulnerability_frames = mp_p2_invulnerability_frames;
+    memcpy(slot->last_oam, mp_p2_last_oam, sizeof slot->last_oam);
+    slot->a_was_down = mp_p2_a_was_down;
+}
+
+static void mp_extra_to_working(const MpExtraPlayer *slot)
+{
+    if (!slot) return;
+    mp_p2_state = slot->state;
+    mp_p2_lives = slot->lives;
+    mp_p2_spawned = slot->spawned != 0;
+    mp_p2_respawn_requested = slot->respawn_requested != 0;
+    mp_p2_invulnerability_frames = slot->invulnerability_frames;
+    memcpy(mp_p2_last_oam, slot->last_oam, sizeof mp_p2_last_oam);
+    mp_p2_a_was_down = slot->a_was_down;
+}
+
+static void mp_spawn_extra_from_p1(int player)
+{
+    if (player < 2 || player >= MAX_MP_PLAYERS) return;
+    MpExtraPlayer saved;
+    mp_working_to_extra(&saved);
+    mp_extra_to_working(&mp_extra_players[player - 2]);
+    if (!mp_p2_spawned && rd8(0xFFB3) == 0) {
+        if (mp_p2_lives == 0) {
+            mp_p2_lives = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
+            if (mp_p2_lives == 0) mp_p2_lives = 1;
+        }
+        mp_respawn_p2_from_p1(player);
+        mp_p2_invulnerability_frames = 0;
+        mp_p2_respawn_requested = 0;
+        mp_p2_a_was_down = 0;
+    }
+    mp_working_to_extra(&mp_extra_players[player - 2]);
+    mp_extra_to_working(&saved);
 }
 
 static void mp_copy_mario_oam_buffer(uint8_t out[16], int screen_dx)
@@ -543,6 +610,45 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     f->sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     f->lcd_on = ppu_lcd_is_on();
     f->seq = (uint64_t)frame_count;
+    mp_capture_mp_player_data(f);
+}
+
+static void mp_capture_mp_player_data(Frame *frame)
+{
+    if (!frame) return;
+    frame->mp_player_count = (uint8_t)mp_player_count;
+    frame->mp_player_lives[0] = frame->p1_lives;
+    frame->mp_player_game_state[0] = frame->game_state;
+    frame->mp_player_visible[0] = 1;
+    frame->mp_player_blink_hidden[0] = 0;
+    memcpy(frame->mp_player_oam[0], frame->mario_oam, sizeof frame->mario_oam);
+
+    frame->mp_player_lives[1] = mp_p2_lives;
+    frame->mp_player_game_state[1] = mp_p2_state.game_state;
+    frame->mp_player_visible[1] = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0);
+    frame->mp_player_blink_hidden[1] = (uint8_t)(mp_p2_invulnerability_frames > 0 && ((frame_count / 4) & 1));
+    memcpy(frame->mp_player_oam[1], mp_p2_state.mario_oam, sizeof mp_p2_state.mario_oam);
+    memcpy(frame->mp_player_projectile_oam[1], mp_p2_state.projectile_oam, sizeof mp_p2_state.projectile_oam);
+    memcpy(frame->mp_player_effect_oam[1], mp_p2_state.effect_oam, sizeof mp_p2_state.effect_oam);
+
+    for (int player = 2; player < MAX_MP_PLAYERS; player++) {
+        const MpExtraPlayer *extra = &mp_extra_players[player - 2];
+        frame->mp_player_lives[player] = extra->lives;
+        frame->mp_player_game_state[player] = extra->state.game_state;
+        frame->mp_player_visible[player] = (uint8_t)(extra->spawned && extra->lives > 0);
+        frame->mp_player_blink_hidden[player] = (uint8_t)(extra->invulnerability_frames > 0 && ((frame_count / 4) & 1));
+        memcpy(frame->mp_player_oam[player], extra->state.mario_oam, sizeof extra->state.mario_oam);
+        memcpy(frame->mp_player_projectile_oam[player], extra->state.projectile_oam, sizeof extra->state.projectile_oam);
+        memcpy(frame->mp_player_effect_oam[player], extra->state.effect_oam, sizeof extra->state.effect_oam);
+    }
+    /* Keep the legacy Player 2 fields populated for existing callers. */
+    frame->p2_lives = mp_p2_lives;
+    frame->p2_game_state = mp_p2_state.game_state;
+    frame->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0);
+    frame->p2_blink_hidden = frame->mp_player_blink_hidden[1];
+    memcpy(frame->mario_oam2, frame->mp_player_oam[1], sizeof frame->mario_oam2);
+    memcpy(frame->p2_projectile_oam, frame->mp_player_projectile_oam[1], sizeof frame->p2_projectile_oam);
+    memcpy(frame->p2_effect_oam, frame->mp_player_effect_oam[1], sizeof frame->p2_effect_oam);
 }
 
 void emu_mp_frame_refresh(Frame *frame)
@@ -570,12 +676,19 @@ int emu_mp_begin(void)
      * gameplay frame below, after C200-C20F contain a valid Mario.
      */
     memset(&mp_p2_state, 0, sizeof mp_p2_state);
+    memset(mp_extra_players, 0, sizeof mp_extra_players);
+    mp_player_count = settings.g[GAME_SML].multiplayer_players;
+    if (mp_player_count < 2) mp_player_count = 2;
+    if (mp_player_count > MAX_MP_PLAYERS) mp_player_count = MAX_MP_PLAYERS;
+    mp_current_player = 0;
     mp_p2_spawned = 0;
     mp_p2_respawn_requested = 0;
     mp_p2_invulnerability_frames = 0;
     mp_pending_square_sfx = mp_pending_noise_sfx = 0;
     mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     mp_p2_lives = mp_p1_lives_seen;
+    for (int player = 2; player < MAX_MP_PLAYERS; player++)
+        mp_extra_players[player - 2].lives = mp_p1_lives_seen;
     mp_vblank_life_event = 0;
     mp_vblank_collision = 0;
     mp_vblank_collision_addr = 0;
@@ -597,7 +710,7 @@ int emu_mp_begin(void)
     return 0;
 }
 
-int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
+static int emu_mp_step_internal(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
 {
     if (!mp_ready || (player != 0 && player != 1) || !frame) return -1;
     frame->p2_sfx_events = 0;
@@ -612,7 +725,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                 mp_p2_lives = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
                 if (mp_p2_lives == 0) mp_p2_lives = 1;
             }
-            mp_respawn_p2_from_p1();
+            mp_respawn_p2_from_p1(mp_current_player);
             frame->p2_sfx_events |= P2_SFX_EVENT_RESPAWN;
         }
         if (!mp_p2_spawned || mp_p2_lives == 0) {
@@ -959,7 +1072,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
             frame->p2_visible = 0;
             if (mp_p2_lives > 0) {
-                mp_respawn_p2_from_p1();
+                mp_respawn_p2_from_p1(mp_current_player);
             }
             return 0;
         }
@@ -987,11 +1100,15 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
      * Player 1 is the camera leader. When Luigi is too close to the left edge,
      * block a rightward camera advance until Luigi has moved farther right.
      */
-    if (mp_p2_spawned && mp_p2_lives > 0 && mp_p2_state.game_state == 0 &&
-        (dpad & 0x01) && rd8(0xC202) >= 0x50 &&
-        mp_p2_state.mario[2] < 0x20) {
-        dpad &= (uint8_t)~0x01;
+    int block_camera_advance = mp_p2_spawned && mp_p2_lives > 0 && mp_p2_state.game_state == 0 &&
+        mp_p2_state.mario[2] < 0x20;
+    for (int player = 2; player < mp_player_count; player++) {
+        const MpExtraPlayer *extra = &mp_extra_players[player - 2];
+        if (extra->spawned && extra->lives > 0 && extra->state.game_state == 0 &&
+            extra->state.mario[2] < 0x20) block_camera_advance = 1;
     }
+    if (block_camera_advance && (dpad & 0x01) && rd8(0xC202) >= 0x50)
+        dpad &= (uint8_t)~0x01;
 
     uint8_t p1_scroll_before = rd8(0xFFA4);
     mp_buttons = buttons;
@@ -1024,7 +1141,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     uint8_t p1_lives_now = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     if (p1_lives_now > mp_p1_lives_seen) {
         int gained = (int)p1_lives_now - (int)mp_p1_lives_seen;
-        while (gained-- > 0 && mp_p2_lives < 99) mp_p2_lives++;
+        int each = gained;
+        while (each-- > 0 && mp_p2_lives < 99) mp_p2_lives++;
+        for (int player = 2; player < mp_player_count; player++) {
+            MpExtraPlayer *extra = &mp_extra_players[player - 2];
+            int more = gained;
+            while (more-- > 0 && extra->lives < 99) extra->lives++;
+        }
     }
     mp_p1_lives_seen = p1_lives_now;
     frame->p1_lives = rd8(0xDA15);
@@ -1036,13 +1159,25 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
      * screen coordinate by the same amount before Luigi's next physics frame.
      */
     int p1_camera_dx = mp_scroll_delta(frame->scroll_x, p1_scroll_before);
-    if (mp_p2_spawned && mp_p2_lives > 0 && p1_camera_dx) {
-        int x = (int)mp_p2_state.mario[2] - p1_camera_dx;
-        if (x < 0) x += 256;
-        if (x > 255) x -= 256;
-        mp_p2_state.mario[2] = (uint8_t)x;
-        mp_oam_offset_x(mp_p2_state.mario_oam, -p1_camera_dx);
-        mp_oam_offset_x(mp_p2_last_oam, -p1_camera_dx);
+    if (p1_camera_dx) {
+        if (mp_p2_spawned && mp_p2_lives > 0) {
+            int x = (int)mp_p2_state.mario[2] - p1_camera_dx;
+            if (x < 0) x += 256;
+            if (x > 255) x -= 256;
+            mp_p2_state.mario[2] = (uint8_t)x;
+            mp_oam_offset_x(mp_p2_state.mario_oam, -p1_camera_dx);
+            mp_oam_offset_x(mp_p2_last_oam, -p1_camera_dx);
+        }
+        for (int player = 2; player < mp_player_count; player++) {
+            MpExtraPlayer *extra = &mp_extra_players[player - 2];
+            if (!extra->spawned || extra->lives == 0) continue;
+            int x = (int)extra->state.mario[2] - p1_camera_dx;
+            if (x < 0) x += 256;
+            if (x > 255) x -= 256;
+            extra->state.mario[2] = (uint8_t)x;
+            mp_oam_offset_x(extra->state.mario_oam, -p1_camera_dx);
+            mp_oam_offset_x(extra->last_oam, -p1_camera_dx);
+        }
     }
     frame->p1_lives = rd8(0xDA15);
     frame->p2_lives = mp_p2_lives;
@@ -1086,13 +1221,49 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         frame->p2_lives = mp_p2_lives;
     }
 
+    if (rd8(0xFFB3) == 0) {
+        for (int player = 2; player < mp_player_count; player++)
+            if (!mp_extra_players[player - 2].spawned) mp_spawn_extra_from_p1(player);
+    }
+    mp_capture_mp_player_data(frame);
     return mp_audio_n;
 }
 
 
-void emu_mp_request_respawn(void)
+int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
 {
-    if (mp_ready && mp_p2_spawned) mp_p2_respawn_requested = 1;
+    if (!mp_ready || !frame || player < 0 || player >= mp_player_count || player >= MAX_MP_PLAYERS)
+        return -1;
+    mp_current_player = player;
+    int result;
+    if (player <= 1) {
+        result = emu_mp_step_internal(player, buttons, dpad, frame, audio, audio_max);
+    } else {
+        MpExtraPlayer saved;
+        mp_working_to_extra(&saved);
+        mp_extra_to_working(&mp_extra_players[player - 2]);
+        result = emu_mp_step_internal(1, buttons, dpad, frame, NULL, 0);
+        mp_working_to_extra(&mp_extra_players[player - 2]);
+        mp_extra_to_working(&saved);
+    }
+    if (result >= 0) {
+        mp_capture_mp_player_data(frame);
+        frame->mp_player_sfx_events[player] = frame->p2_sfx_events;
+        frame->mp_player_sound_event[player] = frame->p2_sound_event;
+    }
+    mp_current_player = 0;
+    return result;
+}
+
+void emu_mp_request_respawn(int player)
+{
+    if (!mp_ready || player < 1 || player >= mp_player_count) return;
+    if (player == 1) {
+        if (mp_p2_spawned) mp_p2_respawn_requested = 1;
+        return;
+    }
+    MpExtraPlayer *extra = &mp_extra_players[player - 2];
+    if (extra->spawned) extra->respawn_requested = 1;
 }
 
 void emu_mp_end(void)
@@ -1100,6 +1271,9 @@ void emu_mp_end(void)
     if (mp_ready && save_path[0]) cart_write_save(save_path);
     mp_active = 0;
     mp_ready = 0;
+    mp_player_count = 2;
+    mp_current_player = 0;
+    memset(mp_extra_players, 0, sizeof mp_extra_players);
     mp_p2_spawned = 0;
     mp_p2_lives = 0;
     mp_p2_respawn_requested = 0;
@@ -1220,6 +1394,9 @@ static int emu_state_save_blob(void *dst, size_t n)
         x.p2_lives = mp_p2_lives;
         x.p2_spawned = (uint8_t)mp_p2_spawned;
         x.p2_invulnerability_frames = mp_p2_invulnerability_frames;
+        memcpy(x.p2_last_oam, mp_p2_last_oam, sizeof x.p2_last_oam);
+        x.p2_a_was_down = mp_p2_a_was_down;
+        memcpy(x.extra, mp_extra_players, sizeof x.extra);
         x.pending_square_sfx = mp_pending_square_sfx;
         x.pending_noise_sfx = mp_pending_noise_sfx;
         memcpy((uint8_t *)dst + sizeof h + h.core_bytes, &x, sizeof x);
@@ -1232,24 +1409,44 @@ static int emu_state_load_blob(const void *src, size_t n)
     if (!src || n < sizeof(EmuStateHeader)) return -1;
     EmuStateHeader h;
     memcpy(&h, src, sizeof h);
-    if (h.magic != EMU_STATE_MAGIC || h.version != EMU_STATE_VERSION) return -1;
+    if (h.magic != EMU_STATE_MAGIC || (h.version != EMU_STATE_VERSION && h.version != 5u)) return -1;
     if ((int)h.game_id != rom_loaded_game()) return -1;
     int mp_context = mp_ready || mp_active;
     if (((h.flags & EMU_STATE_FLAG_MP) != 0) != (mp_context != 0)) return -1;
     if (h.core_bytes != gb_state_data_size() || h.extra_bytes > sizeof(MpStateExtra)) return -1;
     if (sizeof h + h.core_bytes + h.extra_bytes > n) return -1;
+    if (mp_context) {
+        size_t expected = h.version == 5u ? sizeof(MpStateExtraV5) : sizeof(MpStateExtra);
+        if (h.extra_bytes != expected) return -1;
+    } else if (h.extra_bytes != 0) return -1;
     if (gb_state_load((const uint8_t *)src + sizeof h, h.core_bytes)) return -1;
     if (mp_context) {
-        if (h.extra_bytes != sizeof(MpStateExtra)) return -1;
-        MpStateExtra x;
-        memcpy(&x, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof x);
-        mp_p2_state = x.p2;
-        mp_p2_lives = x.p2_lives;
-        mp_p2_spawned = x.p2_spawned != 0;
-        mp_p2_invulnerability_frames = x.p2_invulnerability_frames;
-        mp_pending_square_sfx = x.pending_square_sfx;
-        mp_pending_noise_sfx = x.pending_noise_sfx;
+        if (h.version == 5u) {
+            MpStateExtraV5 old;
+            memcpy(&old, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof old);
+            mp_p2_state = old.p2;
+            mp_p2_lives = old.p2_lives;
+            mp_p2_spawned = old.p2_spawned != 0;
+            mp_p2_invulnerability_frames = old.p2_invulnerability_frames;
+            mp_pending_square_sfx = old.pending_square_sfx;
+            mp_pending_noise_sfx = old.pending_noise_sfx;
+            memset(mp_extra_players, 0, sizeof mp_extra_players);
+        } else {
+            MpStateExtra x;
+            memcpy(&x, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof x);
+            mp_p2_state = x.p2;
+            mp_p2_lives = x.p2_lives;
+            mp_p2_spawned = x.p2_spawned != 0;
+            mp_p2_invulnerability_frames = x.p2_invulnerability_frames;
+            memcpy(mp_p2_last_oam, x.p2_last_oam, sizeof mp_p2_last_oam);
+            mp_p2_a_was_down = x.p2_a_was_down;
+            memcpy(mp_extra_players, x.extra, sizeof mp_extra_players);
+            mp_pending_square_sfx = x.pending_square_sfx;
+            mp_pending_noise_sfx = x.pending_noise_sfx;
+        }
         mp_p2_respawn_requested = 0;
+        for (int player = 0; player < MAX_MP_PLAYERS - 2; player++)
+            mp_extra_players[player].respawn_requested = 0;
         mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
         mp_pending_block = 0;
         mp_vblank_waiting = 0;
