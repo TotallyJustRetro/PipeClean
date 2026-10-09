@@ -144,7 +144,7 @@ typedef struct {
 /* SML2 keeps Mario's motion/animation state in cartridge RAM, not SML1's
  * work-RAM structure. Preserve the known character block and movement scratch. */
 typedef struct {
-    uint8_t ram[0x54]; /* sparse whitelist only; not copied as one RAM block */
+    uint8_t ram[0xB3]; /* sparse whitelist from A200 through A2B2 */
     uint8_t keys_held, keys_pressed;
     uint8_t h_c0, h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7;
     uint8_t oam[16];
@@ -220,6 +220,29 @@ typedef struct {
 } MpStateExtraV6;
 
 typedef struct {
+    uint8_t ram[0x54];
+    uint8_t keys_held, keys_pressed;
+    uint8_t h_c0, h_c1, h_c2, h_c3, h_c4, h_c5, h_c6, h_c7;
+    uint8_t oam[16];
+    uint16_t invulnerability_frames;
+    uint8_t lives;
+    uint8_t spawned, respawn_requested, previous_a, sfx_events;
+} MpSml2PlayerV7;
+
+typedef struct {
+    MpPlayerState p2;
+    uint8_t p2_lives;
+    uint8_t p2_spawned;
+    uint16_t p2_invulnerability_frames;
+    uint8_t p2_last_oam[16];
+    uint8_t p2_a_was_down;
+    uint8_t pending_square_sfx, pending_noise_sfx;
+    MpExtraPlayer extra[MAX_MP_PLAYERS - 2];
+    MpSml2PlayerV7 sml2[MAX_MP_PLAYERS];
+    uint8_t sml2_initialized;
+} MpStateExtraV7;
+
+typedef struct {
     MpPlayerState p2;
     uint8_t p2_lives;
     uint8_t p2_spawned;
@@ -241,7 +264,7 @@ typedef struct {
 } MpStateExtraV5;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 7u
+#define EMU_STATE_VERSION 8u
 #define EMU_STATE_FLAG_MP 1u
 
 static uint8_t *rewind_data;
@@ -782,7 +805,7 @@ static int mp_sml2_private_addr(unsigned address)
     /* Character movement/animation addresses identified from the SML2
      * disassembly. Do not copy adjacent enemy, level or timer RAM. */
     switch (address) {
-    case 0xA200: case 0xA201: case 0xA202:
+    case 0xA200: case 0xA201: case 0xA202: case 0xA227: case 0xA229:
     case 0xA20C: case 0xA20D: case 0xA20E:
     case 0xA214: case 0xA215: case 0xA216: case 0xA217:
     case 0xA219: case 0xA220: case 0xA221: case 0xA222:
@@ -829,7 +852,7 @@ static void mp_sml2_capture_oam(uint8_t out[16])
 static void mp_sml2_save_player(MpSml2Player *p)
 {
     if (!p) return;
-    for (unsigned a = 0xA200; a <= 0xA253; a++)
+    for (unsigned a = 0xA200; a <= 0xA2B2; a++)
         if (mp_sml2_private_addr(a)) p->ram[a - 0xA200] = rd8((uint16_t)a);
     p->keys_held = rd8(0xFF80); p->keys_pressed = rd8(0xFF81);
     p->h_c0 = rd8(0xFFC0); p->h_c1 = rd8(0xFFC1);
@@ -844,7 +867,7 @@ static void mp_sml2_save_player(MpSml2Player *p)
 static void mp_sml2_load_player(const MpSml2Player *p)
 {
     if (!p) return;
-    for (unsigned a = 0xA200; a <= 0xA253; a++)
+    for (unsigned a = 0xA200; a <= 0xA2B2; a++)
         if (mp_sml2_private_addr(a)) wr8((uint16_t)a, p->ram[a - 0xA200]);
     wr8(0xFF80, p->keys_held); wr8(0xFF81, p->keys_pressed);
     wr8(0xFFC0, p->h_c0); wr8(0xFFC1, p->h_c1);
@@ -1850,7 +1873,7 @@ static int emu_state_load_blob(const void *src, size_t n)
     if (!src || n < sizeof(EmuStateHeader)) return -1;
     EmuStateHeader h;
     memcpy(&h, src, sizeof h);
-    if (h.magic != EMU_STATE_MAGIC || (h.version != EMU_STATE_VERSION && h.version != 6u && h.version != 5u)) return -1;
+    if (h.magic != EMU_STATE_MAGIC || (h.version != EMU_STATE_VERSION && h.version != 7u && h.version != 6u && h.version != 5u)) return -1;
     if ((int)h.game_id != rom_loaded_game()) return -1;
     int mp_context = mp_ready || mp_active;
     if (((h.flags & EMU_STATE_FLAG_MP) != 0) != (mp_context != 0)) return -1;
@@ -1858,7 +1881,8 @@ static int emu_state_load_blob(const void *src, size_t n)
     if (sizeof h + h.core_bytes + h.extra_bytes > n) return -1;
     if (mp_context) {
         size_t expected = h.version == 5u ? sizeof(MpStateExtraV5) :
-                           (h.version == 6u ? sizeof(MpStateExtraV6) : sizeof(MpStateExtra));
+                           (h.version == 6u ? sizeof(MpStateExtraV6) :
+                            (h.version == 7u ? sizeof(MpStateExtraV7) : sizeof(MpStateExtra)));
         if (h.extra_bytes != expected) return -1;
     } else if (h.extra_bytes != 0) return -1;
     if (gb_state_load((const uint8_t *)src + sizeof h, h.core_bytes)) return -1;
@@ -1891,6 +1915,40 @@ static int emu_state_load_blob(const void *src, size_t n)
             mp_pending_noise_sfx = old.pending_noise_sfx;
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
             mp_sml2_initialized = 0;
+        } else if (h.version == 7u) {
+            MpStateExtraV7 old;
+            memcpy(&old, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof old);
+            mp_p2_state = old.p2;
+            mp_p2_lives = old.p2_lives;
+            mp_p2_spawned = old.p2_spawned != 0;
+            mp_p2_invulnerability_frames = old.p2_invulnerability_frames;
+            memcpy(mp_p2_last_oam, old.p2_last_oam, sizeof mp_p2_last_oam);
+            mp_p2_a_was_down = old.p2_a_was_down;
+            memcpy(mp_extra_players, old.extra, sizeof mp_extra_players);
+            memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+            for (int i = 0; i < MAX_MP_PLAYERS; i++) {
+                memcpy(mp_sml2_players[i].ram, old.sml2[i].ram, sizeof old.sml2[i].ram);
+                mp_sml2_players[i].keys_held = old.sml2[i].keys_held;
+                mp_sml2_players[i].keys_pressed = old.sml2[i].keys_pressed;
+                mp_sml2_players[i].h_c0 = old.sml2[i].h_c0;
+                mp_sml2_players[i].h_c1 = old.sml2[i].h_c1;
+                mp_sml2_players[i].h_c2 = old.sml2[i].h_c2;
+                mp_sml2_players[i].h_c3 = old.sml2[i].h_c3;
+                mp_sml2_players[i].h_c4 = old.sml2[i].h_c4;
+                mp_sml2_players[i].h_c5 = old.sml2[i].h_c5;
+                mp_sml2_players[i].h_c6 = old.sml2[i].h_c6;
+                mp_sml2_players[i].h_c7 = old.sml2[i].h_c7;
+                memcpy(mp_sml2_players[i].oam, old.sml2[i].oam, sizeof old.sml2[i].oam);
+                mp_sml2_players[i].invulnerability_frames = old.sml2[i].invulnerability_frames;
+                mp_sml2_players[i].lives = old.sml2[i].lives;
+                mp_sml2_players[i].spawned = old.sml2[i].spawned;
+                mp_sml2_players[i].respawn_requested = old.sml2[i].respawn_requested;
+                mp_sml2_players[i].previous_a = old.sml2[i].previous_a;
+                mp_sml2_players[i].sfx_events = old.sml2[i].sfx_events;
+            }
+            mp_sml2_initialized = old.sml2_initialized != 0;
+            mp_pending_square_sfx = old.pending_square_sfx;
+            mp_pending_noise_sfx = old.pending_noise_sfx;
         } else {
             MpStateExtra x;
             memcpy(&x, (const uint8_t *)src + sizeof h + h.core_bytes, sizeof x);
