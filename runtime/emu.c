@@ -862,19 +862,29 @@ static void mp_sml2_capture_oam(uint8_t out[16])
     const int sy = 8;
     uint8_t used[40] = {0};
     for (int slot = 0; slot < 4; slot++) {
-        int tx = bx + ((slot & 1) ? 8 : 0);
-        int ty = by + ((slot & 2) ? sy : 0);
+        int ox = (slot & 1) ? 8 : 0;
+        int oy = (slot & 2) ? sy : 0;
+        int tx = bx + ox, ty = by + oy;
         int best = -1, best_score = 1000;
         for (int i = 0; i < 40; i++) {
             if (used[i]) continue;
             int y = oam[i * 4], x = oam[i * 4 + 1];
             if (!y || y >= 160 || !x || x >= 168) continue;
-            int score = mp_sml2_distance((uint8_t)x, tx) +
-                        mp_sml2_distance((uint8_t)y, ty);
+            /* SML2's cached screen coordinates can refer to the sprite's
+             * logical origin, while OAM uses the Game Boy's +8/+16 bias.
+             * Score both conventions so animation/layout differences don't
+             * make a valid player piece disappear. */
+            int sx0 = mp_sml2_distance((uint8_t)x, tx);
+            int sy0 = mp_sml2_distance((uint8_t)y, ty);
+            int sx1 = mp_sml2_distance((uint8_t)x, tx + 8);
+            int sy1 = mp_sml2_distance((uint8_t)y, ty + 16);
+            int score0 = sx0 + sy0;
+            int score1 = sx1 + sy1;
+            int score = score0 < score1 ? score0 : score1;
             if (score < best_score) { best_score = score; best = i; }
         }
-        /* Prefer omitting a piece over stealing a nearby enemy/effect sprite. */
-        if (best < 0 || best_score > 4) continue;
+        /* Allow small animation offsets but avoid distant unrelated sprites. */
+        if (best < 0 || best_score > 12) continue;
         used[best] = 1;
         memcpy(&out[slot * 4], &oam[best * 4], 4);
     }
