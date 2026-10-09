@@ -127,7 +127,7 @@ def decode(op, b1=0, b2=0, pc=None, dyn=False):
             elif y == 1:
                 seq(f'wr8({n16}, cpu.sp & 0xFF); wr8((uint16_t)({n16} + 1), cpu.sp >> 8);', 20, 3, f'LD (${b1 | (b2 << 8):04X}),SP')
             elif y == 2:
-                seq('', 4, 2, 'STOP')
+                seq('gb_stop();', 4, 2, 'STOP')
             elif y == 3:
                 t = jr_target()
                 branch('jp', None, t, 12, 12, 2, f'JR ${t:04X}' if not dyn else 'JR')
