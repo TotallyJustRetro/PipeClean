@@ -33,6 +33,7 @@ static Clip mp_sfx[MAX_MP_PLAYERS - 1][N_P2_SFX]; /* One independent sound bank 
 static long mp_sfx_pos[MAX_MP_PLAYERS - 1][N_P2_SFX];
 static char music_path[512], sfx_path[N_UI_SFX][512];
 static char mp_loaded_path[MAX_MP_PLAYERS - 1][N_P2_SFX][512];
+static int mp_bank_game = GAME_SML;
 static long music_pos;
 static float music_gain, music_target;
 static int music_want_on;
@@ -581,7 +582,7 @@ void audio_menu_apply(void)
         }
     }
     /* Each multiplayer character owns an independent imported/built-in bank. */
-    GameCfg *mc = &settings.g[GAME_SML];
+    GameCfg *mc = &settings.g[mp_bank_game];
     for (int player = 2; player <= 4; player++) {
         int pi = player - 2;
         for (int i = 0; i < N_P2_SFX; i++) {
@@ -606,6 +607,14 @@ void audio_menu_apply(void)
         }
     }
     audio_menu_music(music_want_on);
+}
+
+void audio_mp_set_game(int game)
+{
+    int selected = (game == GAME_SML2) ? GAME_SML2 : GAME_SML;
+    if (selected == mp_bank_game) return;
+    mp_bank_game = selected;
+    audio_menu_apply();
 }
 
 void audio_menu_music(int on)
