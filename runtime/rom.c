@@ -24,6 +24,22 @@ static uint8_t *base_img;
 static size_t base_len;
 static int base_game = -1, interp_needed, hack_active;
 
+/* The generated native-code module is tied to the exact ROM supplied to
+ * tools/recomp.py at build time. Never run it for a different cartridge,
+ * even if that cartridge is also Dr. Mario: doing so executes another
+ * game's translated instructions against the current ROM and corrupts play. */
+static int compiled_rom_matches(const uint8_t *img, size_t n)
+{
+    CartInfo ci;
+    if (!img || !cart_parse(img, n, &ci)) return 0;
+    return ci.crc == ROM_CRC32 && strcmp(ci.title, ROM_TITLE) == 0;
+}
+
+static int can_run_compiled_drmario(void)
+{
+    return base_game == GAME_DRMARIO && compiled_rom_matches(base_img, base_len);
+}
+
 static long read_file(const char *path, uint8_t **buf)
 {
     FILE *f = fopen(path, "rb");
@@ -97,7 +113,7 @@ int rom_probe(int game, const char *path, RomStatus *st)
 static void install_base(void)
 {
     cart_install(base_img, base_len);
-    interp_needed = !(base_game == GAME_DRMARIO);
+    interp_needed = !can_run_compiled_drmario();
     hack_active = 0;
 }
 
@@ -111,7 +127,7 @@ int rom_load(int game, const char *path, RomStatus *st)
     free(base_img);
     base_img = buf; base_len = (size_t)n; base_game = game;
     if (cart_install(base_img, base_len)) { snprintf(st->msg, sizeof st->msg, "Couldn't load that ROM."); return 1; }
-    interp_needed = game != GAME_DRMARIO;
+    interp_needed = !(game == GAME_DRMARIO && compiled_rom_matches(base_img, base_len));
     hack_active = 0;
     st->ok = 1;
     snprintf(st->msg, sizeof st->msg, "Verified.");
@@ -166,7 +182,7 @@ int rom_apply_hack(const char *path, RomStatus *st)
     free(out);
     hack_active = 1;
     st->hack_loaded = 1; st->changed_bytes = changed; st->code_changed = code;
-    interp_needed = base_game != GAME_DRMARIO || code;
+    interp_needed = !can_run_compiled_drmario() || code;
     if (changed == 0)
         snprintf(st->msg, sizeof st->msg, "Applied, but it doesn't change anything.");
     else if (base_game == GAME_DRMARIO && code)
