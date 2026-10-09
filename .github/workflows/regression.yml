@@ -93,7 +93,7 @@ jobs:
           out.mkdir(parents=True, exist_ok=True)
           for name, size, title, cgb, cart, rom_size, ram_size in specs:
               rom = bytearray(size)
-              rom[0x134:0x144] = title[:16].ljust(16, b"\\0")
+              rom[0x134:0x144] = title[:16].ljust(16, bytes([0]))
               rom[0x143] = cgb
               rom[0x147] = cart
               rom[0x148] = rom_size
