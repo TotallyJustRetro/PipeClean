@@ -115,6 +115,7 @@ int emu_frame_get(Frame *f)
 typedef struct {
     uint8_t mario[0x10];     /* C200-C20F: position, animation, momentum, etc. */
     uint8_t mario_oam[16];   /* C00C-C01B: Mario's last rendered four OAM entries */
+    uint8_t projectile_oam[12]; /* C000-C00B: three private projectile OAM entries */
     uint8_t invincibility;   /* C0D3 */
     uint8_t superball_ttl;   /* C0A9 */
     uint8_t projectile_status[3]; /* FFA9-FFAB: active Superball projectile state */
@@ -134,6 +135,7 @@ static int mp_ready;
 static int mp_p2_spawned;
 static int mp_p2_respawn_requested;
 static uint16_t mp_p2_invulnerability_frames;
+static uint8_t mp_pending_square_sfx, mp_pending_noise_sfx;
 static uint8_t mp_state[GB_STATE_BYTES];
 static MpPlayerState mp_p2_state;
 static uint8_t mp_tilemap_before[0x400];
@@ -177,7 +179,7 @@ typedef struct {
 } MpStateExtra;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 2u
+#define EMU_STATE_VERSION 3u
 #define EMU_STATE_FLAG_MP 1u
 
 static uint8_t *rewind_data;
@@ -222,6 +224,7 @@ static void mp_respawn_p2_from_p1(void)
     mp_p2_state.invincibility = 0;
     mp_p2_state.superball_ttl = 0;
     memset(mp_p2_state.projectile_status, 0, sizeof mp_p2_state.projectile_status);
+    memset(mp_p2_state.projectile_oam, 0, sizeof mp_p2_state.projectile_oam);
     mp_p2_state.super_status = 0;
     mp_p2_state.superball = 0;
     mp_p2_state.joy_held = 0;
@@ -257,6 +260,7 @@ static void mp_player_save(MpPlayerState *s)
     if (!s) return;
     for (int i = 0; i < 0x10; i++) s->mario[i] = rd8((uint16_t)(0xC200 + i));
     for (int i = 0; i < 16; i++) s->mario_oam[i] = rd8((uint16_t)(0xC00C + i));
+    for (int i = 0; i < 12; i++) s->projectile_oam[i] = rd8((uint16_t)(0xC000 + i));
     s->invincibility = rd8(0xC0D3);
     s->superball_ttl = rd8(0xC0A9);
     s->projectile_status[0] = rd8(0xFFA9);
@@ -277,6 +281,7 @@ static void mp_player_load(const MpPlayerState *s)
     if (!s) return;
     for (int i = 0; i < 0x10; i++) wr8((uint16_t)(0xC200 + i), s->mario[i]);
     for (int i = 0; i < 16; i++) wr8((uint16_t)(0xC00C + i), s->mario_oam[i]);
+    for (int i = 0; i < 12; i++) wr8((uint16_t)(0xC000 + i), s->projectile_oam[i]);
     wr8(0xC0D3, s->invincibility);
     wr8(0xC0A9, s->superball_ttl);
     wr8(0xFFA9, s->projectile_status[0]);
@@ -308,6 +313,24 @@ static void mp_copy_mario_oam_buffer(uint8_t out[16], int screen_dx)
             out[i * 4 + 1] = (uint8_t)x;
         }
     }
+}
+
+static void mp_copy_projectile_oam_buffer(uint8_t out[12], int screen_dx)
+{
+    if (!out) return;
+    for (int i = 0; i < 12; i++) out[i] = rd8((uint16_t)(0xC000 + i));
+    /* Projectile X lives in the second byte of each four-byte OAM entry. */
+    for (int i = 0; i < 3; i++) {
+        int x = (int)out[i * 4 + 1] + screen_dx;
+        out[i * 4 + 1] = (uint8_t)x;
+    }
+}
+
+static void mp_queue_sfx(uint16_t address, uint8_t *pending, uint8_t sfx)
+{
+    if (!sfx || !pending) return;
+    if (rd8(address) == 0) wr8(address, sfx);
+    else if (!*pending) *pending = sfx;
 }
 
 static int mp_is_enemy_stomp_transition(uint8_t before_type, uint8_t after_type)
@@ -383,7 +406,7 @@ static int mp_merge_tilemap_local_edits(int allow_full, uint8_t p2_scroll, uint8
             if (before == after) continue;
             /* A temporary empty tile during a block-bump animation is not the
              * final state. Guard it only when camera alignment is ambiguous. */
-            if (!allow_full && before >= 0x60 && before != 0xF4 && after == 0x20)
+            if (before >= 0x60 && before != 0xF4 && after == 0x20)
                 continue;
             vram[0x1800 + row * 32 + p1_col] = after;
             changed = 1;
@@ -467,6 +490,8 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     memcpy(f->mario_oam, &oam[0x0C], sizeof f->mario_oam);
     memset(f->mario_oam2, 0, sizeof f->mario_oam2);
     memset(f->luigi_mask, 0, sizeof f->luigi_mask);
+    memset(f->p2_projectile_oam, 0, sizeof f->p2_projectile_oam);
+    ppu_cgb_obj_palette_copy(f->cgb_obj_palette);
     f->p1_lives = rd8(0xDA15);
     f->p2_lives = mp_p2_lives;
     f->p2_game_state = mp_p2_state.game_state;
@@ -492,8 +517,10 @@ void emu_mp_frame_refresh(Frame *frame)
 {
     if (!mp_ready || !frame) return;
     mp_capture_frame(frame, 0);
-    if (mp_p2_spawned && mp_p2_lives > 0)
+    if (mp_p2_spawned && mp_p2_lives > 0) {
         memcpy(frame->mario_oam2, mp_p2_state.mario_oam, sizeof frame->mario_oam2);
+        memcpy(frame->p2_projectile_oam, mp_p2_state.projectile_oam, sizeof frame->p2_projectile_oam);
+    }
 }
 
 int emu_mp_begin(void)
@@ -513,6 +540,7 @@ int emu_mp_begin(void)
     mp_p2_spawned = 0;
     mp_p2_respawn_requested = 0;
     mp_p2_invulnerability_frames = 0;
+    mp_pending_square_sfx = mp_pending_noise_sfx = 0;
     mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     mp_p2_lives = mp_p1_lives_seen;
     mp_vblank_life_event = 0;
@@ -552,6 +580,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         }
         if (!mp_p2_spawned || mp_p2_lives == 0) {
             memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
+            memset(frame->p2_projectile_oam, 0, sizeof frame->p2_projectile_oam);
             memset(frame->mario_oam, 0, sizeof frame->mario_oam);
             memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
             frame->p1_lives = rd8(0xDA15);
@@ -693,10 +722,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * the visible frame must be captured from the restored P1 world below.
          */
         uint8_t p2_oam_saved[16];
+        uint8_t p2_projectile_oam_saved[12];
         mp_copy_mario_oam_buffer(p2_oam_saved, dx);
+        mp_copy_projectile_oam_buffer(p2_projectile_oam_saved, dx);
         memcpy(mp_p2_last_oam, p2_oam_saved, sizeof mp_p2_last_oam);
 
         mp_player_save(&mp_p2_state);
+        memcpy(mp_p2_state.projectile_oam, p2_projectile_oam_saved, sizeof mp_p2_state.projectile_oam);
         mp_p2_state.game_state = p2_game_state;
         memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
 
@@ -714,26 +746,19 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * block hits use the game's noise SFX.
          */
         int p2_new_floaty = (p2_floaty_before == 0 && p2_floaty_control != 0);
-        if (rd8(0xDFE0) == 0) {
-            if (coins_after != coins_before)
-                wr8(0xDFE0, 0x05); /* SFX_COIN */
-            else if (enemy_sound_event)
-                wr8(0xDFE0, 0x03); /* SFX_STOMP */
-            else if (p1_square_sfx_before == 0 && p2_square_sfx)
-                wr8(0xDFE0, p2_square_sfx);
-            else if (p2_jump_event)
-                wr8(0xDFE0, 0x01); /* SFX_JUMP */
-        }
+        uint8_t square_request = 0;
+        if (coins_after != coins_before) square_request = 0x05; /* SFX_COIN */
+        else if (enemy_sound_event) square_request = 0x03; /* SFX_STOMP */
+        else if (p1_square_sfx_before == 0 && p2_square_sfx) square_request = p2_square_sfx;
+        else if (p2_jump_event) square_request = 0x01; /* SFX_JUMP */
+        mp_queue_sfx(0xDFE0, &mp_pending_square_sfx, square_request);
 
         int p2_block_hit = (mp_vblank_collision == 0x01 ||
                             mp_vblank_collision == 0x02 ||
                             mp_vblank_collision == 0x04);
-        if (rd8(0xDFF8) == 0) {
-            if (p2_block_hit)
-                wr8(0xDFF8, 0x02); /* SML1 block-hit noise */
-            else if (p1_noise_sfx_before == 0 && p2_noise_sfx)
-                wr8(0xDFF8, p2_noise_sfx);
-        }
+        uint8_t noise_request = p2_block_hit ? 0x02 :
+            ((p1_noise_sfx_before == 0) ? p2_noise_sfx : 0);
+        mp_queue_sfx(0xDFF8, &mp_pending_noise_sfx, noise_request);
 
         /*
          * FFED is the original score/floaty queue. Preserve only a newly
@@ -827,6 +852,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          */
         mp_capture_frame(frame, 0);
         memcpy(frame->mario_oam2, mp_p2_last_oam, sizeof frame->mario_oam2);
+        memcpy(frame->p2_projectile_oam, mp_p2_state.projectile_oam, sizeof frame->p2_projectile_oam);
         frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
 
         /*
@@ -839,6 +865,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             frame->p2_lives = mp_p2_lives;
             frame->p2_game_state = p2_game_state;
             memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
+            memset(frame->p2_projectile_oam, 0, sizeof frame->p2_projectile_oam);
             memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
             frame->p2_visible = 0;
             if (mp_p2_lives > 0) {
@@ -854,6 +881,16 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         frame->p2_blink_hidden = (uint8_t)(mp_p2_invulnerability_frames > 0 &&
                                            ((frame_count / 4) & 1));
         return 0;
+    }
+
+    /* Service deferred P2 sound requests when Mario's SFX register becomes free. */
+    if (mp_pending_square_sfx && rd8(0xDFE0) == 0) {
+        wr8(0xDFE0, mp_pending_square_sfx);
+        mp_pending_square_sfx = 0;
+    }
+    if (mp_pending_noise_sfx && rd8(0xDFF8) == 0) {
+        wr8(0xDFF8, mp_pending_noise_sfx);
+        mp_pending_noise_sfx = 0;
     }
 
     /*
@@ -940,6 +977,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_p2_state.invincibility = 0;
         mp_p2_state.superball_ttl = 0;
         memset(mp_p2_state.projectile_status, 0, sizeof mp_p2_state.projectile_status);
+        memset(mp_p2_state.projectile_oam, 0, sizeof mp_p2_state.projectile_oam);
         mp_p2_state.super_status = 0;
         mp_p2_state.superball = 0;
         mp_p2_state.joy_held = 0;
@@ -975,6 +1013,7 @@ void emu_mp_end(void)
     mp_p2_lives = 0;
     mp_p2_respawn_requested = 0;
     mp_p2_invulnerability_frames = 0;
+    mp_pending_square_sfx = mp_pending_noise_sfx = 0;
     mp_vblank_life_event = 0;
     mp_vblank_collision = 0;
     mp_vblank_collision_addr = 0;
