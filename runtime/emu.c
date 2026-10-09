@@ -115,6 +115,7 @@ int emu_frame_get(Frame *f)
 typedef struct {
     uint8_t mario[0x10];     /* C200-C20F: position, animation, momentum, etc. */
     uint8_t mario_oam[16];   /* C00C-C01B: Mario's last rendered four OAM entries */
+    uint8_t effect_oam[52];  /* C01C-C04F: P2-owned block/item effects, OAM slots 7-19 */
     uint8_t projectile_oam[12]; /* C000-C00B: three private projectile OAM entries */
     uint8_t invincibility;   /* C0D3 */
     uint8_t superball_ttl;   /* C0A9 */
@@ -180,7 +181,7 @@ typedef struct {
 } MpStateExtra;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 4u
+#define EMU_STATE_VERSION 5u
 #define EMU_STATE_FLAG_MP 1u
 
 static uint8_t *rewind_data;
@@ -226,6 +227,7 @@ static void mp_respawn_p2_from_p1(void)
     mp_p2_state.superball_ttl = 0;
     memset(mp_p2_state.projectile_status, 0, sizeof mp_p2_state.projectile_status);
     memset(mp_p2_state.projectile_oam, 0, sizeof mp_p2_state.projectile_oam);
+    memset(mp_p2_state.effect_oam, 0, sizeof mp_p2_state.effect_oam);
     mp_p2_state.super_status = 0;
     mp_p2_state.superball = 0;
     mp_p2_state.joy_held = 0;
@@ -261,6 +263,7 @@ static void mp_player_save(MpPlayerState *s)
     if (!s) return;
     for (int i = 0; i < 0x10; i++) s->mario[i] = rd8((uint16_t)(0xC200 + i));
     for (int i = 0; i < 16; i++) s->mario_oam[i] = rd8((uint16_t)(0xC00C + i));
+    for (int i = 0; i < 52; i++) s->effect_oam[i] = rd8((uint16_t)(0xC01C + i));
     for (int i = 0; i < 12; i++) s->projectile_oam[i] = rd8((uint16_t)(0xC000 + i));
     s->invincibility = rd8(0xC0D3);
     s->superball_ttl = rd8(0xC0A9);
@@ -282,6 +285,7 @@ static void mp_player_load(const MpPlayerState *s)
     if (!s) return;
     for (int i = 0; i < 0x10; i++) wr8((uint16_t)(0xC200 + i), s->mario[i]);
     for (int i = 0; i < 16; i++) wr8((uint16_t)(0xC00C + i), s->mario_oam[i]);
+    for (int i = 0; i < 52; i++) wr8((uint16_t)(0xC01C + i), s->effect_oam[i]);
     for (int i = 0; i < 12; i++) wr8((uint16_t)(0xC000 + i), s->projectile_oam[i]);
     wr8(0xC0D3, s->invincibility);
     wr8(0xC0A9, s->superball_ttl);
@@ -322,6 +326,18 @@ static void mp_copy_projectile_oam_buffer(uint8_t out[12], int screen_dx)
     for (int i = 0; i < 12; i++) out[i] = rd8((uint16_t)(0xC000 + i));
     /* Projectile X lives in the second byte of each four-byte OAM entry. */
     for (int i = 0; i < 3; i++) {
+        int x = (int)out[i * 4 + 1] + screen_dx;
+        out[i * 4 + 1] = (uint8_t)x;
+    }
+}
+
+static void mp_copy_effect_oam_buffer(uint8_t out[52], int screen_dx)
+{
+    if (!out) return;
+    /* OAM slots 7-19 are reserved for block debris, bump sprites and floaties.
+     * Enemy sprites live in later slots and are deliberately not overlaid. */
+    for (int i = 0; i < 52; i++) out[i] = rd8((uint16_t)(0xC01C + i));
+    for (int i = 0; i < 13; i++) {
         int x = (int)out[i * 4 + 1] + screen_dx;
         out[i * 4 + 1] = (uint8_t)x;
     }
@@ -497,6 +513,7 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     memset(f->mario_oam2, 0, sizeof f->mario_oam2);
     memset(f->luigi_mask, 0, sizeof f->luigi_mask);
     memset(f->p2_projectile_oam, 0, sizeof f->p2_projectile_oam);
+    memset(f->p2_effect_oam, 0, sizeof f->p2_effect_oam);
     ppu_cgb_obj_palette_copy(f->cgb_obj_palette);
     f->p1_lives = rd8(0xDA15);
     f->p2_lives = mp_p2_lives;
@@ -526,6 +543,7 @@ void emu_mp_frame_refresh(Frame *frame)
     if (mp_p2_spawned && mp_p2_lives > 0) {
         memcpy(frame->mario_oam2, mp_p2_state.mario_oam, sizeof frame->mario_oam2);
         memcpy(frame->p2_projectile_oam, mp_p2_state.projectile_oam, sizeof frame->p2_projectile_oam);
+        memcpy(frame->p2_effect_oam, mp_p2_state.effect_oam, sizeof frame->p2_effect_oam);
     }
 }
 
@@ -587,6 +605,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (!mp_p2_spawned || mp_p2_lives == 0) {
             memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
             memset(frame->p2_projectile_oam, 0, sizeof frame->p2_projectile_oam);
+            memset(frame->p2_effect_oam, 0, sizeof frame->p2_effect_oam);
             memset(frame->mario_oam, 0, sizeof frame->mario_oam);
             memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
             frame->p1_lives = rd8(0xDA15);
@@ -735,12 +754,15 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          */
         uint8_t p2_oam_saved[16];
         uint8_t p2_projectile_oam_saved[12];
+        uint8_t p2_effect_oam_saved[52];
         mp_copy_mario_oam_buffer(p2_oam_saved, dx);
         mp_copy_projectile_oam_buffer(p2_projectile_oam_saved, dx);
+        mp_copy_effect_oam_buffer(p2_effect_oam_saved, dx);
         memcpy(mp_p2_last_oam, p2_oam_saved, sizeof mp_p2_last_oam);
 
         mp_player_save(&mp_p2_state);
         memcpy(mp_p2_state.projectile_oam, p2_projectile_oam_saved, sizeof mp_p2_state.projectile_oam);
+        memcpy(mp_p2_state.effect_oam, p2_effect_oam_saved, sizeof mp_p2_state.effect_oam);
         mp_p2_state.game_state = p2_game_state;
         memcpy(mp_p2_state.mario_oam, mp_p2_last_oam, sizeof mp_p2_state.mario_oam);
 
@@ -864,6 +886,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_capture_frame(frame, 0);
         memcpy(frame->mario_oam2, mp_p2_last_oam, sizeof frame->mario_oam2);
         memcpy(frame->p2_projectile_oam, mp_p2_state.projectile_oam, sizeof frame->p2_projectile_oam);
+        memcpy(frame->p2_effect_oam, mp_p2_state.effect_oam, sizeof frame->p2_effect_oam);
         frame->p2_sound_event = (uint8_t)((coins_after != coins_before) || enemy_sound_event);
 
         /*
@@ -989,6 +1012,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_p2_state.superball_ttl = 0;
         memset(mp_p2_state.projectile_status, 0, sizeof mp_p2_state.projectile_status);
         memset(mp_p2_state.projectile_oam, 0, sizeof mp_p2_state.projectile_oam);
+        memset(mp_p2_state.effect_oam, 0, sizeof mp_p2_state.effect_oam);
         mp_p2_state.super_status = 0;
         mp_p2_state.superball = 0;
         mp_p2_state.joy_held = 0;
