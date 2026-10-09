@@ -14,16 +14,19 @@ static int gacc_valid;
 static uint32_t avg_rgb;
 static FilterCfg cur_f; /* filters used for the current picture */
 
-static const LuigiColor *active_luigi_color(void)
+static const LuigiColor *active_mp_player_color(int player)
 {
-    int index = settings.g[GAME_SML].p2_color;
-    if (index < 0 || index >= N_LUIGI_COLORS) index = LUIGI_GREEN;
+    const GameCfg *c = &settings.g[GAME_SML];
+    int index = player == 1 ? c->p2_color :
+                (player == 2 ? c->p3_color : c->p4_color);
+    if (index < 0 || index >= N_LUIGI_COLORS)
+        index = player == 1 ? LUIGI_GREEN : (player == 2 ? LUIGI_BLUE : LUIGI_YELLOW);
     return &luigi_colors[index];
 }
 
-static uint32_t luigi_overlay_pixel(int ci)
+static uint32_t luigi_overlay_pixel(int ci, int player)
 {
-    const LuigiColor *c = active_luigi_color();
+    const LuigiColor *c = active_mp_player_color(player);
     switch (ci & 3) {
     case 1: return c->light;
     case 2: return c->mid;
@@ -34,7 +37,13 @@ static uint32_t luigi_overlay_pixel(int ci)
 
 uint32_t render_sml1_luigi_color(void)
 {
-    return 0xFF000000u | active_luigi_color()->swatch;
+    return 0xFF000000u | active_mp_player_color(1)->swatch;
+}
+
+uint32_t render_sml1_mp_player_color(int player)
+{
+    if (player < 1 || player >= MAX_MP_PLAYERS) player = 1;
+    return 0xFF000000u | active_mp_player_color(player)->swatch;
 }
 
 void render_init(SDL_Renderer *r) { ren = r; }
@@ -218,7 +227,7 @@ static void cpu_filters(const FilterCfg *f, int live, int N)
     free(c);
 }
 
-static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int sprite_count, int dx, int dy, int luigi)
+static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int sprite_count, int dx, int dy, int mp_player)
 {
     if (!f || !src_oam || !f->lcd_on || f->w <= 0) return;
 
@@ -254,11 +263,11 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int 
                 if (!ci) continue;
                 f->shade[y][x] = (pal >> (ci * 2)) & 3;
                 f->layer[y][x] = (fl & 0x10) ? 2 : 1;
-                if (luigi) f->luigi_mask[y][x] = 1;
+                if (mp_player > 0) f->luigi_mask[y][x] = (uint8_t)mp_player;
                 /* Separate overlays don't pass through the native PPU sprite
                  * compositor, so apply the original CGB OBJ palette directly. */
                 if (f->cgb_mode) {
-                    uint32_t rgb = luigi ? luigi_overlay_pixel(ci) :
+                    uint32_t rgb = mp_player > 0 ? luigi_overlay_pixel(ci, mp_player) :
                         f->cgb_obj_palette[((unsigned)(fl & 7) * 4u) + (unsigned)ci];
                     f->rgb[y][x] = rgb & 0xFFFFFFu;
                 }
@@ -285,6 +294,12 @@ void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int 
 void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
     render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 1);
+}
+
+void render_overlay_sml1_mp_oam(Frame *f, const uint8_t oam[16], int dx, int dy, int player)
+{
+    if (player < 1 || player >= MAX_MP_PLAYERS) return;
+    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, player);
 }
 
 void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy)
@@ -324,7 +339,7 @@ void render_build(const Frame *f, int game, int live)
         for (int x = 0; x < gw; x++) {
             int layer = f->layer[y][x] % 3;
             uint32_t col = f->cgb_mode ? (0xFF000000u | (f->rgb[y][x] & 0xFFFFFFu)) :
-                           (f->luigi_mask[y][x] ? (0xFF000000u | luigi_overlay_pixel(f->shade[y][x] & 3))
+                           (f->luigi_mask[y][x] ? (0xFF000000u | luigi_overlay_pixel(f->shade[y][x] & 3, f->luigi_mask[y][x]))
                                                 : t[layer][f->shade[y][x] & 3]);
             sr += (col >> 16) & 255; sg += (col >> 8) & 255; sb += col & 255;
             if (N == 1) { img[y * gw + x] = col; continue; }
