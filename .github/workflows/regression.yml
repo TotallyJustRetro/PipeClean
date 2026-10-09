@@ -112,7 +112,7 @@ jobs:
 
       - name: Build full runtime and test target
         run: |
-          cmake --build build-ci --target PipeClean test_sml2_wide test_sml_wide test_cart_mbc1 --parallel 2
+          cmake --build build-ci --target PipeClean test_sml2_wide test_sml_wide test_cart_mbc1 test_recomp_guard --parallel 2
           ctest --test-dir build-ci --output-on-failure
 
       - name: Smoke-test Wario Land GB/GBC mapper entries
