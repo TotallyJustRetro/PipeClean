@@ -78,6 +78,29 @@ jobs:
           Path("ci/sml2_smoke.gb").write_bytes(rom)
           PY
 
+      - name: Generate synthetic Wario mapper smoke ROMs
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          specs = [
+              ("wario-sml3.gb", 512 * 1024, b"SUPERMARIOLAND3", 0x00, 0x03, 0x04, 0x02),
+              ("wario2-gb.gb", 1024 * 1024, b"WARIOLAND2", 0x00, 0x13, 0x05, 0x03),
+              ("wario3-gbc.gbc", 2 * 1024 * 1024, b"WARIOLAND3", 0xC0, 0x1B, 0x06, 0x03),
+              ("wario2-gbc.gbc", 2 * 1024 * 1024, b"CGBWARIOLAND2", 0x80, 0x1B, 0x06, 0x03),
+          ]
+          out = Path("ci/wario-smoke")
+          out.mkdir(parents=True, exist_ok=True)
+          for name, size, title, cgb, cart, rom_size, ram_size in specs:
+              rom = bytearray(size)
+              rom[0x134:0x144] = title[:16].ljust(16, b"\\0")
+              rom[0x143] = cgb
+              rom[0x147] = cart
+              rom[0x148] = rom_size
+              rom[0x149] = ram_size
+              (out / name).write_bytes(rom)
+          PY
+
       - name: Configure full runtime
         run: |
           cmake -S . -B build-ci -DROM="$GITHUB_WORKSPACE/ci/sml2_smoke.gb"
@@ -86,6 +109,13 @@ jobs:
         run: |
           cmake --build build-ci --target PipeClean test_sml2_wide test_sml_wide test_cart_mbc1 --parallel 2
           ctest --test-dir build-ci --output-on-failure
+
+      - name: Smoke-test Wario Land GB/GBC mapper entries
+        run: |
+          for rom in ci/wario-smoke/*.gb ci/wario-smoke/*.gbc; do
+            echo "Testing $rom"
+            timeout 15s build-ci/PipeClean --frames 2 "$rom"
+          done
 
       - name: Smoke-test SML2 interpreter and CLI widescreen path
         run: |
