@@ -1458,8 +1458,12 @@ LauncherResult launcher_frame(float dt)
         if (load_state_request[tab] >= 0) res.play = tab;
     } else if (tab == TAB_MULTIPLAYER) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Configure local SML1 co-op, Player 2's name, and Luigi's color.");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Choose 2–4 players and customize names and character colors.");
         tab_multiplayer(cx, cy + 58);
+    } else if (tab == TAB_MP_CONTROLLERS) {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer Controllers");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Assign controllers, respawn bindings, and independent sound banks for players 2–4.");
+        tab_mp_controllers(cx, cy + 58);
     } else if (tab == TAB_FILTERS) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Make the screen look like a real Game Boy, a CRT TV, or something glowing.");
@@ -1524,11 +1528,14 @@ void launcher_event(const SDL_Event *e)
     }
     if (multiplayer_name_editing) {
         GameCfg *mc = &settings.g[GAME_SML];
+        char *name = mp_name_ptr(mc, multiplayer_name_editing);
+        const char *fallback = mp_default_name(multiplayer_name_editing);
+        if (!name) { multiplayer_name_editing = 0; SDL_StopTextInput(); return; }
         if (e->type == SDL_TEXTINPUT) {
-            size_t have = strlen(mc->p2_name), add = strlen(e->text.text);
-            if (have + add < sizeof mc->p2_name && have + add <= 22 &&
+            size_t have = strlen(name), add = strlen(e->text.text);
+            if (have + add < 32 && have + add <= 22 &&
                 (unsigned char)e->text.text[0] >= 32)
-                memcpy(mc->p2_name + have, e->text.text, add + 1);
+                memcpy(name + have, e->text.text, add + 1);
             return;
         }
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {
@@ -1536,20 +1543,21 @@ void launcher_event(const SDL_Event *e)
             if (k == SDLK_ESCAPE || k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
                 multiplayer_name_editing = 0;
                 SDL_StopTextInput();
-                if (!mc->p2_name[0]) snprintf(mc->p2_name, sizeof mc->p2_name, "Luigi");
+                if (!name[0]) snprintf(name, 32, "%s", fallback);
+                settings_save();
                 return;
             }
             if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
-                size_t len = strlen(mc->p2_name);
+                size_t len = strlen(name);
                 if (len) {
                     len--;
-                    while (len && (((unsigned char)mc->p2_name[len] & 0xC0u) == 0x80u)) len--;
-                    mc->p2_name[len] = 0;
+                    while (len && (((unsigned char)name[len] & 0xC0u) == 0x80u)) len--;
+                    name[len] = 0;
                 }
                 return;
             }
-            if ((e->key.keysym.mod & KMOD_CTRL) && (k == SDLK_a)) {
-                mc->p2_name[0] = 0;
+            if ((e->key.keysym.mod & KMOD_CTRL) && k == SDLK_a) {
+                name[0] = 0;
                 return;
             }
         }
@@ -1557,17 +1565,19 @@ void launcher_event(const SDL_Event *e)
             e->type == SDL_MOUSEBUTTONDOWN) {
             multiplayer_name_editing = 0;
             SDL_StopTextInput();
-            if (!mc->p2_name[0]) snprintf(mc->p2_name, sizeof mc->p2_name, "Luigi");
+            if (!name[0]) snprintf(name, 32, "%s", fallback);
+            settings_save();
         }
         return;
     }
     if (cap_kind) {
         int cap_game = (cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
         GameCfg *current = &settings.g[cap_game];
-        if ((cap_kind == 2 && (cap_slot < 0 || cap_slot > 1 ||
+        if ((cap_kind == 2 && (cap_slot < 0 || cap_slot >= MAX_MP_PLAYERS ||
                                current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())) ||
             (cap_kind == 4 && (current->pad_device[0] < 0 || current->pad_device[0] >= pad_count())) ||
-            (cap_kind == 6 && (current->pad_device[1] < 0 || current->pad_device[1] >= pad_count())))
+            (cap_kind == 6 && (cap_slot < 1 || cap_slot >= MAX_MP_PLAYERS ||
+                               current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())))
             cap_kind = 0;
     }
     if (cap_kind) {
@@ -1583,17 +1593,19 @@ void launcher_event(const SDL_Event *e)
                 c->action_key[cap_btn] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
             } else if (cap_kind == 5) {
-                c->p2_respawn_key = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
+                int *binding = mp_respawn_key_ptr(c, cap_btn);
+                if (binding) *binding = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
-                settings_save(); /* Persist the rescue binding immediately, not only on the autosave timer. */
-                launcher_toast("Luigi keyboard respawn binding saved.");
+                settings_save();
+                launcher_toast("Multiplayer respawn key saved.");
             } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
                 if (cap_kind == 2) c->pad[cap_btn][cap_slot] = -1;
                 else if (cap_kind == 4) c->action_pad[cap_btn] = -1;
                 else if (cap_kind == 6) {
-                    c->p2_respawn_pad = -1;
+                    int *binding = mp_respawn_pad_ptr(c, cap_btn);
+                    if (binding) *binding = -1;
                     settings_save();
-                    launcher_toast("Luigi controller respawn binding cleared.");
+                    launcher_toast("Multiplayer controller respawn binding cleared.");
                 }
                 cap_kind = 0;
             }
@@ -1612,13 +1624,14 @@ void launcher_event(const SDL_Event *e)
                 launcher_ignore_pad_confirm = 1;
             }
         } else if (cap_kind == 6) {
-            int code = pad_capture(c->pad_device[1], e);
+            int code = pad_capture(c->pad_device[cap_slot], e);
             if (code >= 0) {
-                c->p2_respawn_pad = code;
+                int *binding = mp_respawn_pad_ptr(c, cap_btn);
+                if (binding) *binding = code;
                 cap_kind = 0;
                 launcher_ignore_pad_confirm = 1;
-                settings_save(); /* Don't depend on launcher autosave before close. */
-                launcher_toast("Luigi controller respawn binding saved.");
+                settings_save();
+                launcher_toast("Multiplayer controller respawn binding saved.");
             }
         }
         return;
