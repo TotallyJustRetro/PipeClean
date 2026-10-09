@@ -600,7 +600,7 @@ int emu_mp_begin(void)
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
 {
     if (!mp_ready || (player != 0 && player != 1) || !frame) return -1;
-    frame->p2_jump_sfx_event = 0;
+    frame->p2_sfx_events = 0;
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
@@ -629,7 +629,14 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         uint8_t p1_scroll = rd8(0xFFA4);
         uint8_t p2_state_before = mp_p2_state.game_state;
-        /* Keep these from BEFORE the simulation updates MpPlayerState. */
+        /* Snapshot prior character values so one-shot sounds follow actual events. */
+        uint8_t p2_jump_status_before = mp_p2_state.mario[7];   /* C207: 0 ground, 1 rising, 2 falling */
+        uint8_t p2_grounded_before = mp_p2_state.mario[10];     /* C20A: 1 on ground */
+        uint8_t p2_super_status_before = mp_p2_state.super_status;
+        uint8_t p2_superball_before = mp_p2_state.superball;
+        uint8_t p2_projectiles_before[3];
+        memcpy(p2_projectiles_before, mp_p2_state.projectile_status, sizeof p2_projectiles_before);
+        uint8_t p2_ttl_before = mp_p2_state.superball_ttl;
         int p2_world_lives_before = mp_bcd_to_int(rd8(0xDA15));
         uint8_t score_before[3];
         uint8_t coins_before = rd8(0xFFFA);
@@ -696,13 +703,44 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int enemy_merged = 0;
         int enemy_sound_event = 0;
         int p2_stomp_event = (p2_square_sfx == 0x03);
-        /* The custom SFX is driven by the real P2 A-button rising edge rather
-         * than the clone's ROM sound register/state, which gets overwritten
-         * when switching the isolated state back to Player 1. */
-        int p2_jump_event = (p2_state_before == 0 &&
-                             (buttons & 0x01u) &&
-                             !p2_a_was_down_before);
-        frame->p2_jump_sfx_event = (uint8_t)(p2_jump_event != 0);
+        /*
+         * Generate one-shot sound flags from real game-state transitions.
+         * Pressing A while airborne must stay silent: C207 transitions 0 -> 1
+         * and C20A says whether Luigi was grounded before the frame.
+         */
+        uint8_t p2_sfx_events = 0;
+        uint8_t jump_status_after = rd8(0xC207);
+        if (p2_state_before == 0 && p2_grounded_before && p2_jump_status_before == 0 &&
+            jump_status_after == 1 && (buttons & 0x01u) && !p2_a_was_down_before)
+            p2_sfx_events |= P2_SFX_EVENT_JUMP;
+
+        for (int i = 0; i < 3; i++) {
+            uint8_t projectile_after = rd8((uint16_t)(0xFFA9 + i));
+            if (p2_projectiles_before[i] == 0 && projectile_after != 0)
+                p2_sfx_events |= P2_SFX_EVENT_FIREBALL;
+        }
+        if (p2_ttl_before == 0 && rd8(0xC0A9) != 0)
+            p2_sfx_events |= P2_SFX_EVENT_FIREBALL;
+
+        /* These original sound codes mark pickup/injury; RAM changes cover DX variants. */
+        uint8_t p2_super_status_after = rd8(0xFF99);
+        uint8_t p2_superball_after = rd8(0xFFB5);
+        if (p2_square_sfx == 0x04 ||
+            (p2_superball_before == 0 && p2_superball_after != 0) ||
+            (p2_super_status_before != 1 && p2_super_status_after == 1))
+            p2_sfx_events |= P2_SFX_EVENT_POWER_UP;
+
+        if (p2_square_sfx == 0x06 ||
+            (p2_super_status_before != 3 && p2_super_status_after == 3) ||
+            (p2_superball_before != 0 && p2_superball_after == 0))
+            p2_sfx_events |= P2_SFX_EVENT_POWER_DOWN;
+
+        if ((p2_state_before == 0 && p2_game_state == 3) || life_delta < 0)
+            p2_sfx_events |= P2_SFX_EVENT_DIE;
+
+        if (p2_sfx_events & P2_SFX_EVENT_DIE)
+            p2_sfx_events &= (uint8_t)~P2_SFX_EVENT_POWER_DOWN;
+        frame->p2_sfx_events = p2_sfx_events;
 
         /*
          * A stomp sound belongs to one collision, not every enemy whose AI
@@ -794,8 +832,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t square_request = 0;
         if (coins_after != coins_before) square_request = 0x05; /* SFX_COIN */
         else if (enemy_sound_event) square_request = 0x03; /* SFX_STOMP */
-        else if (p1_square_sfx_before == 0 && p2_square_sfx && p2_square_sfx != 0x01)
-            square_request = p2_square_sfx; /* Keep ROM jump SFX out; use the custom sound instead. */
+        else if (p1_square_sfx_before == 0 && p2_square_sfx &&
+                 p2_square_sfx != 0x01 && p2_square_sfx != 0x04 && p2_square_sfx != 0x06)
+            square_request = p2_square_sfx; /* P2 jump and power sounds are mixed separately. */
         /* Jump sound is synthesized by PipeClean and triggered from the frame flag. */
         mp_queue_sfx(0xDFE0, &mp_pending_square_sfx, square_request);
 
