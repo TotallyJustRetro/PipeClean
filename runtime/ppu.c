@@ -77,6 +77,12 @@ void ppu_vram_write(uint16_t a, uint8_t value)
 
 uint8_t ppu_vram_bank_read(void) { return (uint8_t)(0xFE | (vram_bank & 1)); }
 
+/* Copy the tile-data area of CGB VRAM bank 1 for frame-local overlays. */
+void ppu_vram_bank1_copy(uint8_t out[0x1800])
+{
+    if (out) memcpy(out, vram_cgb1, 0x1800);
+}
+
 void ppu_set_cgb_mode(int enabled) { cgb_render_enabled = enabled != 0; }
 int ppu_cgb_mode_enabled(void) { return cgb_render_enabled; }
 
