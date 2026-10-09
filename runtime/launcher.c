@@ -1244,12 +1244,13 @@ void launcher_event(const SDL_Event *e)
                 }
                 return;
             }
-            if ((e->key.keysym.mod & KMOD_CTRL) && (k == SDLK_a || k == SDLK_A)) {
+            if ((e->key.keysym.mod & KMOD_CTRL) && (k == SDLK_a)) {
                 mc->p2_name[0] = 0;
                 return;
             }
         }
-        if (e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+        if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
+            e->type == SDL_MOUSEBUTTONDOWN) {
             multiplayer_name_editing = 0;
             SDL_StopTextInput();
             if (!mc->p2_name[0]) snprintf(mc->p2_name, sizeof mc->p2_name, "Luigi");
