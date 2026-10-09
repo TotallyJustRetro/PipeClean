@@ -29,7 +29,6 @@ extern const LuigiColor luigi_colors[N_LUIGI_COLORS];
 enum { ACT_SAVE_STATE, ACT_LOAD_STATE, ACT_REWIND, ACT_SUSPEND, ACT_NEXT_SLOT, N_ACTION };
 enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 
-#define MAX_MP_PLAYERS 4
 #define PAD_AXIS_BASE 100               /* controller binding codes >= 100 are triggers: 100 = L2, 101 = R2 */
 #define MAX_EVENTS 8
 #define N_UI_SFX 5                      /* hover, click, confirm, back, toggle */
