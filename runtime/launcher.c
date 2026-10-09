@@ -1316,10 +1316,16 @@ void launcher_event(const SDL_Event *e)
             } else if (cap_kind == 5) {
                 c->p2_respawn_key = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
+                settings_save(); /* Persist the rescue binding immediately, not only on the autosave timer. */
+                launcher_toast("Luigi keyboard respawn binding saved.");
             } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
                 if (cap_kind == 2) c->pad[cap_btn][cap_slot] = -1;
                 else if (cap_kind == 4) c->action_pad[cap_btn] = -1;
-                else if (cap_kind == 6) c->p2_respawn_pad = -1;
+                else if (cap_kind == 6) {
+                    c->p2_respawn_pad = -1;
+                    settings_save();
+                    launcher_toast("Luigi controller respawn binding cleared.");
+                }
                 cap_kind = 0;
             }
         } else if (cap_kind == 2) {
@@ -1330,7 +1336,12 @@ void launcher_event(const SDL_Event *e)
             if (code >= 0) { c->action_pad[cap_btn] = code; cap_kind = 0; }
         } else if (cap_kind == 6) {
             int code = pad_capture(c->pad_device[1], e);
-            if (code >= 0) { c->p2_respawn_pad = code; cap_kind = 0; }
+            if (code >= 0) {
+                c->p2_respawn_pad = code;
+                cap_kind = 0;
+                settings_save(); /* Don't depend on launcher autosave before close. */
+                launcher_toast("Luigi controller respawn binding saved.");
+            }
         }
         return;
     }
