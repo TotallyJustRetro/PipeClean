@@ -470,6 +470,71 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
     pad_poll_player(game, 0, b, d);
 }
 
+/* Convert the left stick into cursor velocity while suppressing stick drift. */
+static float launcher_axis_value(Sint16 raw)
+{
+    float v = raw < 0 ? (float)raw / 32768.0f : (float)raw / 32767.0f;
+    float a = fabsf(v);
+    if (a <= 0.20f) return 0.0f;
+    return (v < 0.0f ? -1.0f : 1.0f) * ((a - 0.20f) / 0.80f);
+}
+
+void pad_poll_launcher(float *x_axis, float *y_axis, int *confirm, int *back)
+{
+    if (x_axis) *x_axis = 0.0f;
+    if (y_axis) *y_axis = 0.0f;
+    if (confirm) *confirm = 0;
+    if (back) *back = 0;
+
+    float best_x = 0.0f, best_y = 0.0f;
+    int any_confirm = 0, any_back = 0;
+
+    /* Any connected controller can use the launcher before being assigned
+       to a game's Player 1 slot. */
+    for (int i = 0; i < n_pads; i++) {
+        Pad *p = &pads[i];
+        float ax = 0.0f, ay = 0.0f;
+        int a = 0, b = 0;
+        int left = 0, right = 0, up = 0, down = 0;
+
+        if (p->mapped) {
+            ax = launcher_axis_value(SDL_GameControllerGetAxis(p->gc, SDL_CONTROLLER_AXIS_LEFTX));
+            ay = launcher_axis_value(SDL_GameControllerGetAxis(p->gc, SDL_CONTROLLER_AXIS_LEFTY));
+            a = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_A) != 0;
+            b = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_B) != 0;
+            left  = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_LEFT) != 0;
+            right = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) != 0;
+            up    = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_UP) != 0;
+            down  = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_DOWN) != 0;
+        } else {
+            SDL_Joystick *j = p->joy;
+            if (SDL_JoystickNumAxes(j) > 0) ax = launcher_axis_value(SDL_JoystickGetAxis(j, 0));
+            if (SDL_JoystickNumAxes(j) > 1) ay = launcher_axis_value(SDL_JoystickGetAxis(j, 1));
+            a = SDL_JoystickNumButtons(j) > 0 && SDL_JoystickGetButton(j, 0) != 0;
+            b = SDL_JoystickNumButtons(j) > 1 && SDL_JoystickGetButton(j, 1) != 0;
+            if (SDL_JoystickNumHats(j) > 0) {
+                Uint8 hat = SDL_JoystickGetHat(j, 0);
+                left = (hat & SDL_HAT_LEFT) != 0;
+                right = (hat & SDL_HAT_RIGHT) != 0;
+                up = (hat & SDL_HAT_UP) != 0;
+                down = (hat & SDL_HAT_DOWN) != 0;
+            }
+        }
+
+        if (left != right) ax = left ? -1.0f : 1.0f;
+        if (up != down) ay = up ? -1.0f : 1.0f;
+        if (fabsf(ax) > fabsf(best_x)) best_x = ax;
+        if (fabsf(ay) > fabsf(best_y)) best_y = ay;
+        any_confirm |= a;
+        any_back |= b;
+    }
+
+    if (x_axis) *x_axis = best_x;
+    if (y_axis) *y_axis = best_y;
+    if (confirm) *confirm = any_confirm;
+    if (back) *back = any_back;
+}
+
 
 int pad_is_selected_instance(int game, SDL_JoystickID which)
 {
