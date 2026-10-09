@@ -1428,6 +1428,8 @@ static int emu_state_load_blob(const void *src, size_t n)
             mp_p2_lives = old.p2_lives;
             mp_p2_spawned = old.p2_spawned != 0;
             mp_p2_invulnerability_frames = old.p2_invulnerability_frames;
+            memcpy(mp_p2_last_oam, old.p2.mario_oam, sizeof mp_p2_last_oam);
+            mp_p2_a_was_down = 0;
             mp_pending_square_sfx = old.pending_square_sfx;
             mp_pending_noise_sfx = old.pending_noise_sfx;
             memset(mp_extra_players, 0, sizeof mp_extra_players);
