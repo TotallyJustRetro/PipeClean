@@ -29,10 +29,10 @@ static int g_target = 2048;
 /* menu music + sfx */
 typedef struct { float *d; long n; } Clip;
 static Clip music, sfx[N_UI_SFX];
-static Clip p2_sfx[N_P2_SFX];   /* Built-in original or user-imported Player 2 effects. */
-static long p2_sfx_pos[N_P2_SFX];
+static Clip mp_sfx[MAX_MP_PLAYERS - 1][N_P2_SFX]; /* One independent sound bank for each clone. */
+static long mp_sfx_pos[MAX_MP_PLAYERS - 1][N_P2_SFX];
 static char music_path[512], sfx_path[N_UI_SFX][512];
-static char p2_loaded_path[N_P2_SFX][512];
+static char mp_loaded_path[MAX_MP_PLAYERS - 1][N_P2_SFX][512];
 static long music_pos;
 static float music_gain, music_target;
 static int music_want_on;
@@ -331,6 +331,17 @@ static int load_clip(Clip *c, const char *path)
 }
 
 /* ------------------------------------------------------------ device */
+static char *mp_sfx_setting_path(GameCfg *c, int player, int event)
+{
+    if (!c || event < 0 || event >= N_P2_SFX) return NULL;
+    switch (player) {
+    case 2: return c->p2_sfx_path[event];
+    case 3: return c->p3_sfx_path[event];
+    case 4: return c->p4_sfx_path[event];
+    default: return NULL;
+    }
+}
+
 static void audio_cb(void *ud, Uint8 *stream, int len)
 {
     (void)ud;
@@ -377,18 +388,20 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
             r += c->d[voices[v].pos * 2 + 1] * voices[v].vol;
             voices[v].pos++;
         }
-        for (int ev = 0; ev < N_P2_SFX; ev++) {
-            long pos = p2_sfx_pos[ev];
-            Clip *clip = &p2_sfx[ev];
-            if (pos < 0) continue;
-            if (pos >= clip->n || !clip->d) {
-                p2_sfx_pos[ev] = -1;
-                continue;
+        for (int player = 0; player < MAX_MP_PLAYERS - 1; player++) {
+            for (int ev = 0; ev < N_P2_SFX; ev++) {
+                long pos = mp_sfx_pos[player][ev];
+                Clip *clip = &mp_sfx[player][ev];
+                if (pos < 0) continue;
+                if (pos >= clip->n || !clip->d) {
+                    mp_sfx_pos[player][ev] = -1;
+                    continue;
+                }
+                l += clip->d[pos * 2] * 0.78f;
+                r += clip->d[pos * 2 + 1] * 0.78f;
+                mp_sfx_pos[player][ev]++;
+                if (mp_sfx_pos[player][ev] >= clip->n) mp_sfx_pos[player][ev] = -1;
             }
-            l += clip->d[pos * 2] * 0.78f;
-            r += clip->d[pos * 2 + 1] * 0.78f;
-            p2_sfx_pos[ev]++;
-            if (p2_sfx_pos[ev] >= clip->n) p2_sfx_pos[ev] = -1;
         }
         if (l > 1) l = 1; else if (l < -1) l = -1;
         if (r > 1) r = 1; else if (r < -1) r = -1;
@@ -421,10 +434,11 @@ int audio_init(int latency)
     g_target = rate * tgt_ms[latency < 0 || latency >= N_LAT ? 1 : latency] / 1000;
     synth_music(&music);
     for (int i = 0; i < N_UI_SFX; i++) synth_sfx(&sfx[i], i);
-    for (int i = 0; i < N_P2_SFX; i++) {
-        synth_p2_sfx(&p2_sfx[i], i);
-        p2_sfx_pos[i] = -1;
-    }
+    for (int player = 0; player < MAX_MP_PLAYERS - 1; player++)
+        for (int i = 0; i < N_P2_SFX; i++) {
+            synth_p2_sfx(&mp_sfx[player][i], i);
+            mp_sfx_pos[player][i] = -1;
+        }
     SDL_PauseAudioDevice(dev, 0);
     return 0;
 }
@@ -433,12 +447,14 @@ void audio_shutdown(void)
 {
     audio_pad_close();
     if (dev) { SDL_CloseAudioDevice(dev); dev = 0; }
-    for (int i = 0; i < N_P2_SFX; i++) {
-        free(p2_sfx[i].d);
-        p2_sfx[i].d = NULL;
-        p2_sfx[i].n = 0;
-        p2_sfx_pos[i] = -1;
-        p2_loaded_path[i][0] = 0;
+    for (int player = 0; player < MAX_MP_PLAYERS - 1; player++) {
+        for (int i = 0; i < N_P2_SFX; i++) {
+            free(mp_sfx[player][i].d);
+            mp_sfx[player][i].d = NULL;
+            mp_sfx[player][i].n = 0;
+            mp_sfx_pos[player][i] = -1;
+            mp_loaded_path[player][i][0] = 0;
+        }
     }
 }
 
@@ -449,7 +465,8 @@ void audio_game_begin(void)
     if (!dev) return;
     SDL_LockMutex(mx);
     g_r = g_w = 0; g_active = 1; g_playing = 0; g_abort = 0; g_paused = 0; underruns = 0;
-    for (int i = 0; i < N_P2_SFX; i++) p2_sfx_pos[i] = -1;
+    for (int player = 0; player < MAX_MP_PLAYERS - 1; player++)
+        for (int i = 0; i < N_P2_SFX; i++) mp_sfx_pos[player][i] = -1;
     g_last_l = g_last_r = 0;
     music_target = 0;
     SDL_UnlockMutex(mx);
@@ -459,7 +476,7 @@ void audio_game_end(void)
 {
     if (!dev) return;
     SDL_LockMutex(mx);
-    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1; for (int i = 0; i < N_P2_SFX; i++) p2_sfx_pos[i] = -1;
+    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1; for (int p = 0; p < MAX_MP_PLAYERS - 1; p++) for (int i = 0; i < N_P2_SFX; i++) mp_sfx_pos[p][i] = -1;
     SDL_UnlockMutex(mx);
     SDL_CondBroadcast(cv);
 }
@@ -563,26 +580,29 @@ void audio_menu_apply(void)
             free(old.d);
         }
     }
-    /* Player 2 SFX can each use a user-imported WAV/MP3/OGG/FLAC, or a
-     * generated original chiptune when its path is empty. */
+    /* Each multiplayer character owns an independent imported/built-in bank. */
     GameCfg *mc = &settings.g[GAME_SML];
-    for (int i = 0; i < N_P2_SFX; i++) {
-        if (strcmp(p2_loaded_path[i], mc->p2_sfx_path[i])) {
-            Clip tmp = {0};
-            if (mc->p2_sfx_path[i][0] && load_clip(&tmp, mc->p2_sfx_path[i]) != 0)
-                mc->p2_sfx_path[i][0] = 0;
-            if (!tmp.d) {
-                synth_p2_sfx(&tmp, i);
-                p2_loaded_path[i][0] = 0;
-            } else {
-                snprintf(p2_loaded_path[i], sizeof p2_loaded_path[i], "%s", mc->p2_sfx_path[i]);
+    for (int player = 2; player <= 4; player++) {
+        int pi = player - 2;
+        for (int i = 0; i < N_P2_SFX; i++) {
+            char *path = mp_sfx_setting_path(mc, player, i);
+            if (!path) continue;
+            if (strcmp(mp_loaded_path[pi][i], path)) {
+                Clip tmp = {0};
+                if (path[0] && load_clip(&tmp, path) != 0) path[0] = 0;
+                if (!tmp.d) {
+                    synth_p2_sfx(&tmp, i);
+                    mp_loaded_path[pi][i][0] = 0;
+                } else {
+                    snprintf(mp_loaded_path[pi][i], sizeof mp_loaded_path[pi][i], "%s", path);
+                }
+                SDL_LockMutex(mx);
+                Clip old = mp_sfx[pi][i];
+                mp_sfx[pi][i] = tmp;
+                mp_sfx_pos[pi][i] = -1;
+                SDL_UnlockMutex(mx);
+                free(old.d);
             }
-            SDL_LockMutex(mx);
-            Clip old = p2_sfx[i];
-            p2_sfx[i] = tmp;
-            p2_sfx_pos[i] = -1;
-            SDL_UnlockMutex(mx);
-            free(old.d);
         }
     }
     audio_menu_music(music_want_on);
@@ -612,18 +632,22 @@ void audio_sfx(int which)
 }
 void audio_sfx_preview(int which) { if (dev && which >= 0 && which < N_UI_SFX) play_sfx(which); }
 
-void audio_p2_sfx(int which)
+void audio_mp_sfx(int player, int which)
 {
-    if (!dev || which < 0 || which >= N_P2_SFX || !p2_sfx[which].d) return;
+    if (!dev || player < 2 || player > MAX_MP_PLAYERS ||
+        which < 0 || which >= N_P2_SFX || !mp_sfx[player - 2][which].d) return;
     SDL_LockMutex(mx);
-    p2_sfx_pos[which] = 0;
+    mp_sfx_pos[player - 2][which] = 0;
     SDL_UnlockMutex(mx);
 }
 
-void audio_p2_sfx_preview(int which)
+void audio_mp_sfx_preview(int player, int which)
 {
-    audio_p2_sfx(which);
+    audio_mp_sfx(player, which);
 }
+
+void audio_p2_sfx(int which) { audio_mp_sfx(2, which); }
+void audio_p2_sfx_preview(int which) { audio_mp_sfx_preview(2, which); }
 
 void audio_music_preview(void)
 {
