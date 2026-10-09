@@ -908,6 +908,12 @@ static void mp_sml2_capture_oam_from(const uint8_t source[0xA0],
     }
 }
 
+/* Keep Player 1's legacy four-piece capture path unchanged. */
+static void mp_sml2_capture_oam(uint8_t out[16])
+{
+    mp_sml2_capture_oam_from(oam, out);
+}
+
 /* SML2's player renderer indexes a pointer table at $4000 in ROM bank 1.
  * Decode that exact mapping (Y offset, X offset, tile, attributes) and match
  * its pieces against hardware OAM, rather than assuming every pose is a 2x2. */
