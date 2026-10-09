@@ -32,6 +32,8 @@ typedef struct {
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
     int multiplayer;                    /* local two-player mode; default off */
+    int p2_respawn_key;                  /* keyboard key to recover Luigi in SML1 multiplayer */
+    int p2_respawn_pad;                  /* button/trigger on Player 2's assigned controller; -1 = unbound */
     int state_slot;                      /* save-state slot 0..9 */
     int action_key[N_ACTION];            /* emulator shortcut keyboard bindings */
     int action_pad[N_ACTION];            /* emulator shortcut controller bindings */
