@@ -860,6 +860,22 @@ static void mp_sml2_offset_player(MpSml2Player *p, int dx)
     p->invulnerability_frames = 90;
 }
 
+/* Shift only camera-relative data. The saved A227/FFC2 coordinates are the
+ * character's world position; A23C/FFC5 and OAM X are cached screen positions.
+ * Keep clone sprites aligned with the authoritative Player 1 camera without
+ * moving their actual position in the level. */
+static void mp_sml2_shift_screen_x(MpSml2Player *p, int dx)
+{
+    if (!p || !dx) return;
+    p->ram[0x3C] = (uint8_t)(p->ram[0x3C] + dx); /* A23C: screen X */
+    p->h_c5 = (uint8_t)(p->h_c5 + dx);          /* FFC5: OAM screen X */
+    for (int i = 0; i < 4; i++) {
+        uint8_t *sprite = &p->oam[i * 4];
+        if (sprite[0] && sprite[1])
+            sprite[1] = (uint8_t)(sprite[1] + dx);
+    }
+}
+
 static int mp_sml2_gameplay_active(void)
 {
     /* FF9B is SML2's game-mode dispatcher: mode 4 is active level play,
@@ -933,6 +949,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (!mp_ready || player < 0 || player >= mp_player_count || !frame) return -1;
     if (player == 0) {
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+        uint8_t scroll_before = rd8(0xA2B1);
         gb_set_input(buttons, dpad);
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
@@ -944,6 +961,14 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         int n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
         mp_sml2_save_player(&mp_sml2_players[0]);
+        int camera_dx = mp_scroll_delta(rd8(0xA2B1), scroll_before);
+        if (camera_dx && mp_sml2_initialized && mp_sml2_gameplay_active()) {
+            /* Player 1 owns the camera. Translate each clone's cached screen
+             * coordinates and sprite X positions when the authoritative view
+             * scrolls, leaving its world coordinates and physics untouched. */
+            for (int i = 1; i < mp_player_count; i++)
+                mp_sml2_shift_screen_x(&mp_sml2_players[i], -camera_dx);
+        }
         if (mp_sml2_gameplay_active()) {
             if (!mp_sml2_initialized) {
                 for (int i = 1; i < mp_player_count; i++) mp_sml2_spawn_player(i);
@@ -1020,7 +1045,12 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     }
     if ((buttons & 0x02u) && rd8(0xA216) == 3)
         p->sfx_events |= P2_SFX_EVENT_FIREBALL;
-    int same_camera = scroll_after == scroll;
+    int camera_dx = mp_scroll_delta(scroll_after, scroll);
+    /* Clone simulations can scroll locally. Do not import that camera into
+     * the shared world: transform the captured sprite/cache X positions back
+     * into Player 1's camera before the authoritative state is restored. */
+    if (camera_dx) mp_sml2_shift_screen_x(p, -camera_dx);
+    int same_camera = camera_dx == 0;
     int map_changed = merge_world && same_camera &&
         memcmp(mp_sml2_map_before, mp_sml2_map_after, sizeof mp_sml2_map_before) != 0;
     int vram_changed = merge_world && same_camera &&
