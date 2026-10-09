@@ -106,6 +106,26 @@ jobs:
               (out / name).write_bytes(rom)
           PY
 
+      - name: Generate synthetic CGB speed-switch ROM
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rom = bytearray(32 * 1024)
+          rom[0x134:0x13C] = b"STOPTEST"
+          rom[0x143] = 0x80  # CGB-enhanced cartridge
+          rom[0x147] = 0x00  # ROM-only mapper
+          rom[0x148] = 0x00  # 32 KiB
+          rom[0x149] = 0x00
+          # LD A,1; LDH (KEY1),A; STOP; LDH A,(KEY1); LD (C000),A; JR -2
+          rom[0x100:0x10C] = bytes([
+              0x3E, 0x01, 0xE0, 0x4D, 0x10, 0x00,
+              0xF0, 0x4D, 0xEA, 0x00, 0xC0, 0x18
+          ])
+          rom[0x10C] = 0xFE
+          Path("ci/cgb_stop.gb").write_bytes(rom)
+          PY
+
       - name: Configure full runtime
         run: |
           cmake -S . -B build-ci -DROM="$GITHUB_WORKSPACE/ci/sml2_smoke.gb"
@@ -114,6 +134,15 @@ jobs:
         run: |
           cmake --build build-ci --target PipeClean test_sml2_wide test_sml_wide test_cart_mbc1 test_recomp_guard --parallel 2
           ctest --test-dir build-ci --output-on-failure
+
+      - name: Smoke-test CGB STOP speed switching
+        run: |
+          timeout 15s build-ci/PipeClean --frames 2 --no-crc-check --dump-ram ci/cgb-stop-ram.bin ci/cgb_stop.gb
+          python3 - <<'PY'
+          from pathlib import Path
+          ram = Path("ci/cgb-stop-ram.bin").read_bytes()
+          assert ram[0] == 0xFE, f"KEY1 did not switch to double speed: C000={ram[0]:02X}"
+          PY
 
       - name: Smoke-test Wario Land GB/GBC mapper entries
         run: |
