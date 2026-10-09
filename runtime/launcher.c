@@ -439,7 +439,7 @@ static void sub_game(int g, float x, float y)
     /* save data */
     label(rx + 18, y + 330, "Save data");
     char sp[1200];
-    int bat = games[g].crc == 0 && g == GAME_SML2;
+    int bat = games[g].crc == 0 && (g == GAME_SML2 || g >= GAME_WARIO_SML3);
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     ui_text_wrap(F_REG, 12, rx + 18, y + 352, rw - 36, C_DIM, bat ? "Saved games are kept automatically next to the program, in the \"saves\" folder, one file per game." : "This cartridge has no save memory.", 3);
     if (bat && ui_button(rx + 18, y + 396, 180, 36, "Open saves folder", B_NORMAL, 1)) { mkdir_u(sp); open_folder(sp); }
