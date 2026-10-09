@@ -20,6 +20,8 @@ const char *pad_status(char *buf, size_t n);
 
 void pad_poll(int game, uint8_t *buttons, uint8_t *dpad);
 void pad_poll_player(int game, int player, uint8_t *buttons, uint8_t *dpad);
+/* Launcher navigation does not require a per-game controller assignment. */
+void pad_poll_launcher(float *x_axis, float *y_axis, int *confirm, int *back);
 int  pad_capture(int device, const SDL_Event *e);
 int  pad_binding_down(int game, int action);
 int  pad_binding_event(int game, int action, const SDL_Event *e);
