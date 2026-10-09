@@ -54,6 +54,10 @@ static int load_state_request[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
 static int multiplayer_name_editing;
+static int launcher_controller_cursor_active;
+static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
+static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
+static float launcher_controller_x, launcher_controller_y;
 static int clickable(float x, float y, float w, float h, int *over_out);
 
 static void controller_name(int device, char *out, size_t n)
@@ -282,6 +286,11 @@ void launcher_init(void)
     for (int g = 0; g < N_GAMES; g++)
         if (!rs[g].ok && found[g][0]) { snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", found[g]); rom_check(g); }
     tab = settings.last_tab >= 0 && settings.last_tab < N_TABS ? settings.last_tab : 0;
+    launcher_controller_cursor_active = 0;
+    launcher_controller_confirm_was_down = launcher_controller_back_was_down = 0;
+    launcher_controller_wait_neutral = launcher_ignore_pad_confirm = 0;
+    launcher_controller_x = 136.0f;
+    launcher_controller_y = 129.0f;
     for (int g = 0; g < N_GAMES; g++) if (!games[g].external_player && rs[g].ok && !prev_ok[g]) make_preview(g);
     filter_game = 0;
     if (getenv("GBL_TAB")) { int t = 0, u = 0; sscanf(getenv("GBL_TAB"), "%d,%d", &t, &u); tab = t; if (t < N_GAMES) sub[t] = u; }
@@ -321,6 +330,94 @@ static int clickable(float x, float y, float w, float h, int *over_out)
     if (over_out) *over_out = over;
     if (clicked && ui_sfx_cb) ui_sfx_cb(SFX_CLICK);
     return clicked;
+}
+
+static void launcher_controller_default_cursor(void)
+{
+    /* Start on the selected sidebar entry, so the initial position is clear. */
+    const float sx = 24.0f, sy = 108.0f;
+    const float row = N_GAMES > 4 ? 46.0f : 76.0f;
+    const float h = N_GAMES > 4 ? 42.0f : 68.0f;
+    launcher_controller_x = sx + 112.0f;
+    if (tab < N_GAMES) {
+        launcher_controller_y = sy + tab * row + h * 0.5f;
+    } else {
+        float y2 = sy + N_GAMES * row + 8.0f;
+        launcher_controller_y = y2 + 12.0f + (tab - TAB_MULTIPLAYER) * 52.0f + 22.0f;
+    }
+}
+
+static void launcher_controller_update(float dt)
+{
+    float ax = 0.0f, ay = 0.0f;
+    int confirm = 0, back = 0;
+    pad_poll_launcher(&ax, &ay, &confirm, &back);
+
+    /* A button used for binding capture mustn't also activate a UI control. */
+    if (launcher_ignore_pad_confirm) {
+        if (!confirm) launcher_ignore_pad_confirm = 0;
+        confirm = 0;
+    }
+
+    int input = fabsf(ax) > 0.001f || fabsf(ay) > 0.001f || confirm || back;
+    if (launcher_controller_wait_neutral) {
+        if (input) {
+            launcher_controller_back_was_down = back;
+            return;
+        }
+        launcher_controller_wait_neutral = 0;
+    }
+
+    if (!launcher_controller_cursor_active && input) {
+        launcher_controller_cursor_active = 1;
+        launcher_controller_default_cursor();
+    }
+    if (!launcher_controller_cursor_active) {
+        launcher_controller_back_was_down = back;
+        return;
+    }
+
+    if (dt < 0.0f) dt = 0.0f;
+    if (dt > 0.05f) dt = 0.05f;
+    launcher_controller_x += ax * 560.0f * dt;
+    launcher_controller_y += ay * 560.0f * dt;
+    if (launcher_controller_x < 6.0f) launcher_controller_x = 6.0f;
+    if (launcher_controller_x > UI_W - 6.0f) launcher_controller_x = UI_W - 6.0f;
+    if (launcher_controller_y < 6.0f) launcher_controller_y = 6.0f;
+    if (launcher_controller_y > UI_H - 6.0f) launcher_controller_y = UI_H - 6.0f;
+
+    ui_mouse.x = launcher_controller_x;
+    ui_mouse.y = launcher_controller_y;
+    ui_mouse.inside = 1;
+
+    int can_click = !cap_kind && !multiplayer_name_editing;
+    int ui_confirm = can_click ? confirm : 0;
+    if (ui_confirm != launcher_controller_confirm_was_down)
+        ui_mouse_button(ui_confirm);
+    launcher_controller_confirm_was_down = ui_confirm;
+
+    if (back && !launcher_controller_back_was_down) {
+        SDL_Event cancel;
+        memset(&cancel, 0, sizeof cancel);
+        cancel.type = SDL_KEYDOWN;
+        cancel.key.type = SDL_KEYDOWN;
+        cancel.key.state = SDL_PRESSED;
+        cancel.key.keysym.sym = SDLK_ESCAPE;
+        launcher_event(&cancel);
+        if (controller_menu >= 0) controller_menu = -1;
+    }
+    launcher_controller_back_was_down = back;
+}
+
+static void launcher_leave_controller_cursor(void)
+{
+    if (!launcher_controller_cursor_active) return;
+    launcher_controller_cursor_active = 0;
+    launcher_controller_wait_neutral = 1;
+    ui_mouse_button(0);
+    /* A virtual release caused by moving the physical mouse isn't a click. */
+    ui_mouse.released = 0;
+    launcher_controller_confirm_was_down = 0;
 }
 
 static uint32_t mixc(uint32_t a, uint32_t b, float t)
@@ -1116,6 +1213,7 @@ static int tab_button(float x, float y, float w, float h, int selected, uint32_t
 LauncherResult launcher_frame(float dt)
 {
     LauncherResult res = {-1, 0};
+    launcher_controller_update(dt);
     anim_clock += dt;
     int g = (tab == TAB_MULTIPLAYER) ? GAME_SML : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
@@ -1220,7 +1318,10 @@ LauncherResult launcher_frame(float dt)
 
     /* footer */
     const char *h = ui_hint_text();
-    ui_text_fit(F_REG, 12, 28, UI_H - 26, 900, C_DIM, h && h[0] ? h : "Drag and drop a ROM, patch, picture, sound or texture folder anywhere on this window.");
+    const char *footer = launcher_controller_cursor_active && !cap_kind && !multiplayer_name_editing
+        ? "Controller: D-pad/left stick move | A select | B cancel | Move mouse to switch back"
+        : (h && h[0] ? h : "Drag and drop a ROM, patch, picture, sound or texture folder anywhere on this window.");
+    ui_text_fit(F_REG, 12, 28, UI_H - 26, UI_W - 56, C_DIM, footer);
 
     /* toast */
     if (toast_t > 0) {
@@ -1231,6 +1332,16 @@ LauncherResult launcher_frame(float dt)
         ui_shadow(tx, ty, tw, 40, 12, 10, RGBA(0, 0, 0, (int)(90 * a)));
         ui_rrect(tx, ty, tw, 40, 12, RGBA(40, 46, 66, (int)(250 * a)));
         ui_text_c(F_BOLD, 14, UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
+    }
+
+    /* Draw a high-contrast virtual pointer while controller navigation is active. */
+    if (launcher_controller_cursor_active) {
+        ui_rrect(launcher_controller_x - 7.0f, launcher_controller_y - 7.0f,
+                 14.0f, 14.0f, 7.0f, RGBA(12, 16, 24, 235));
+        ui_stroke(launcher_controller_x - 7.0f, launcher_controller_y - 7.0f,
+                  14.0f, 14.0f, 7.0f, 2.0f, RGBA(174, 232, 255, 255));
+        ui_rrect(launcher_controller_x - 2.0f, launcher_controller_y - 2.0f,
+                 4.0f, 4.0f, 2.0f, RGBA(255, 255, 255, 255));
     }
 
     /* binding capture hint */
@@ -1253,6 +1364,10 @@ LauncherResult launcher_frame(float dt)
 /* ------------------------------------------------------------------ events */
 void launcher_event(const SDL_Event *e)
 {
+    if (e && (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN ||
+              e->type == SDL_MOUSEWHEEL)) {
+        launcher_leave_controller_cursor();
+    }
     if (multiplayer_name_editing) {
         GameCfg *mc = &settings.g[GAME_SML];
         if (e->type == SDL_TEXTINPUT) {
@@ -1329,16 +1444,25 @@ void launcher_event(const SDL_Event *e)
                 cap_kind = 0;
             }
         } else if (cap_kind == 2) {
-            int code = pad_capture(cap_kind == 2 ? c->pad_device[cap_slot] : -1, e);
-            if (code >= 0) { c->pad[cap_btn][cap_slot] = code; cap_kind = 0; }
+            int code = pad_capture(c->pad_device[cap_slot], e);
+            if (code >= 0) {
+                c->pad[cap_btn][cap_slot] = code;
+                cap_kind = 0;
+                launcher_ignore_pad_confirm = 1;
+            }
         } else if (cap_kind == 4) {
             int code = pad_capture(c->pad_device[0], e);
-            if (code >= 0) { c->action_pad[cap_btn] = code; cap_kind = 0; }
+            if (code >= 0) {
+                c->action_pad[cap_btn] = code;
+                cap_kind = 0;
+                launcher_ignore_pad_confirm = 1;
+            }
         } else if (cap_kind == 6) {
             int code = pad_capture(c->pad_device[1], e);
             if (code >= 0) {
                 c->p2_respawn_pad = code;
                 cap_kind = 0;
+                launcher_ignore_pad_confirm = 1;
                 settings_save(); /* Don't depend on launcher autosave before close. */
                 launcher_toast("Luigi controller respawn binding saved.");
             }
