@@ -60,6 +60,8 @@ void frame_from_ppu(Frame *f)
     memcpy(f->bgtile, ppu_bgtile, sizeof f->bgtile);
     memcpy(f->sprtile, ppu_sprtile, sizeof f->sprtile);
     memcpy(f->tiles, vram, sizeof f->tiles);
+    ppu_cgb_obj_palette_copy(f->cgb_obj_palette);
+    memset(f->p2_projectile_oam, 0, sizeof f->p2_projectile_oam);
     ppu_vram_bank1_copy(f->tiles_cgb1);
     f->lcd_on = ppu_lcd_is_on();
     f->w = ppu_w; f->xoff = ppu_xoff;
@@ -197,7 +199,7 @@ static void cpu_filters(const FilterCfg *f, int live, int N)
     free(c);
 }
 
-static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], int dx, int dy, int luigi)
+static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam, int sprite_count, int dx, int dy, int luigi)
 {
     if (!f || !src_oam || !f->lcd_on || f->w <= 0) return;
 
@@ -205,7 +207,7 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
     int h = f->sprite_size16 ? 16 : 8;
     int sprite_neg = L > 8 ? 256 - (L - 8) : 256;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < sprite_count; i++) {
         const uint8_t *src = &src_oam[i * 4];
         if (!src[0]) continue;
 
@@ -233,12 +235,13 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
                 if (!ci) continue;
                 f->shade[y][x] = (pal >> (ci * 2)) & 3;
                 f->layer[y][x] = (fl & 0x10) ? 2 : 1;
-                if (luigi) {
-                    f->luigi_mask[y][x] = 1;
-                    /* CGB rendering uses rgb[], not shade[]/luigi_mask[].
-                     * Write the recolored pixel into the color framebuffer too. */
-                    if (f->cgb_mode)
-                        f->rgb[y][x] = luigi_overlay_palette[ci] & 0xFFFFFFu;
+                if (luigi) f->luigi_mask[y][x] = 1;
+                /* Separate overlays don't pass through the native PPU sprite
+                 * compositor, so apply the original CGB OBJ palette directly. */
+                if (f->cgb_mode) {
+                    uint32_t rgb = luigi ? luigi_overlay_palette[ci] :
+                        f->cgb_obj_palette[((unsigned)(fl & 7) * 4u) + (unsigned)ci];
+                    f->rgb[y][x] = rgb & 0xFFFFFFu;
                 }
                 f->sprtile[y][x] = (uint16_t)(addr >> 4);
                 f->spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
@@ -252,17 +255,22 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
 void render_overlay_sml1_mario(Frame *f, int dx, int dy)
 {
     if (!f) return;
-    render_overlay_sml1_mario_src(f, f->mario_oam, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, f->mario_oam, 4, dx, dy, 0);
 }
 
 void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 0);
 }
 
 void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, dx, dy, 1);
+    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 1);
+}
+
+void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy)
+{
+    render_overlay_sml1_mario_src(f, oam, 3, dx, dy, 0);
 }
 
 void render_build(const Frame *f, int game, int live)
