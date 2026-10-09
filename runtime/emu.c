@@ -789,6 +789,8 @@ int emu_mp_begin(void)
     mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     mp_p2_lives = mp_p1_lives_seen;
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
+    memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     mp_sml2_initialized = 0;
     mp_sml2_stable_frames = 0;
     mp_sml2_stable_level = 0;
@@ -1853,6 +1855,8 @@ void emu_mp_end(void)
     mp_game = GAME_SML;
     mp_sml2_initialized = 0;
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
+    memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     mp_ready = 0;
     mp_player_count = 2;
     mp_current_player = 0;
@@ -2022,6 +2026,8 @@ static int emu_state_load_blob(const void *src, size_t n)
             mp_pending_noise_sfx = old.pending_noise_sfx;
             memset(mp_extra_players, 0, sizeof mp_extra_players);
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
+    memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
             mp_sml2_initialized = 0;
         } else if (h.version == 6u) {
             MpStateExtraV6 old;
@@ -2036,6 +2042,8 @@ static int emu_state_load_blob(const void *src, size_t n)
             mp_pending_square_sfx = old.pending_square_sfx;
             mp_pending_noise_sfx = old.pending_noise_sfx;
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
+    memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
             mp_sml2_initialized = 0;
         } else if (h.version == 7u) {
             MpStateExtraV7 old;
@@ -2048,6 +2056,8 @@ static int emu_state_load_blob(const void *src, size_t n)
             mp_p2_a_was_down = old.p2_a_was_down;
             memcpy(mp_extra_players, old.extra, sizeof mp_extra_players);
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
+    memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
             for (int i = 0; i < MAX_MP_PLAYERS; i++) {
                 memcpy(mp_sml2_players[i].ram, old.sml2[i].ram, sizeof old.sml2[i].ram);
                 mp_sml2_players[i].keys_held = old.sml2[i].keys_held;
@@ -2082,6 +2092,8 @@ static int emu_state_load_blob(const void *src, size_t n)
             mp_p2_a_was_down = old.p2_a_was_down;
             memcpy(mp_extra_players, old.extra, sizeof mp_extra_players);
             memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
+    memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
             for (int i = 0; i < MAX_MP_PLAYERS; i++) {
                 memcpy(mp_sml2_players[i].ram, old.sml2[i].ram, sizeof old.sml2[i].ram);
                 mp_sml2_players[i].keys_held = old.sml2[i].keys_held;
