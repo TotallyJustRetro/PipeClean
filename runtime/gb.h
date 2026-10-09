@@ -74,6 +74,10 @@ void ppu_reset(void);
 void ppu_tick(int n);
 uint8_t ppu_read(uint8_t reg);
 void ppu_write(uint8_t reg, uint8_t v);
+uint8_t ppu_vram_read(uint16_t address);
+void ppu_vram_write(uint16_t address, uint8_t value);
+uint8_t ppu_vram_bank_read(void);
+void ppu_vram_bank_write(uint8_t value);
 extern uint8_t ppu_shade[GB_H][GB_WMAX];   /* 0..3, already through BGP/OBPx */
 extern uint8_t ppu_layer[GB_H][GB_WMAX];   /* 0 BG/window, 1 sprite (OBP0), 2 sprite (OBP1) */
 extern uint8_t vram[0x2000], oam[0xA0];
