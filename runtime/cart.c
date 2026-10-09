@@ -29,6 +29,7 @@ int cart_parse(const uint8_t *img, size_t n, CartInfo *ci)
     if (n < 0x150) return 0;
     memcpy(ci->title, img + 0x134, 16);
     ci->title[16] = 0;
+    ci->cgb_flag = img[0x143]; /* 0x80 = CGB enhanced, 0xC0 = CGB-only */
     for (int i = 0; i < 16; i++) if ((unsigned char)ci->title[i] < 32 || (unsigned char)ci->title[i] > 126) { ci->title[i] = 0; break; }
     int t = img[0x147];
     switch (t) {
