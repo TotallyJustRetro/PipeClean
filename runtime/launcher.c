@@ -1005,6 +1005,84 @@ static void tab_multiplayer(float x, float y)
 }
  
 /* ------------------------------------------------------------------ game tab: DualSense */
+static void tab_mp_controllers(float x, float y)
+{
+    GameCfg *c = &settings.g[GAME_SML];
+    card(x, y, 808, 512, "MULTIPLAYER CONTROLLERS & CHARACTER SOUNDS");
+
+    for (int player = 0; player < MAX_MP_PLAYERS; player++) {
+        float bx = x + 18 + player * 192.0f;
+        char title[24];
+        snprintf(title, sizeof title, "Player %d", player + 1);
+        label(bx, y + 38, title);
+        controller_dropdown(GAME_SML, player, bx, y + 56, 180);
+    }
+
+    ui_rect(x + 18, y + 100, 772, 1, C_LINE);
+    label(x + 18, y + 108, "Respawn bindings");
+    ui_text_fit(F_REG, 10, x + 150, y + 109, 630, C_DIM,
+                "Set a key and an assigned-controller button for each extra character.");
+    for (int player = 1; player < MAX_MP_PLAYERS; player++) {
+        float ry = y + 130 + (player - 1) * 29.0f;
+        char title[24];
+        snprintf(title, sizeof title, "Player %d", player + 1);
+        ui_text_fit(F_BOLD, 11, x + 18, ry + 7, 72, C_TEXT, title);
+        bind_mp_respawn_cell(GAME_SML, player, x + 92, ry, 150, 5);
+        bind_mp_respawn_cell(GAME_SML, player, x + 250, ry, 168, 6);
+    }
+
+    ui_rect(x + 18, y + 222, 772, 1, C_LINE);
+    label(x + 18, y + 228, "Independent character sound banks");
+    ui_text_fit(F_REG, 10, x + 236, y + 229, 545, C_DIM,
+                "Test, import, or reset sounds per player; empty paths use built-in chiptunes.");
+
+    static const char *sound_names[N_P2_SFX] = {
+        "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn"
+    };
+    static const int players[3] = {2, 3, 4};
+    for (int col = 0; col < 3; col++) {
+        int player = players[col];
+        int ci = mp_color_index(c, player);
+        float bx = x + 18 + col * 258.0f;
+        float cw = 250.0f;
+        ui_rrect(bx, y + 246, cw, 24, 7, RGBA(255,255,255,8));
+        char player_title[56];
+        char *name = mp_name_ptr(c, player);
+        snprintf(player_title, sizeof player_title, "P%d  %.18s", player,
+                 name && name[0] ? name : mp_default_name(player));
+        ui_text_fit(F_BOLD, 12, bx + 8, y + 251, cw - 16,
+                    HEX(luigi_colors[ci].swatch), player_title);
+
+        for (int event = 0; event < N_P2_SFX; event++) {
+            char *path = mp_sfx_path_ptr(c, player, event);
+            float ry = y + 274 + event * 39.0f;
+            ui_text_fit(F_BOLD, 10, bx + 5, ry + 1, 82, C_TEXT, sound_names[event]);
+            ui_text_fit_tail(F_REG, 9, bx + 88, ry + 1, 155, C_DIM,
+                             path && path[0] ? path_base(path) : "Built-in chiptune");
+            if (ui_button(bx + 4, ry + 14, 48, 22, "Test", B_NORMAL, 1))
+                audio_mp_sfx_preview(player, event);
+            if (ui_button(bx + 57, ry + 14, 57, 22, "Import", B_NORMAL, 1)) {
+                char sound_path[1200], title[96];
+                snprintf(title, sizeof title, "Choose Player %d %s sound", player, sound_names[event]);
+                if (dlg_pick(DLG_AUDIO, title, sound_path, sizeof sound_path)) {
+                    snprintf(path, 512, "%s", sound_path);
+                    audio_menu_apply();
+                    settings_save();
+                    launcher_toast(path[0] ? "Multiplayer sound imported." : "Could not load sound; using built-in.");
+                }
+            }
+            if (ui_button(bx + 119, ry + 14, 52, 22, "Reset", B_GHOST, path && path[0])) {
+                path[0] = 0;
+                audio_menu_apply();
+                settings_save();
+                launcher_toast("Using the built-in multiplayer sound.");
+            }
+        }
+    }
+    ui_text_fit(F_REG, 9, x + 18, y + 505, 770, C_DIM,
+                "WAV, MP3, OGG and FLAC are supported; each player has an independent six-event bank.");
+}
+
 static void hue_to_rgb(int hue, uint32_t *rgb)
 {
     float h = hue / 60.0f; int i = (int)h; float f = h - i;
