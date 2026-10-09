@@ -108,7 +108,7 @@ void filter_preset(FilterCfg *f, int p)
 void controls_defaults(GameCfg *c)
 {
     static const int key[N_BTN][2] = {
-        {SDLK_x, SDLK_k}, {SDLK_z, SDLK_j}, {SDLK_RSHIFT, SDLK_BACKSPACE}, {SDLK_RETURN, 0},
+        {SDLK_x, SDLK_j}, {SDLK_z, SDLK_k}, {SDLK_RSHIFT, SDLK_BACKSPACE}, {SDLK_RETURN, 0},
         {SDLK_RIGHT, SDLK_d}, {SDLK_LEFT, SDLK_a}, {SDLK_UP, SDLK_w}, {SDLK_DOWN, SDLK_s}};
     static const int pad[N_BTN][2] = {
         {SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_B}, {SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_A},
