@@ -436,5 +436,6 @@ void gb_reset(void)
     memset(io_misc, 0xFF, sizeof io_misc);
     total_cycles = 0;
     ppu_reset();
+    ppu_set_cgb_mode(cgb_mode);
     apu_reset();
 }
