@@ -861,9 +861,13 @@ static void mp_sml2_offset_player(MpSml2Player *p, int dx)
 
 static int mp_sml2_gameplay_active(void)
 {
-    /* FF9B is SML2's game-mode dispatcher: mode 4 is active level play.
-     * Mode 0 is the overworld/map, so do not create co-op players there. */
-    return rd8(0xFF9B) == 4 && rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
+    /* FF9B is SML2's game-mode dispatcher: mode 4 is active level play,
+     * while mode 0 is the overworld. During level entry the dispatcher can
+     * change before the level timer and tile data are fully initialized.
+     * Don't spawn/run clone simulations until the timer is live. */
+    uint16_t timer = (uint16_t)rd8(0xA254) | ((uint16_t)rd8(0xA255) << 8);
+    return rd8(0xFF9B) == 4 && timer != 0 &&
+           rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
 }
 
 static void mp_sml2_capture_frame(Frame *frame)
@@ -955,7 +959,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
     MpSml2Player *p = &mp_sml2_players[player];
     p->sfx_events = 0;
-    if (!mp_sml2_initialized) {
+    if (!mp_sml2_initialized || !mp_sml2_gameplay_active()) {
         mp_sml2_capture_frame(frame);
         return 0;
     }
@@ -971,6 +975,9 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         return 0;
     }
 
+    int gameplay_before = mp_sml2_gameplay_active();
+    uint8_t level_before = rd8(0xA269);
+    uint8_t level_bank_before = rd8(0xA258);
     mp_sml2_load_player(p);
     uint8_t old_a = p->previous_a;
     uint8_t old_ground = rd8(0xA214);
@@ -995,6 +1002,10 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_after[i] = cart_ram_read((uint16_t)(0xA800 + i));
     memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
     mp_sml2_save_player(p);
+    int gameplay_after = mp_sml2_gameplay_active();
+    int same_level = level_before == rd8(0xA269) &&
+                     level_bank_before == rd8(0xA258);
+    int merge_world = gameplay_before && gameplay_after && same_level;
     p->previous_a = (uint8_t)((buttons & 0x01u) != 0);
     if ((buttons & 0x01u) && !old_a && old_ground && !old_air)
         p->sfx_events |= P2_SFX_EVENT_JUMP;
@@ -1009,9 +1020,9 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if ((buttons & 0x02u) && rd8(0xA216) == 3)
         p->sfx_events |= P2_SFX_EVENT_FIREBALL;
     int same_camera = scroll_after == scroll;
-    int map_changed = same_camera &&
+    int map_changed = merge_world && same_camera &&
         memcmp(mp_sml2_map_before, mp_sml2_map_after, sizeof mp_sml2_map_before) != 0;
-    int vram_changed = same_camera &&
+    int vram_changed = merge_world && same_camera &&
         memcmp(mp_sml2_vram_before, mp_sml2_vram_after, sizeof mp_sml2_vram_before) != 0;
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
@@ -1041,11 +1052,12 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
             if (mp_sml2_vram_before[i] != mp_sml2_vram_after[i])
                 vram[0x1800 + i] = mp_sml2_vram_after[i];
     }
-    if (coins_low_after != coins_low) wr8(0xA262, coins_low_after);
-    if (coins_high_after != coins_high) wr8(0xA263, coins_high_after);
-    if (kills_after != kills) wr8(0xA28D, kills_after);
-    if (map_changed || vram_changed || coins_low_after != coins_low ||
-        coins_high_after != coins_high || kills_after != kills) {
+    if (merge_world && coins_low_after != coins_low) wr8(0xA262, coins_low_after);
+    if (merge_world && coins_high_after != coins_high) wr8(0xA263, coins_high_after);
+    if (merge_world && kills_after != kills) wr8(0xA28D, kills_after);
+    if (map_changed || vram_changed ||
+        (merge_world && (coins_low_after != coins_low ||
+                         coins_high_after != coins_high || kills_after != kills))) {
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
     }
     if (p->invulnerability_frames > 0) p->invulnerability_frames--;
