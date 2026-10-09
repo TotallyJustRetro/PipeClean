@@ -18,6 +18,7 @@ typedef struct {
     uint8_t p2_lives;             /* PipeClean Player 2 lives, decoded to 0..99 */
     uint8_t p2_game_state;        /* Private SML1 state: 0 normal, 3/4 death animation */
     uint8_t p2_visible;           /* 1 while Luigi is active on the shared screen */
+    uint8_t p2_blink_hidden;      /* Temporary flicker during Luigi's post-respawn invulnerability */
     uint8_t p2_sound_event;       /* P2 triggered a one-shot interaction SFX */
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
@@ -43,6 +44,7 @@ int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
 void emu_mp_frame_refresh(Frame *frame);
+void emu_mp_request_respawn(void);
 
 /* Emulator state features */
 int emu_state_save_file(const char *path, int resume_after);
