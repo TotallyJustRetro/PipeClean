@@ -29,6 +29,9 @@ static int g_target = 2048;
 /* menu music + sfx */
 typedef struct { float *d; long n; } Clip;
 static Clip music, sfx[N_UI_SFX];
+static Clip p2_jump_clip;       /* Original PipeClean SML1 Player 2 jump SFX. */
+static long p2_jump_pos = -1;
+static const float p2_jump_gain = 0.72f;
 static char music_path[512], sfx_path[N_UI_SFX][512];
 static long music_pos;
 static float music_gain, music_target;
@@ -175,6 +178,62 @@ static void synth_sfx(Clip *c, int which)
     }
 }
 
+static void synth_p2_jump(Clip *c)
+{
+    /* An original, short chiptune jump: springing pitch glide, triangle body,
+     * narrow pulse edge and a tiny bright transient. It doesn't reuse ROM audio. */
+    const double pi = 3.14159265358979323846;
+    const long total = (long)(rate * 0.265);
+    if (!clip_alloc(c, total)) return;
+
+    double phase = 0.0;
+    float prior_noise = 0.0f;
+    float peak = 0.0f;
+    for (long i = 0; i < total; i++) {
+        double t = (double)i / (double)rate;
+        double f;
+        if (t < 0.095) {
+            double u = t / 0.095;
+            f = 245.0 + (720.0 - 245.0) * pow(u, 0.82);
+        } else if (t < 0.160) {
+            double u = (t - 0.095) / 0.065;
+            f = 720.0 - (720.0 - 545.0) * u;
+        } else {
+            double u = (t - 0.160) / (0.265 - 0.160);
+            f = 545.0 - (545.0 - 430.0) * u;
+        }
+        f += 18.0 * sin(2.0 * pi * 7.2 * t) * exp(-9.0 * t);
+        phase += f / (double)rate;
+        double frac = phase - floor(phase);
+        float tri = osc_tri(phase);
+        float pulse = frac < 0.24 ? 1.0f : -1.0f;
+        float sub = (phase * 0.5 - floor(phase * 0.5)) < 0.5 ? 1.0f : -1.0f;
+
+        float raw = noise();
+        float smooth_noise = 0.5f * (prior_noise + raw);
+        prior_noise = raw;
+        double dip = (t - 0.115) / 0.022;
+        double accent = exp(-dip * dip);
+        double tap = (t - 0.108) / 0.028;
+        float env = (float)(exp(-t * 8.6) * (1.0 - 0.17 * accent));
+        float attack = (float)(t < 0.0035 ? t / 0.0035 : 1.0);
+        float transient = smooth_noise * (float)exp(-t * 360.0) * 0.10f;
+        float bright = (float)(sin(2.0 * pi * 1180.0 * t +
+                                   0.2 * sin(2.0 * pi * 15.0 * t)) *
+                               exp(-tap * tap) * 0.11);
+        float sample = tanhf(((0.58f * tri + 0.23f * pulse + 0.12f * sub) *
+                              env * attack + transient + bright) * 1.15f);
+        c->d[i * 2] = sample;
+        c->d[i * 2 + 1] = sample;
+        if (fabsf(sample) > peak) peak = fabsf(sample);
+    }
+
+    if (peak > 0.0f) {
+        float gain = 0.72f / peak;
+        for (long i = 0; i < total * 2; i++) c->d[i] *= gain;
+    }
+}
+
 static void resample_to(float **d, long *n, int from)
 {
     if (from == rate || !*d) return;
@@ -251,6 +310,15 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
             r += c->d[voices[v].pos * 2 + 1] * voices[v].vol;
             voices[v].pos++;
         }
+        if (p2_jump_pos >= 0) {
+            if (p2_jump_pos >= p2_jump_clip.n) p2_jump_pos = -1;
+            else {
+                l += p2_jump_clip.d[p2_jump_pos * 2] * p2_jump_gain;
+                r += p2_jump_clip.d[p2_jump_pos * 2 + 1] * p2_jump_gain;
+                p2_jump_pos++;
+                if (p2_jump_pos >= p2_jump_clip.n) p2_jump_pos = -1;
+            }
+        }
         if (l > 1) l = 1; else if (l < -1) l = -1;
         if (r > 1) r = 1; else if (r < -1) r = -1;
         out[i * 2] = l; out[i * 2 + 1] = r;
@@ -282,6 +350,8 @@ int audio_init(int latency)
     g_target = rate * tgt_ms[latency < 0 || latency >= N_LAT ? 1 : latency] / 1000;
     synth_music(&music);
     for (int i = 0; i < N_UI_SFX; i++) synth_sfx(&sfx[i], i);
+    synth_p2_jump(&p2_jump_clip);
+    p2_jump_pos = -1;
     SDL_PauseAudioDevice(dev, 0);
     return 0;
 }
@@ -290,6 +360,10 @@ void audio_shutdown(void)
 {
     audio_pad_close();
     if (dev) { SDL_CloseAudioDevice(dev); dev = 0; }
+    free(p2_jump_clip.d);
+    p2_jump_clip.d = NULL;
+    p2_jump_clip.n = 0;
+    p2_jump_pos = -1;
 }
 
 int audio_game_target(void) { return g_target; }
@@ -438,6 +512,14 @@ void audio_sfx(int which)
     play_sfx(which);
 }
 void audio_sfx_preview(int which) { if (dev && which >= 0 && which < N_UI_SFX) play_sfx(which); }
+
+void audio_p2_jump_sfx(void)
+{
+    if (!dev || !p2_jump_clip.d) return;
+    SDL_LockMutex(mx);
+    p2_jump_pos = 0;
+    SDL_UnlockMutex(mx);
+}
 
 void audio_music_preview(void)
 {
