@@ -970,10 +970,13 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
 {
     uint8_t candidate[MP_MAX_OAM_SPRITES * 4];
     int best_count = 0;
-    const int hram_x = rd8(0xFFC5), hram_y = rd8(0xFFC4);
+    /* FFC4/FFC5 are shared sprite-rendering scratch registers and may have
+     * been overwritten by enemies/effects later in the frame. A23B/A23C are
+     * the character-specific screen origin saved by SML2's Mario update. */
+    const int player_x = rd8(0xA23C), player_y = rd8(0xA23B);
     memset(out, 0, MP_MAX_OAM_SPRITES * 4);
 
-    int count = mp_sml2_capture_mapping_oam_at(preferred, hram_x, hram_y, source,
+    int count = mp_sml2_capture_mapping_oam_at(preferred, player_x, player_y, source,
                                                 candidate);
     if (count > 0) {
         memcpy(out, candidate, (size_t)count * 4u);
@@ -985,8 +988,8 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
      * complete match; exact piece count/positions/tiles disambiguate the pose. */
     for (int mapping = 0; mapping < 0xF2; mapping++) {
         if (mapping == preferred) continue;
-        count = mp_sml2_capture_mapping_oam_at((uint8_t)mapping, hram_x,
-                                                hram_y, source, candidate);
+        count = mp_sml2_capture_mapping_oam_at((uint8_t)mapping, player_x,
+                                                player_y, source, candidate);
         if (count > best_count) {
             memcpy(out, candidate, (size_t)count * 4u);
             best_count = count;
@@ -1016,8 +1019,8 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
             if (src[2] != tile0) continue;
             int base_x = (uint8_t)((int)src[1] - dx);
             int base_y = (uint8_t)((int)src[0] - dy);
-            if (mp_sml2_distance((uint8_t)base_x, hram_x) > 24 ||
-                mp_sml2_distance((uint8_t)base_y, hram_y) > 24)
+            if (mp_sml2_distance((uint8_t)base_x, player_x) > 24 ||
+                mp_sml2_distance((uint8_t)base_y, player_y) > 24)
                 continue;
             count = mp_sml2_capture_mapping_oam_at((uint8_t)mapping, base_x,
                                                     base_y, source, candidate);
