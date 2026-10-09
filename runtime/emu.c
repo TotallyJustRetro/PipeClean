@@ -176,10 +176,11 @@ typedef struct {
     uint8_t p2_lives;
     uint8_t p2_spawned;
     uint16_t p2_invulnerability_frames;
+    uint8_t pending_square_sfx, pending_noise_sfx;
 } MpStateExtra;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 3u
+#define EMU_STATE_VERSION 4u
 #define EMU_STATE_FLAG_MP 1u
 
 static uint8_t *rewind_data;
@@ -329,8 +330,12 @@ static void mp_copy_projectile_oam_buffer(uint8_t out[12], int screen_dx)
 static void mp_queue_sfx(uint16_t address, uint8_t *pending, uint8_t sfx)
 {
     if (!sfx || !pending) return;
-    if (rd8(address) == 0) wr8(address, sfx);
-    else if (!*pending) *pending = sfx;
+    if (rd8(address) == 0) {
+        wr8(address, sfx);
+        *pending = 0;
+    } else if (!*pending) {
+        *pending = sfx;
+    }
 }
 
 static int mp_is_enemy_stomp_transition(uint8_t before_type, uint8_t after_type)
@@ -1129,6 +1134,8 @@ static int emu_state_save_blob(void *dst, size_t n)
         x.p2_lives = mp_p2_lives;
         x.p2_spawned = (uint8_t)mp_p2_spawned;
         x.p2_invulnerability_frames = mp_p2_invulnerability_frames;
+        x.pending_square_sfx = mp_pending_square_sfx;
+        x.pending_noise_sfx = mp_pending_noise_sfx;
         memcpy((uint8_t *)dst + sizeof h + h.core_bytes, &x, sizeof x);
     }
     return 0;
@@ -1154,6 +1161,8 @@ static int emu_state_load_blob(const void *src, size_t n)
         mp_p2_lives = x.p2_lives;
         mp_p2_spawned = x.p2_spawned != 0;
         mp_p2_invulnerability_frames = x.p2_invulnerability_frames;
+        mp_pending_square_sfx = x.pending_square_sfx;
+        mp_pending_noise_sfx = x.pending_noise_sfx;
         mp_p2_respawn_requested = 0;
         mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
         mp_pending_block = 0;
