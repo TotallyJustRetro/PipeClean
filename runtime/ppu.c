@@ -10,6 +10,8 @@ static uint8_t vram_bank;
 static uint8_t cgb_bg_palette[64], cgb_obj_palette[64];
 static uint8_t cgb_bgpi, cgb_obpi, cgb_opri;
 uint8_t ppu_shade[GB_H][GB_WMAX];
+uint32_t ppu_rgb[GB_H][GB_WMAX]; /* Native 24-bit RGB for CGB-mode pixels. */
+static int cgb_render_enabled;
 uint8_t ppu_layer[GB_H][GB_WMAX];
 uint16_t ppu_bgtile[GB_H][GB_WMAX], ppu_sprtile[GB_H][GB_WMAX];   /* tile number 0..383, 0xFFFF = none */
 uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
@@ -42,6 +44,8 @@ void ppu_reset(void)
     cgb_bgpi = cgb_obpi = cgb_opri = 0;
     memset(oam, 0, sizeof oam);
     memset(ppu_shade, 0, sizeof ppu_shade);
+    memset(ppu_rgb, 0, sizeof ppu_rgb);
+    cgb_render_enabled = 0;
     memset(ppu_layer, 0, sizeof ppu_layer);
     memset(ppu_bgtile, 0xFF, sizeof ppu_bgtile); memset(ppu_sprtile, 0xFF, sizeof ppu_sprtile);
     lcdc = 0x91; stat_sel = 0; scy = scx = lyc = 0;
@@ -72,6 +76,39 @@ void ppu_vram_write(uint16_t a, uint8_t value)
 }
 
 uint8_t ppu_vram_bank_read(void) { return (uint8_t)(0xFE | (vram_bank & 1)); }
+
+void ppu_set_cgb_mode(int enabled) { cgb_render_enabled = enabled != 0; }
+int ppu_cgb_mode_enabled(void) { return cgb_render_enabled; }
+
+static uint32_t cgb_rgb(const uint8_t *palette, unsigned pal, unsigned ci)
+{
+    unsigned off = (pal & 7u) * 8u + (ci & 3u) * 2u;
+    unsigned c = (unsigned)palette[off] | ((unsigned)(palette[off + 1] & 0x7Fu) << 8);
+    unsigned r = c & 31u, g = (c >> 5) & 31u, b = (c >> 10) & 31u;
+    r = (r * 255u + 15u) / 31u;
+    g = (g * 255u + 15u) / 31u;
+    b = (b * 255u + 15u) / 31u;
+    return (r << 16) | (g << 8) | b;
+}
+
+/* Resolve one BG/window pixel, including CGB tile attributes. */
+static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *tile_out)
+{
+    unsigned map_index = (unsigned)map_off + (unsigned)((map_y >> 3) & 31) * 32u + (unsigned)((map_x >> 3) & 31);
+    uint8_t tile = vram[map_index];
+    uint8_t attr = cgb_render_enabled ? vram_cgb1[map_index] : 0;
+    int row = map_y & 7, col = map_x & 7;
+    if (attr & 0x40) row = 7 - row;
+    if (attr & 0x20) col = 7 - col;
+    int addr = (lcdc & 0x10) ? (int)tile * 16 : 0x1000 + (int)(int8_t)tile * 16;
+    addr += row * 2;
+    const uint8_t *tiles = ((attr & 0x08) && cgb_render_enabled) ? vram_cgb1 : vram;
+    int bit = 7 - col;
+    int ci = (((tiles[addr + 1] >> bit) & 1) << 1) | ((tiles[addr] >> bit) & 1);
+    if (attr_out) *attr_out = attr;
+    if (tile_out) *tile_out = addr >> 4;
+    return ci;
+}
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
 uint8_t ppu_cgb_read(uint8_t r)
@@ -124,7 +161,7 @@ uint8_t ppu_read(uint8_t r)
 
 static void blank_screen(void)
 {
-    memset(ppu_shade, 0, sizeof ppu_shade); memset(ppu_layer, 0, sizeof ppu_layer);
+    memset(ppu_shade, 0, sizeof ppu_shade); memset(ppu_rgb, 0, sizeof ppu_rgb); memset(ppu_layer, 0, sizeof ppu_layer);
     memset(ppu_bgtile, 0xFF, sizeof ppu_bgtile); memset(ppu_sprtile, 0xFF, sizeof ppu_sprtile);
 }
 
@@ -176,46 +213,47 @@ static void render_line(int y)
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
     uint8_t *out = ppu_shade[y];
+    uint32_t *rgb = ppu_rgb[y];
     memset(ppu_layer[y], 0, W);
-    memset(ppu_bgtile[y], 0xFF, W * 2);
-    memset(ppu_sprtile[y], 0xFF, W * 2);
-    uint8_t bgci[GB_WMAX];                      /* BG/window colour index, for sprite priority */
+    memset(ppu_bgtile[y], 0xFF, W * sizeof ppu_bgtile[y][0]);
+    memset(ppu_sprtile[y], 0xFF, W * sizeof ppu_sprtile[y][0]);
+    uint8_t bgci[GB_WMAX], bgattr[GB_WMAX];
     memset(bgci, 0, sizeof bgci);
+    memset(bgattr, 0, sizeof bgattr);
 
-    if (lcdc & 0x01) {
-        const uint8_t *map = &vram[(lcdc & 0x08) ? 0x1C00 : 0x1800];
+    /* On CGB, LCDC.0 enables BG/OBJ priority; it does not suppress BG pixels. */
+    if (cgb_render_enabled || (lcdc & 0x01)) {
+        int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
         int sy = (y + scy) & 0xFF;
         int off = L + (y < hud_lines ? hud_shift : 0);
         for (int X = 0; X < W; X++) {
-            int px = (X - off + scx) & 0xFF;
-            uint8_t t = map[(sy >> 3) * 32 + (px >> 3)];
-            int addr = (lcdc & 0x10) ? t * 16 : 0x1000 + (int8_t)t * 16;
-            addr += (sy & 7) * 2;
-            int bit = 7 - (px & 7);
-            int ci = (((vram[addr + 1] >> bit) & 1) << 1) | ((vram[addr] >> bit) & 1);
-            bgci[X] = (uint8_t)ci;
-            out[X] = (bgp >> (ci * 2)) & 3;
-            ppu_bgtile[y][X] = (uint16_t)(addr >> 4);
+            int px = (X - off + scx) & 0xFF, attr = 0, tile_id = 0;
+            int ci = tile_pixel(map_off, px, sy, &attr, &tile_id);
+            bgci[X] = (uint8_t)ci; bgattr[X] = (uint8_t)attr;
+            out[X] = cgb_render_enabled ? (uint8_t)ci : (uint8_t)((bgp >> (ci * 2)) & 3);
+            ppu_bgtile[y][X] = (uint16_t)tile_id;
             ppu_bguv[y][X] = (uint8_t)(((sy & 7) << 3) | (px & 7));
+            if (cgb_render_enabled)
+                rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr & 7), (unsigned)ci);
         }
     } else {
         memset(out, 0, W);
+        memset(rgb, 0, W * sizeof rgb[0]);
     }
 
-    if ((lcdc & 0x20) && (lcdc & 0x01) && y >= wy && wx <= 166) {
-        const uint8_t *map = &vram[(lcdc & 0x40) ? 0x1C00 : 0x1800];
+    if ((lcdc & 0x20) && (cgb_render_enabled || (lcdc & 0x01)) && y >= wy && wx <= 166) {
+        int map_off = (lcdc & 0x40) ? 0x1C00 : 0x1800;
         int x0 = wx - 7 + L + (win_centre ? hud_shift : 0), drew = 0;
-        for (int X = (win_centre ? 0 : (x0 < 0 ? 0 : x0)); X < W; X++) {
-            int px = (X - x0) & 0xFF;
-            uint8_t t = map[(wlc >> 3) * 32 + (px >> 3)];
-            int addr = (lcdc & 0x10) ? t * 16 : 0x1000 + (int8_t)t * 16;
-            addr += (wlc & 7) * 2;
-            int bit = 7 - (px & 7);
-            int ci = (((vram[addr + 1] >> bit) & 1) << 1) | ((vram[addr] >> bit) & 1);
-            bgci[X] = (uint8_t)ci;
-            out[X] = (bgp >> (ci * 2)) & 3;
-            ppu_bgtile[y][X] = (uint16_t)(addr >> 4);
+        int first = win_centre ? 0 : (x0 < 0 ? 0 : x0);
+        for (int X = first; X < W; X++) {
+            int px = (X - x0) & 0xFF, attr = 0, tile_id = 0;
+            int ci = tile_pixel(map_off, px, wlc, &attr, &tile_id);
+            bgci[X] = (uint8_t)ci; bgattr[X] = (uint8_t)attr;
+            out[X] = cgb_render_enabled ? (uint8_t)ci : (uint8_t)((bgp >> (ci * 2)) & 3);
+            ppu_bgtile[y][X] = (uint16_t)tile_id;
             ppu_bguv[y][X] = (uint8_t)(((wlc & 7) << 3) | (px & 7));
+            if (cgb_render_enabled)
+                rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr & 7), (unsigned)ci);
             drew = 1;
         }
         if (drew) wlc++;
@@ -228,13 +266,18 @@ static void render_line(int y)
             int sy = oam[i * 4] - 16;
             if (y >= sy && y < sy + h) idx[n++] = i;
         }
-        /* lower X wins, ties go to lower OAM index: draw losers first */
-        for (int a = 0; a < n; a++)
-            for (int b = a + 1; b < n; b++) {
-                int xa = oam[idx[a] * 4 + 1], xb = oam[idx[b] * 4 + 1];
-                if (xb > xa || (xb == xa && idx[b] > idx[a])) { int t = idx[a]; idx[a] = idx[b]; idx[b] = t; }
-            }
-        for (int k = 0; k < n; k++) {
+        /* DMG (and CGB OPRI=1): lower X wins. Native CGB mode defaults to OAM order. */
+        if (!cgb_render_enabled || (cgb_opri & 1)) {
+            for (int a = 0; a < n; a++)
+                for (int b = a + 1; b < n; b++) {
+                    int xa = oam[idx[a] * 4 + 1], xb = oam[idx[b] * 4 + 1];
+                    if (xb > xa || (xb == xa && idx[b] > idx[a])) {
+                        int t = idx[a]; idx[a] = idx[b]; idx[b] = t;
+                    }
+                }
+        }
+        for (int kk = 0; kk < n; kk++) {
+            int k = (cgb_render_enabled && !(cgb_opri & 1)) ? n - 1 - kk : kk;
             int i = idx[k];
             int ox = oam[i * 4 + 1];
             if (ox >= sprite_neg) ox -= 256;
@@ -243,29 +286,41 @@ static void render_line(int y)
             int row = y - sy;
             if (fl & 0x40) row = h - 1 - row;
             if (h == 16) tile &= 0xFE;
-            int addr = (tile + (row >> 3)) * 16 + (row & 7) * 2;
+            int addr = ((int)tile + (row >> 3)) * 16 + (row & 7) * 2;
+            const uint8_t *tiles = (cgb_render_enabled && (fl & 0x08)) ? vram_cgb1 : vram;
             uint8_t pal = (fl & 0x10) ? obp1 : obp0;
             for (int px = 0; px < 8; px++) {
                 int x = sx + px;
                 if (x < 0 || x >= W) continue;
                 int bit = (fl & 0x20) ? px : 7 - px;
-                int ci = (((vram[addr + 1] >> bit) & 1) << 1) | ((vram[addr] >> bit) & 1);
+                int ci = (((tiles[addr + 1] >> bit) & 1) << 1) | ((tiles[addr] >> bit) & 1);
                 if (ci == 0) continue;
-                if ((fl & 0x80) && bgci[x] != 0) continue;
-                out[x] = (pal >> (ci * 2)) & 3;
-                ppu_layer[y][x] = (fl & 0x10) ? 2 : 1;
+                if (cgb_render_enabled) {
+                    if ((lcdc & 0x01) && bgci[x] != 0 && ((bgattr[x] & 0x80) || (fl & 0x80)))
+                        continue;
+                    out[x] = (uint8_t)ci;
+                    rgb[x] = cgb_rgb(cgb_obj_palette, (unsigned)(fl & 7), (unsigned)ci);
+                    ppu_layer[y][x] = 1;
+                } else {
+                    if ((fl & 0x80) && bgci[x] != 0) continue;
+                    out[x] = (pal >> (ci * 2)) & 3;
+                    ppu_layer[y][x] = (fl & 0x10) ? 2 : 1;
+                }
                 ppu_sprtile[y][x] = (uint16_t)(addr >> 4);
-                ppu_spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) | ((fl & 0x20) ? 0x40 : 0) | ((fl & 0x40) ? 0x80 : 0));
+                ppu_spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
+                                             ((fl & 0x20) ? 0x40 : 0) |
+                                             ((fl & 0x40) ? 0x80 : 0));
             }
         }
-    }    if (!wide_on) {                              /* not a level: normal screen with bars at the sides */
+    }
+    if (!wide_on) {
         for (int X = 0; X < W; X++) {
             if (X >= L && X < L + GB_W) continue;
-            out[X] = 3; ppu_layer[y][X] = 0; ppu_bgtile[y][X] = 0xFFFF; ppu_sprtile[y][X] = 0xFFFF;
+            out[X] = 3; rgb[X] = 0;
+            ppu_layer[y][X] = 0; ppu_bgtile[y][X] = 0xFFFF; ppu_sprtile[y][X] = 0xFFFF;
         }
     }
 }
-
 void ppu_tick(int n)
 {
     if (!lcd_on) {
@@ -302,6 +357,8 @@ typedef struct {
     uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
     uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
+    uint32_t rgb[GB_H][GB_WMAX];
+    int cgb_render_enabled;
     uint16_t bgtile[GB_H][GB_WMAX], sprtile[GB_H][GB_WMAX];
     uint8_t bguv[GB_H][GB_WMAX], spruv[GB_H][GB_WMAX];
     int ppu_w, ppu_xoff;
@@ -316,7 +373,7 @@ int ppu_state_save(void *dst, size_t n)
     if (!dst || n < sizeof(PPUState)) return -1;
     PPUState *s = (PPUState *)dst;
     memcpy(s->vram,vram,sizeof vram); memcpy(s->vram_cgb1,vram_cgb1,sizeof vram_cgb1); s->vram_bank=vram_bank; memcpy(s->cgb_bg_palette,cgb_bg_palette,sizeof cgb_bg_palette); memcpy(s->cgb_obj_palette,cgb_obj_palette,sizeof cgb_obj_palette); s->cgb_bgpi=cgb_bgpi; s->cgb_obpi=cgb_obpi; s->cgb_opri=cgb_opri; memcpy(s->oam,oam,sizeof oam);
-    memcpy(s->shade,ppu_shade,sizeof ppu_shade); memcpy(s->layer,ppu_layer,sizeof ppu_layer);
+    memcpy(s->shade,ppu_shade,sizeof ppu_shade); memcpy(s->rgb,ppu_rgb,sizeof ppu_rgb); s->cgb_render_enabled=cgb_render_enabled; memcpy(s->layer,ppu_layer,sizeof ppu_layer);
     memcpy(s->bgtile,ppu_bgtile,sizeof ppu_bgtile); memcpy(s->sprtile,ppu_sprtile,sizeof ppu_sprtile);
     memcpy(s->bguv,ppu_bguv,sizeof ppu_bguv); memcpy(s->spruv,ppu_spruv,sizeof ppu_spruv);
     s->ppu_w=ppu_w; s->ppu_xoff=ppu_xoff; s->hud_lines=hud_lines; s->hud_shift=hud_shift; s->wide_r=wide_r; s->sprite_neg=sprite_neg;
@@ -330,7 +387,7 @@ int ppu_state_load(const void *src, size_t n)
     if (!src || n < sizeof(PPUState)) return -1;
     const PPUState *s = (const PPUState *)src;
     memcpy(vram,s->vram,sizeof vram); memcpy(vram_cgb1,s->vram_cgb1,sizeof vram_cgb1); vram_bank=s->vram_bank & 1; memcpy(cgb_bg_palette,s->cgb_bg_palette,sizeof cgb_bg_palette); memcpy(cgb_obj_palette,s->cgb_obj_palette,sizeof cgb_obj_palette); cgb_bgpi=s->cgb_bgpi; cgb_obpi=s->cgb_obpi; cgb_opri=s->cgb_opri; memcpy(oam,s->oam,sizeof oam);
-    memcpy(ppu_shade,s->shade,sizeof ppu_shade); memcpy(ppu_layer,s->layer,sizeof ppu_layer);
+    memcpy(ppu_shade,s->shade,sizeof ppu_shade); memcpy(ppu_rgb,s->rgb,sizeof ppu_rgb); cgb_render_enabled=s->cgb_render_enabled != 0; memcpy(ppu_layer,s->layer,sizeof ppu_layer);
     memcpy(ppu_bgtile,s->bgtile,sizeof ppu_bgtile); memcpy(ppu_sprtile,s->sprtile,sizeof ppu_sprtile);
     memcpy(ppu_bguv,s->bguv,sizeof ppu_bguv); memcpy(ppu_spruv,s->spruv,sizeof ppu_spruv);
     ppu_w=s->ppu_w; ppu_xoff=s->ppu_xoff; hud_lines=s->hud_lines; hud_shift=s->hud_shift; wide_r=s->wide_r; sprite_neg=s->sprite_neg;
