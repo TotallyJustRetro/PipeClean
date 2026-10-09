@@ -179,6 +179,9 @@ int rom_apply_hack(const char *path, RomStatus *st)
     if (!out) { free(buf); return 1; }
     size_t olen = 0;
     char err[200] = "";
+    /* IPS has no embedded source checksum; BPS/UPS and full patched ROMs do
+     * not need the DX-specific IPS source guard below. */
+    int is_ips_patch = n >= 5 && !memcmp(buf, "PATCH", 5);
     if (patch_is_patch(buf, (size_t)n)) {
         if (patch_apply(buf, (size_t)n, base_img, base_len, out, MAX_ROM, &olen, err, sizeof err)) {
             free(buf); free(out);
@@ -196,18 +199,18 @@ int rom_apply_hack(const char *path, RomStatus *st)
         free(out); snprintf(st->msg, sizeof st->msg, "That hack uses a cartridge type that isn't supported."); return 1;
     }
 
-    /* These two DX IPS files silently assume a specific clean source ROM.
-     * IPS itself has no source checksum, so applying them to another revision
-     * can corrupt code and previously crashed the launcher during preview. */
+    /* These two DX IPS patches assume a specific clean source ROM. Restrict
+     * this guard to IPS: BPS/UPS verify their own source checksums, and an
+     * already-patched .gb file no longer depends on the source ROM revision. */
     uint32_t source_crc = crc32_bytes(base_img, base_len);
-    if (base_game == GAME_SML && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
+    if (is_ips_patch && base_game == GAME_SML && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
         olen == 0x40000 && source_crc != 0x90776841u) {
         free(out);
         snprintf(st->msg, sizeof st->msg,
                  "This Super Mario Land DX patch requires the clean World v1.0 ROM (CRC32 90776841).");
         return 1;
     }
-    if (base_game == GAME_SML2 && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
+    if (is_ips_patch && base_game == GAME_SML2 && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
         olen == 0x100000 && source_crc != 0xD5EC24E4u) {
         free(out);
         snprintf(st->msg, sizeof st->msg,
