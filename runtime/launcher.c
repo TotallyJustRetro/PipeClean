@@ -729,8 +729,8 @@ static void sub_controls(int g, float x, float y)
     if (g == GAME_SML) {
         float ry = by + 38;
         label(x + 18, ry + 5, "Respawn Luigi");
-        bind_p2_respawn_cell(g, x + 150, ry, 190, 5);
-        bind_p2_respawn_cell(g, x + 470, ry, 190, 6);
+        bind_p2_respawn_cell(g, x + 310, ry, 150, 5);
+        bind_p2_respawn_cell(g, x + 630, ry, 150, 6);
     } else {
         ui_text(F_REG, 11, x + 18, by + 44, C_DIM, "Luigi respawn binding is only used in SML1 multiplayer.");
     }
