@@ -3,6 +3,8 @@
 
 typedef struct {
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
+    uint32_t rgb[GB_H][GB_WMAX]; /* CGB-native pixels, 0xRRGGBB. */
+    uint8_t cgb_mode;
     uint8_t bguv[GB_H][GB_WMAX], spruv[GB_H][GB_WMAX];
     uint16_t bgtile[GB_H][GB_WMAX], sprtile[GB_H][GB_WMAX];
     int w, xoff;

@@ -47,6 +47,8 @@ int render_width(void) { return gw; }
 void frame_from_ppu(Frame *f)
 {
     memcpy(f->shade, ppu_shade, sizeof f->shade);
+    memcpy(f->rgb, ppu_rgb, sizeof f->rgb);
+    f->cgb_mode = (uint8_t)ppu_cgb_mode_enabled();
     memcpy(f->layer, ppu_layer, sizeof f->layer);
     memcpy(f->bguv, ppu_bguv, sizeof f->bguv);
     memcpy(f->spruv, ppu_spruv, sizeof f->spruv);
@@ -253,7 +255,7 @@ void render_build(const Frame *f, int game, int live)
     const Palette *p = &palettes[cfg->palette];
     const FilterCfg *flt = &settings.flt;
     cur_f = *flt;
-    int use_pack = cfg->tex_on && texpack_count() > 0;
+    int use_pack = !f->cgb_mode && cfg->tex_on && texpack_count() > 0;
     int N = use_pack ? texpack_scale() : 1;
     gw = f->w > 0 ? f->w : GB_W;
     if (!ensure(gw * N, GB_H * N)) return;
@@ -274,7 +276,8 @@ void render_build(const Frame *f, int game, int live)
             static const uint32_t luigi_pal[4] = {
                 0xFFF5E0C0u, 0xFF8AE05Au, 0xFF2CA83Du, 0xFF175822u
             };
-            uint32_t col = f->luigi_mask[y][x] ? luigi_pal[f->shade[y][x] & 3] : t[layer][f->shade[y][x] & 3];
+            uint32_t col = f->cgb_mode ? (0xFF000000u | (f->rgb[y][x] & 0xFFFFFFu)) :
+                           (f->luigi_mask[y][x] ? luigi_pal[f->shade[y][x] & 3] : t[layer][f->shade[y][x] & 3]);
             sr += (col >> 16) & 255; sg += (col >> 8) & 255; sb += col & 255;
             if (N == 1) { img[y * gw + x] = col; continue; }
             const TexTile *tt = NULL;

@@ -48,6 +48,11 @@ jobs:
             -o test_cart_mbc1
           ./test_cart_mbc1
 
+      - name: Build and run CGB PPU renderer regression
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime tests/test_cgb_ppu.c runtime/ppu.c -o test_cgb_ppu
+          ./test_cgb_ppu
+
       - name: Validate Python tools
         run: |
           python3 -m py_compile \

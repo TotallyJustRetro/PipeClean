@@ -60,6 +60,8 @@ static void publish(void)
 {
     SDL_LockMutex(fmx);
     memcpy(pub.shade, ppu_shade, sizeof pub.shade);
+    memcpy(pub.rgb, ppu_rgb, sizeof pub.rgb);
+    pub.cgb_mode = (uint8_t)ppu_cgb_mode_enabled();
     memcpy(pub.layer, ppu_layer, sizeof pub.layer);
     memcpy(pub.bguv, ppu_bguv, sizeof pub.bguv);
     memcpy(pub.spruv, ppu_spruv, sizeof pub.spruv);
@@ -416,6 +418,8 @@ static int mp_scroll_delta(uint8_t now, uint8_t old)
 static void mp_capture_frame(Frame *f, int screen_dx)
 {
     memcpy(f->shade, ppu_shade, sizeof f->shade);
+    memcpy(f->rgb, ppu_rgb, sizeof f->rgb);
+    f->cgb_mode = (uint8_t)ppu_cgb_mode_enabled();
     memcpy(f->layer, ppu_layer, sizeof f->layer);
     memcpy(f->bguv, ppu_bguv, sizeof f->bguv);
     memcpy(f->spruv, ppu_spruv, sizeof f->spruv);
