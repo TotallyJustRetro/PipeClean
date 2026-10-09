@@ -30,6 +30,16 @@ typedef struct {
     uint8_t p2_effect_oam[52];      /* Player 2's non-enemy effects (OAM slots 7-19). */
     uint8_t p2_sound_event;       /* P2 triggered a one-shot interaction SFX */
     uint8_t p2_sfx_events;        /* P2_SFX_EVENT_* bitmask: jump, fireball, power, death. */
+    uint8_t mp_player_count;      /* active SML1 players, 2..4 */
+    uint8_t mp_player_lives[MAX_MP_PLAYERS];
+    uint8_t mp_player_game_state[MAX_MP_PLAYERS];
+    uint8_t mp_player_visible[MAX_MP_PLAYERS];
+    uint8_t mp_player_blink_hidden[MAX_MP_PLAYERS];
+    uint8_t mp_player_oam[MAX_MP_PLAYERS][16];       /* player 2..4 character OAM */
+    uint8_t mp_player_projectile_oam[MAX_MP_PLAYERS][12];
+    uint8_t mp_player_effect_oam[MAX_MP_PLAYERS][52];
+    uint8_t mp_player_sfx_events[MAX_MP_PLAYERS];
+    uint8_t mp_player_sound_event[MAX_MP_PLAYERS];
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
     uint8_t tiles_cgb1[0x1800]; /* CGB VRAM bank 1 for color-mode sprite overlays. */
@@ -50,12 +60,13 @@ uint64_t emu_frames(void);
 int emu_cpu_faulted(void);
 void emu_cpu_fault_info(uint8_t *opcode, uint16_t *pc);
 
-/* Local two-player SML1 runtime: one authoritative world plus an isolated Player 2 state. */
+/* Local SML1 multiplayer: one authoritative world plus up to three isolated character states.
+ * Player indices are 0=Mario, 1=Player 2, 2=Player 3, 3=Player 4. */
 int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
 void emu_mp_frame_refresh(Frame *frame);
-void emu_mp_request_respawn(void);
+void emu_mp_request_respawn(int player);
 
 /* Emulator state features */
 int emu_state_save_file(const char *path, int resume_after);
