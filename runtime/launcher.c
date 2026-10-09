@@ -647,30 +647,91 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
     else if (!available && ui_hover(x, y, w, 28)) ui_hint("Assign a controller to this player to enable its button bindings.");
 }
 
-static void bind_p2_respawn_cell(int g, float x, float y, float w, int kind)
+static char *mp_name_ptr(GameCfg *c, int player_number)
+{
+    if (!c) return NULL;
+    if (player_number == 2) return c->p2_name;
+    if (player_number == 3) return c->p3_name;
+    if (player_number == 4) return c->p4_name;
+    return NULL;
+}
+
+static const char *mp_default_name(int player_number)
+{
+    if (player_number == 2) return "Luigi";
+    if (player_number == 3) return "Bunzo";
+    if (player_number == 4) return "Florbo";
+    return "Player";
+}
+
+static int mp_color_index(const GameCfg *c, int player_number)
+{
+    if (!c) return LUIGI_GREEN;
+    int color = player_number == 2 ? c->p2_color :
+                (player_number == 3 ? c->p3_color : c->p4_color);
+    if (color < 0 || color >= N_LUIGI_COLORS)
+        return player_number == 2 ? LUIGI_GREEN : (player_number == 3 ? LUIGI_BLUE : LUIGI_YELLOW);
+    return color;
+}
+
+static int *mp_respawn_key_ptr(GameCfg *c, int player_slot)
+{
+    if (!c) return NULL;
+    if (player_slot == 1) return &c->p2_respawn_key;
+    if (player_slot == 2) return &c->p3_respawn_key;
+    if (player_slot == 3) return &c->p4_respawn_key;
+    return NULL;
+}
+
+static int *mp_respawn_pad_ptr(GameCfg *c, int player_slot)
+{
+    if (!c) return NULL;
+    if (player_slot == 1) return &c->p2_respawn_pad;
+    if (player_slot == 2) return &c->p3_respawn_pad;
+    if (player_slot == 3) return &c->p4_respawn_pad;
+    return NULL;
+}
+
+static char *mp_sfx_path_ptr(GameCfg *c, int player_number, int event)
+{
+    if (!c || event < 0 || event >= N_P2_SFX) return NULL;
+    if (player_number == 2) return c->p2_sfx_path[event];
+    if (player_number == 3) return c->p3_sfx_path[event];
+    if (player_number == 4) return c->p4_sfx_path[event];
+    return NULL;
+}
+
+static void bind_mp_respawn_cell(int g, int player_slot, float x, float y, float w, int kind)
 {
     GameCfg *c = &settings.g[g];
-    int device = c->pad_device[1];
+    int *key = mp_respawn_key_ptr(c, player_slot);
+    int *pad = mp_respawn_pad_ptr(c, player_slot);
+    int device = c->pad_device[player_slot];
     int available = kind != 6 || (device >= 0 && device < pad_count());
     int over = 0;
     int clicked = available ? clickable(x, y, w, 28, &over) : 0;
-    int active = cap_kind == kind;
+    int active = cap_kind == kind && cap_btn == player_slot;
     ui_rrect(x, y, w, 28, 7, !available ? RGBA(255,255,255,3) :
              (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN)));
     char value[48];
     if (!available) snprintf(value, sizeof value, "—");
     else if (active) snprintf(value, sizeof value, kind == 5 ? "press a key…" : "press a button…");
-    else if (kind == 5) key_code_name(c->p2_respawn_key, value, sizeof value);
-    else pad_code_name_device(device, c->p2_respawn_pad, value, sizeof value);
-    int none = kind == 5 ? !c->p2_respawn_key : c->p2_respawn_pad < 0;
+    else if (kind == 5) key_code_name(key ? *key : 0, value, sizeof value);
+    else pad_code_name_device(device, pad ? *pad : -1, value, sizeof value);
+    int none = kind == 5 ? (!key || !*key) : (!pad || *pad < 0);
     ui_text_c(F_REG, 12, x + w / 2, y + 5,
               (!available || (none && !active)) ? C_DIM : C_TEXT, value);
-    if (clicked) { cap_kind = kind; cap_btn = 0; cap_slot = 1; }
+    if (clicked) { cap_kind = kind; cap_btn = player_slot; cap_slot = player_slot; }
     if (over && available && !active)
-        ui_hint(kind == 5 ? "Click, then press the key for respawning Luigi. Backspace clears, Esc cancels."
-                          : "Click, then press a button on Player 2's assigned controller. Backspace clears, Esc cancels.");
+        ui_hint(kind == 5 ? "Press a keyboard key for this player's respawn. Backspace clears, Esc cancels."
+                          : "Press a button on this player's controller. Backspace clears, Esc cancels.");
     else if (!available && ui_hover(x, y, w, 28))
-        ui_hint("Assign a controller to Player 2 to bind the Luigi respawn button.");
+        ui_hint("Assign this player a controller to bind the controller respawn button.");
+}
+
+static void bind_p2_respawn_cell(int g, float x, float y, float w, int kind)
+{
+    bind_mp_respawn_cell(g, 1, x, y, w, kind);
 }
 
 static void bind_action_cell(int g, float x, float y, float w, int kind, int action)
