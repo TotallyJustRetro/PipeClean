@@ -45,13 +45,50 @@ static long read_file(const char *path, uint8_t **buf)
     return (long)got;
 }
 
+/* Header titles are not consistently terminated on CGB cartridges: some
+ * dumps put the manufacturer code immediately after the title. Compare a
+ * normalized title prefix, and use the CGB flag to distinguish the two
+ * Wario Land II releases, whose titles overlap. */
+static void normalize_title(const char *src, char *dst, size_t cap)
+{
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j + 1 < cap; i++) {
+        unsigned char c = (unsigned char)src[i];
+        if (c == ' ' || c == '\\t') continue;
+        if (c >= 'a' && c <= 'z') c = (unsigned char)(c - 'a' + 'A');
+        if (c < 32 || c > 126) break;
+        dst[j++] = (char)c;
+    }
+    dst[j] = 0;
+}
+
 int rom_identify(const uint8_t *img, size_t n)
 {
     CartInfo ci;
     if (!cart_parse(img, n, &ci)) return -1;
-    for (int g = 0; g < N_GAMES; g++)
-        if (!strcmp(ci.title, games[g].title)) return g;
-    return -1;
+
+    char header[32];
+    normalize_title(ci.title, header, sizeof header);
+    if (!header[0]) return -1;
+
+    /* Wario Land II has both a monochrome GB release and a CGB release.
+     * Some CGB headers retain the same visible title as the GB cartridge. */
+    if (strstr(header, "WARIOLAND2"))
+        return (ci.cgb_flag & 0x80) ? GAME_WARIO_LAND2_GBC : GAME_WARIO_LAND2_GB;
+
+    int best = -1;
+    size_t best_len = 0;
+    for (int g = 0; g < N_GAMES; g++) {
+        if (g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) continue;
+        char candidate[32];
+        normalize_title(games[g].title, candidate, sizeof candidate);
+        size_t len = strlen(candidate);
+        if (len > best_len && len && strncmp(header, candidate, len) == 0) {
+            best = g;
+            best_len = len;
+        }
+    }
+    return best;
 }
 
 int rom_identify_file(const char *path)
