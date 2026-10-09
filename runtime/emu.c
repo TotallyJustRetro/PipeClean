@@ -337,6 +337,10 @@ static void mp_copy_effect_oam_buffer(uint8_t out[52], int screen_dx)
     /* OAM slots 7-19 are reserved for block debris, bump sprites and floaties.
      * Enemy sprites live in later slots and are deliberately not overlaid. */
     for (int i = 0; i < 52; i++) out[i] = rd8((uint16_t)(0xC01C + i));
+    /* OAM slot 11 is SML1's temporary block-picture sprite. The actual block
+     * is already in the authoritative tilemap, so copying tile $82 draws a clone. */
+    if (out[4 * (11 - 7) + 2] == 0x82)
+        memset(&out[4 * (11 - 7)], 0, 4);
     for (int i = 0; i < 13; i++) {
         int x = (int)out[i * 4 + 1] + screen_dx;
         out[i * 4 + 1] = (uint8_t)x;
@@ -595,6 +599,7 @@ int emu_mp_begin(void)
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max)
 {
     if (!mp_ready || (player != 0 && player != 1) || !frame) return -1;
+    frame->p2_jump_sfx_event = 0;
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
@@ -699,6 +704,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
                              !p2_a_held_before &&
                              p2_was_grounded) ||
                             (mp_p2_jump_before == 0 && rd8(0xC207) != 0);
+        frame->p2_jump_sfx_event = (uint8_t)(p2_jump_event != 0);
 
         /*
          * A stomp sound belongs to one collision, not every enemy whose AI
@@ -791,7 +797,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         if (coins_after != coins_before) square_request = 0x05; /* SFX_COIN */
         else if (enemy_sound_event) square_request = 0x03; /* SFX_STOMP */
         else if (p1_square_sfx_before == 0 && p2_square_sfx) square_request = p2_square_sfx;
-        else if (p2_jump_event) square_request = 0x01; /* SFX_JUMP */
+        /* Jump sound is synthesized by PipeClean and triggered from the frame flag. */
         mp_queue_sfx(0xDFE0, &mp_pending_square_sfx, square_request);
 
         int p2_block_hit = (mp_vblank_collision == 0x01 ||
