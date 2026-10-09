@@ -71,6 +71,7 @@ static uint8_t io_read(uint8_t r)
     }
     if (r >= 0x10 && r <= 0x3F) return apu_read(0xFF00 | r);
     if (r >= 0x40 && r <= 0x4B) return ppu_read(r);
+    if (r >= 0x68 && r <= 0x6C) return ppu_cgb_read(r);
     return 0xFF;
 }
 
@@ -114,6 +115,7 @@ static void io_write(uint8_t r, uint8_t v)
     if (r >= 0x10 && r <= 0x3F) { apu_write(0xFF00 | r, v); return; }
     if (r == 0x46) { io_misc[r] = v; dma_start(v); return; }
     if (r >= 0x40 && r <= 0x4B) { ppu_write(r, v); return; }
+    if (r >= 0x68 && r <= 0x6C) { ppu_cgb_write(r, v); return; }
     io_misc[r] = v;
 }
 
