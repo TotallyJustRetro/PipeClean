@@ -24,7 +24,7 @@ static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
-enum { TAB_FILTERS = N_GAMES, TAB_AUDIO, N_TABS };
+enum { TAB_MULTIPLAYER = N_GAMES, TAB_FILTERS, TAB_AUDIO, N_TABS };
 enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
 static const char *sub_names[N_SUB] = {"Game", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
@@ -53,6 +53,7 @@ static char state_thumb_path_cache[N_GAMES][10][1200];
 static int load_state_request[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
+static int multiplayer_name_editing;
 static int clickable(float x, float y, float w, float h, int *over_out);
 
 static void controller_name(int device, char *out, size_t n)
@@ -695,15 +696,8 @@ static void sub_controls(int g, float x, float y)
     card(x, y, 808, 476, "PLAYER CONTROLLERS");
 
     float my = y + 76;
-    label(x + 18, my, "Local multiplayer");
-    if (g == GAME_SML) {
-        if (ui_toggle(x + 154, my - 4, &c->multiplayer) && c->multiplayer && c->pad_device[1] < 0)
-            launcher_toast("Multiplayer enabled. Player 2 can use Keyboard 2 or choose a controller above.");
-        ui_text_fit(F_REG, 11, x + 208, my, 580, C_DIM,
-                    c->multiplayer ? "One SML1 world with two independently controlled Marios on the same screen." : "Off by default; SML1 starts in the normal single-player view.");
-    } else {
-        ui_text(F_REG, 11, x + 154, my, C_DIM, "Available for Super Mario Land 1.");
-    }
+    ui_text_fit(F_REG, 11, x + 18, my, 770, C_DIM,
+                "Local multiplayer settings, Luigi's name/color, and the rescue binding are on the Multiplayer tab.");
 
     static const float colx[5] = {18, 150, 310, 470, 630};
     ui_text(F_BOLD, 12, x + colx[0], y + 112, C_MUTED, "Game Boy button");
@@ -726,19 +720,10 @@ static void sub_controls(int g, float x, float y)
     ui_slider(x + 330, by + 7, 220, &settings.pad_deadzone, 5, 80);
     char t[16]; snprintf(t, sizeof t, "%d%%", settings.pad_deadzone); ui_text(F_REG, 13, x + 566, by + 8, C_TEXT, t);
 
-    if (g == GAME_SML) {
-        float ry = by + 38;
-        label(x + 18, ry + 5, "Respawn Luigi");
-        bind_p2_respawn_cell(g, x + 310, ry, 150, 5);
-        bind_p2_respawn_cell(g, x + 630, ry, 150, 6);
-    } else {
-        ui_text(F_REG, 11, x + 18, by + 44, C_DIM, "Luigi respawn binding is only used in SML1 multiplayer.");
-    }
-
     char st[128];
     pad_status(st, sizeof st);
-    ui_text_fit(F_REG, 11, x + 18, by + 72, 770, C_DIM, st);
-    ui_text_fit(F_REG, 11, x + 18, by + 88, 770, C_DIM, "Enable SML1 multiplayer; Player 2 uses Keyboard 2 or the assigned second controller.");
+    ui_text_fit(F_REG, 11, x + 18, by + 48, 770, C_DIM, st);
+    ui_text_fit(F_REG, 11, x + 18, by + 66, 770, C_DIM, "Player 2's buttons use the Keyboard 2 and Player 2 controller columns.");
 
     /*
      * Draw the controller menus last so their popups sit above the binding
@@ -748,6 +733,74 @@ static void sub_controls(int g, float x, float y)
     controller_dropdown(g, 1, x + 414, y + 34, 374);
 }
 
+/* ------------------------------------------------------------------ dedicated local multiplayer tab */
+static void tab_multiplayer(float x, float y)
+{
+    GameCfg *c = &settings.g[GAME_SML];
+    card(x, y, 808, 476, "SUPER MARIO LAND — MULTIPLAYER");
+
+    label(x + 18, y + 42, "Local multiplayer");
+    if (ui_toggle(x + 178, y + 38, &c->multiplayer) && c->multiplayer)
+        launcher_toast("Local multiplayer enabled for Super Mario Land 1.");
+    ui_text_fit(F_REG, 12, x + 238, y + 43, 548, C_DIM,
+                c->multiplayer ? "Two independent players share one SML1 world." :
+                                 "Off by default; the game starts in single-player mode.");
+
+    label(x + 18, y + 82, "Player 2 name");
+    int name_over = 0;
+    int name_clicked = clickable(x + 18, y + 98, 430, 34, &name_over);
+    ui_rrect(x + 18, y + 98, 430, 34, 8,
+             multiplayer_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
+             (name_over ? C_BTN_H : C_BTN));
+    const char *name_value = c->p2_name[0] ? c->p2_name : (multiplayer_name_editing ? "Type a name…" : "Click to rename Luigi");
+    ui_text_fit(F_REG, 14, x + 30, y + 106, 402,
+                c->p2_name[0] ? C_TEXT : C_DIM, name_value);
+    if (multiplayer_name_editing) {
+        ui_text_r(F_REG, 11, x + 432, y + 108, HEX(ui_accent), "EDITING");
+        ui_hint("Type Player 2's name. Enter/Escape finishes; Backspace deletes.");
+    } else if (name_over) {
+        ui_hint("Click to replace Luigi's name, then type. Press Enter when you're done.");
+    }
+    if (name_clicked) {
+        cap_kind = 0;
+        multiplayer_name_editing = 1;
+        c->p2_name[0] = 0;
+        SDL_StartTextInput();
+    }
+
+    label(x + 18, y + 146, "Luigi color");
+    ui_text(F_REG, 11, x + 112, y + 147, 650, C_DIM,
+            "Choose a tint for Player 2; it applies to Luigi's sprite and name tag.");
+    for (int i = 0; i < N_LUIGI_COLORS; i++) {
+        float bx = x + 18 + i * 128.0f, by = y + 166;
+        int over = 0;
+        int clicked = clickable(bx, by, 120, 42, &over);
+        int selected = c->p2_color == i;
+        ui_rrect(bx, by, 120, 42, 8, selected ? RGBA(255,255,255,18) :
+                 (over ? C_BTN_H : C_BTN));
+        ui_rrect(bx + 5, by + 5, 18, 32, 6, HEX(luigi_colors[i].swatch));
+        if (selected) ui_stroke(bx, by, 120, 42, 8, 2, HEX(luigi_colors[i].swatch));
+        ui_text_fit(F_BOLD, 12, bx + 29, by + 13, 86,
+                    selected ? HEX(0xFFFFFF) : C_TEXT, luigi_colors[i].name);
+        if (clicked) c->p2_color = i;
+    }
+
+    ui_rect(x + 18, y + 222, 772, 1, C_LINE);
+    label(x + 18, y + 236, "Respawn Luigi if stuck");
+    ui_text(F_REG, 11, x + 218, y + 238, 560, C_DIM,
+            "After respawning, Luigi flashes briefly like an item effect.");
+    label(x + 18, y + 270, "Keyboard");
+    label(x + 470, y + 270, "Player 2 controller");
+    bind_p2_respawn_cell(GAME_SML, x + 150, y + 264, 190, 5);
+    bind_p2_respawn_cell(GAME_SML, x + 630, y + 264, 150, 6);
+
+    ui_text_wrap(F_REG, 12, x + 18, y + 314, 770, C_DIM,
+                 "Controller assignment and Player 2's Game Boy buttons remain on Super Mario Land's Controllers sub-tab. Luigi's name and color are cosmetic; his physics, items, and state are still handled by the original game code.", 3);
+    char status[128];
+    pad_status(status, sizeof status);
+    ui_text_fit(F_REG, 11, x + 18, y + 390, 770, C_DIM, status);
+}
+ 
 /* ------------------------------------------------------------------ game tab: DualSense */
 static void hue_to_rgb(int hue, uint32_t *rgb)
 {
@@ -1013,7 +1066,7 @@ static void tab_audio(float x, float y)
 }
 
 /* ------------------------------------------------------------------ frame */
-static const char *tab_labels[N_TABS] = {"", "", "", "Filters", "Audio & menu"};
+static const char *tab_labels[N_TABS] = {"", "", "", "Multiplayer", "Filters", "Audio & menu"};
 
 static int tab_button(float x, float y, float w, float h, int selected, uint32_t accent)
 {
@@ -1029,9 +1082,9 @@ LauncherResult launcher_frame(float dt)
 {
     LauncherResult res = {-1, 0};
     anim_clock += dt;
-    int g = launcher_current_game();
+    int g = (tab == TAB_MULTIPLAYER) ? GAME_SML : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
-    ui_accent = tab < N_GAMES ? games[tab].accent : 0x4C8DFF;
+    ui_accent = tab < N_GAMES ? games[tab].accent : (tab == TAB_MULTIPLAYER ? games[GAME_SML].accent : 0x4C8DFF);
     ensure_background(g);
     bg_update(dt);
 
@@ -1070,9 +1123,10 @@ LauncherResult launcher_frame(float dt)
     }
     float y2 = sy + N_GAMES * game_row + 8;
     ui_rect(sx + 8, y2, 208, 1, C_LINE);
-    for (int i = TAB_FILTERS; i < N_TABS; i++) {
-        float y = y2 + 12 + (i - TAB_FILTERS) * 52;
-        if (tab_button(sx, y, 224, 44, tab == i, 0x4C8DFF)) tab = i;
+    for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
+        float y = y2 + 12 + (i - TAB_MULTIPLAYER) * 52;
+        uint32_t accent = i == TAB_MULTIPLAYER ? games[GAME_SML].accent : 0x4C8DFF;
+        if (tab_button(sx, y, 224, 44, tab == i, accent)) tab = i;
         ui_text(F_BOLD, 15, sx + 18, y + 11, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
     }
 
@@ -1115,6 +1169,10 @@ LauncherResult launcher_frame(float dt)
             }
         }
         if (load_state_request[tab] >= 0) res.play = tab;
+    } else if (tab == TAB_MULTIPLAYER) {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Configure local SML1 co-op, Player 2's name, and Luigi's color.");
+        tab_multiplayer(cx, cy + 58);
     } else if (tab == TAB_FILTERS) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Make the screen look like a real Game Boy, a CRT TV, or something glowing.");
@@ -1160,8 +1218,47 @@ LauncherResult launcher_frame(float dt)
 /* ------------------------------------------------------------------ events */
 void launcher_event(const SDL_Event *e)
 {
+    if (multiplayer_name_editing) {
+        GameCfg *mc = &settings.g[GAME_SML];
+        if (e->type == SDL_TEXTINPUT) {
+            size_t have = strlen(mc->p2_name), add = strlen(e->text.text);
+            if (have + add < sizeof mc->p2_name && have + add <= 22 &&
+                (unsigned char)e->text.text[0] >= 32)
+                memcpy(mc->p2_name + have, e->text.text, add + 1);
+            return;
+        }
+        if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+            SDL_Keycode k = e->key.keysym.sym;
+            if (k == SDLK_ESCAPE || k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
+                multiplayer_name_editing = 0;
+                SDL_StopTextInput();
+                if (!mc->p2_name[0]) snprintf(mc->p2_name, sizeof mc->p2_name, "Luigi");
+                return;
+            }
+            if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
+                size_t len = strlen(mc->p2_name);
+                if (len) {
+                    len--;
+                    while (len && (((unsigned char)mc->p2_name[len] & 0xC0u) == 0x80u)) len--;
+                    mc->p2_name[len] = 0;
+                }
+                return;
+            }
+            if ((e->key.keysym.mod & KMOD_CTRL) && (k == SDLK_a || k == SDLK_A)) {
+                mc->p2_name[0] = 0;
+                return;
+            }
+        }
+        if (e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+            multiplayer_name_editing = 0;
+            SDL_StopTextInput();
+            if (!mc->p2_name[0]) snprintf(mc->p2_name, sizeof mc->p2_name, "Luigi");
+        }
+        return;
+    }
     if (cap_kind) {
-        GameCfg *current = &settings.g[launcher_current_game()];
+        int cap_game = (cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
+        GameCfg *current = &settings.g[cap_game];
         if ((cap_kind == 2 && (cap_slot < 0 || cap_slot > 1 ||
                                current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())) ||
             (cap_kind == 4 && (current->pad_device[0] < 0 || current->pad_device[0] >= pad_count())) ||
@@ -1169,7 +1266,8 @@ void launcher_event(const SDL_Event *e)
             cap_kind = 0;
     }
     if (cap_kind) {
-        GameCfg *c = &settings.g[launcher_current_game()];
+        int cap_game = (cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
+        GameCfg *c = &settings.g[cap_game];
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {
             SDL_Keycode k = e->key.keysym.sym;
             if (k == SDLK_ESCAPE) { cap_kind = 0; return; }
