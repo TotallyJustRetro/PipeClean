@@ -29,6 +29,7 @@ extern const LuigiColor luigi_colors[N_LUIGI_COLORS];
 enum { ACT_SAVE_STATE, ACT_LOAD_STATE, ACT_REWIND, ACT_SUSPEND, ACT_NEXT_SLOT, N_ACTION };
 enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 
+#define MAX_MP_PLAYERS 4
 #define PAD_AXIS_BASE 100               /* controller binding codes >= 100 are triggers: 100 = L2, 101 = R2 */
 #define MAX_EVENTS 8
 #define N_UI_SFX 5                      /* hover, click, confirm, back, toggle */
@@ -39,19 +40,27 @@ typedef struct {
     int bg_dim;                         /* 0..80 percent darkening of the background image */
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
-    int multiplayer;                    /* local two-player mode; default off */
-    char p2_name[32];                    /* Player 2 label, shown as Luigi by default */
-    int p2_color;                        /* LUIGI_* sprite recolor preset */
-    int p2_respawn_key;                  /* keyboard key to recover Luigi in SML1 multiplayer */
-    int p2_respawn_pad;                  /* button/trigger on Player 2's assigned controller; -1 = unbound */
-    char p2_sfx_path[N_P2_SFX][512];       /* Optional imported sounds; empty = built-in original sound. */
+    int multiplayer;                    /* local multiplayer mode; default off */
+    int multiplayer_players;             /* selected player count, clamped to 2..4 */
+    char p2_name[32];                    /* Player 2 default name: Luigi */
+    int p2_color;
+    int p2_respawn_key, p2_respawn_pad;
+    char p2_sfx_path[N_P2_SFX][512];
+    char p3_name[32];                    /* Player 3 default name: Bunzo */
+    int p3_color;
+    int p3_respawn_key, p3_respawn_pad;
+    char p3_sfx_path[N_P2_SFX][512];
+    char p4_name[32];                    /* Player 4 default name: Florbo */
+    int p4_color;
+    int p4_respawn_key, p4_respawn_pad;
+    char p4_sfx_path[N_P2_SFX][512];
     int state_slot;                      /* save-state slot 0..9 */
     int action_key[N_ACTION];            /* emulator shortcut keyboard bindings */
     int action_pad[N_ACTION];            /* emulator shortcut controller bindings */
-    int key[N_BTN][2];                  /* SDL keycodes, 0 = unbound */
-    int pad[N_BTN][2];                  /* SDL_GameControllerButton or PAD_AXIS_BASE+n, -1 = unbound */
-    int pad_device[2];                  /* controller slot used by Player 1 / Player 2, -1 = none */
-    char pad_guid[2][512];               /* persisted controller identity: serial/path, or guarded legacy GUID */
+    int key[N_BTN][MAX_MP_PLAYERS];     /* SDL keycodes, 0 = unbound */
+    int pad[N_BTN][MAX_MP_PLAYERS];     /* SDL_GameControllerButton or PAD_AXIS_BASE+n, -1 = unbound */
+    int pad_device[MAX_MP_PLAYERS];     /* controller slot assigned to each player */
+    char pad_guid[MAX_MP_PLAYERS][512]; /* persisted physical controller identities */
     /* DualSense / DualSense Edge */
     int ds_led_mode, ds_bright;         /* LED_*, 0..100 */
     uint32_t ds_color;                  /* 0xRRGGBB for LED_CUSTOM */
