@@ -562,7 +562,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
         mp_active = 1;
-        if (setjmp(stop_jmp) == 0) run_core(0);
+        int mp_run_status = setjmp(stop_jmp);
+        if (mp_run_status == 0) run_core(0);
+        if (mp_run_status == 4) {
+            mp_active = 0; mp_frame_out = NULL; mp_audio_out = NULL;
+            mp_audio_max = mp_audio_n = 0;
+            return -1;
+        }
         mp_active = 0;
 
         mp_capture_shared_world_after();
@@ -841,7 +847,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     mp_vblank_waiting = 0;
     gb_mp_vblank_watch = 0;
     mp_active = 1;
-    if (setjmp(stop_jmp) == 0) run_core(0);
+    int mp_run_status = setjmp(stop_jmp);
+    if (mp_run_status == 0) run_core(0);
+    if (mp_run_status == 4) {
+        mp_active = 0; mp_frame_out = NULL; mp_audio_out = NULL;
+        mp_audio_max = mp_audio_n = 0;
+        return -1;
+    }
     mp_active = 0;
     mp_audio_n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
