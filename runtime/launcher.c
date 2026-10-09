@@ -1066,7 +1066,11 @@ static void tab_audio(float x, float y)
 }
 
 /* ------------------------------------------------------------------ frame */
-static const char *tab_labels[N_TABS] = {"", "", "", "Multiplayer", "Filters", "Audio & menu"};
+static const char *tab_labels[N_TABS] = {
+    [TAB_MULTIPLAYER] = "Multiplayer",
+    [TAB_FILTERS] = "Filters",
+    [TAB_AUDIO] = "Audio & menu"
+};
 
 static int tab_button(float x, float y, float w, float h, int selected, uint32_t accent)
 {
