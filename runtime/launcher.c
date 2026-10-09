@@ -207,6 +207,14 @@ static void make_preview(int g)
     if (launcher_prepare(g, err, sizeof err)) return;
     tex_collect_begin(g);
     emu_preview(games[g].preview_frames);
+    if (emu_cpu_faulted()) {
+        uint8_t opcode = 0; uint16_t pc = 0; char msg[144];
+        emu_cpu_fault_info(&opcode, &pc);
+        snprintf(msg, sizeof msg, "Preview stopped at opcode %02X (%04X); verify this hack's required ROM revision.", opcode, pc);
+        launcher_toast(msg);
+        prev_ok[g] = 0;
+        return;
+    }
     frame_from_ppu(&prev[g]);
     prev_ok[g] = 1;
     tex_collect_frame(&prev[g]);
