@@ -189,6 +189,7 @@ static void synth_p2_jump(Clip *c)
     double phase = 0.0;
     float prior_noise = 0.0f;
     float peak = 0.0f;
+    unsigned jump_rng = 2409u;
     for (long i = 0; i < total; i++) {
         double t = (double)i / (double)rate;
         double f;
@@ -209,7 +210,8 @@ static void synth_p2_jump(Clip *c)
         float pulse = frac < 0.24 ? 1.0f : -1.0f;
         float sub = (phase * 0.5 - floor(phase * 0.5)) < 0.5 ? 1.0f : -1.0f;
 
-        float raw = noise();
+        jump_rng = jump_rng * 1664525u + 1013904223u;
+        float raw = (float)((jump_rng >> 9) & 0xFFFFu) / 32768.0f - 1.0f;
         float smooth_noise = 0.5f * (prior_noise + raw);
         prior_noise = raw;
         double dip = (t - 0.115) / 0.022;
