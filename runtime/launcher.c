@@ -179,8 +179,15 @@ int launcher_prepare(int g, char *err, size_t n)
     }
     hack_ok[g] = 0;
     if (c->hack_path[0]) {
-        if (rom_apply_hack(c->hack_path, &st) == 0) { hack_ok[g] = 1; snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg); }
-        else { snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg); c->hack_path[0] = 0; }
+        if (rom_apply_hack(c->hack_path, &st) == 0) {
+            hack_ok[g] = 1;
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+        } else {
+            hack_ok[g] = 0;
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+            snprintf(err, n, "Couldn't apply the selected romhack: %.180s", st.msg);
+            return 1;
+        }
     }
     int wl, wr;
     wide_dims(g, c->wide, &wl, &wr);
@@ -233,17 +240,20 @@ static void set_hack(int g, const char *path)
 {
     GameCfg *c = &settings.g[g];
     if (!rs[g].ok) { launcher_toast("Choose the original ROM first."); return; }
-    char old[512];
-    snprintf(old, sizeof old, "%s", c->hack_path);
     snprintf(c->hack_path, sizeof c->hack_path, "%s", path);
-    char err[256];
     RomStatus st;
-    if (rom_load(g, c->rom_path, &st)) { launcher_toast(st.msg); return; }
-    if (path[0] && rom_apply_hack(path, &st)) {
+    if (rom_load(g, c->rom_path, &st)) {
+        hack_ok[g] = 0;
         snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-        snprintf(c->hack_path, sizeof c->hack_path, "%s", old);
         launcher_toast(st.msg);
-        (void)err;
+        return;
+    }
+    if (path[0] && rom_apply_hack(path, &st)) {
+        /* Keep the selected path and its error visible so the user can see
+         * why it was rejected and replace it without browsing a second time. */
+        hack_ok[g] = 0;
+        snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+        launcher_toast(st.msg);
         return;
     }
     snprintf(hack_msg[g], sizeof hack_msg[g], "%s", path[0] ? st.msg : "");
