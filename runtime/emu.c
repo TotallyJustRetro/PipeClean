@@ -968,7 +968,9 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
                                                 candidate);
     if (count > 0) {
         memcpy(out, candidate, (size_t)count * 4u);
-        best_count = count;
+        /* An exact match for the live selector is the most trustworthy map;
+         * don't let a larger unrelated mapping steal nearby OAM pieces. */
+        return count;
     }
 
     /* Search mapping IDs at the saved origin first. */
