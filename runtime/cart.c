@@ -17,6 +17,15 @@ static uint32_t ram_crc_saved;
 
 const CartInfo *cart_info(void) { return &info; }
 
+uint8_t cart_rom_read_bank(int bank, uint16_t address)
+{
+    if (!rom || bank < 0 || bank >= info.rom_banks ||
+        address < 0x4000 || address >= 0x8000)
+        return 0xFF;
+    size_t offset = (size_t)bank * 0x4000u + (size_t)(address - 0x4000u);
+    return offset < rom_len ? rom[offset] : 0xFF;
+}
+
 static size_t ram_size_from_code(int c)
 {
     static const size_t t[6] = {0, 2048, 8192, 32768, 131072, 65536};
