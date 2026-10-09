@@ -18,6 +18,7 @@ int main(void)
     if (!img) return fail(2, "out of memory");
 
     memcpy(img + 0x134, "MBC1 TEST", 9);
+    img[0x143] = 0xC0; /* CGB-only header flag; metadata must survive parsing */
     img[0x147] = 0x01; /* MBC1, no RAM */
     img[0x148] = 0x05; /* 1 MiB */
     img[0x149] = 0x02; /* 8 KiB external SRAM */
@@ -29,6 +30,10 @@ int main(void)
         free(img);
         return fail(3, "cart_install rejected a valid MBC1 image");
     }
+
+    const CartInfo *ci = cart_info();
+    if (!ci || ci->cgb_flag != 0xC0)
+        return fail(15, "CGB-only cartridge header flag was not detected");
 
     if (cart_hi[0] != 1)
         return fail(4, "reset did not map bank 1");
@@ -78,6 +83,6 @@ int main(void)
         return fail(14, "cartridge RAM contents were not restored");
 
     free(img);
-    puts("MBC1 mapper: PASS");
+    puts("MBC1 mapper and CGB header detection: PASS");
     return 0;
 }
