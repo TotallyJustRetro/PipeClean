@@ -375,6 +375,7 @@ void audio_game_begin(void)
     if (!dev) return;
     SDL_LockMutex(mx);
     g_r = g_w = 0; g_active = 1; g_playing = 0; g_abort = 0; g_paused = 0; underruns = 0;
+    p2_jump_pos = -1;
     g_last_l = g_last_r = 0;
     music_target = 0;
     SDL_UnlockMutex(mx);
@@ -384,7 +385,7 @@ void audio_game_end(void)
 {
     if (!dev) return;
     SDL_LockMutex(mx);
-    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1;
+    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1; p2_jump_pos = -1;
     SDL_UnlockMutex(mx);
     SDL_CondBroadcast(cv);
 }
