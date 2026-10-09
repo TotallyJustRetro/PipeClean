@@ -6,6 +6,7 @@
 #define P2_SFX_EVENT_POWER_UP   (1u << 2)
 #define P2_SFX_EVENT_POWER_DOWN (1u << 3)
 #define P2_SFX_EVENT_DIE        (1u << 4)
+#define P2_SFX_EVENT_RESPAWN    (1u << 5)
 
 typedef struct {
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
