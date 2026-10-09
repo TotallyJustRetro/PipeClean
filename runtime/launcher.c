@@ -769,8 +769,8 @@ static void tab_multiplayer(float x, float y)
     }
 
     label(x + 18, y + 146, "Luigi color");
-    ui_text(F_REG, 11, x + 112, y + 147, 650, C_DIM,
-            "Choose a tint for Player 2; it applies to Luigi's sprite and name tag.");
+    ui_text_fit(F_REG, 11, x + 112, y + 147, 650, C_DIM,
+                "Choose a tint for Player 2; it applies to Luigi's sprite and name tag.");
     for (int i = 0; i < N_LUIGI_COLORS; i++) {
         float bx = x + 18 + i * 128.0f, by = y + 166;
         int over = 0;
@@ -787,8 +787,8 @@ static void tab_multiplayer(float x, float y)
 
     ui_rect(x + 18, y + 222, 772, 1, C_LINE);
     label(x + 18, y + 236, "Respawn Luigi if stuck");
-    ui_text(F_REG, 11, x + 218, y + 238, 560, C_DIM,
-            "After respawning, Luigi flashes briefly like an item effect.");
+    ui_text_fit(F_REG, 11, x + 218, y + 238, 560, C_DIM,
+                "After respawning, Luigi flashes briefly like an item effect.");
     label(x + 18, y + 270, "Keyboard");
     label(x + 470, y + 270, "Player 2 controller");
     bind_p2_respawn_cell(GAME_SML, x + 150, y + 264, 190, 5);
