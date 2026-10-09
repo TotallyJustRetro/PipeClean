@@ -34,6 +34,8 @@ void emu_set_paused(int p);
 void emu_set_turbo(int t);
 void emu_set_save_path(const char *path);
 uint64_t emu_frames(void);
+int emu_cpu_faulted(void);
+void emu_cpu_fault_info(uint8_t *opcode, uint16_t *pc);
 
 /* Local two-player SML1 runtime: one authoritative world plus an isolated Player 2 state. */
 int emu_mp_begin(void);
