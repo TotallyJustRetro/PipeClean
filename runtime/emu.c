@@ -339,7 +339,8 @@ static void mp_copy_effect_oam_buffer(uint8_t out[52], int screen_dx)
     for (int i = 0; i < 52; i++) out[i] = rd8((uint16_t)(0xC01C + i));
     /* OAM slot 11 is SML1's temporary block-picture sprite. The actual block
      * is already in the authoritative tilemap, so copying tile $82 draws a clone. */
-    if (out[4 * (11 - 7) + 2] == 0x82)
+    uint8_t block_picture_tile = out[4 * (11 - 7) + 2];
+    if (block_picture_tile >= 0x80 && block_picture_tile <= 0x83)
         memset(&out[4 * (11 - 7)], 0, 4);
     for (int i = 0; i < 13; i++) {
         int x = (int)out[i * 4 + 1] + screen_dx;
@@ -604,6 +605,8 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
     if (player == 1) {
+        uint8_t p2_a_was_down_before = mp_p2_a_was_down;
+        mp_p2_a_was_down = (uint8_t)((buttons & 0x01u) != 0);
         if (mp_p2_respawn_requested && mp_p2_spawned && rd8(0xFFB3) == 0) {
             if (mp_p2_lives == 0) {
                 mp_p2_lives = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
@@ -698,8 +701,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * when switching the isolated state back to Player 1. */
         int p2_jump_event = (p2_state_before == 0 &&
                              (buttons & 0x01u) &&
-                             !mp_p2_a_was_down);
-        mp_p2_a_was_down = (uint8_t)((buttons & 0x01u) != 0);
+                             !p2_a_was_down_before);
         frame->p2_jump_sfx_event = (uint8_t)(p2_jump_event != 0);
 
         /*
