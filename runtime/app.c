@@ -463,42 +463,82 @@ static int sml1_bcd_to_int(uint8_t b)
     return ((b >> 4) & 0x0F) * 10 + (b & 0x0F);
 }
 
-static void sml1_draw_coop_hud(const Frame *f)
+static const char *sml1_mp_player_name(int player)
 {
-    if (!f) return;
-
-    float vx = ui_view_x0(), vw = ui_view_w();
-    const float y = 12.0f, w = 230.0f, h = 42.0f, pad = 14.0f;
-    float lx = vx + pad;
-    float rx = vx + vw - pad - w;
-
-    char lives[16];
-
-    ui_shadow(lx, y, w, h, 10, 4, RGBA(0, 0, 0, 110));
-    ui_rrect(lx, y, w, h, 10, RGBA(22, 25, 34, 235));
-    ui_text(F_BOLD, 14, lx + 12, y + 5, C_ACCENT, "P1  MARIO");
-    snprintf(lives, sizeof lives, "x %d", sml1_bcd_to_int(f->p1_lives));
-    ui_text_r(F_BOLD, 16, lx + w - 12, y + 3, C_TEXT, lives);
-
-    ui_shadow(rx, y, w, h, 10, 4, RGBA(0, 0, 0, 110));
-    ui_rrect(rx, y, w, h, 10, RGBA(22, 25, 34, 235));
-    char p2_title[64];
-    const char *p2_name = settings.g[GAME_SML].p2_name[0] ? settings.g[GAME_SML].p2_name : "Luigi";
-    snprintf(p2_title, sizeof p2_title, "P2  %.24s", p2_name);
-    ui_text_fit(F_BOLD, 14, rx + 12, y + 5, w - 58, render_sml1_luigi_color(), p2_title);
-    snprintf(lives, sizeof lives, "x %d", f->p2_lives);
-    ui_text_r(F_BOLD, 16, rx + w - 12, y + 3, C_TEXT, lives);
-
-    if (!f->p2_visible && f->p2_lives > 0) {
-        ui_text(F_REG, 11, rx + 12, y + 24, HEX(0xA8B0C0), "Respawning...");
+    const GameCfg *c = &settings.g[GAME_SML];
+    switch (player) {
+    case 0: return "Mario";
+    case 1: return c->p2_name[0] ? c->p2_name : "Luigi";
+    case 2: return c->p3_name[0] ? c->p3_name : "Bunzo";
+    case 3: return c->p4_name[0] ? c->p4_name : "Florbo";
+    default: return "Player";
     }
 }
 
+static int sml1_mp_respawn_key(const GameCfg *c, int player)
+{
+    if (!c) return 0;
+    switch (player) {
+    case 1: return c->p2_respawn_key;
+    case 2: return c->p3_respawn_key;
+    case 3: return c->p4_respawn_key;
+    default: return 0;
+    }
+}
+
+static int sml1_mp_respawn_pad(const GameCfg *c, int player)
+{
+    if (!c) return -1;
+    switch (player) {
+    case 1: return c->p2_respawn_pad;
+    case 2: return c->p3_respawn_pad;
+    case 3: return c->p4_respawn_pad;
+    default: return -1;
+    }
+}
+
+static void sml1_draw_coop_hud(const Frame *f)
+{
+    if (!f) return;
+    int count = f->mp_player_count;
+    if (count < 2) count = 2;
+    if (count > MAX_MP_PLAYERS) count = MAX_MP_PLAYERS;
+
+    float vx = ui_view_x0(), vw = ui_view_w();
+    const float y = 12.0f, h = 36.0f, gap = 7.0f, edge = 10.0f;
+    float w = (vw - edge * 2.0f - gap * (count - 1)) / count;
+    if (w > 215.0f) w = 215.0f;
+    if (w < 86.0f) w = 86.0f;
+    float total = count * w + (count - 1) * gap;
+    float x0 = vx + (vw - total) * 0.5f;
+
+    for (int player = 0; player < count; player++) {
+        float x = x0 + player * (w + gap);
+        ui_shadow(x, y, w, h, 8, 3, RGBA(0, 0, 0, 105));
+        ui_rrect(x, y, w, h, 8, RGBA(22, 25, 34, 235));
+        uint32_t color = player == 0 ? C_ACCENT : render_sml1_mp_player_color(player);
+        char title[48], lives[16];
+        snprintf(title, sizeof title, "P%d  %.20s", player + 1, sml1_mp_player_name(player));
+        int life_count = player == 0 ? sml1_bcd_to_int(f->p1_lives) : f->mp_player_lives[player];
+        snprintf(lives, sizeof lives, "x %d", life_count);
+        ui_text_fit(F_BOLD, 11, x + 8, y + 4, w - 40, color, title);
+        ui_text_r(F_BOLD, 12, x + w - 7, y + 4, C_TEXT, lives);
+        if (player > 0 && !f->mp_player_visible[player] && life_count > 0)
+            ui_text(F_REG, 9, x + 8, y + 21, HEX(0xA8B0C0), "Respawning...");
+    }
+}
+
+/* Local SML1 multiplayer: Mario owns the shared world; up to three extra
+ * characters each run through an isolated clone of the original SML1 logic. */
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer_sml1(int g)
 {
     ds_menu_close();
     GameCfg *c = &settings.g[g];
+    int player_count = c->multiplayer_players;
+    if (player_count < 2) player_count = c->multiplayer_players = 2;
+    if (player_count > MAX_MP_PLAYERS) player_count = c->multiplayer_players = MAX_MP_PLAYERS;
+
     char sp[1200];
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);
@@ -510,13 +550,6 @@ static int play_multiplayer_sml1(int g)
     tex_collect_begin(g);
     render_reset();
     pad_set_context(g, 1);
-    /*
-     * Never auto-assign physical devices when gameplay starts. Controller
-     * selection is identity-based and managed by pad_sync_assignments().
-     * If Player 1 disconnects, leave Player 1 unassigned rather than letting
-     * Player 2's controller inherit Player 1's controls. Player 2 keeps the
-     * keyboard fallback below when no controller is assigned.
-     */
     set_game_window(g);
 
     int requested_load = launcher_take_load_state(g);
@@ -531,19 +564,22 @@ static int play_multiplayer_sml1(int g)
         c->state_slot = requested_load;
         (void)game_state_load(g, 0);
     } else if (has_suspend) {
-        if (emu_state_load_file(suspended, 1) == 0) {
-            remove(suspended);
-        }
+        if (emu_state_load_file(suspended, 1) == 0) remove(suspended);
     }
     apu_set_volume(settings.volume / 100.0f);
     audio_game_begin();
 
     Frame *f = (Frame *)calloc(1, sizeof *f);
-    Frame *p2f = (Frame *)calloc(1, sizeof *p2f);
+    Frame *player_frames[MAX_MP_PLAYERS - 1] = {NULL, NULL, NULL};
     int16_t a0[4096 * 2];
-    if (!f || !p2f) {
+    int alloc_failed = !f;
+    for (int player = 1; player < player_count; player++) {
+        player_frames[player - 1] = (Frame *)calloc(1, sizeof *player_frames[player - 1]);
+        if (!player_frames[player - 1]) alloc_failed = 1;
+    }
+    if (alloc_failed) {
         free(f);
-        free(p2f);
+        for (int i = 0; i < MAX_MP_PLAYERS - 1; i++) free(player_frames[i]);
         audio_game_end();
         emu_mp_end();
         tex_collect_save();
@@ -551,9 +587,11 @@ static int play_multiplayer_sml1(int g)
         launcher_toast("Not enough memory for SML1 multiplayer.");
         return 0;
     }
+
     int quit = 0, paused = 0, have = 0, shot = 0;
     int rewind_held = 0;
-    uint8_t b0 = 0, d0 = 0, b1 = 0, d1 = 0;
+    uint8_t buttons[MAX_MP_PLAYERS] = {0, 0, 0, 0};
+    uint8_t dpad[MAX_MP_PLAYERS] = {0, 0, 0, 0};
     Uint64 last = SDL_GetPerformanceCounter();
 
     while (!quit) {
@@ -562,19 +600,30 @@ static int play_multiplayer_sml1(int g)
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
-            if (g == GAME_SML && c->multiplayer) {
-                int respawn_key = e.type == SDL_KEYDOWN && !e.key.repeat &&
-                                  c->p2_respawn_key != 0 &&
-                                  e.key.keysym.sym == c->p2_respawn_key;
-                int respawn_pad = c->p2_respawn_pad >= 0 &&
-                                  c->pad_device[1] >= 0 &&
-                                  c->pad_device[1] < pad_count() &&
-                                  pad_capture(c->pad_device[1], &e) == c->p2_respawn_pad;
-                if (respawn_key || respawn_pad) {
-                    emu_mp_request_respawn();
-                    game_notice("Luigi respawn requested.");
+
+            if (e.type == SDL_KEYDOWN && !e.key.repeat) {
+                for (int player = 1; player < player_count; player++) {
+                    int key = sml1_mp_respawn_key(c, player);
+                    if (key && e.key.keysym.sym == key) {
+                        emu_mp_request_respawn(player);
+                        char msg[96];
+                        snprintf(msg, sizeof msg, "%s respawn requested.", sml1_mp_player_name(player));
+                        game_notice(msg);
+                    }
                 }
             }
+            for (int player = 1; player < player_count; player++) {
+                int binding = sml1_mp_respawn_pad(c, player);
+                int device = c->pad_device[player];
+                if (binding >= 0 && device >= 0 && device < pad_count() &&
+                    pad_capture(device, &e) == binding) {
+                    emu_mp_request_respawn(player);
+                    char msg[96];
+                    snprintf(msg, sizeof msg, "%s respawn requested.", sml1_mp_player_name(player));
+                    game_notice(msg);
+                }
+            }
+
             int action = app_handle_action_event(g, &e, &paused, &quit);
             if (e.type == SDL_QUIT) quit = 2;
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
@@ -583,15 +632,15 @@ static int play_multiplayer_sml1(int g)
                 case SDLK_F11:
                     SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                     break;
-                case SDLK_p:
-                    paused = !paused;
-                    break;
+                case SDLK_p: paused = !paused; break;
                 case SDLK_TAB: emu_set_turbo(1); break;
                 case SDLK_F12: shot = 1; break;
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
                 emu_set_turbo(0);
-            } else if (e.type == SDL_CONTROLLERBUTTONDOWN && e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE && !action && pad_is_selected_instance(g, e.cbutton.which)) {
+            } else if (e.type == SDL_CONTROLLERBUTTONDOWN &&
+                       e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE &&
+                       !action && pad_is_selected_instance(g, e.cbutton.which)) {
                 quit = 1;
             }
         }
@@ -626,30 +675,37 @@ static int play_multiplayer_sml1(int g)
                 rewind_held = 0;
             }
             if (!paused) {
-                pad_poll_player(g, 0, &b0, &d0);
-                pad_poll_player(g, 1, &b1, &d1);
+                for (int player = 0; player < player_count; player++)
+                    pad_poll_player(g, player, &buttons[player], &dpad[player]);
 
-                int n0 = emu_mp_step(0, b0, d0, f, a0, 4096);
+                int n0 = emu_mp_step(0, buttons[0], dpad[0], f, a0, 4096);
                 if (n0 < 0) {
                     quit = 1;
                 } else {
-                    int n1 = emu_mp_step(1, b1, d1, p2f, NULL, 0);
-                    if (n1 < 0) {
+                    int failed = 0;
+                    for (int player = 1; player < player_count; player++) {
+                        Frame *pf = player_frames[player - 1];
+                        int result = emu_mp_step(player, buttons[player], dpad[player], pf, NULL, 0);
+                        if (result < 0) { failed = 1; break; }
+                        for (int event = 0; event < N_P2_SFX; event++)
+                            if (pf->p2_sfx_events & (1u << event))
+                                audio_mp_sfx(player + 1, event);
+                    }
+                    if (failed) {
                         quit = 1;
                     } else {
-                        for (int sfx_event = 0; sfx_event < N_P2_SFX; sfx_event++) {
-                            if (p2f->p2_sfx_events & (1u << sfx_event))
-                                audio_p2_sfx(sfx_event);
-                        }
+                        emu_mp_frame_refresh(f);
                         have = 1;
                         emu_rewind_capture();
-                        if (f->game_state == 0 && f->p2_visible) {
-                            /* Projectile OAM uses the first three sprite slots, separate
-                             * from Luigi's four body sprites. Render it with real CGB palettes. */
-                            render_overlay_sml1_effect_oam(f, p2f->p2_effect_oam, 0, 0);
-                            render_overlay_sml1_projectile_oam(f, p2f->p2_projectile_oam, 0, 0);
-                            if (!f->p2_blink_hidden)
-                                render_overlay_sml1_luigi_oam(f, p2f->mario_oam2, 0, 0);
+
+                        if (f->game_state == 0) {
+                            for (int player = 1; player < player_count; player++) {
+                                if (!f->mp_player_visible[player]) continue;
+                                render_overlay_sml1_effect_oam(f, f->mp_player_effect_oam[player], 0, 0);
+                                render_overlay_sml1_projectile_oam(f, f->mp_player_projectile_oam[player], 0, 0);
+                                if (!f->mp_player_blink_hidden[player])
+                                    render_overlay_sml1_mp_oam(f, f->mp_player_oam[player], 0, 0, player);
+                            }
                         }
                         if (n0 > 0) audio_game_push(a0, n0);
                         if (audio_ok()) audio_game_wait(audio_game_target());
@@ -664,7 +720,6 @@ static int play_multiplayer_sml1(int g)
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
         last = now;
-
         int W, H;
         out_size(&W, &H);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
@@ -683,10 +738,11 @@ static int play_multiplayer_sml1(int g)
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (have) {
-            sml1_draw_player_tag(f, f->mario_oam, &game_rect, "P1", C_ACCENT);
-            if (f->p2_visible && !f->p2_blink_hidden) {
-                const char *p2_name = settings.g[GAME_SML].p2_name[0] ? settings.g[GAME_SML].p2_name : "Luigi";
-                sml1_draw_player_tag(f, p2f->mario_oam2, &game_rect, p2_name, render_sml1_luigi_color());
+            sml1_draw_player_tag(f, f->mp_player_oam[0], &game_rect, "Mario", C_ACCENT);
+            for (int player = 1; player < player_count; player++) {
+                if (!f->mp_player_visible[player] || f->mp_player_blink_hidden[player]) continue;
+                sml1_draw_player_tag(f, f->mp_player_oam[player], &game_rect,
+                                    sml1_mp_player_name(player), render_sml1_mp_player_color(player));
             }
             sml1_draw_coop_hud(f);
         }
@@ -697,7 +753,6 @@ static int play_multiplayer_sml1(int g)
         game_notice_draw(dt);
         ds_menu_draw(g);
         ui_end();
-
         pad_frame(dt);
 
         if (shot) {
@@ -711,7 +766,6 @@ static int play_multiplayer_sml1(int g)
                 SDL_FreeSurface(snap);
             }
         }
-
         SDL_RenderPresent(ren);
     }
 
@@ -720,7 +774,7 @@ static int play_multiplayer_sml1(int g)
     emu_mp_end();
     tex_collect_save();
     free(f);
-    free(p2f);
+    for (int i = 0; i < MAX_MP_PLAYERS - 1; i++) free(player_frames[i]);
     pad_set_context(g, 0);
     ds_menu_close();
     SDL_SetWindowFullscreen(win, 0);
