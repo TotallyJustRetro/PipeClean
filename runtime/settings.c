@@ -75,6 +75,15 @@ const Palette palettes[] = {
 };
 const int n_palettes = (int)(sizeof palettes / sizeof palettes[0]);
 
+const LuigiColor luigi_colors[N_LUIGI_COLORS] = {
+    {"Green",  0x2CA83D, 0x8AE05A, 0x2CA83D, 0x175822},
+    {"Blue",   0x2676D9, 0x8CD0FF, 0x2676D9, 0x123D82},
+    {"Red",    0xE53935, 0xFF8A80, 0xE53935, 0x8C1818},
+    {"Purple", 0x9C4DCC, 0xD6A5F5, 0x9C4DCC, 0x4C176D},
+    {"Orange", 0xE27B1C, 0xFFC078, 0xE27B1C, 0x8F440D},
+    {"Yellow", 0xD8B51A, 0xFFF18A, 0xD8B51A, 0x80650B}
+};
+
 
 Settings settings;
 
@@ -133,6 +142,8 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->bg_dim = 25;
     c->wide = 0;
     c->state_slot = 0;
+    c->p2_color = LUIGI_GREEN;
+    if (game == GAME_SML) snprintf(c->p2_name, sizeof c->p2_name, "Luigi");
     shortcut_defaults(c);
     c->tex_collect = 1;
     c->ds_led_mode = LED_PALETTE; c->ds_bright = 60; c->ds_color = 0x40A0FF;
@@ -197,7 +208,8 @@ static int field_table(Field *t, int cap)
         int k = 0;
 #define GI(nm, p, l, h) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
 #define GS(nm, p) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
-        GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path);
+        GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path); GS("p2_name", c->p2_name);
+        GI("p2_color", c->p2_color, 0, N_LUIGI_COLORS - 1);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
         GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1); GI("p2_respawn_key", c->p2_respawn_key, 0, 0x7FFFFFFF); GI("p2_respawn_pad", c->p2_respawn_pad, -1, 31);
@@ -254,7 +266,7 @@ void settings_load(void)
         }
     }
     fclose(f);
-    if (settings.last_tab > N_GAMES + 3) settings.last_tab = 0;
+    if (settings.last_tab > N_GAMES + 2) settings.last_tab = 0;
 }
 
 void settings_save(void)
