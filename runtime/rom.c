@@ -158,6 +158,26 @@ int rom_apply_hack(const char *path, RomStatus *st)
     if (!cart_parse(out, olen, &ci) || ci.mapper < 0) {
         free(out); snprintf(st->msg, sizeof st->msg, "That hack uses a cartridge type that isn't supported."); return 1;
     }
+
+    /* These two DX IPS files silently assume a specific clean source ROM.
+     * IPS itself has no source checksum, so applying them to another revision
+     * can corrupt code and previously crashed the launcher during preview. */
+    uint32_t source_crc = crc32_bytes(base_img, base_len);
+    if (base_game == GAME_SML && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
+        olen == 0x40000 && source_crc != 0x90776841u) {
+        free(out);
+        snprintf(st->msg, sizeof st->msg,
+                 "This Super Mario Land DX patch requires the clean World v1.0 ROM (CRC32 90776841).");
+        return 1;
+    }
+    if (base_game == GAME_SML2 && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
+        olen == 0x100000 && source_crc != 0xD5EC24E4u) {
+        free(out);
+        snprintf(st->msg, sizeof st->msg,
+                 "Super Mario Land 2 DX v1.8.1 requires the clean USA/Europe v1.0 ROM (CRC32 D5EC24E4).");
+        return 1;
+    }
+
     int changed = 0, code = 0;
     size_t cmp = olen > base_len ? olen : base_len;
     for (size_t i = 0; i < cmp; i++) {
