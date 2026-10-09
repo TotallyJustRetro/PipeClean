@@ -9,7 +9,7 @@
 typedef struct { SDL_GameController *gc; SDL_Joystick *joy; int mapped; } Pad;
 static Pad pads[MAXPADS];
 static int n_pads;
-static SDL_JoystickID assigned_instance[N_GAMES][2];
+static SDL_JoystickID assigned_instance[N_GAMES][MAX_MP_PLAYERS];
 static int sync_initialized;
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
 static int pad_instance_device(SDL_JoystickID which);
@@ -88,7 +88,7 @@ static int unique_unclaimed_identity(const char *identity, const int claimed[MAX
 static void remember_assigned_instances(void)
 {
     for (int g = 0; g < N_GAMES; g++) {
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             int device = settings.g[g].pad_device[player];
             SDL_JoystickID instance = device_instance(device);
             if (instance >= 0) assigned_instance[g][player] = instance;
@@ -114,7 +114,7 @@ void pad_init(void)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
     for (int g = 0; g < N_GAMES; g++)
-        for (int player = 0; player < 2; player++)
+        for (int player = 0; player < MAX_MP_PLAYERS; player++)
             assigned_instance[g][player] = (SDL_JoystickID)-1;
     sync_initialized = 0;
     rescan();
@@ -170,11 +170,11 @@ void pad_sync_assignments(void)
 {
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &settings.g[g];
-        int chosen[2] = {-1, -1};
+        int chosen[MAX_MP_PLAYERS] = {-1, -1, -1, -1};
         int claimed[MAXPADS] = {0, 0, 0, 0};
 
         /* First preserve the actual live joystick instance for each player. */
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             SDL_JoystickID instance = assigned_instance[g][player];
             int device = pad_find_instance(instance);
             if (instance >= 0 && device >= 0 && !claimed[device]) {
@@ -186,7 +186,7 @@ void pad_sync_assignments(void)
         }
 
         /* Serial/path identities reconnect safely even if SDL changes slot order. */
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             if (chosen[player] >= 0 || !identity_is_strong(c->pad_guid[player])) continue;
             int device = unique_unclaimed_identity(c->pad_guid[player], claimed);
             if (device >= 0) {
@@ -198,12 +198,12 @@ void pad_sync_assignments(void)
 
         /* On first launch, resolve duplicated legacy GUIDs only when safe. */
         if (!sync_initialized) {
-            for (int player = 0; player < 2; player++) {
+            for (int player = 0; player < MAX_MP_PLAYERS; player++) {
                 if (chosen[player] >= 0) continue;
                 char guid[33];
                 if (!identity_weak_guid(c->pad_guid[player], guid)) continue;
                 int owners = 0, owner_other = -1;
-                for (int other = 0; other < 2; other++) {
+                for (int other = 0; other < MAX_MP_PLAYERS; other++) {
                     char other_guid[33];
                     if (identity_weak_guid(c->pad_guid[other], other_guid) && !strcmp(guid, other_guid)) {
                         owners++;
@@ -213,7 +213,7 @@ void pad_sync_assignments(void)
                 if (owners <= 1) continue;
                 int total = weak_guid_candidate_count(guid, NULL);
                 if (total >= owners) {
-                    for (int other = 0; other < 2; other++) {
+                    for (int other = 0; other < MAX_MP_PLAYERS; other++) {
                         char other_guid[33];
                         if (chosen[other] >= 0 || !identity_weak_guid(c->pad_guid[other], other_guid) || strcmp(guid, other_guid)) continue;
                         int hint = c->pad_device[other];
@@ -241,7 +241,7 @@ void pad_sync_assignments(void)
 
         /* Migrate older configs that never stored a device identity. */
         if (!sync_initialized) {
-            for (int player = 0; player < 2; player++) {
+            for (int player = 0; player < MAX_MP_PLAYERS; player++) {
                 if (chosen[player] >= 0 || c->pad_guid[player][0]) continue;
                 int hint = c->pad_device[player];
                 if (hint >= 0 && hint < n_pads && !claimed[hint]) {
@@ -254,12 +254,12 @@ void pad_sync_assignments(void)
 
         /* Weak GUID matching is safe only if ownership is unambiguous or every
            other player with that GUID is already attached to their live instance. */
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             if (chosen[player] >= 0) continue;
             char guid[33];
             if (!identity_weak_guid(c->pad_guid[player], guid)) continue;
             int other_owners = 0, all_other_owners_live = 1;
-            for (int other = 0; other < 2; other++) {
+            for (int other = 0; other < MAX_MP_PLAYERS; other++) {
                 char other_guid[33];
                 if (other == player || !identity_weak_guid(c->pad_guid[other], other_guid) || strcmp(guid, other_guid)) continue;
                 other_owners++;
@@ -280,7 +280,7 @@ void pad_sync_assignments(void)
             }
         }
 
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             c->pad_device[player] = chosen[player];
             if (chosen[player] < 0) {
                 assigned_instance[g][player] = (SDL_JoystickID)-1;
@@ -301,12 +301,12 @@ void pad_sync_assignments(void)
 
 int pad_assign_device(int game, int player, int device)
 {
-    if (game < 0 || game >= N_GAMES || player < 0 || player > 1) return 0;
+    if (game < 0 || game >= N_GAMES || player < 0 || player >= MAX_MP_PLAYERS) return 0;
     if (device < -1 || device >= n_pads) return 0;
     GameCfg *c = &settings.g[game];
     if (device >= 0) {
-        int other = 1 - player;
-        if (c->pad_device[other] == device) return 0;
+        for (int other = 0; other < MAX_MP_PLAYERS; other++)
+            if (other != player && c->pad_device[other] == device) return 0;
         char identity[512];
         if (!pad_device_identity(device, identity, sizeof identity)) return 0;
         c->pad_device[player] = device;
@@ -388,7 +388,7 @@ static void pad_poll_one(int game, const GameCfg *c, int player, uint8_t *b, uin
 {
     const Uint8 *ks = SDL_GetKeyboardState(NULL);
     uint8_t bits[N_BTN] = {0};
-    if (player < 0 || player > 1) player = 0;
+    if (player < 0 || player >= MAX_MP_PLAYERS) player = 0;
 
     /* The GBC Wario Land II profile may have been created after the user's
      * controller was assigned to the GB release. If its per-game assignment
