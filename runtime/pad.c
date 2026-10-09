@@ -384,17 +384,31 @@ static int pad_down(int device, int code)
     return code >= 0 && code < SDL_JoystickNumButtons(p->joy) && SDL_JoystickGetButton(p->joy, code) != 0;
 }
 
-static void pad_poll_one(const GameCfg *c, int player, uint8_t *b, uint8_t *d)
+static void pad_poll_one(int game, const GameCfg *c, int player, uint8_t *b, uint8_t *d)
 {
     const Uint8 *ks = SDL_GetKeyboardState(NULL);
     uint8_t bits[N_BTN] = {0};
     if (player < 0 || player > 1) player = 0;
+
+    /* The GBC Wario Land II profile may have been created after the user's
+     * controller was assigned to the GB release. If its per-game assignment
+     * is missing, reuse that sibling profile's live device rather than
+     * silently making the controller unusable for this title. An explicit,
+     * valid GBC-specific assignment still takes precedence. */
+    int device = c->pad_device[player];
+    if ((device < 0 || device >= n_pads) &&
+        game == GAME_WARIO_LAND2_GBC && player == 0) {
+        int sibling_device = settings.g[GAME_WARIO_LAND2_GB].pad_device[0];
+        if (sibling_device >= 0 && sibling_device < n_pads)
+            device = sibling_device;
+    }
+
     for (int i = 0; i < N_BTN; i++) {
         if (c->key[i][player]) {
             SDL_Scancode sc = SDL_GetScancodeFromKey(c->key[i][player]);
             if (sc != SDL_SCANCODE_UNKNOWN && ks[sc]) bits[i] = 1;
         }
-        if (c->pad[i][player] >= 0 && pad_down(c->pad_device[player], c->pad[i][player])) bits[i] = 1;
+        if (c->pad[i][player] >= 0 && pad_down(device, c->pad[i][player])) bits[i] = 1;
     }
 
     /*
@@ -410,7 +424,6 @@ static void pad_poll_one(const GameCfg *c, int player, uint8_t *b, uint8_t *d)
         if (ks[SDL_SCANCODE_S]) bits[BTN_DOWN] = 1;
     }
     float dz = settings.pad_deadzone / 100.0f * 32767.0f;
-    int device = c->pad_device[player];
     if (device >= 0 && device < n_pads) {
         int ax = pads[device].mapped ? SDL_GameControllerGetAxis(pads[device].gc, SDL_CONTROLLER_AXIS_LEFTX) :
                  (SDL_JoystickNumAxes(pads[device].joy) > 0 ? SDL_JoystickGetAxis(pads[device].joy, 0) : 0);
@@ -433,7 +446,8 @@ static void pad_poll_one(const GameCfg *c, int player, uint8_t *b, uint8_t *d)
 void pad_poll_player(int game, int player, uint8_t *b, uint8_t *d)
 {
     if (!b || !d || game < 0) return;
-    pad_poll_one(&settings.g[game], player, b, d);
+    if (game >= N_GAMES) { *b = 0; *d = 0; return; }
+    pad_poll_one(game, &settings.g[game], player, b, d);
     if ((*d & 3) == 3) *d &= (uint8_t)~3;
     if ((*d & 12) == 12) *d &= (uint8_t)~12;
 }
