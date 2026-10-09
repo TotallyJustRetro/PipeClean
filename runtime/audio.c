@@ -29,10 +29,10 @@ static int g_target = 2048;
 /* menu music + sfx */
 typedef struct { float *d; long n; } Clip;
 static Clip music, sfx[N_UI_SFX];
-static Clip p2_jump_clip;       /* Original PipeClean SML1 Player 2 jump SFX. */
-static long p2_jump_pos = -1;
-static const float p2_jump_gain = 0.72f;
+static Clip p2_sfx[N_P2_SFX];   /* Built-in original or user-imported Player 2 effects. */
+static long p2_sfx_pos[N_P2_SFX];
 static char music_path[512], sfx_path[N_UI_SFX][512];
+static char p2_loaded_path[N_P2_SFX][512];
 static long music_pos;
 static float music_gain, music_target;
 static int music_want_on;
@@ -236,6 +236,62 @@ static void synth_p2_jump(Clip *c)
     }
 }
 
+static void synth_p2_sfx(Clip *c, int which)
+{
+    if (which == P2_SFX_JUMP) {
+        synth_p2_jump(c);
+        return;
+    }
+
+    int duration_ms = which == P2_SFX_FIREBALL ? 190 :
+                      which == P2_SFX_POWER_UP ? 430 :
+                      which == P2_SFX_POWER_DOWN ? 360 : 690;
+    long total = (long)((double)duration_ms * rate / 1000.0);
+    if (!clip_alloc(c, total)) return;
+
+    /* Original PipeClean chiptune cues. These short motifs are newly composed;
+     * they don't sample or reproduce the game's built-in sound data. */
+    switch (which) {
+    case P2_SFX_FIREBALL:
+        add_note(c, 0, 0.055, 88, W_PULSE25, 0.24f, 0.0f, 0.001, 0.015);
+        add_note(c, (long)(rate * 0.030), 0.075, 79, W_PULSE50, 0.19f, 0.0f, 0.001, 0.025);
+        add_note(c, (long)(rate * 0.075), 0.080, 69, W_TRI, 0.17f, 0.0f, 0.002, 0.035);
+        add_drum(c, 0, 2, 0.12f);
+        break;
+    case P2_SFX_POWER_UP:
+        add_note(c, 0, 0.085, 60, W_PULSE25, 0.22f, 0.0f, 0.002, 0.018);
+        add_note(c, (long)(rate * 0.075), 0.085, 67, W_PULSE25, 0.24f, 0.0f, 0.002, 0.018);
+        add_note(c, (long)(rate * 0.150), 0.095, 72, W_PULSE25, 0.27f, 0.0f, 0.002, 0.022);
+        add_note(c, (long)(rate * 0.235), 0.150, 79, W_PULSE50, 0.28f, 0.0f, 0.002, 0.045);
+        add_note(c, (long)(rate * 0.285), 0.105, 84, W_TRI, 0.12f, 0.0f, 0.003, 0.050);
+        break;
+    case P2_SFX_POWER_DOWN:
+        add_note(c, 0, 0.090, 84, W_PULSE25, 0.25f, 0.0f, 0.001, 0.02);
+        add_note(c, (long)(rate * 0.075), 0.105, 72, W_PULSE25, 0.23f, 0.0f, 0.001, 0.025);
+        add_note(c, (long)(rate * 0.165), 0.135, 60, W_TRI, 0.20f, 0.0f, 0.002, 0.050);
+        add_note(c, (long)(rate * 0.240), 0.085, 53, W_PULSE50, 0.11f, 0.0f, 0.002, 0.035);
+        break;
+    case P2_SFX_DIE:
+        add_note(c, 0, 0.105, 79, W_PULSE25, 0.24f, 0.0f, 0.002, 0.03);
+        add_note(c, (long)(rate * 0.105), 0.125, 72, W_TRI, 0.23f, 0.0f, 0.002, 0.04);
+        add_note(c, (long)(rate * 0.230), 0.145, 64, W_TRI, 0.21f, 0.0f, 0.002, 0.05);
+        add_note(c, (long)(rate * 0.370), 0.190, 55, W_PULSE50, 0.19f, 0.0f, 0.003, 0.075);
+        add_note(c, (long)(rate * 0.480), 0.150, 48, W_TRI, 0.16f, 0.0f, 0.004, 0.100);
+        add_drum(c, (long)(rate * 0.350), 2, 0.10f);
+        break;
+    default:
+        break;
+    }
+
+    float peak = 0.0f;
+    for (long i = 0; i < total * 2; i++)
+        if (fabsf(c->d[i]) > peak) peak = fabsf(c->d[i]);
+    if (peak > 0.72f) {
+        float gain = 0.72f / peak;
+        for (long i = 0; i < total * 2; i++) c->d[i] *= gain;
+    }
+}
+
 static void resample_to(float **d, long *n, int from)
 {
     if (from == rate || !*d) return;
@@ -312,14 +368,18 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
             r += c->d[voices[v].pos * 2 + 1] * voices[v].vol;
             voices[v].pos++;
         }
-        if (p2_jump_pos >= 0) {
-            if (p2_jump_pos >= p2_jump_clip.n) p2_jump_pos = -1;
-            else {
-                l += p2_jump_clip.d[p2_jump_pos * 2] * p2_jump_gain;
-                r += p2_jump_clip.d[p2_jump_pos * 2 + 1] * p2_jump_gain;
-                p2_jump_pos++;
-                if (p2_jump_pos >= p2_jump_clip.n) p2_jump_pos = -1;
+        for (int ev = 0; ev < N_P2_SFX; ev++) {
+            long pos = p2_sfx_pos[ev];
+            Clip *clip = &p2_sfx[ev];
+            if (pos < 0) continue;
+            if (pos >= clip->n || !clip->d) {
+                p2_sfx_pos[ev] = -1;
+                continue;
             }
+            l += clip->d[pos * 2] * 0.78f;
+            r += clip->d[pos * 2 + 1] * 0.78f;
+            p2_sfx_pos[ev]++;
+            if (p2_sfx_pos[ev] >= clip->n) p2_sfx_pos[ev] = -1;
         }
         if (l > 1) l = 1; else if (l < -1) l = -1;
         if (r > 1) r = 1; else if (r < -1) r = -1;
@@ -352,8 +412,10 @@ int audio_init(int latency)
     g_target = rate * tgt_ms[latency < 0 || latency >= N_LAT ? 1 : latency] / 1000;
     synth_music(&music);
     for (int i = 0; i < N_UI_SFX; i++) synth_sfx(&sfx[i], i);
-    synth_p2_jump(&p2_jump_clip);
-    p2_jump_pos = -1;
+    for (int i = 0; i < N_P2_SFX; i++) {
+        synth_p2_sfx(&p2_sfx[i], i);
+        p2_sfx_pos[i] = -1;
+    }
     SDL_PauseAudioDevice(dev, 0);
     return 0;
 }
@@ -362,10 +424,13 @@ void audio_shutdown(void)
 {
     audio_pad_close();
     if (dev) { SDL_CloseAudioDevice(dev); dev = 0; }
-    free(p2_jump_clip.d);
-    p2_jump_clip.d = NULL;
-    p2_jump_clip.n = 0;
-    p2_jump_pos = -1;
+    for (int i = 0; i < N_P2_SFX; i++) {
+        free(p2_sfx[i].d);
+        p2_sfx[i].d = NULL;
+        p2_sfx[i].n = 0;
+        p2_sfx_pos[i] = -1;
+        p2_loaded_path[i][0] = 0;
+    }
 }
 
 int audio_game_target(void) { return g_target; }
@@ -375,7 +440,7 @@ void audio_game_begin(void)
     if (!dev) return;
     SDL_LockMutex(mx);
     g_r = g_w = 0; g_active = 1; g_playing = 0; g_abort = 0; g_paused = 0; underruns = 0;
-    p2_jump_pos = -1;
+    for (int i = 0; i < N_P2_SFX; i++) p2_sfx_pos[i] = -1;
     g_last_l = g_last_r = 0;
     music_target = 0;
     SDL_UnlockMutex(mx);
@@ -385,7 +450,7 @@ void audio_game_end(void)
 {
     if (!dev) return;
     SDL_LockMutex(mx);
-    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1; p2_jump_pos = -1;
+    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1; for (int i = 0; i < N_P2_SFX; i++) p2_sfx_pos[i] = -1;
     SDL_UnlockMutex(mx);
     SDL_CondBroadcast(cv);
 }
@@ -489,6 +554,28 @@ void audio_menu_apply(void)
             free(old.d);
         }
     }
+    /* Player 2 SFX can each use a user-imported WAV/MP3/OGG/FLAC, or a
+     * generated original chiptune when its path is empty. */
+    GameCfg *mc = &settings.g[GAME_SML];
+    for (int i = 0; i < N_P2_SFX; i++) {
+        if (strcmp(p2_loaded_path[i], mc->p2_sfx_path[i])) {
+            Clip tmp = {0};
+            if (mc->p2_sfx_path[i][0] && load_clip(&tmp, mc->p2_sfx_path[i]) != 0)
+                mc->p2_sfx_path[i][0] = 0;
+            if (!tmp.d) {
+                synth_p2_sfx(&tmp, i);
+                p2_loaded_path[i][0] = 0;
+            } else {
+                snprintf(p2_loaded_path[i], sizeof p2_loaded_path[i], "%s", mc->p2_sfx_path[i]);
+            }
+            SDL_LockMutex(mx);
+            Clip old = p2_sfx[i];
+            p2_sfx[i] = tmp;
+            p2_sfx_pos[i] = -1;
+            SDL_UnlockMutex(mx);
+            free(old.d);
+        }
+    }
     audio_menu_music(music_want_on);
 }
 
@@ -516,12 +603,17 @@ void audio_sfx(int which)
 }
 void audio_sfx_preview(int which) { if (dev && which >= 0 && which < N_UI_SFX) play_sfx(which); }
 
-void audio_p2_jump_sfx(void)
+void audio_p2_sfx(int which)
 {
-    if (!dev || !p2_jump_clip.d) return;
+    if (!dev || which < 0 || which >= N_P2_SFX || !p2_sfx[which].d) return;
     SDL_LockMutex(mx);
-    p2_jump_pos = 0;
+    p2_sfx_pos[which] = 0;
     SDL_UnlockMutex(mx);
+}
+
+void audio_p2_sfx_preview(int which)
+{
+    audio_p2_sfx(which);
 }
 
 void audio_music_preview(void)
