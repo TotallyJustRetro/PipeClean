@@ -226,6 +226,14 @@ static void timer_div_reset(void)
     div_counter = 0;
 }
 
+/* STOP switches CPU clock speed only when CGB KEY1 has been prepared. */
+void gb_stop(void)
+{
+    if (!cgb_mode || !(cgb_key1 & 0x01)) return;
+    div_counter = 0;
+    cgb_key1 = (uint8_t)((cgb_key1 ^ 0x80) & 0x80);
+}
+
 static void timer_tick(int n)
 {
     for (int i = 0; i < n; i += 4) {
@@ -238,9 +246,13 @@ static void timer_tick(int n)
 void hw_tick(int n)
 {
     total_cycles += (uint64_t)n;
+    /* Timer/CPU clocks double in CGB double-speed mode; LCD and APU stay at
+     * the normal base clock. CPU instruction timing remains expressed in CPU
+     * T-cycles, so only the slower peripherals receive half as many cycles. */
     timer_tick(n);
-    ppu_tick(n);
-    apu_tick(n);
+    int base_cycles = (cgb_mode && (cgb_key1 & 0x80)) ? n / 2 : n;
+    ppu_tick(base_cycles);
+    apu_tick(base_cycles);
     if (serial_cycles > 0 && (serial_cycles -= n) <= 0) {
         serial_cycles = 0;
         sc &= 0x7F;
