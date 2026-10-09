@@ -861,9 +861,9 @@ static void mp_sml2_offset_player(MpSml2Player *p, int dx)
 
 static int mp_sml2_gameplay_active(void)
 {
-    /* FF9B is SML2's game-mode dispatcher: mode 0 is active level play;
-     * the map, menu, death and transition modes must not create extra Marios. */
-    return rd8(0xFF9B) == 0 && rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
+    /* FF9B is SML2's game-mode dispatcher: mode 4 is active level play.
+     * Mode 0 is the overworld/map, so do not create co-op players there. */
+    return rd8(0xFF9B) == 4 && rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
 }
 
 static void mp_sml2_capture_frame(Frame *frame)
