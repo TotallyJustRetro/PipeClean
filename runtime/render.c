@@ -301,10 +301,12 @@ void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int 
     render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 1);
 }
 
-void render_overlay_sml1_mp_oam(Frame *f, const uint8_t oam[16], int dx, int dy, int player)
+void render_overlay_sml1_mp_oam(Frame *f, const uint8_t *oam, int dx, int dy, int player)
 {
-    if (player < 1 || player >= MAX_MP_PLAYERS) return;
-    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, player);
+    if (!f || player < 1 || player >= MAX_MP_PLAYERS) return;
+    int count = f->mp_player_sprite_count[player];
+    if (count < 1 || count > MP_MAX_OAM_SPRITES) return;
+    render_overlay_sml1_mario_src(f, oam, count, dx, dy, player);
 }
 
 void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy)
