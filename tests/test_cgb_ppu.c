@@ -1,7 +1,7 @@
 #include "gb.h"
 #include <assert.h>
 
-uint8_t io_if;
+uint8_t io_if, io_ie;
 void frame_hook(void) {}
 
 static void set_bg_color(unsigned index, unsigned rgb555)
