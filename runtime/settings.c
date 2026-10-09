@@ -273,7 +273,7 @@ void settings_load(void)
     FILE *f = fopen(path, "r");
     if (!f) { legacy_ini_path(path, sizeof path); f = fopen(path, "r"); }
     if (!f) return;
-    Field tab[400];
+    Field tab[600];
     int nf = field_table(tab, 400);
     char line[700];
     while (fgets(line, sizeof line, f)) {
@@ -314,7 +314,7 @@ void settings_save(void)
     ini_path(path, sizeof path);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    Field tab[400];
+    Field tab[600];
     int nf = field_table(tab, 400);
     for (int i = 0; i < nf; i++) {
         if (tab[i].ip) fprintf(f, "%s=%d\n", tab[i].name, *tab[i].ip);
