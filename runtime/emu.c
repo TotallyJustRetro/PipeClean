@@ -910,17 +910,17 @@ static int mp_sml2_capture_mapping_oam(uint8_t mapping,
 
     int base_x = rd8(0xA23C), base_y = rd8(0xA23B);
     uint8_t used[40] = {0};
-    int count = 0;
+    int count = 0, expected = 0;
     for (int entry = 0; entry < MP_MAX_OAM_SPRITES; entry++) {
         uint8_t raw_dy = cart_rom_read_bank(1, map++);
         if (raw_dy == 0x80) break;
         uint8_t raw_dx = cart_rom_read_bank(1, map++);
         uint8_t tile = cart_rom_read_bank(1, map++);
         (void)cart_rom_read_bank(1, map++); /* Attributes can be toggled at runtime. */
+        expected++;
 
         /* Mapping offsets are signed 8-bit values. Common poses use F8 (-8)
-         * and FC (-4); treating them as unsigned shifts pieces far away and
-         * makes the matcher fall back to an incomplete guessed 2x2 sprite. */
+         * and FC (-4); treating them as unsigned shifts pieces far away. */
         int dy = raw_dy < 0x80 ? (int)raw_dy : (int)raw_dy - 256;
         int dx = raw_dx < 0x80 ? (int)raw_dx : (int)raw_dx - 256;
         uint8_t want_y = (uint8_t)(base_y + dy);
@@ -934,9 +934,10 @@ static int mp_sml2_capture_mapping_oam(uint8_t mapping,
             count++;
             break;
         }
-        if (count >= MP_MAX_OAM_SPRITES) break;
     }
-    return count;
+    /* Never draw a partial mapping: a missing piece would look like a
+     * corrupted pose. Return zero so the caller uses its prior fallback. */
+    return expected > 0 && count == expected ? count : 0;
 }
 
 static void mp_sml2_save_player(MpSml2Player *p, int player)
@@ -957,7 +958,7 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
             p->h_c6, mp_sml2_render_oam[player]);
         /* Fall back to the stable four-piece matcher if the ROM map cannot
          * be read or doesn't match the live OAM for this game frame. */
-        if (mapped >= 2) {
+        if (mapped > 0) {
             mp_sml2_render_oam_count[player] = (uint8_t)mapped;
         } else {
             memset(mp_sml2_render_oam[player], 0,
