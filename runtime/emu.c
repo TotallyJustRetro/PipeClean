@@ -732,6 +732,9 @@ int emu_mp_begin(void)
     mp_p2_lives = mp_p1_lives_seen;
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     mp_sml2_initialized = 0;
+    mp_sml2_stable_frames = 0;
+    mp_sml2_stable_level = 0;
+    mp_sml2_stable_bank = 0;
     if (mp_game == GAME_SML2) {
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
@@ -876,15 +879,51 @@ static void mp_sml2_shift_screen_x(MpSml2Player *p, int dx)
     }
 }
 
-static int mp_sml2_gameplay_active(void)
+static unsigned mp_sml2_stable_frames;
+static uint8_t mp_sml2_stable_level;
+static uint8_t mp_sml2_stable_bank;
+
+static int mp_sml2_gameplay_candidate(void)
 {
-    /* FF9B is SML2's game-mode dispatcher: mode 4 is active level play,
-     * while mode 0 is the overworld. During level entry the dispatcher can
-     * change before the level timer and tile data are fully initialized.
-     * Don't spawn/run clone simulations until the timer is live. */
+    /* FF9B is SML2's game-mode dispatcher: mode 4 is active level play.
+     * The mode and timer can look valid for a few frames during level entry,
+     * so this is only a candidate; co-op must wait for a stable level. */
     uint16_t timer = (uint16_t)rd8(0xA254) | ((uint16_t)rd8(0xA255) << 8);
     return rd8(0xFF9B) == 4 && timer != 0 && rd8(0xA221) == 0 &&
            rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
+}
+
+static void mp_sml2_update_gameplay_stability(void)
+{
+    if (!mp_sml2_gameplay_candidate()) {
+        mp_sml2_stable_frames = 0;
+        return;
+    }
+
+    uint8_t level = rd8(0xA269);
+    uint8_t bank = rd8(0xA258);
+    if (mp_sml2_stable_frames == 0 ||
+        level != mp_sml2_stable_level ||
+        bank != mp_sml2_stable_bank) {
+        mp_sml2_stable_level = level;
+        mp_sml2_stable_bank = bank;
+        mp_sml2_stable_frames = 1;
+        return;
+    }
+
+    /* Require eight consecutive authoritative P1 frames with the same
+     * level, level bank and active-play signature before clone simulations
+     * or shared-world merging are allowed. This prevents a transient during
+     * level entry from being mistaken for a fully initialized level. */
+    if (mp_sml2_stable_frames < 8) mp_sml2_stable_frames++;
+}
+
+static int mp_sml2_gameplay_active(void)
+{
+    return mp_sml2_stable_frames >= 8 &&
+           mp_sml2_gameplay_candidate() &&
+           rd8(0xA269) == mp_sml2_stable_level &&
+           rd8(0xA258) == mp_sml2_stable_bank;
 }
 
 static void mp_sml2_capture_frame(Frame *frame)
@@ -961,6 +1000,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         int n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
         mp_sml2_save_player(&mp_sml2_players[0]);
+        mp_sml2_update_gameplay_stability();
         int camera_dx = mp_scroll_delta(rd8(0xA2B1), scroll_before);
         if (camera_dx && mp_sml2_initialized && mp_sml2_gameplay_active()) {
             /* Player 1 owns the camera. Translate each clone's cached screen
