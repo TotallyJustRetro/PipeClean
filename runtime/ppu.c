@@ -5,6 +5,8 @@
 #include "gb.h"
 
 uint8_t vram[0x2000], oam[0xA0];
+static uint8_t vram_cgb1[0x2000];
+static uint8_t vram_bank;
 uint8_t ppu_shade[GB_H][GB_WMAX];
 uint8_t ppu_layer[GB_H][GB_WMAX];
 uint16_t ppu_bgtile[GB_H][GB_WMAX], ppu_sprtile[GB_H][GB_WMAX];   /* tile number 0..383, 0xFFFF = none */
@@ -31,6 +33,8 @@ int frame_count;
 void ppu_reset(void)
 {
     memset(vram, 0, sizeof vram);
+    memset(vram_cgb1, 0, sizeof vram_cgb1);
+    vram_bank = 0;
     memset(oam, 0, sizeof oam);
     memset(ppu_shade, 0, sizeof ppu_shade);
     memset(ppu_layer, 0, sizeof ppu_layer);
@@ -48,6 +52,22 @@ static void update_stat(void)
     if (line && !stat_line) io_if |= 0x02;
     stat_line = line;
 }
+
+uint8_t ppu_vram_read(uint16_t a)
+{
+    a &= 0x1FFF;
+    return (vram_bank & 1) ? vram_cgb1[a] : vram[a];
+}
+
+void ppu_vram_write(uint16_t a, uint8_t value)
+{
+    a &= 0x1FFF;
+    if (vram_bank & 1) vram_cgb1[a] = value;
+    else vram[a] = value;
+}
+
+uint8_t ppu_vram_bank_read(void) { return (uint8_t)(0xFE | (vram_bank & 1)); }
+void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
 uint8_t ppu_read(uint8_t r)
 {
@@ -245,7 +265,7 @@ void ppu_tick(int n)
 }
 
 typedef struct {
-    uint8_t vram[0x2000], oam[0xA0];
+    uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
     uint16_t bgtile[GB_H][GB_WMAX], sprtile[GB_H][GB_WMAX];
     uint8_t bguv[GB_H][GB_WMAX], spruv[GB_H][GB_WMAX];
@@ -260,7 +280,7 @@ int ppu_state_save(void *dst, size_t n)
 {
     if (!dst || n < sizeof(PPUState)) return -1;
     PPUState *s = (PPUState *)dst;
-    memcpy(s->vram,vram,sizeof vram); memcpy(s->oam,oam,sizeof oam);
+    memcpy(s->vram,vram,sizeof vram); memcpy(s->vram_cgb1,vram_cgb1,sizeof vram_cgb1); s->vram_bank=vram_bank; memcpy(s->oam,oam,sizeof oam);
     memcpy(s->shade,ppu_shade,sizeof ppu_shade); memcpy(s->layer,ppu_layer,sizeof ppu_layer);
     memcpy(s->bgtile,ppu_bgtile,sizeof ppu_bgtile); memcpy(s->sprtile,ppu_sprtile,sizeof ppu_sprtile);
     memcpy(s->bguv,ppu_bguv,sizeof ppu_bguv); memcpy(s->spruv,ppu_spruv,sizeof ppu_spruv);
@@ -274,7 +294,7 @@ int ppu_state_load(const void *src, size_t n)
 {
     if (!src || n < sizeof(PPUState)) return -1;
     const PPUState *s = (const PPUState *)src;
-    memcpy(vram,s->vram,sizeof vram); memcpy(oam,s->oam,sizeof oam);
+    memcpy(vram,s->vram,sizeof vram); memcpy(vram_cgb1,s->vram_cgb1,sizeof vram_cgb1); vram_bank=s->vram_bank & 1; memcpy(oam,s->oam,sizeof oam);
     memcpy(ppu_shade,s->shade,sizeof ppu_shade); memcpy(ppu_layer,s->layer,sizeof ppu_layer);
     memcpy(ppu_bgtile,s->bgtile,sizeof ppu_bgtile); memcpy(ppu_sprtile,s->sprtile,sizeof ppu_sprtile);
     memcpy(ppu_bguv,s->bguv,sizeof ppu_bguv); memcpy(ppu_spruv,s->spruv,sizeof ppu_spruv);
