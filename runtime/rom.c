@@ -54,7 +54,7 @@ static void normalize_title(const char *src, char *dst, size_t cap)
     size_t j = 0;
     for (size_t i = 0; src[i] && j + 1 < cap; i++) {
         unsigned char c = (unsigned char)src[i];
-        if (c == ' ' || c == '\\t') continue;
+        if (c == ' ' || c == '\t') continue;
         if (c >= 'a' && c <= 'z') c = (unsigned char)(c - 'a' + 'A');
         if (c < 32 || c > 126) break;
         dst[j++] = (char)c;
