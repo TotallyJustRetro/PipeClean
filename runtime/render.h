@@ -3,6 +3,7 @@
 #include "emu.h"
 
 void render_init(SDL_Renderer *r);
+void render_set_mp_game(int game);
 void render_shutdown(void);
 void render_reset(void);                                   /* invalidate temporal/rendered frame history */
 /* Build the picture for `game` from a frame. live != 0 applies temporal effects (ghosting). */
