@@ -7,7 +7,9 @@ CPU cpu;
 uint8_t io_if, io_ie;
 uint64_t total_cycles;
 
-static uint8_t wram[0x2000];
+static uint8_t wram[0x8000];
+static uint8_t cgb_svbk = 1;
+static uint8_t cgb_key1;
 static uint8_t hram[0x80];
 static uint8_t io_misc[0x80];
 
@@ -62,6 +64,9 @@ static uint8_t io_read(uint8_t r)
     case 0x06: return tma;
     case 0x07: return tac | 0xF8;
     case 0x0F: return io_if | 0xE0;
+    case 0x4D: return (uint8_t)(0x7E | cgb_key1);
+    case 0x4F: return ppu_vram_bank_read();
+    case 0x70: return (uint8_t)(0xF8 | cgb_svbk);
     default: break;
     }
     if (r >= 0x10 && r <= 0x3F) return apu_read(0xFF00 | r);
@@ -76,6 +81,13 @@ static void dma_start(uint8_t v)
 }
 
 static void timer_div_reset(void);
+
+static size_t wram_offset(uint16_t a)
+{
+    if (a >= 0xE000) a = (uint16_t)(a - 0x2000);
+    if (a < 0xD000) return (size_t)(a - 0xC000);
+    return 0x1000u + (size_t)(cgb_svbk - 1u) * 0x1000u + (size_t)(a - 0xD000);
+}
 
 static void io_write(uint8_t r, uint8_t v)
 {
@@ -94,6 +106,9 @@ static void io_write(uint8_t r, uint8_t v)
     case 0x06: tma = v; return;
     case 0x07: tac = v & 7; return;
     case 0x0F: io_if = v & 0x1F; return;
+    case 0x4D: cgb_key1 = (uint8_t)((cgb_key1 & 0x80) | (v & 1)); return;
+    case 0x4F: ppu_vram_bank_write(v); return;
+    case 0x70: cgb_svbk = v & 7; if (!cgb_svbk) cgb_svbk = 1; return;
     default: break;
     }
     if (r >= 0x10 && r <= 0x3F) { apu_write(0xFF00 | r, v); return; }
@@ -108,11 +123,11 @@ uint8_t rd8(uint16_t a)
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
     case 4: case 5: case 6: case 7: return a < 0x4000 ? cart_lo[a] : cart_hi[a - 0x4000];
-    case 8: case 9: return vram[a & 0x1FFF];
+    case 8: case 9: return ppu_vram_read(a & 0x1FFF);
     case 0xA: case 0xB: { uint8_t v = cart_ram_read(a); return wide_read_sml2(a, v); }
-    case 0xC: case 0xD: case 0xE: return wram[a & 0x1FFF];
+    case 0xC: case 0xD: case 0xE: return wram[wram_offset(a)];
     default:
-        if (a < 0xFE00) return wram[a & 0x1FFF];
+        if (a < 0xFE00) return wram[wram_offset(a)];
         if (a < 0xFEA0) return oam[a - 0xFE00];
         if (a < 0xFF00) return 0xFF;
         if (a < 0xFF80) return io_read((uint8_t)(a & 0x7F));
@@ -152,11 +167,11 @@ void wr8(uint16_t a, uint8_t v)
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
     case 4: case 5: case 6: case 7: cart_write_ctrl(a, v); return;     /* mapper registers */
-    case 8: case 9: vram[a & 0x1FFF] = v; return;
+    case 8: case 9: ppu_vram_write(a & 0x1FFF, v); return;
     case 0xA: case 0xB: cart_ram_write(a, v); return;
-    case 0xC: case 0xD: case 0xE: wram[a & 0x1FFF] = v; return;
+    case 0xC: case 0xD: case 0xE: wram[wram_offset(a)] = v; return;
     default:
-        if (a < 0xFE00) { wram[a & 0x1FFF] = v; return; }
+        if (a < 0xFE00) { wram[wram_offset(a)] = v; return; }
         if (a < 0xFEA0) { oam[a - 0xFE00] = v; return; }
         if (a < 0xFF00) return;
         if (a < 0xFF80) { io_write((uint8_t)(a & 0x7F), v); return; }
@@ -276,7 +291,8 @@ typedef struct {
     CPU cpu;
     uint8_t io_if, io_ie;
     uint64_t total_cycles;
-    uint8_t wram[0x2000], hram[0x80], io_misc[0x80], cart_state[64];
+    uint8_t wram[0x8000], hram[0x80], io_misc[0x80], cart_state[64];
+    uint8_t cgb_svbk, cgb_key1;
     uint16_t div_counter;
     uint8_t tima, tma, tac;
     uint8_t sb, sc;
@@ -285,7 +301,7 @@ typedef struct {
 } CoreState;
 
 #define GB_STATE_MAGIC 0x50434D50u
-#define GB_STATE_VERSION 2u
+#define GB_STATE_VERSION 3u
 
 size_t gb_state_size(void) { return GB_STATE_BYTES; }
 size_t gb_state_data_size(void)
@@ -308,6 +324,7 @@ int gb_state_save(void *dst, size_t n)
     memcpy(s.wram,wram,sizeof wram); memcpy(s.hram,hram,sizeof hram); memcpy(s.io_misc,io_misc,sizeof io_misc);
     s.div_counter=div_counter; s.tima=tima; s.tma=tma; s.tac=tac; s.sb=sb; s.sc=sc; s.serial_cycles=serial_cycles;
     s.joy_sel=joy_sel; s.joy_buttons=joy_buttons; s.joy_dpad=joy_dpad;
+    s.cgb_svbk=cgb_svbk; s.cgb_key1=cgb_key1;
     size_t off = sizeof s;
     if (s.cart_n > sizeof s.cart_state || s.cart_ram_n != cart_ram_state_size() ||
         gb_state_data_size() > n || off + s.ppu_n + s.apu_n + s.cart_ram_n > n) return -1;
@@ -335,6 +352,7 @@ int gb_state_load(const void *src, size_t n)
     memcpy(wram,s.wram,sizeof wram); memcpy(hram,s.hram,sizeof hram); memcpy(io_misc,s.io_misc,sizeof io_misc);
     div_counter=s.div_counter; tima=s.tima; tma=s.tma; tac=s.tac; sb=s.sb; sc=s.sc; serial_cycles=s.serial_cycles;
     joy_sel=s.joy_sel; joy_buttons=s.joy_buttons; joy_dpad=s.joy_dpad;
+    cgb_svbk=s.cgb_svbk ? (s.cgb_svbk & 7) : 1; cgb_key1=s.cgb_key1;
     if (ppu_state_load(p + off, s.ppu_n)) return -1;
     off += s.ppu_n;
     if (apu_state_load(p + off, s.apu_n)) return -1;
@@ -366,7 +384,8 @@ void gb_reset(void)
      * CGB-only cartridges need the Color boot state; the DMG values make
      * some of them deliberately stop with a "Game Boy Color only" message. */
     const CartInfo *ci = cart_info();
-    if (ci && (ci->cgb_flag & 0xC0) == 0xC0) {
+    cgb_svbk = 1; cgb_key1 = 0;
+    if (ci && (ci->cgb_flag & 0x80) != 0) {
         cpu.a = 0x11; cpu.f = 0x80; cpu.b = 0x00; cpu.c = 0x00;
         cpu.d = 0xFF; cpu.e = 0x56; cpu.h = 0x00; cpu.l = 0x0D;
         div_counter = 0x1EA0;
