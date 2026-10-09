@@ -18,6 +18,13 @@ enum { SCALE_PIXEL, SCALE_SMOOTH, SCALE_STRETCH, N_SCALE };
 enum { SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_FULLSCREEN, N_SIZE };
 enum { BTN_A, BTN_B, BTN_SELECT, BTN_START, BTN_RIGHT, BTN_LEFT, BTN_UP, BTN_DOWN, N_BTN };
 enum { LED_OFF, LED_PALETTE, LED_CUSTOM, LED_SCREEN, N_LED };
+enum { LUIGI_GREEN, LUIGI_BLUE, LUIGI_RED, LUIGI_PURPLE, LUIGI_ORANGE, LUIGI_YELLOW, N_LUIGI_COLORS };
+
+typedef struct {
+    const char *name;
+    uint32_t swatch, light, mid, dark; /* RGB24 colors for Luigi's sprite recolor. */
+} LuigiColor;
+extern const LuigiColor luigi_colors[N_LUIGI_COLORS];
 enum { ACT_SAVE_STATE, ACT_LOAD_STATE, ACT_REWIND, ACT_SUSPEND, ACT_NEXT_SLOT, N_ACTION };
 enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 
@@ -32,6 +39,8 @@ typedef struct {
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
     int multiplayer;                    /* local two-player mode; default off */
+    char p2_name[32];                    /* Player 2 label, shown as Luigi by default */
+    int p2_color;                        /* LUIGI_* sprite recolor preset */
     int p2_respawn_key;                  /* keyboard key to recover Luigi in SML1 multiplayer */
     int p2_respawn_pad;                  /* button/trigger on Player 2's assigned controller; -1 = unbound */
     int state_slot;                      /* save-state slot 0..9 */
