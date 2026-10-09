@@ -159,6 +159,8 @@ static MpSml2Player mp_sml2_players[MAX_MP_PLAYERS];
 static int mp_sml2_initialized;
 static uint8_t mp_sml2_map_before[0x1800];
 static uint8_t mp_sml2_map_after[0x1800];
+static uint8_t mp_sml2_vram_before[0x400];
+static uint8_t mp_sml2_vram_after[0x400];
 static uint8_t mp_buttons, mp_dpad;
 static int mp_ready;
 static int mp_player_count = 2;
@@ -979,6 +981,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t kills = rd8(0xA28D);
     uint8_t scroll = rd8(0xA2B1);
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_before[i] = cart_ram_read((uint16_t)(0xA800 + i));
+    memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
     gb_set_input(buttons, dpad);
     mp_vblank_waiting = 0;
     gb_mp_vblank_watch = 0;
@@ -990,6 +993,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t coins_low_after = rd8(0xA262), coins_high_after = rd8(0xA263);
     uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xA2B1);
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_after[i] = cart_ram_read((uint16_t)(0xA800 + i));
+    memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
     mp_sml2_save_player(p);
     p->previous_a = (uint8_t)((buttons & 0x01u) != 0);
     if ((buttons & 0x01u) && !old_a && old_ground && !old_air)
@@ -1004,19 +1008,44 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     }
     if ((buttons & 0x02u) && rd8(0xA216) == 3)
         p->sfx_events |= P2_SFX_EVENT_FIREBALL;
-    int map_changed = scroll_after == scroll &&
-                      memcmp(mp_sml2_map_before, mp_sml2_map_after, sizeof mp_sml2_map_before) != 0;
+    int same_camera = scroll_after == scroll;
+    int map_changed = same_camera &&
+        memcmp(mp_sml2_map_before, mp_sml2_map_after, sizeof mp_sml2_map_before) != 0;
+    int vram_changed = same_camera &&
+        memcmp(mp_sml2_vram_before, mp_sml2_vram_after, sizeof mp_sml2_vram_before) != 0;
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
     if (map_changed) {
-        for (int i = 0; i < 0x1800; i++)
+        /* A800-BFFF includes 16-byte enemy records starting at AA80. Do not
+         * copy their per-frame counters/positions from each isolated run or
+         * enemies would advance once per player. Merge stable level/map data,
+         * and copy an enemy record only when its type changes (spawn, defeat,
+         * or pickup consumption). */
+        const int enemy_begin = 0xAA80 - 0xA800;
+        const int enemy_end = enemy_begin + 16 * 16;
+        for (int i = 0; i < 0x1800; i++) {
+            if (i >= enemy_begin && i < enemy_end) continue;
             if (mp_sml2_map_before[i] != mp_sml2_map_after[i])
                 wr8((uint16_t)(0xA800 + i), mp_sml2_map_after[i]);
+        }
+        for (int slot = 0; slot < 16; slot++) {
+            int idx = enemy_begin + slot * 16;
+            if (mp_sml2_map_before[idx] == mp_sml2_map_after[idx]) continue;
+            for (int byte = 0; byte < 16; byte++)
+                wr8((uint16_t)(0xAA80 + slot * 16 + byte),
+                    mp_sml2_map_after[idx + byte]);
+        }
+    }
+    if (vram_changed) {
+        for (int i = 0; i < 0x400; i++)
+            if (mp_sml2_vram_before[i] != mp_sml2_vram_after[i])
+                vram[0x1800 + i] = mp_sml2_vram_after[i];
     }
     if (coins_low_after != coins_low) wr8(0xA262, coins_low_after);
     if (coins_high_after != coins_high) wr8(0xA263, coins_high_after);
     if (kills_after != kills) wr8(0xA28D, kills_after);
-    if (map_changed || coins_low_after != coins_low || coins_high_after != coins_high || kills_after != kills) {
+    if (map_changed || vram_changed || coins_low_after != coins_low ||
+        coins_high_after != coins_high || kills_after != kills) {
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
     }
     if (p->invulnerability_frames > 0) p->invulnerability_frames--;
