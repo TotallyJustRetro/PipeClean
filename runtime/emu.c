@@ -132,6 +132,8 @@ static int mp_active;
 static uint8_t mp_buttons, mp_dpad;
 static int mp_ready;
 static int mp_p2_spawned;
+static int mp_p2_respawn_requested;
+static uint16_t mp_p2_invulnerability_frames;
 static uint8_t mp_state[GB_STATE_BYTES];
 static MpPlayerState mp_p2_state;
 static uint8_t mp_tilemap_before[0x400];
@@ -171,7 +173,7 @@ typedef struct {
     MpPlayerState p2;
     uint8_t p2_lives;
     uint8_t p2_spawned;
-    uint8_t reserved[2];
+    uint16_t p2_invulnerability_frames;
 } MpStateExtra;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
@@ -245,6 +247,9 @@ static void mp_respawn_p2_from_p1(void)
     mp_p2_state.mario[2] = (uint8_t)x;
     mp_p2_state.mario[1] = rd8(0xC201);
     memcpy(mp_p2_last_oam, mp_p2_state.mario_oam, sizeof mp_p2_last_oam);
+    mp_p2_spawned = 1;
+    mp_p2_respawn_requested = 0;
+    mp_p2_invulnerability_frames = 120; /* 2 seconds at 60 FPS, with visible flicker */
 }
 
 static void mp_player_save(MpPlayerState *s)
@@ -354,26 +359,33 @@ static void mp_capture_shared_world_after(void)
  * camera. A broken block/collected coin normally changes only a few cells in
  * one 32-byte column, while DrawColumn replaces a whole column of level data.
  */
-static int mp_merge_tilemap_local_edits(int allow_full)
+static int mp_merge_tilemap_local_edits(int allow_full, uint8_t p2_scroll, uint8_t p1_scroll)
 {
-    (void)allow_full;
     int changed = 0;
+    int p2_col0 = (int)(p2_scroll >> 3);
+    int p1_col0 = (int)(p1_scroll >> 3);
     for (int col = 0; col < 32; col++) {
         int n = 0;
         for (int row = 0; row < 32; row++) {
             int idx = row * 32 + col;
             if (mp_tilemap_before[idx] != mp_tilemap_after[idx]) n++;
         }
-        if (n == 0 || n > 4) continue;
+        /* With matching cameras the complete tilemap is aligned. Otherwise
+         * skip full DrawColumn refreshes and merge only local edits, translated
+         * back into Player 1's camera. */
+        if (n == 0 || (n > 4 && !allow_full)) continue;
+        int world_col = (p2_col0 + col) & 31;
+        int p1_col = (world_col - p1_col0) & 31;
         for (int row = 0; row < 32; row++) {
             int idx = row * 32 + col;
             uint8_t before = mp_tilemap_before[idx];
             uint8_t after = mp_tilemap_after[idx];
             if (before == after) continue;
-            /* Block collisions are synchronized by their explicit VBlank event. */
-            if (before >= 0x60 && before != 0xF4 && after == 0x20)
+            /* A temporary empty tile during a block-bump animation is not the
+             * final state. Guard it only when camera alignment is ambiguous. */
+            if (!allow_full && before >= 0x60 && before != 0xF4 && after == 0x20)
                 continue;
-            vram[0x1800 + idx] = after;
+            vram[0x1800 + row * 32 + p1_col] = after;
             changed = 1;
         }
     }
@@ -452,10 +464,9 @@ static void mp_capture_frame(Frame *f, int screen_dx)
     f->p1_lives = rd8(0xDA15);
     f->p2_lives = mp_p2_lives;
     f->p2_game_state = mp_p2_state.game_state;
-    f->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0 &&
-                               (mp_p2_state.game_state == 0 ||
-                                mp_p2_state.game_state == 3 ||
-                                mp_p2_state.game_state == 4));
+    f->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0);
+    f->p2_blink_hidden = (uint8_t)(mp_p2_invulnerability_frames > 0 &&
+                                   ((frame_count / 4) & 1));
     if (screen_dx) {
         for (int i = 0; i < 4; i++) {
             int x = (int)f->mario_oam[i * 4 + 1] + screen_dx;
@@ -524,6 +535,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
     if (player == 1) {
+        if (mp_p2_respawn_requested && mp_p2_spawned && rd8(0xFFB3) == 0) {
+            if (mp_p2_lives == 0) {
+                mp_p2_lives = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
+                if (mp_p2_lives == 0) mp_p2_lives = 1;
+            }
+            mp_respawn_p2_from_p1();
+        }
         if (!mp_p2_spawned || mp_p2_lives == 0) {
             memset(frame->mario_oam2, 0, sizeof frame->mario_oam2);
             memset(frame->mario_oam, 0, sizeof frame->mario_oam);
@@ -751,7 +769,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
             if (mp_vblank_collision != 0x01 &&
                 mp_vblank_collision != 0x02 &&
                 mp_vblank_collision != 0x04)
-                tile_changed |= mp_merge_tilemap_local_edits(dx == 0);
+                tile_changed |= mp_merge_tilemap_local_edits(dx == 0, p2_scroll_after, p1_scroll);
 
             if (mp_vblank_collision == 0xC0 &&
                 mp_vblank_collision_addr >= 0x9800 &&
@@ -806,7 +824,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
          * Let the original code draw those four falling OAM objects. When the
          * life is finally consumed, respawn from the authoritative P1 state.
          */
-        if (life_delta < 0 || p2_game_state == 0x39 || p2_game_state == 0x3A) {
+        if (life_delta < 0) {
             frame->p1_lives = rd8(0xDA15);
             frame->p2_lives = mp_p2_lives;
             frame->p2_game_state = p2_game_state;
@@ -821,9 +839,10 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         frame->p2_game_state = p2_game_state;
         frame->p2_lives = mp_p2_lives;
-        frame->p2_visible = (uint8_t)(p2_state_before == 0 ||
-                                      p2_game_state == 3 ||
-                                      p2_game_state == 4);
+        /* Keep Luigi's own OAM visible through the game's death animation. */
+        frame->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0);
+        frame->p2_blink_hidden = (uint8_t)(mp_p2_invulnerability_frames > 0 &&
+                                           ((frame_count / 4) & 1));
         return 0;
     }
 
@@ -859,6 +878,7 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     mp_audio_n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
     mp_capture_frame(frame, 0);
+    if (mp_p2_invulnerability_frames > 0) mp_p2_invulnerability_frames--;
 
     /*
      * Mirror every life awarded to Mario onto Luigi. We only mirror upward
@@ -890,8 +910,9 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     frame->p1_lives = rd8(0xDA15);
     frame->p2_lives = mp_p2_lives;
     frame->p2_game_state = mp_p2_state.game_state;
-    frame->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0 &&
-                                  mp_p2_state.game_state == 0);
+    frame->p2_visible = (uint8_t)(mp_p2_spawned && mp_p2_lives > 0);
+    frame->p2_blink_hidden = (uint8_t)(mp_p2_invulnerability_frames > 0 &&
+                                       ((frame_count / 4) & 1));
 
     /*
      * Spawn P2 only once SML1 reaches normal gameplay. This guarantees that
@@ -930,6 +951,11 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 }
 
 
+void emu_mp_request_respawn(void)
+{
+    if (mp_ready && mp_p2_spawned) mp_p2_respawn_requested = 1;
+}
+
 void emu_mp_end(void)
 {
     if (mp_ready && save_path[0]) cart_write_save(save_path);
@@ -937,6 +963,8 @@ void emu_mp_end(void)
     mp_ready = 0;
     mp_p2_spawned = 0;
     mp_p2_lives = 0;
+    mp_p2_respawn_requested = 0;
+    mp_p2_invulnerability_frames = 0;
     mp_vblank_life_event = 0;
     mp_vblank_collision = 0;
     mp_vblank_collision_addr = 0;
@@ -1051,6 +1079,7 @@ static int emu_state_save_blob(void *dst, size_t n)
         x.p2 = mp_p2_state;
         x.p2_lives = mp_p2_lives;
         x.p2_spawned = (uint8_t)mp_p2_spawned;
+        x.p2_invulnerability_frames = mp_p2_invulnerability_frames;
         memcpy((uint8_t *)dst + sizeof h + h.core_bytes, &x, sizeof x);
     }
     return 0;
@@ -1075,6 +1104,8 @@ static int emu_state_load_blob(const void *src, size_t n)
         mp_p2_state = x.p2;
         mp_p2_lives = x.p2_lives;
         mp_p2_spawned = x.p2_spawned != 0;
+        mp_p2_invulnerability_frames = x.p2_invulnerability_frames;
+        mp_p2_respawn_requested = 0;
         mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
         mp_pending_block = 0;
         mp_vblank_waiting = 0;
