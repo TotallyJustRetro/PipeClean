@@ -55,6 +55,7 @@ static char sfx_test_msg[64];
 static int controller_menu = -1;
 static int multiplayer_name_editing;
 static int multiplayer_count_menu = -1;
+static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -625,7 +626,7 @@ static void sub_display(int g, float x, float y)
 static void bind_cell(int g, float x, float y, float w, int kind, int btn, int slot)
 {
     GameCfg *c = &settings.g[g];
-    int pad_device = slot >= 0 && slot < 2 ? c->pad_device[slot] : -1;
+    int pad_device = slot >= 0 && slot < MAX_MP_PLAYERS ? c->pad_device[slot] : -1;
     int available = kind != 2 || (pad_device >= 0 && pad_device < pad_count());
     int over = 0;
     int clicked = available ? clickable(x, y, w, 28, &over) : 0;
@@ -1009,7 +1010,7 @@ static void tab_multiplayer(float x, float y)
 static void tab_mp_controllers(float x, float y)
 {
     GameCfg *c = &settings.g[GAME_SML];
-    card(x, y, 808, 512, "MULTIPLAYER CONTROLLERS & CHARACTER SOUNDS");
+    card(x, y, 808, 512, "MULTIPLAYER CONTROLLERS");
 
     for (int player = 0; player < MAX_MP_PLAYERS; player++) {
         float bx = x + 18 + player * 192.0f;
@@ -1019,69 +1020,103 @@ static void tab_mp_controllers(float x, float y)
         controller_dropdown(GAME_SML, player, bx, y + 56, 180);
     }
 
-    ui_rect(x + 18, y + 100, 772, 1, C_LINE);
-    label(x + 18, y + 108, "Respawn bindings");
-    ui_text_fit(F_REG, 10, x + 150, y + 109, 630, C_DIM,
-                "Set a key and an assigned-controller button for each extra character.");
-    for (int player = 1; player < MAX_MP_PLAYERS; player++) {
-        float ry = y + 130 + (player - 1) * 29.0f;
-        char title[24];
-        snprintf(title, sizeof title, "Player %d", player + 1);
-        ui_text_fit(F_BOLD, 11, x + 18, ry + 7, 72, C_TEXT, title);
-        bind_mp_respawn_cell(GAME_SML, player, x + 92, ry, 150, 5);
-        bind_mp_respawn_cell(GAME_SML, player, x + 250, ry, 168, 6);
-    }
+    if (ui_button(x + 18, y + 100, 180, 30, "Control bindings",
+                  mp_controller_view == 0 ? B_PRIMARY : B_NORMAL, 1)) mp_controller_view = 0;
+    if (ui_button(x + 206, y + 100, 180, 30, "Character sounds",
+                  mp_controller_view == 1 ? B_PRIMARY : B_NORMAL, 1)) mp_controller_view = 1;
 
-    ui_rect(x + 18, y + 222, 772, 1, C_LINE);
-    label(x + 18, y + 228, "Independent character sound banks");
-    ui_text_fit(F_REG, 10, x + 236, y + 229, 545, C_DIM,
-                "Test, import, or reset sounds per player; empty paths use built-in chiptunes.");
+    if (mp_controller_view == 0) {
+        label(x + 405, y + 108, "Keyboard + assigned controller");
+        static const char *control_labels[N_BTN] = {
+            "Jump/A", "B", "Select", "Start", "Right", "Left", "Up", "Down"
+        };
 
-    static const char *sound_names[N_P2_SFX] = {
-        "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn"
-    };
-    static const int players[3] = {2, 3, 4};
-    for (int col = 0; col < 3; col++) {
-        int player = players[col];
-        int ci = mp_color_index(c, player);
-        float bx = x + 18 + col * 258.0f;
-        float cw = 250.0f;
-        ui_rrect(bx, y + 246, cw, 24, 7, RGBA(255,255,255,8));
-        char player_title[56];
-        char *name = mp_name_ptr(c, player);
-        snprintf(player_title, sizeof player_title, "P%d  %.18s", player,
-                 name && name[0] ? name : mp_default_name(player));
-        ui_text_fit(F_BOLD, 12, bx + 8, y + 251, cw - 16,
-                    HEX(luigi_colors[ci].swatch), player_title);
-
-        for (int event = 0; event < N_P2_SFX; event++) {
-            char *path = mp_sfx_path_ptr(c, player, event);
-            float ry = y + 274 + event * 39.0f;
-            ui_text_fit(F_BOLD, 10, bx + 5, ry + 1, 82, C_TEXT, sound_names[event]);
-            ui_text_fit_tail(F_REG, 9, bx + 88, ry + 1, 155, C_DIM,
-                             path && path[0] ? path_base(path) : "Built-in chiptune");
-            if (ui_button(bx + 4, ry + 14, 48, 22, "Test", B_NORMAL, 1))
-                audio_mp_sfx_preview(player, event);
-            if (ui_button(bx + 57, ry + 14, 57, 22, "Import", B_NORMAL, 1)) {
-                char sound_path[1200], title[96];
-                snprintf(title, sizeof title, "Choose Player %d %s sound", player, sound_names[event]);
-                if (dlg_pick(DLG_AUDIO, title, sound_path, sizeof sound_path)) {
-                    snprintf(path, 512, "%s", sound_path);
-                    audio_menu_apply();
-                    settings_save();
-                    launcher_toast(path[0] ? "Multiplayer sound imported." : "Could not load sound; using built-in.");
-                }
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
+            float bx = x + 18 + player * 193.0f;
+            char title[64];
+            if (player == 0) snprintf(title, sizeof title, "P1  Mario");
+            else {
+                char *name = mp_name_ptr(c, player + 1);
+                snprintf(title, sizeof title, "P%d  %.14s", player + 1,
+                         name && name[0] ? name : mp_default_name(player + 1));
             }
-            if (ui_button(bx + 119, ry + 14, 52, 22, "Reset", B_GHOST, path && path[0])) {
-                path[0] = 0;
-                audio_menu_apply();
-                settings_save();
-                launcher_toast("Using the built-in multiplayer sound.");
+            uint32_t player_color = player == 0 ? C_TEXT :
+                HEX(luigi_colors[mp_color_index(c, player + 1)].swatch);
+            ui_text_fit(F_BOLD, 12, bx, y + 138, 183, player_color, title);
+            ui_text_c(F_BOLD, 9, bx + 70, y + 157, C_MUTED, "KEY");
+            ui_text_c(F_BOLD, 9, bx + 145, y + 157, C_MUTED, "PAD");
+
+            for (int btn = 0; btn < N_BTN; btn++) {
+                float ry = y + 168 + btn * 29.0f;
+                ui_text_fit(F_REG, 10, bx, ry + 8, 34, C_TEXT, control_labels[btn]);
+                bind_cell(GAME_SML, bx + 36, ry, 69, 1, btn, player);
+                bind_cell(GAME_SML, bx + 109, ry, 74, 2, btn, player);
             }
         }
+
+        ui_rect(x + 18, y + 405, 772, 1, C_LINE);
+        label(x + 18, y + 411, "Respawn bindings");
+        ui_text_fit(F_REG, 10, x + 176, y + 412, 600, C_DIM,
+                    "Keyboard and assigned-controller button for each extra character.");
+        for (int player = 1; player < MAX_MP_PLAYERS; player++) {
+            float ry = y + 432 + (player - 1) * 26.0f;
+            char title[18];
+            snprintf(title, sizeof title, "P%d respawn", player + 1);
+            ui_text_fit(F_REG, 10, x + 18, ry + 7, 72, C_TEXT, title);
+            bind_mp_respawn_cell(GAME_SML, player, x + 92, ry, 150, 5);
+            bind_mp_respawn_cell(GAME_SML, player, x + 250, ry, 168, 6);
+        }
+    } else {
+        label(x + 18, y + 142, "Independent character sound banks");
+        ui_text_fit(F_REG, 10, x + 236, y + 143, 545, C_DIM,
+                    "Test, import, or reset sounds per player; empty paths use built-in chiptunes.");
+
+        static const char *sound_names[N_P2_SFX] = {
+            "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn"
+        };
+        static const int players[3] = {2, 3, 4};
+        for (int col = 0; col < 3; col++) {
+            int player = players[col];
+            int ci = mp_color_index(c, player);
+            float bx = x + 18 + col * 258.0f;
+            float cw = 250.0f;
+            ui_rrect(bx, y + 164, cw, 24, 7, RGBA(255,255,255,8));
+            char player_title[56];
+            char *name = mp_name_ptr(c, player);
+            snprintf(player_title, sizeof player_title, "P%d  %.18s", player,
+                     name && name[0] ? name : mp_default_name(player));
+            ui_text_fit(F_BOLD, 12, bx + 8, y + 169, cw - 16,
+                        HEX(luigi_colors[ci].swatch), player_title);
+
+            for (int event = 0; event < N_P2_SFX; event++) {
+                char *path = mp_sfx_path_ptr(c, player, event);
+                float ry = y + 192 + event * 45.0f;
+                ui_text_fit(F_BOLD, 10, bx + 5, ry + 1, 82, C_TEXT, sound_names[event]);
+                ui_text_fit_tail(F_REG, 9, bx + 88, ry + 1, 155, C_DIM,
+                                 path && path[0] ? path_base(path) : "Built-in chiptune");
+                if (ui_button(bx + 4, ry + 14, 48, 24, "Test", B_NORMAL, 1))
+                    audio_mp_sfx_preview(player, event);
+                if (ui_button(bx + 57, ry + 14, 57, 24, "Import", B_NORMAL, 1)) {
+                    char sound_path[1200], title[96];
+                    snprintf(title, sizeof title, "Choose Player %d %s sound", player, sound_names[event]);
+                    if (dlg_pick(DLG_AUDIO, title, sound_path, sizeof sound_path)) {
+                        snprintf(path, 512, "%s", sound_path);
+                        audio_menu_apply();
+                        settings_save();
+                        launcher_toast(path[0] ? "Multiplayer sound imported." : "Could not load sound; using built-in.");
+                    }
+                }
+                if (ui_button(bx + 119, ry + 14, 52, 24, "Reset", B_GHOST, path && path[0])) {
+                    path[0] = 0;
+                    audio_menu_apply();
+                    settings_save();
+                    launcher_toast("Using the built-in multiplayer sound.");
+                }
+            }
+        }
+        ui_text_fit(F_REG, 9, x + 18, y + 494, 770, C_DIM,
+                    "WAV, MP3, OGG and FLAC are supported; each player has an independent six-event bank.");
     }
-    ui_text_fit(F_REG, 9, x + 18, y + 505, 770, C_DIM,
-                "WAV, MP3, OGG and FLAC are supported; each player has an independent six-event bank.");
 }
 
 static void hue_to_rgb(int hue, uint32_t *rgb)
@@ -1572,7 +1607,7 @@ void launcher_event(const SDL_Event *e)
         return;
     }
     if (cap_kind) {
-        int cap_game = (cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
+        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
         GameCfg *current = &settings.g[cap_game];
         if ((cap_kind == 2 && (cap_slot < 0 || cap_slot >= MAX_MP_PLAYERS ||
                                current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())) ||
@@ -1582,7 +1617,7 @@ void launcher_event(const SDL_Event *e)
             cap_kind = 0;
     }
     if (cap_kind) {
-        int cap_game = (cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
+        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? GAME_SML : launcher_current_game();
         GameCfg *c = &settings.g[cap_game];
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {
             SDL_Keycode k = e->key.keysym.sym;
@@ -1590,6 +1625,7 @@ void launcher_event(const SDL_Event *e)
             if (cap_kind == 1) {
                 c->key[cap_btn][cap_slot] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
+                settings_save();
             } else if (cap_kind == 3) {
                 c->action_key[cap_btn] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
@@ -1600,7 +1636,7 @@ void launcher_event(const SDL_Event *e)
                 settings_save();
                 launcher_toast("Multiplayer respawn key saved.");
             } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
-                if (cap_kind == 2) c->pad[cap_btn][cap_slot] = -1;
+                if (cap_kind == 2) { c->pad[cap_btn][cap_slot] = -1; settings_save(); }
                 else if (cap_kind == 4) c->action_pad[cap_btn] = -1;
                 else if (cap_kind == 6) {
                     int *binding = mp_respawn_pad_ptr(c, cap_btn);
@@ -1616,6 +1652,7 @@ void launcher_event(const SDL_Event *e)
                 c->pad[cap_btn][cap_slot] = code;
                 cap_kind = 0;
                 launcher_ignore_pad_confirm = 1;
+                settings_save();
             }
         } else if (cap_kind == 4) {
             int code = pad_capture(c->pad_device[0], e);
