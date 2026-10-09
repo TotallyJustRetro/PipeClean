@@ -805,7 +805,8 @@ static int mp_sml2_private_addr(unsigned address)
     /* Character movement/animation addresses identified from the SML2
      * disassembly. Do not copy adjacent enemy, level or timer RAM. */
     switch (address) {
-    case 0xA200: case 0xA201: case 0xA202: case 0xA227: case 0xA229:
+    case 0xA200: case 0xA201: case 0xA202:
+    case 0xA227: case 0xA228: case 0xA229: case 0xA22A:
     case 0xA20C: case 0xA20D: case 0xA20E:
     case 0xA214: case 0xA215: case 0xA216: case 0xA217:
     case 0xA219: case 0xA220: case 0xA221: case 0xA222:
