@@ -12,12 +12,12 @@ static uint32_t *img;
 static float *gacc;                      /* ghost accumulator, 3 floats per pixel */
 static int gacc_valid;
 static uint32_t avg_rgb;
-static FilterCfg cur_f;
+static FilterCfg cur_f; /* filters used for the current picture */
 
 /* PipeClean's Luigi recolor: color 0 is transparent, 1..3 are Luigi greens. */
 static const uint32_t luigi_overlay_palette[4] = {
     0xF5E0C0u, 0x8AE05Au, 0x2CA83Du, 0x175822u
-};                  /* filters used for the current picture */
+};
 
 void render_init(SDL_Renderer *r) { ren = r; }
 
