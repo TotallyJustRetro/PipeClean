@@ -11,6 +11,14 @@ static void set_bg_color(unsigned index, unsigned rgb555)
     ppu_cgb_write(0x69, (uint8_t)(rgb555 >> 8));
 }
 
+static void set_obj_color(unsigned palette, unsigned index, unsigned rgb555)
+{
+    unsigned off = palette * 8u + index * 2u;
+    ppu_cgb_write(0x6A, (uint8_t)(0x80 | off));
+    ppu_cgb_write(0x6B, (uint8_t)rgb555);
+    ppu_cgb_write(0x6B, (uint8_t)(rgb555 >> 8));
+}
+
 int main(void)
 {
     ppu_reset();
@@ -30,6 +38,10 @@ int main(void)
     ppu_vram_bank_write(0);
     set_bg_color(1, 0x001F); /* red */
     set_bg_color(2, 0x03E0); /* green */
+    set_obj_color(3, 1, 0x03E0); /* OBJ palette 3, color 1 = green */
+    uint32_t obj_palette[32];
+    ppu_cgb_obj_palette_copy(obj_palette);
+    assert(obj_palette[3 * 4 + 1] == 0x00FF00u);
     ppu_write(0x40, 0x91);
     ppu_tick(252);
     assert(ppu_rgb[0][0] == 0x00FF00u);
