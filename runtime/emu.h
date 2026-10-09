@@ -1,6 +1,12 @@
 #pragma once
 #include "gb.h"
 
+#define P2_SFX_EVENT_JUMP       (1u << 0)
+#define P2_SFX_EVENT_FIREBALL   (1u << 1)
+#define P2_SFX_EVENT_POWER_UP   (1u << 2)
+#define P2_SFX_EVENT_POWER_DOWN (1u << 3)
+#define P2_SFX_EVENT_DIE        (1u << 4)
+
 typedef struct {
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
     uint32_t rgb[GB_H][GB_WMAX]; /* CGB-native pixels, 0xRRGGBB. */
@@ -22,7 +28,7 @@ typedef struct {
     uint8_t p2_projectile_oam[12]; /* Three private projectile sprites from Player 2. */
     uint8_t p2_effect_oam[52];      /* Player 2's non-enemy effects (OAM slots 7-19). */
     uint8_t p2_sound_event;       /* P2 triggered a one-shot interaction SFX */
-    uint8_t p2_jump_sfx_event;    /* One-frame request for PipeClean's custom Player 2 jump sound. */
+    uint8_t p2_sfx_events;        /* P2_SFX_EVENT_* bitmask: jump, fireball, power, death. */
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
     uint8_t tiles_cgb1[0x1800]; /* CGB VRAM bank 1 for color-mode sprite overlays. */
