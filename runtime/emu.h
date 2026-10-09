@@ -61,8 +61,8 @@ uint64_t emu_frames(void);
 int emu_cpu_faulted(void);
 void emu_cpu_fault_info(uint8_t *opcode, uint16_t *pc);
 
-/* Local SML1 multiplayer: one authoritative world plus up to three isolated character states.
- * Player indices are 0=Mario, 1=Player 2, 2=Player 3, 3=Player 4. */
+/* Local co-op for SML1 and SML2. Player indices are 0=host, 1=Player 2,
+ * 2=Player 3, and 3=Player 4. */
 int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
