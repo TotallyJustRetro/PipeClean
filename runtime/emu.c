@@ -159,7 +159,7 @@ static uint8_t mp_vblank_floaty_x;
 static uint8_t mp_vblank_floaty_y;
 static uint8_t mp_pending_block;
 static uint16_t mp_pending_block_idx;
-static uint8_t mp_p2_jump_before;
+static uint8_t mp_p2_a_was_down;
 static int mp_vblank_waiting;
 static Frame *mp_frame_out;
 static int16_t *mp_audio_out;
@@ -586,7 +586,7 @@ int emu_mp_begin(void)
     mp_vblank_floaty_y = 0;
     mp_pending_block = 0;
     mp_pending_block_idx = 0;
-    mp_p2_jump_before = 0;
+    mp_p2_a_was_down = 0;
     mp_vblank_waiting = 0;
     memset(mp_p2_last_oam, 0, sizeof mp_p2_last_oam);
     gb_mp_vblank_watch = 0;
@@ -627,8 +627,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         uint8_t p1_scroll = rd8(0xFFA4);
         uint8_t p2_state_before = mp_p2_state.game_state;
         /* Keep these from BEFORE the simulation updates MpPlayerState. */
-        uint8_t p2_a_held_before = mp_p2_state.joy_held & 0x01u;
-        int p2_was_grounded = mp_p2_state.mario[10] != 0;
         int p2_world_lives_before = mp_bcd_to_int(rd8(0xDA15));
         uint8_t score_before[3];
         uint8_t coins_before = rd8(0xFFFA);
@@ -638,7 +636,6 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
 
         mp_capture_shared_world_before();
         mp_player_load(&mp_p2_state);
-        mp_p2_jump_before = rd8(0xC207);
         uint8_t p2_floaty_before = rd8(0xFFED);
 
         /* A death sequence and hurt timer are part of SML1's actual state
@@ -696,14 +693,13 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
         int enemy_merged = 0;
         int enemy_sound_event = 0;
         int p2_stomp_event = (p2_square_sfx == 0x03);
-        /* Use the actual Player 2 A-button press while grounded as the sound
-         * trigger; the copied game-state byte may already have advanced due
-         * to knockback/falling, which is not a jump input. */
+        /* The custom SFX is driven by the real P2 A-button rising edge rather
+         * than the clone's ROM sound register/state, which gets overwritten
+         * when switching the isolated state back to Player 1. */
         int p2_jump_event = (p2_state_before == 0 &&
                              (buttons & 0x01u) &&
-                             !p2_a_held_before &&
-                             p2_was_grounded) ||
-                            (mp_p2_jump_before == 0 && rd8(0xC207) != 0);
+                             !mp_p2_a_was_down);
+        mp_p2_a_was_down = (uint8_t)((buttons & 0x01u) != 0);
         frame->p2_jump_sfx_event = (uint8_t)(p2_jump_event != 0);
 
         /*
