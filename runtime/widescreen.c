@@ -34,6 +34,11 @@ void wide_dims(int game, int pct, int *l, int *r)
 }
 
 static int expect(int addr, const uint8_t *b, int n) { return memcmp(&rom[addr], b, (size_t)n) == 0; }
+static int expect_fill(int addr, uint8_t value, int n)
+{
+    for (int i = 0; i < n; i++) if (rom[addr + i] != value) return 0;
+    return 1;
+}
 
 static int sml2_right_extra;
 static int sml2_left_extra;
@@ -192,10 +197,12 @@ int wide_install(int game, int l, int r)
     }
 
     if (game == GAME_SML) {
-        /* The DX IPS patch shifts these SML routines 9 bytes earlier than the clean ROM. */
+        /* Clean SML and the DX-patched image share these code offsets. The clean ROM's
+         * unused trampoline area is 0xFF-filled, while the DX IPS patch zeroes it.
+         * Accept either known-unused fill pattern, but never overwrite a mixed/used region. */
         static const uint8_t o1[] = {0xFA, 0xAB, 0xC0}, o2[] = {0xC6, 0xD0}, o3[] = {0xF0, 0xC3, 0xFE, 0xE0, 0x38, 0x0A};
-        static const uint8_t zero[26] = {0};
-        if (!expect(0x249C, o1, 3) || !expect(0x24B6, o2, 2) || !expect(0x257B, o3, 6) || !expect(0x3FE4, zero, 26)) return 0;
+        if (!expect(0x249C, o1, 3) || !expect(0x24B6, o2, 2) || !expect(0x257B, o3, 6) ||
+            (!expect_fill(0x3FE4, 0x00, 26) && !expect_fill(0x3FE4, 0xFF, 26))) return 0;
         int k = sml_k(r);
         int T = k >= 2 ? 0xC0 + 16 * k + 12 + 1 : 0xE0;
         int U = l > 8 ? 256 - (l - 8) : 0x100;
