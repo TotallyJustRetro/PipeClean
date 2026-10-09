@@ -60,3 +60,10 @@ add_test(NAME sml_wide COMMAND test_sml_wide)
 add_executable(test_cart_mbc1 tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c)
 target_include_directories(test_cart_mbc1 PRIVATE runtime)
 add_test(NAME cart_mbc1 COMMAND test_cart_mbc1)
+
+add_executable(test_recomp_guard tests/test_recomp_guard.c runtime/cart.c runtime/patch.c)
+target_include_directories(test_recomp_guard PRIVATE runtime ${GEN})
+# game_info.h is generated alongside the native-code module.
+add_dependencies(test_recomp_guard PipeClean)
+get_filename_component(ROM_TEST_PATH "${ROM}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
+add_test(NAME recomp_guard COMMAND test_recomp_guard "${ROM_TEST_PATH}")
