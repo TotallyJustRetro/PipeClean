@@ -981,7 +981,7 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
             best_count = count;
         }
     }
-    if (best_count >= 4) return best_count;
+    if (best_count >= 8) return best_count;
 
     /* If the origin scratch was changed later in the frame, infer a candidate
      * origin from each possible first-piece tile. Keep the search local to the
