@@ -6,6 +6,7 @@
 #include "texpack.h"
 
 static SDL_Renderer *ren;
+static int mp_color_game = GAME_SML;
 static SDL_Texture *tex_game, *tex_bloom;
 static int iw, ih;                       /* current picture size */
 static uint32_t *img;
@@ -16,7 +17,7 @@ static FilterCfg cur_f; /* filters used for the current picture */
 
 static const LuigiColor *active_mp_player_color(int player)
 {
-    const GameCfg *c = &settings.g[GAME_SML];
+    const GameCfg *c = &settings.g[mp_color_game];
     int index = player == 1 ? c->p2_color :
                 (player == 2 ? c->p3_color : c->p4_color);
     if (index < 0 || index >= N_LUIGI_COLORS)
@@ -47,6 +48,10 @@ uint32_t render_sml1_mp_player_color(int player)
 }
 
 void render_init(SDL_Renderer *r) { ren = r; }
+void render_set_mp_game(int game)
+{
+    mp_color_game = (game == GAME_SML2) ? GAME_SML2 : GAME_SML;
+}
 
 static void overlay_free(void);
 void render_shutdown(void)
