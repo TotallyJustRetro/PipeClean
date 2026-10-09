@@ -138,6 +138,7 @@ typedef struct {
     uint16_t invulnerability_frames;
     uint8_t last_oam[16];
     uint8_t a_was_down;
+    uint8_t pending_square_sfx, pending_noise_sfx;
 } MpExtraPlayer;
 
 static int mp_active;
@@ -335,6 +336,8 @@ static void mp_working_to_extra(MpExtraPlayer *slot)
     slot->invulnerability_frames = mp_p2_invulnerability_frames;
     memcpy(slot->last_oam, mp_p2_last_oam, sizeof slot->last_oam);
     slot->a_was_down = mp_p2_a_was_down;
+    slot->pending_square_sfx = mp_pending_square_sfx;
+    slot->pending_noise_sfx = mp_pending_noise_sfx;
 }
 
 static void mp_extra_to_working(const MpExtraPlayer *slot)
@@ -347,6 +350,8 @@ static void mp_extra_to_working(const MpExtraPlayer *slot)
     mp_p2_invulnerability_frames = slot->invulnerability_frames;
     memcpy(mp_p2_last_oam, slot->last_oam, sizeof mp_p2_last_oam);
     mp_p2_a_was_down = slot->a_was_down;
+    mp_pending_square_sfx = slot->pending_square_sfx;
+    mp_pending_noise_sfx = slot->pending_noise_sfx;
 }
 
 static void mp_spawn_extra_from_p1(int player)
