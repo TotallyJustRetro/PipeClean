@@ -976,17 +976,21 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
     const int player_x = rd8(0xA23C), player_y = rd8(0xA23B);
     memset(out, 0, MP_MAX_OAM_SPRITES * 4);
 
-    int count = mp_sml2_capture_mapping_oam_at(preferred, player_x, player_y, source,
-                                                candidate);
+    int count = 0;
+    /* The player animation code selects mappings 0x00-0x15. C6 is reused by
+     * other render paths later in the frame, so reject selectors outside that
+     * verified player range rather than accepting an enemy/effect mapping. */
+    if (preferred <= 0x15)
+        count = mp_sml2_capture_mapping_oam_at(preferred, player_x, player_y,
+                                                source, candidate);
     if (count > 0) {
         memcpy(out, candidate, (size_t)count * 4u);
         best_count = count;
     }
 
-    /* The selector is scratch state and may already have been reused after
-     * sprite emission. Compare every map at this origin and keep the largest
-     * complete match; exact piece count/positions/tiles disambiguate the pose. */
-    for (int mapping = 0; mapping < 0xF2; mapping++) {
+    /* Compare only player poses at the stable player origin and keep the
+     * largest complete match; never steal a nearby enemy's unrelated map. */
+    for (int mapping = 0; mapping < 0x16; mapping++) {
         if (mapping == preferred) continue;
         count = mp_sml2_capture_mapping_oam_at((uint8_t)mapping, player_x,
                                                 player_y, source, candidate);
@@ -1000,7 +1004,7 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
     /* If the origin scratch was changed later in the frame, infer a candidate
      * origin from each possible first-piece tile. Keep the search local to the
      * character, and still require every piece of a ROM mapping to match. */
-    for (int mapping = 0; mapping < 0xF2; mapping++) {
+    for (int mapping = 0; mapping < 0x16; mapping++) {
         uint16_t pointer_address = (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
         uint8_t lo = cart_rom_read_bank(1, pointer_address);
         uint8_t hi = cart_rom_read_bank(1, (uint16_t)(pointer_address + 1u));
