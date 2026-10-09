@@ -957,6 +957,33 @@ static int mp_sml2_capture_mapping_oam(uint8_t mapping,
     return expected > 0 && count == expected ? count : 0;
 }
 
+/* Some SML2 animation paths reuse FFC6 after emitting the player map.
+ * Verify the live OAM against the ROM's mapping table, preferring the saved
+ * selector when it ties for the most complete sprite-piece matches. */
+static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
+                                             uint8_t out[MP_MAX_OAM_SPRITES * 4])
+{
+    uint8_t candidate[MP_MAX_OAM_SPRITES * 4];
+    int best_count = 0;
+    memset(out, 0, MP_MAX_OAM_SPRITES * 4);
+
+    int count = mp_sml2_capture_mapping_oam(preferred, candidate);
+    if (count > 0) {
+        memcpy(out, candidate, (size_t)count * 4u);
+        best_count = count;
+    }
+
+    for (int mapping = 0; mapping < 0xF2; mapping++) {
+        if (mapping == preferred) continue;
+        count = mp_sml2_capture_mapping_oam((uint8_t)mapping, candidate);
+        if (count > best_count) {
+            memcpy(out, candidate, (size_t)count * 4u);
+            best_count = count;
+        }
+    }
+    return best_count;
+}
+
 static void mp_sml2_save_player(MpSml2Player *p, int player)
 {
     if (!p) return;
@@ -982,7 +1009,7 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
                sizeof mp_sml2_render_tiles_cgb1[player]);
         mp_sml2_render_tiles_valid[player] = 1;
 
-        int mapped = mp_sml2_capture_mapping_oam(
+        int mapped = mp_sml2_capture_best_mapping_oam(
             p->h_c6, mp_sml2_render_oam[player]);
         /* Fall back to the stable four-piece matcher if the ROM map cannot
          * be read or doesn't match the live OAM for this game frame. */
