@@ -505,6 +505,8 @@ int emu_mp_begin(void)
      */
     memset(&mp_p2_state, 0, sizeof mp_p2_state);
     mp_p2_spawned = 0;
+    mp_p2_respawn_requested = 0;
+    mp_p2_invulnerability_frames = 0;
     mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     mp_p2_lives = mp_p1_lives_seen;
     mp_vblank_life_event = 0;
