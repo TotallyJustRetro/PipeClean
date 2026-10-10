@@ -169,8 +169,6 @@ static int mp_sml2_initialized;
 static unsigned mp_sml2_stable_frames;
 static uint8_t mp_sml2_stable_level;
 static uint8_t mp_sml2_stable_bank;
-static uint8_t mp_sml2_map_before[0x1800];
-static uint8_t mp_sml2_map_after[0x1800];
 static uint8_t mp_sml2_vram_before[0x400];
 static uint8_t mp_sml2_vram_after[0x400];
 
@@ -1299,7 +1297,7 @@ static void mp_sml2_capture_frame(Frame *frame)
     frame->mp_player_count = (uint8_t)mp_player_count;
     frame->player_x = rd8(0xA227);
     frame->player_y = rd8(0xA229);
-    frame->scroll_x = rd8(0xA2B1);
+    frame->scroll_x = rd8(0xFFCA);
     /* SML2 maps its character as four 8x8 OAM entries. */
     frame->sprite_size16 = 0;
     frame->game_state = 0;
@@ -1410,7 +1408,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (!mp_ready || player < 0 || player >= mp_player_count || !frame) return -1;
     if (player == 0) {
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-        uint8_t scroll_before = rd8(0xA2B1);
+        uint8_t scroll_before = rd8(0xFFCA);
         gb_set_input(buttons, dpad);
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
@@ -1423,7 +1421,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
         mp_sml2_save_player(&mp_sml2_players[0], 0);
         mp_sml2_update_gameplay_stability();
-        int camera_dx = mp_scroll_delta(rd8(0xA2B1), scroll_before);
+        int camera_dx = mp_scroll_delta(rd8(0xFFCA), scroll_before);
         if (camera_dx && mp_sml2_initialized && mp_sml2_gameplay_active()) {
             /* Player 1 owns the camera. Translate each clone's cached screen
              * coordinates and sprite X positions when the authoritative view
@@ -1474,10 +1472,9 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t old_lives = rd8(0xA22C);
     uint8_t coins_low = rd8(0xA262), coins_high = rd8(0xA263);
     uint8_t kills = rd8(0xA28D);
-    uint8_t scroll = rd8(0xA2B1);
-    uint8_t scroll_y_before = rd8(0xA2B0);
+    uint8_t scroll = rd8(0xFFCA);
+    uint8_t scroll_y_before = rd8(0xFFC8);
     uint8_t scx_before = rd8(0xFF43), scy_before = rd8(0xFF42);
-    for (int i = 0; i < 0x1800; i++) mp_sml2_map_before[i] = cart_ram_read((uint16_t)(0xA800 + i));
     memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
     gb_set_input(buttons, dpad);
     mp_vblank_waiting = 0;
@@ -1488,8 +1485,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     mp_active = 0;
     if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
     uint8_t coins_low_after = rd8(0xA262), coins_high_after = rd8(0xA263);
-    uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xA2B1);
-    for (int i = 0; i < 0x1800; i++) mp_sml2_map_after[i] = cart_ram_read((uint16_t)(0xA800 + i));
+    uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xFFCA);
     memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
     mp_sml2_save_player(p, player);
     int gameplay_after = mp_sml2_gameplay_active();
@@ -1515,35 +1511,14 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
      * into Player 1's camera before the authoritative state is restored. */
     if (camera_dx) mp_sml2_shift_screen_x(p, camera_dx);
     int same_camera = camera_dx == 0 &&
-        rd8(0xA2B0) == scroll_y_before &&
+        rd8(0xFFC8) == scroll_y_before &&
+        rd8(0xFFCA) == scroll &&
         rd8(0xFF43) == scx_before && rd8(0xFF42) == scy_before;
-    int map_changed = merge_world &&
-        memcmp(mp_sml2_map_before, mp_sml2_map_after, sizeof mp_sml2_map_before) != 0;
     int vram_changed = merge_world && same_camera &&
         memcmp(mp_sml2_vram_before, mp_sml2_vram_after, sizeof mp_sml2_vram_before) != 0;
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
-    if (map_changed) {
-        /* Merge static level/map bytes only when the clone used the same
-         * camera. Do not import AA80-AAFF (temporary effects) or AD00-AEFF
-         * (runtime world-object/enemy slots): those lists are simulated again
-         * by Player 1, and importing the clone's copy creates duplicate spawns.
-         * Persistent block edits are retained separately by the world-tile
-         * patch cache above, so entity simulation does not need to be merged. */
-        const int effects_begin = 0xAA80 - 0xA800;
-        const int effects_end = effects_begin + 16 * 16;
-        const int objects_begin = 0xAD00 - 0xA800;
-        const int objects_end = 0xAF00 - 0xA800;
-        for (int i = 0; i < 0x1800; i++) {
-            if (!same_camera) continue;
-            if ((i >= effects_begin && i < effects_end) ||
-                (i >= objects_begin && i < objects_end))
-                continue;
-            if (mp_sml2_map_before[i] != mp_sml2_map_after[i])
-                wr8((uint16_t)(0xA800 + i), mp_sml2_map_after[i]);
-        }
-    }
     if (vram_changed) {
         for (int i = 0; i < 0x400; i++)
             if (mp_sml2_vram_before[i] != mp_sml2_vram_after[i])
@@ -1552,7 +1527,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (merge_world && coins_low_after != coins_low) wr8(0xA262, coins_low_after);
     if (merge_world && coins_high_after != coins_high) wr8(0xA263, coins_high_after);
     if (merge_world && kills_after != kills) wr8(0xA28D, kills_after);
-    if (map_changed || vram_changed ||
+    if (vram_changed ||
         (merge_world && (coins_low_after != coins_low ||
                          coins_high_after != coins_high || kills_after != kills))) {
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
