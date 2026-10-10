@@ -205,6 +205,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Configure PipeClean Dev build
+        run: |
+          cmake -S . -B build-dev-ci -DROM="$GITHUB_WORKSPACE/ci/sml2_smoke.gb" -DPIPECLEAN_DEV_BUILD=ON
+
+      - name: Build and smoke-test PipeClean Dev
+        run: |
+          cmake --build build-dev-ci --target PipeClean --parallel 2
+          timeout 15s build-dev-ci/PipeClean --headless --frames 2 --no-crc-check --wide 100 ci/sml2_smoke.gb
+
   windows-build:
     runs-on: windows-latest
     steps:
