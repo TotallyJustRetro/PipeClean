@@ -128,6 +128,9 @@ static void log_memory_snapshot(const char *reason)
             "\"camera\":[%u,%u],\"level\":[%u,%u],\"mode\":%u,"
             "\"lives\":[%u,%u],\"spawned\":%u,\"grounded\":[%u,%u],"
             "\"in_air\":[%u,%u],\"coins\":[%u,%u],"
+            "\"p2_form_animation\":[%u,%u],"
+            "\"p2_mapping\":[%u,%u,%u,%u,%u,%u],"
+            "\"p2_respawn_requested\":%u,\"p2_a_edge\":%u,\"p2_keys\":[%u,%u],"
             "\"hashes\":[\"%08X\",\"%08X\",\"%08X\",\"%08X\"],"
             "\"tile_patches\":%u}",
             state.p1_world_x, state.p1_world_y, state.p2_world_x, state.p2_world_y,
@@ -135,7 +138,11 @@ static void log_memory_snapshot(const char *reason)
             state.camera_x, state.camera_y, state.level, state.level_bank, state.game_mode,
             state.p1_lives, state.p2_lives, state.p2_spawned,
             state.p1_grounded, state.p2_grounded, state.p1_in_air, state.p2_in_air,
-            state.coins_low, state.coins_high, state.bg_map_hash, state.level_ram_hash,
+            state.coins_low, state.coins_high, state.p2_powerup, state.p2_animation,
+            state.p2_mapping_preferred, state.p2_mapping_selected, state.p2_mapping_bank,
+            state.p2_mapping_source, state.p2_mapping_inferred, state.p2_mapping_complete,
+            state.p2_respawn_requested, state.p2_previous_a, state.p2_keys_held,
+            state.p2_keys_pressed, state.bg_map_hash, state.level_ram_hash,
             state.actor_region_hash, diag.last_render_hash, state.tile_patch_count);
     }
     if (have_ram) {
@@ -468,7 +475,9 @@ static void update_events(const DiagSample *s)
             diag.sample.visible[i] != s->visible[i]) {
             diag_event_log(s->visible[i] ? "PLAYER 2 SPAWNED" : "PLAYER 2 NOT SPAWNED");
         }
-        if (s->dpad[i] && !changed) {
+        int gameplay_active = !s->has_sml2 || s->sml2.game_mode == 4;
+        int player_active = gameplay_active && (i == 0 || s->visible[i]);
+        if (player_active && s->dpad[i] && !changed) {
             diag.movement_stall[i]++;
             if (diag.movement_stall[i] > 90 && !diag.movement_warned[i]) {
                 char text[120];
@@ -578,6 +587,10 @@ static void draw_dashboard(void)
                  m->p2_grounded,m->p2_in_air,m->p2_lives,
                  diag.sample.buttons[1],diag.sample.dpad[1]);
         draw_text(x,y,line,white); y+=step;
+        snprintf(line,sizeof line,"MAP: %02X -> %02X BANK:%02X SRC:%u INF:%u OK:%u",
+                 m->p2_mapping_preferred,m->p2_mapping_selected,m->p2_mapping_bank,
+                 m->p2_mapping_source,m->p2_mapping_inferred,m->p2_mapping_complete);
+        draw_text(x,y,line,muted); y+=step;
         snprintf(line,sizeof line,"COINS: %02X + %02X TILE PATCHES: %u",
                  m->coins_low,m->coins_high,m->tile_patch_count);
         draw_text(x,y,line,white); y+=step;
