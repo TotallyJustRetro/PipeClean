@@ -820,8 +820,9 @@ static int play_external_game(int g)
             launcher_toast("Couldn't create the ROM hack cache folder.");
             return 0;
         }
-        snprintf(hack_copy, sizeof hack_copy, "%s%s-hack%02d.gb", cache_dir,
-                 games[g].id, c->romhack_selected + 1);
+        char profile_id[128];
+        launcher_game_file_id(g, profile_id, sizeof profile_id);
+        snprintf(hack_copy, sizeof hack_copy, "%s%s.gb", cache_dir, profile_id);
         if (rom_create_hack_copy(g, c->rom_path,
                                  c->romhacks[c->romhack_selected].path,
                                  hack_copy, &st) != 0) {
