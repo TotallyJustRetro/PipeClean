@@ -972,10 +972,10 @@ static void mp_sml2_record_tile_patches(uint8_t level, uint8_t bank,
 
 static void mp_sml2_apply_tile_patches(void)
 {
-    if (!mp_sml2_gameplay_active()) {
-        mp_sml2_tile_patches_clear();
-        return;
-    }
+    /* Pipes, death transitions and short level-mode changes can temporarily
+     * make gameplay_active false. Keep the cache through those frames; clear
+     * it explicitly when multiplayer leaves the level or the level key changes. */
+    if (!mp_sml2_gameplay_active()) return;
 
     uint8_t level = rd8(0xA269);
     uint8_t bank = rd8(0xA258);
@@ -1567,6 +1567,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
                 mp_sml2_initialized = 1;
             }
         } else {
+            if (mp_sml2_initialized) mp_sml2_tile_patches_clear();
             mp_sml2_initialized = 0;
             for (int i = 1; i < MAX_MP_PLAYERS; i++) mp_sml2_players[i].spawned = 0;
         }
