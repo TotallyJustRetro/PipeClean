@@ -55,6 +55,7 @@ typedef struct {
     char log_path[1400];
     char game_name[64];
     uint64_t frame_count;
+    const Frame *current_frame;
     Uint32 last_draw_ticks;
     uint32_t last_render_hash;
     int player_count;
@@ -144,6 +145,31 @@ static void log_memory_snapshot(const char *reason)
         fputc('}', diag.log);
     } else {
         fputs(",\"ram_hex_available\":false", diag.log);
+    }
+    if (have_sml2 && diag.current_frame) {
+        const Frame *f = diag.current_frame;
+        const uint8_t *p2_tiles = emu_mp_player_sprite_tiles(1, 0);
+        const uint8_t *p2_tiles_cgb1 = emu_mp_player_sprite_tiles(1, 1);
+        fputs(",\"visual_hex\":{\"bg_map_9800_9BFF\":\"", diag.log);
+        write_hex_bytes(diag.log, f->bg_map, sizeof f->bg_map);
+        fputs("\",\"vram_tiles_8000_97FF\":\"", diag.log);
+        write_hex_bytes(diag.log, f->tiles, sizeof f->tiles);
+        fputs("\",\"p1_oam\":\"", diag.log);
+        write_hex_bytes(diag.log, f->mario_oam, sizeof f->mario_oam);
+        fputs("\",\"p2_oam\":\"", diag.log);
+        write_hex_bytes(diag.log, f->mp_player_oam[1], sizeof f->mp_player_oam[1]);
+        fprintf(diag.log, "\",\"p2_sprite_count\":%u", f->mp_player_sprite_count[1]);
+        if (p2_tiles) {
+            fputs(",\"p2_sprite_tiles_bank0\":\"", diag.log);
+            write_hex_bytes(diag.log, p2_tiles, 0x1000);
+            fputc('"', diag.log);
+        }
+        if (p2_tiles_cgb1) {
+            fputs(",\"p2_sprite_tiles_bank1\":\"", diag.log);
+            write_hex_bytes(diag.log, p2_tiles_cgb1, 0x1000);
+            fputc('"', diag.log);
+        }
+        fputc('}', diag.log);
     }
     fputs("}\n", diag.log);
     fflush(diag.log);
@@ -580,6 +606,7 @@ void dev_diag_frame(const Frame *frame, int game, int player_count,
 {
     if (!diag.log && !diag.window) return;
     DiagSample sample;
+    diag.current_frame = frame;
     sample_current(frame,game,player_count,buttons,dpad,paused,&sample);
     update_events(&sample);
     diag.sample=sample;
