@@ -1915,11 +1915,14 @@ LauncherResult launcher_frame(float dt)
         else ui_hint("Press a controller button or trigger. Esc (keyboard) cancels.");
     }
 
+    if (romhack_title_editing_game >= 0)
+        ui_hint("Type a title for this ROM hack. Enter saves; Esc cancels.");
     if (wide_dirty && !ui_mouse.down) { make_preview(wide_dirty - 1); wide_dirty = 0; }
     if (ui_mouse.released) click_id = 0;
     settings.last_tab = tab;
     save_timer += dt;
-    if (save_timer > 2.0f && !ui_mouse.down && !multiplayer_name_editing) { save_timer = 0; settings_save(); }
+    if (save_timer > 2.0f && !ui_mouse.down && !multiplayer_name_editing &&
+        romhack_title_editing_game < 0) { save_timer = 0; settings_save(); }
 
     /* pad light follows the tab while in the launcher */
     pad_frame(dt);
@@ -1932,6 +1935,64 @@ void launcher_event(const SDL_Event *e)
     if (e && (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN ||
               e->type == SDL_MOUSEWHEEL)) {
         launcher_leave_controller_cursor();
+    }
+    if (romhack_title_editing_game >= 0) {
+        int g = romhack_title_editing_game, index = romhack_title_editing_index;
+        if (g < 0 || g >= N_GAMES || index < 0 ||
+            index >= settings.g[g].romhack_count || index >= MAX_ROMHACKS) {
+            romhack_title_editing_game = romhack_title_editing_index = -1;
+            SDL_StopTextInput();
+            return;
+        }
+        RomHackEntry *entry = &settings.g[g].romhacks[index];
+        if (e->type == SDL_TEXTINPUT) {
+            size_t have = strlen(entry->title), add = strlen(e->text.text);
+            if (have + add < sizeof entry->title &&
+                (unsigned char)e->text.text[0] >= 32)
+                memcpy(entry->title + have, e->text.text, add + 1);
+            return;
+        }
+        if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+            SDL_Keycode k = e->key.keysym.sym;
+            if (k == SDLK_ESCAPE) {
+                snprintf(entry->title, sizeof entry->title, "%s", romhack_title_before);
+                romhack_title_editing_game = romhack_title_editing_index = -1;
+                SDL_StopTextInput();
+                settings_save();
+                return;
+            }
+            if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
+                if (!entry->title[0])
+                    romhack_title_from_path(entry->path, entry->title, sizeof entry->title);
+                romhack_title_editing_game = romhack_title_editing_index = -1;
+                SDL_StopTextInput();
+                settings_save();
+                return;
+            }
+            if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
+                size_t len = strlen(entry->title);
+                if (len) {
+                    len--;
+                    while (len && (((unsigned char)entry->title[len] & 0xC0u) == 0x80u)) len--;
+                    entry->title[len] = 0;
+                }
+                return;
+            }
+            if ((e->key.keysym.mod & KMOD_CTRL) && k == SDLK_a) {
+                entry->title[0] = 0;
+                return;
+            }
+        }
+        if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
+            e->type == SDL_MOUSEBUTTONDOWN) {
+            if (!entry->title[0])
+                romhack_title_from_path(entry->path, entry->title, sizeof entry->title);
+            romhack_title_editing_game = romhack_title_editing_index = -1;
+            SDL_StopTextInput();
+            settings_save();
+        } else {
+            return;
+        }
     }
     if (multiplayer_name_editing) {
         GameCfg *mc = &settings.g[mp_config_game];
