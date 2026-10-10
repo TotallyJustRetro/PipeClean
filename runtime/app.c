@@ -607,6 +607,12 @@ static int play_multiplayer(int g)
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (dev_diag_handle_event(&e)) continue;
+            if (e.type == SDL_WINDOWEVENT &&
+                e.window.event == SDL_WINDOWEVENT_CLOSE &&
+                e.window.windowID == SDL_GetWindowID(win)) {
+                quit = 2;
+                continue;
+            }
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
