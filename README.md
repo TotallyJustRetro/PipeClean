@@ -99,7 +99,26 @@ Expected result:
 MBC1 mapper: PASS
 ```
 
-GitHub Actions runs both regressions, validates the Python tools, builds the full native runtime against a synthetic 512 KiB MBC1/SML2-shaped ROM, and performs a headless widescreen launch without shipping any game ROM.
+GitHub Actions runs the regressions, validates the Python tools, builds the full native runtime against synthetic ROMs, and runs headless smoke tests without shipping any game ROM.
+
+### Scripted multiplayer replay test
+
+The headless test runner can execute repeatable two-player SML2 input sequences and write a JSONL diagnostic record for every logical frame. Each record includes player coordinates/grounding, camera and level values, sprite counts, tilemap/world-memory hashes, and a render hash. The wrapper replays the same inputs twice and fails if the recorded frames differ.
+
+With a local SML2 ROM, build PipeClean and run:
+
+```bash
+cmake -S . -B build -DROM="path/to/your/Super Mario Land 2.gb"
+cmake --build build --target PipeClean
+python3 tools/mp_test.py \
+  --binary build/PipeClean \
+  --rom "path/to/your/Super Mario Land 2.gb" \
+  --script tests/scenarios/sml2_gameplay_template.txt \
+  --frames 1800 \
+  --report-dir test-results/sml2-coop
+```
+
+Edit the script's frame timings to reach the level and reproduce the interaction you want to test. Input masks are hexadecimal: A=01, B=02, Select=04, Start=08, Right=10, Left=20, Up=40, Down=80. Reports are saved locally and are not uploaded by the test tool. The CI runner uses a synthetic cartridge only to validate scripted stepping and deterministic replay; it does **not** prove that collisions, blocks, or enemy behavior are correct in the commercial game.
 
 See **[Architecture](docs/ARCHITECTURE.md)** for technical details.
 
