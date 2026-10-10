@@ -745,7 +745,7 @@ static void draw_romhack_thumb(int g, int index, float x, float y, float w, floa
         if (tw > 0 && th > 0) draw_cover(t, tw, th, x + 3, y + 3, w - 6, h - 6);
         return;
     }
-    uint32_t accent = index < 0 ? games[g].accent : (HEX(ui_accent) & 0xFFFFFF00u) | 255u;
+    uint32_t accent = HEX(index < 0 ? games[g].accent : ui_accent);
     ui_rrect(x + 4, y + 4, w - 8, h - 8, 7, (accent & 0xFFFFFF00u) | 45u);
     ui_text_c(F_BOLD, 14, x + w * 0.5f, y + h * 0.5f - 9,
               index < 0 ? HEX(games[g].accent) : C_TEXT,
