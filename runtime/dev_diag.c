@@ -64,6 +64,7 @@ typedef struct {
     int last_lives[MAX_MP_PLAYERS];
     uint32_t last_coins;
     uint32_t last_map_hash;
+    uint16_t last_camera_x, last_camera_y;
     char recent[DIAG_MAX_EVENTS][128];
     int recent_head, recent_count;
     DiagSample sample;
@@ -110,7 +111,7 @@ static void draw_text(int x, int y, const char *text, SDL_Color color)
 {
     if (!diag.renderer || !text) return;
     SDL_SetRenderDrawColor(diag.renderer, color.r, color.g, color.b, color.a);
-    for (const unsigned char *p = (const unsigned char *)text; *p; p++, x += 8 * DIAG_SCALE) {
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++, x += 4 * DIAG_SCALE) {
         unsigned char c = (unsigned char)toupper(*p);
         const char *at = strchr(font_chars, (int)c);
         if (!at) at = strchr(font_chars, '?');
@@ -189,7 +190,7 @@ void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
     diag.window = SDL_CreateWindow(
         "PipeClean Dev - Multiplayer Diagnostics",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        DIAG_WIDTH, DIAG_HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+        DIAG_WIDTH, DIAG_HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_ALWAYS_ON_TOP);
     if (diag.window) {
         diag.renderer = SDL_CreateRenderer(diag.window, -1, SDL_RENDERER_SOFTWARE);
         if (!diag.renderer) {
@@ -290,14 +291,18 @@ static void update_events(const DiagSample *s)
                      diag.last_lives[1], m->p2_lives);
             diag_event_log(text);
         }
-        if (diag.last_lives[0] >= 0 &&
-            diag.last_coins != (((uint32_t)m->coins_high << 8) | m->coins_low)) {
+        uint32_t current_coins = ((uint32_t)m->coins_high << 8) | m->coins_low;
+        if (diag.last_lives[0] >= 0 && diag.last_coins != current_coins)
             diag_event_log("COIN COUNTER CHANGED");
-        }
-        if (diag.last_lives[0] >= 0 && diag.last_map_hash != m->bg_map_hash)
-            diag_event_log("BG MAP CHANGED");
-        diag.last_coins = ((uint32_t)m->coins_high << 8) | m->coins_low;
+        if (diag.last_lives[0] >= 0 && diag.last_map_hash != m->bg_map_hash &&
+            diag.last_camera_x == m->camera_x && diag.last_camera_y == m->camera_y)
+            diag_event_log("BG MAP CHANGED WITH STATIC CAMERA");
+        diag.last_coins = current_coins;
         diag.last_map_hash = m->bg_map_hash;
+        diag.last_camera_x = m->camera_x;
+        diag.last_camera_y = m->camera_y;
+        diag.last_lives[0] = m->p1_lives;
+        diag.last_lives[1] = m->p2_lives;
     }
 
     for (int i = 0; i < s->player_count && i < MAX_MP_PLAYERS; i++) {
@@ -394,7 +399,13 @@ static void draw_dashboard(void)
     snprintf(line,sizeof line,"STATUS: RUNNING  PAUSED: %s",
              diag.sample.paused ? "YES" : "NO");
     draw_text(x,y,line,white); y+=step;
-    draw_text(x,y,"LOG FILE IS SAVED WHEN THE MULTIPLAYER SESSION ENDS",muted); y+=step+3;
+    {
+        const char *log_name = diag.log_path[0] ? diag.log_path : "(LOG FILE UNAVAILABLE)";
+        size_t length = strlen(log_name);
+        if (length > 106) log_name += length - 106;
+        snprintf(line,sizeof line,"LOG: %s",log_name);
+        draw_text(x,y,line,muted); y+=step+3;
+    }
     if(diag.sample.has_sml2) {
         const EmuMpTestSnapshot *m=&diag.sample.sml2;
         snprintf(line,sizeof line,"LEVEL: %02X BANK: %02X MODE: %02X CAMERA: %u,%u",
@@ -456,6 +467,7 @@ void dev_diag_frame(const Frame *frame, int game, int player_count,
     sample_current(frame,game,player_count,buttons,dpad,paused,&sample);
     update_events(&sample);
     diag.sample=sample;
+    diag.last_render_hash=sample.render_hash;
     log_frame(&sample);
     Uint32 now=SDL_GetTicks();
     if(diag.window && (Uint32)(now-diag.last_draw_ticks)>=100u) {
