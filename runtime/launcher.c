@@ -25,8 +25,8 @@ void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
 enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, N_TABS };
-enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
-static const char *sub_names[N_SUB] = {"Game", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
+enum { SUB_GAME, SUB_ROMHACKS, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
+static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
 static int tab, sub[N_GAMES];
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
@@ -50,6 +50,11 @@ static float anim_clock;
 static int wide_dirty, wide_note[N_GAMES];
 static SDL_Texture *state_thumb_tex[N_GAMES][10];
 static char state_thumb_path_cache[N_GAMES][10][1200];
+static SDL_Texture *romhack_thumb_tex[N_GAMES][MAX_ROMHACKS];
+static char romhack_thumb_path_cache[N_GAMES][MAX_ROMHACKS][512];
+static float romhack_scroll[N_GAMES];
+static int romhack_title_editing_game = -1, romhack_title_editing_index = -1;
+static char romhack_title_before[ROMHACK_TITLE_LEN];
 static int load_state_request[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
@@ -129,6 +134,51 @@ int launcher_take_load_state(int game)
     int slot = load_state_request[game];
     load_state_request[game] = -1;
     return slot;
+}
+
+static void clear_romhack_thumbs(void)
+{
+    for (int g = 0; g < N_GAMES; g++) {
+        for (int i = 0; i < MAX_ROMHACKS; i++) {
+            if (romhack_thumb_tex[g][i]) SDL_DestroyTexture(romhack_thumb_tex[g][i]);
+            romhack_thumb_tex[g][i] = NULL;
+            romhack_thumb_path_cache[g][i][0] = 0;
+        }
+    }
+}
+
+static void clear_romhack_thumbs_game(int g)
+{
+    if (g < 0 || g >= N_GAMES) return;
+    for (int i = 0; i < MAX_ROMHACKS; i++) {
+        if (romhack_thumb_tex[g][i]) SDL_DestroyTexture(romhack_thumb_tex[g][i]);
+        romhack_thumb_tex[g][i] = NULL;
+        romhack_thumb_path_cache[g][i][0] = 0;
+    }
+}
+
+static SDL_Texture *romhack_thumb_get(int g, int index)
+{
+    if (g < 0 || g >= N_GAMES || index < 0 || index >= MAX_ROMHACKS || !g_ren) return NULL;
+    const char *path = settings.g[g].romhacks[index].thumbnail;
+    if (!path[0] || !file_exists(path)) {
+        if (romhack_thumb_tex[g][index]) SDL_DestroyTexture(romhack_thumb_tex[g][index]);
+        romhack_thumb_tex[g][index] = NULL;
+        romhack_thumb_path_cache[g][index][0] = 0;
+        return NULL;
+    }
+    if (romhack_thumb_tex[g][index] &&
+        !strcmp(romhack_thumb_path_cache[g][index], path))
+        return romhack_thumb_tex[g][index];
+    if (romhack_thumb_tex[g][index]) SDL_DestroyTexture(romhack_thumb_tex[g][index]);
+    romhack_thumb_tex[g][index] = NULL;
+    SDL_Surface *surface = IMG_Load(path);
+    if (!surface) return NULL;
+    romhack_thumb_tex[g][index] = SDL_CreateTextureFromSurface(g_ren, surface);
+    SDL_FreeSurface(surface);
+    if (!romhack_thumb_tex[g][index]) return NULL;
+    snprintf(romhack_thumb_path_cache[g][index], sizeof romhack_thumb_path_cache[g][index], "%s", path);
+    return romhack_thumb_tex[g][index];
 }
 
 static void clear_state_thumbs(void)
