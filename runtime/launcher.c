@@ -2061,6 +2061,16 @@ static int ends_with(const char *s, const char *ext)
 void launcher_drop(const char *path)
 {
     int g = launcher_current_game();
+    int is_patch = ends_with(path, ".ips") || ends_with(path, ".bps") || ends_with(path, ".ups");
+    int is_gb_rom = ends_with(path, ".gb") || ends_with(path, ".gbc");
+
+    /* On the ROM Hacks tab, a supported full patched ROM is a secondary
+     * profile, not a replacement for the game's configured base ROM. */
+    if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS && (is_patch || is_gb_rom)) {
+        romhack_add(tab, path);
+        return;
+    }
+
     int id = rom_identify_file(path);
     if (id >= 0) {
         snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", path);
@@ -2070,7 +2080,14 @@ void launcher_drop(const char *path)
         launcher_toast(rs[id].ok ? "ROM added." : rs[id].msg);
         return;
     }
-    if (ends_with(path, ".ips") || ends_with(path, ".bps") || ends_with(path, ".ups")) { if (tab >= N_GAMES) tab = g; set_hack(tab, path); launcher_toast(hack_msg[tab]); return; }
+    if (is_patch) {
+        if (tab >= N_GAMES) tab = g;
+        if (tab >= 0 && tab < N_GAMES) {
+            romhack_add(tab, path);
+            sub[tab] = SUB_ROMHACKS;
+        } else launcher_toast("Choose a game's tab before adding a ROM hack.");
+        return;
+    }
     if (ends_with(path, ".png") || ends_with(path, ".jpg") || ends_with(path, ".jpeg") || ends_with(path, ".bmp") || ends_with(path, ".gif") || ends_with(path, ".tga")) {
         if (tab >= N_GAMES) tab = g;
         snprintf(settings.g[tab].bg_path, sizeof settings.g[tab].bg_path, "%s", path);
@@ -2085,7 +2102,7 @@ void launcher_drop(const char *path)
         launcher_toast(settings.menu_music_path[0] ? "Menu music changed." : "Couldn't read that audio file.");
         return;
     }
-    if (ends_with(path, ".gb") || ends_with(path, ".gbc")) { launcher_toast("That ROM isn't one of the supported games."); return; }
+    if (is_gb_rom) { launcher_toast("That ROM isn't one of the supported games."); return; }
     /* a folder: texture pack */
     {
         SDL_RWops *r = SDL_RWFromFile(path, "rb");
