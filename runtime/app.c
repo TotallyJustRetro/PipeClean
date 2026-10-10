@@ -806,6 +806,31 @@ static int play_external_game(int g)
         return 0;
     }
 
+    /* External Wario entries run in a separate process. Materialize the
+     * selected hack as its own cached .gb file so the base ROM is never
+     * written or passed to the external player in patched form. */
+    const char *launch_rom = c->rom_path;
+    char hack_copy[1200] = "";
+    if (c->romhack_selected >= 0 &&
+        c->romhack_selected < c->romhack_count &&
+        c->romhack_selected < MAX_ROMHACKS) {
+        char cache_dir[1200];
+        snprintf(cache_dir, sizeof cache_dir, "%sromhacks_cache/", settings_dir());
+        if (mkdir_u(cache_dir) != 0) {
+            launcher_toast("Couldn't create the ROM hack cache folder.");
+            return 0;
+        }
+        snprintf(hack_copy, sizeof hack_copy, "%s%s-hack%02d.gb", cache_dir,
+                 games[g].id, c->romhack_selected + 1);
+        if (rom_create_hack_copy(g, c->rom_path,
+                                 c->romhacks[c->romhack_selected].path,
+                                 hack_copy, &st) != 0) {
+            launcher_toast(st.msg);
+            return 0;
+        }
+        launch_rom = hack_copy;
+    }
+
     char base[1200] = "";
     char player[1400];
     char *base_path = SDL_GetBasePath();
@@ -836,7 +861,7 @@ static int play_external_game(int g)
     memset(&pi, 0, sizeof pi);
     si.cb = sizeof si;
     /* ROM paths are ordinary Windows paths and are quoted to preserve spaces. */
-    snprintf(command, sizeof command, "\"%s\" \"%s\"", player, c->rom_path);
+    snprintf(command, sizeof command, "\"%s\" \"%s\"", player, launch_rom);
     if (CreateProcessA(player, command, NULL, NULL, FALSE, 0, NULL, base[0] ? base : NULL, &si, &pi)) {
         WaitForSingleObject(pi.hProcess, INFINITE);
         CloseHandle(pi.hThread);
@@ -848,7 +873,7 @@ static int play_external_game(int g)
 #else
     pid_t pid = fork();
     if (pid == 0) {
-        execl(player, player, c->rom_path, (char *)NULL);
+        execl(player, player, launch_rom, (char *)NULL);
         _exit(127);
     }
     if (pid < 0) {
