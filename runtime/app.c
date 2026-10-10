@@ -542,10 +542,11 @@ static int play_multiplayer(int g)
     if (player_count < 2) player_count = c->multiplayer_players = 2;
     if (player_count > MAX_MP_PLAYERS) player_count = c->multiplayer_players = MAX_MP_PLAYERS;
 
-    char sp[1200];
+    char sp[1200], save_id[128];
+    launcher_game_file_id(g, save_id, sizeof save_id);
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);
-    snprintf(sp, sizeof sp, "%ssaves/%s.sav", settings_dir(), games[g].id);
+    snprintf(sp, sizeof sp, "%ssaves/%s.sav", settings_dir(), save_id);
     emu_set_save_path(sp);
 
     bg_load(c->bg_path);
@@ -880,10 +881,11 @@ static int play(int g)
     if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
     audio_menu_music(0);
     if ((g == GAME_SML || g == GAME_SML2) && c->multiplayer) return play_multiplayer(g);
-    char sp[1200];
+    char sp[1200], save_id[128];
+    launcher_game_file_id(g, save_id, sizeof save_id);
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);
-    snprintf(sp, sizeof sp, "%ssaves/%s.sav", settings_dir(), games[g].id);
+    snprintf(sp, sizeof sp, "%ssaves/%s.sav", settings_dir(), save_id);
     emu_set_save_path(sp);
     bg_load(c->bg_path);
     texpack_load(c->tex_on ? c->tex_path : "");
