@@ -825,6 +825,12 @@ int emu_mp_begin(void)
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
+    memset(mp_sml2_debug_mapping_preferred, 0xFF, sizeof mp_sml2_debug_mapping_preferred);
+    memset(mp_sml2_debug_mapping_selected, 0xFF, sizeof mp_sml2_debug_mapping_selected);
+    memset(mp_sml2_debug_mapping_bank, 0xFF, sizeof mp_sml2_debug_mapping_bank);
+    memset(mp_sml2_debug_mapping_source, 0, sizeof mp_sml2_debug_mapping_source);
+    memset(mp_sml2_debug_mapping_inferred, 0, sizeof mp_sml2_debug_mapping_inferred);
+    memset(mp_sml2_debug_mapping_complete, 0, sizeof mp_sml2_debug_mapping_complete);
     mp_sml2_initialized = 0;
     mp_sml2_tether_active = 0;
     mp_sml2_tile_patches_clear();
