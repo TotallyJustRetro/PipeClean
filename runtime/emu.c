@@ -988,6 +988,13 @@ static int mp_sml2_player_mapping_id_allowed(int mapping)
 {
     int powerup = rd8(0xA216);
     int animation = rd8(0xA217);
+
+    /* The original routine at $5550 explicitly selects mapping 107 ($6B)
+     * for the special falling/death pose, bypassing the normal power-up
+     * offsets below. Keep it valid regardless of the current power-up or
+     * invulnerability-flash animation state. */
+    if (mapping == 0x6B) return 1;
+
     if (animation & 0x04)
         return mapping >= 0x20 && mapping <= 0x35;
 
