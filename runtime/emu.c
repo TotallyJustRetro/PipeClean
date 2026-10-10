@@ -989,12 +989,10 @@ static void mp_sml2_apply_tile_patches(void)
     for (unsigned i = 0; i < mp_sml2_tile_patch_count; i++) {
         const MpSml2TilePatch *patch = &mp_sml2_tile_patches[i];
         if (patch->level != level || patch->bank != bank) continue;
-        int dx = mp_sml2_signed_delta((uint8_t)patch->world_x,
-                                      (uint8_t)origin_x);
-        int dy = mp_sml2_signed_delta((uint8_t)patch->world_y,
-                                      (uint8_t)origin_y);
-        /* World coordinates above 255px wrap in the low byte. For a patch to
-         * be on the live 32x32 tilemap, its signed low-byte offset is enough. */
+        int dx = (int16_t)(patch->world_x - origin_x);
+        int dy = (int16_t)(patch->world_y - origin_y);
+        /* Keep the full 16-bit world offset: the visible tilemap spans
+         * 256 pixels, so valid positive offsets can exceed 127 pixels. */
         if (dx < 0 || dx >= 256 || dy < 0 || dy >= 256) continue;
         int map_x = (((unsigned)dx + (unsigned)scx) & 0xFFu) >> 3;
         int map_y = (((unsigned)dy + (unsigned)scy) & 0xFFu) >> 3;
