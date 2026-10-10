@@ -193,10 +193,12 @@ int rom_apply_hack(const char *path, RomStatus *st)
         int patched_id = rom_identify(buf, (size_t)n);
         if (patched_id != base_game) {
             free(buf); free(out);
-            snprintf(st->msg, sizeof st->msg,
-                     patched_id >= 0 ? "That ROM is %s, not %s." : "That file isn't a recognizable ROM for %s.",
-                     patched_id >= 0 ? games[patched_id].name : games[base_game].name,
-                     patched_id >= 0 ? games[base_game].name : "");
+            if (patched_id >= 0)
+                snprintf(st->msg, sizeof st->msg, "That ROM is %s, not %s.",
+                         games[patched_id].name, games[base_game].name);
+            else
+                snprintf(st->msg, sizeof st->msg, "That file isn't a recognizable ROM for %s.",
+                         games[base_game].name);
             return 1;
         }
         memcpy(out, buf, (size_t)n);
