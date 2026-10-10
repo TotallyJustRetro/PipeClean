@@ -71,15 +71,8 @@ This lets menus, maps and status screens keep their original composition where a
 
 ## Testing
 
-The repository has a focused hardware-independent SML2 hook regression under `tests/`.
+The repository has focused hardware-independent regressions under `tests/` for widescreen hooks, cartridge banking and PPU rendering.
 
-GitHub Actions additionally:
+The headless multiplayer test mode accepts an event script with one combined button mask for each of two players at each change point, advances both players through the normal `emu_mp_step` path, and writes one JSONL diagnostic record per logical frame. Reports include player and camera coordinates, grounding/air flags, spawn/visible-sprite data, level/coins, and deterministic hashes of the background map, world RAM, an actor-related RAM region, and the rendered frame. `tools/mp_test.py` runs the same script twice and verifies the frame reports are identical. This tests repeatability and makes regressions easier to localize; it is not an automatic proof that game rules are correct.
 
-1. builds and runs the SML2 widescreen regression;
-2. validates all Python tooling with `py_compile`;
-3. generates a synthetic 512 KiB MBC1/SML2-shaped ROM;
-4. configures and builds the full native runtime;
-5. runs CTest;
-6. launches the resulting binary headlessly with the SML2 widescreen option enabled.
-
-No commercial ROM is required for CI.
+GitHub Actions builds the full native runtime and runs this test mode against a synthetic ROM with a minimal VBlank interrupt loop. That checks input replay, frame scheduling, reporting and deterministic reruns without distributing a commercial ROM. For actual collisions, block persistence, enemy AI and level progression, run the harness locally against a legally obtained SML2 ROM with an input script that reaches and exercises the relevant gameplay scenario.
