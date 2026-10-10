@@ -229,6 +229,7 @@ static void rom_check(int g)
 
 int launcher_prepare(int g, char *err, size_t n)
 {
+    if (g < 0 || g >= N_GAMES) { snprintf(err, n, "Invalid game selection."); return 1; }
     GameCfg *c = &settings.g[g];
     RomStatus st;
     if (!c->rom_path[0] || rom_load(g, c->rom_path, &st)) {
@@ -236,22 +237,46 @@ int launcher_prepare(int g, char *err, size_t n)
         return 1;
     }
     hack_ok[g] = 0;
-    if (c->hack_path[0]) {
-        if (rom_apply_hack(c->hack_path, &st) == 0) {
-            hack_ok[g] = 1;
-            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-        } else {
-            hack_ok[g] = 0;
-            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-            snprintf(err, n, "Couldn't apply the selected romhack: %.180s", st.msg);
+    hack_msg[g][0] = 0;
+    if (c->romhack_selected >= 0) {
+        int index = c->romhack_selected;
+        if (index >= c->romhack_count || index >= MAX_ROMHACKS ||
+            !c->romhacks[index].path[0]) {
+            snprintf(err, n, "Choose a valid ROM hack in the ROM Hacks tab.");
             return 1;
         }
+        const char *hack = c->romhacks[index].path;
+        if (!file_exists(hack)) {
+            snprintf(hack_msg[g], sizeof hack_msg[g], "The selected ROM hack file is missing.");
+            snprintf(err, n, "%s", hack_msg[g]);
+            return 1;
+        }
+        if (rom_apply_hack(hack, &st) != 0) {
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+            snprintf(err, n, "Couldn't apply the selected ROM hack: %.170s", st.msg);
+            return 1;
+        }
+        hack_ok[g] = 1;
+        snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
     }
     int wl, wr;
     wide_dims(g, c->wide, &wl, &wr);
     if (wl + wr > 0 && !wide_install(g, wl, wr)) { wl = wr = 0; wide_note[g] = 1; } else wide_note[g] = 0;
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
+}
+
+void launcher_game_file_id(int g, char *out, size_t n)
+{
+    if (!out || !n) return;
+    if (g < 0 || g >= N_GAMES) { snprintf(out, n, "unknown"); return; }
+    const GameCfg *c = &settings.g[g];
+    int index = c->romhack_selected;
+    if (index >= 0 && index < c->romhack_count && index < MAX_ROMHACKS &&
+        c->romhacks[index].path[0])
+        snprintf(out, n, "%s-hack%02d", games[g].id, index + 1);
+    else
+        snprintf(out, n, "%s", games[g].id);
 }
 
 static void ensure_pack(int g)
@@ -286,36 +311,115 @@ static void make_preview(int g)
     tex_collect_save();
 }
 
-static void set_rom(int g, const char *path)
+static void romhack_title_from_path(const char *path, char *out, size_t n)
 {
-    snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", path);
-    rom_check(g);
-    if (rs[g].ok) make_preview(g);
-    else prev_ok[g] = 0;
+    if (!out || !n) return;
+    out[0] = 0;
+    const char *base = path_base(path ? path : "");
+    if (!base || !base[0]) base = "Untitled ROM Hack";
+    size_t len = strlen(base);
+    const char *dot = strrchr(base, '.');
+    if (dot && dot > base) len = (size_t)(dot - base);
+    if (len >= n) len = n - 1;
+    size_t w = 0;
+    for (size_t i = 0; i < len && w + 1 < n; i++) {
+        char ch = base[i];
+        if (ch == '_') ch = ' ';
+        out[w++] = ch;
+    }
+    out[w] = 0;
+    while (w && out[w - 1] == ' ') out[--w] = 0;
+    if (!w) snprintf(out, n, "Untitled ROM Hack");
 }
 
-static void set_hack(int g, const char *path)
+static void romhack_migrate_legacy(int g)
 {
     GameCfg *c = &settings.g[g];
-    if (!rs[g].ok) { launcher_toast("Choose the original ROM first."); return; }
-    snprintf(c->hack_path, sizeof c->hack_path, "%s", path);
+    if (!c->hack_path[0]) return;
+    for (int i = 0; i < c->romhack_count && i < MAX_ROMHACKS; i++) {
+        if (!strcmp(c->romhacks[i].path, c->hack_path)) {
+            c->romhack_selected = i;
+            c->hack_path[0] = 0;
+            return;
+        }
+    }
+    if (c->romhack_count >= MAX_ROMHACKS) {
+        c->hack_path[0] = 0;
+        c->romhack_selected = -1;
+        return;
+    }
+    int index = c->romhack_count++;
+    snprintf(c->romhacks[index].path, sizeof c->romhacks[index].path, "%s", c->hack_path);
+    romhack_title_from_path(c->hack_path, c->romhacks[index].title, sizeof c->romhacks[index].title);
+    c->romhack_selected = index;
+    c->hack_path[0] = 0;
+}
+
+static void romhack_add(int g, const char *path)
+{
+    if (g < 0 || g >= N_GAMES || !path || !path[0]) return;
+    GameCfg *c = &settings.g[g];
+    if (!rs[g].ok || !c->rom_path[0]) {
+        launcher_toast("Choose a working original ROM on the Game tab first.");
+        return;
+    }
+    for (int i = 0; i < c->romhack_count && i < MAX_ROMHACKS; i++) {
+        if (c->romhacks[i].path[0] && !strcmp(c->romhacks[i].path, path)) {
+            c->romhack_selected = i;
+            sub[g] = SUB_ROMHACKS;
+            make_preview(g);
+            settings_save();
+            launcher_toast("That ROM hack is already in this library.");
+            return;
+        }
+    }
+    if (c->romhack_count >= MAX_ROMHACKS) {
+        launcher_toast("This game already has the maximum of 16 ROM hacks.");
+        return;
+    }
+
     RomStatus st;
-    if (rom_load(g, c->rom_path, &st)) {
+    if (rom_load(g, c->rom_path, &st) != 0 || rom_apply_hack(path, &st) != 0) {
         hack_ok[g] = 0;
         snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-        launcher_toast(st.msg);
+        launcher_toast(st.msg[0] ? st.msg : "Couldn't validate that ROM hack.");
         return;
     }
-    if (path[0] && rom_apply_hack(path, &st)) {
-        /* Keep the selected path and its error visible so the user can see
-         * why it was rejected and replace it without browsing a second time. */
-        hack_ok[g] = 0;
-        snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-        launcher_toast(st.msg);
-        return;
+
+    int index = c->romhack_count++;
+    RomHackEntry *entry = &c->romhacks[index];
+    memset(entry, 0, sizeof *entry);
+    snprintf(entry->path, sizeof entry->path, "%s", path);
+    romhack_title_from_path(path, entry->title, sizeof entry->title);
+    c->romhack_selected = index;
+    sub[g] = SUB_ROMHACKS;
+    settings_save();
+    clear_romhack_thumbs_game(g);
+    snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+    hack_ok[g] = 1;
+    make_preview(g);
+    launcher_toast("ROM hack added as a separate game profile. The original ROM file is unchanged.");
+}
+
+static void romhack_remove(int g, int index)
+{
+    if (g < 0 || g >= N_GAMES) return;
+    GameCfg *c = &settings.g[g];
+    if (index < 0 || index >= c->romhack_count || index >= MAX_ROMHACKS) return;
+    if (romhack_title_editing_game == g && romhack_title_editing_index == index) {
+        romhack_title_editing_game = romhack_title_editing_index = -1;
+        SDL_StopTextInput();
     }
-    snprintf(hack_msg[g], sizeof hack_msg[g], "%s", path[0] ? st.msg : "");
-    hack_ok[g] = path[0] != 0;
+    if (c->romhack_selected == index) c->romhack_selected = -1;
+    else if (c->romhack_selected > index) c->romhack_selected--;
+    if (index + 1 < c->romhack_count)
+        memmove(&c->romhacks[index], &c->romhacks[index + 1],
+                (size_t)(c->romhack_count - index - 1) * sizeof c->romhacks[0]);
+    c->romhack_count--;
+    memset(&c->romhacks[c->romhack_count], 0, sizeof c->romhacks[0]);
+    if (c->romhack_count == 0) c->romhack_selected = -1;
+    clear_romhack_thumbs_game(g);
+    settings_save();
     make_preview(g);
 }
 
