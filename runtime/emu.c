@@ -326,6 +326,7 @@ static void rewind_init(void);
 static int emu_start_internal(int force_interp, int reset);
 static void mp_sml2_capture_frame(Frame *frame);
 static int mp_sml2_gameplay_active(void);
+static void mp_sml2_tile_patches_clear(void);
 
 static int mp_bcd_to_int(uint8_t b)
 {
