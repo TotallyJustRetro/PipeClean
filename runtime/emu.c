@@ -920,9 +920,11 @@ static void mp_sml2_capture_oam(uint8_t out[16])
 static int mp_sml2_capture_mapping_oam_at(int rom_bank, uint8_t mapping,
                                           int base_x, int base_y,
                                           const uint8_t source[0xA0],
-                                          uint8_t out[MP_MAX_OAM_SPRITES * 4])
+                                          uint8_t out[MP_MAX_OAM_SPRITES * 4],
+                                          int *complete_out)
 {
     memset(out, 0, MP_MAX_OAM_SPRITES * 4);
+    if (complete_out) *complete_out = 0;
     if (mapping >= 0xF2) return 0; /* 242 pointers occupy $4000-$41E3. */
 
     uint16_t pointer_address = (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
@@ -941,7 +943,6 @@ static int mp_sml2_capture_mapping_oam_at(int rom_bank, uint8_t mapping,
         (void)cart_rom_read_bank(rom_bank, map++); /* Runtime OAM owns the attributes. */
         expected++;
 
-        /* Mapping offsets are signed 8-bit values. */
         int dy = raw_dy < 0x80 ? (int)raw_dy : (int)raw_dy - 256;
         int dx = raw_dx < 0x80 ? (int)raw_dx : (int)raw_dx - 256;
         uint8_t want_y = (uint8_t)(base_y + dy);
@@ -956,70 +957,70 @@ static int mp_sml2_capture_mapping_oam_at(int rom_bank, uint8_t mapping,
             break;
         }
     }
-    /* Only accept complete mappings; partial maps visibly corrupt a pose. */
-    return expected > 0 && count == expected ? count : 0;
+    if (complete_out) *complete_out = expected > 0 && count == expected;
+    /* Return exact matches even for partial maps. The caller prefers complete
+     * poses, but can safely keep matching pieces instead of guessing a 2x2. */
+    return count;
 }
 
-/* The retail ROM keeps Mario mappings in bank 1. SML2 DX v1.8.1 moves its
- * CGB player mapping tables to banks 44/45 and leaves bank 1's table as
- * FFFE placeholders. Probe only the known player mappings in those tables. */
-static int mp_sml2_player_mapping_banks(int banks[2])
-{
-    const CartInfo *ci = cart_info();
-    /* Do not infer "DX" from cartridge size alone. The original game is
-     * always the default profile; only an explicitly selected patched image
-     * may use the DX mapping tables in banks 44/45. This keeps the retail
-     * player's sprite path isolated from ROM-hack-specific data. */
-    if (rom_hack_active() && ci && ci->mapper == 5 && ci->rom_banks >= 64) {
-        banks[0] = 44; /* SML2 DX primary player mapping set */
-        banks[1] = 45; /* alternate/CGB mapping set */
-        return 2;
-    }
-    banks[0] = 1;
-    banks[1] = -1;
-    return 1;
-}
-
-/* The animation selector can be reused later in the frame. Search valid
- * player mappings at the stable player-specific origin, across the mapping
- * banks actually used by this ROM, and keep the largest complete match. */
+/* Keep a complete mapping whenever possible. If the frame's OAM omits one
+ * or more pieces (often during animation/edge clipping), retain only exact
+ * mapping+coordinate matches as a last resort rather than pulling nearby
+ * enemy/effect sprites into a guessed four-piece player. */
 static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
                                              const uint8_t source[0xA0],
                                              uint8_t out[MP_MAX_OAM_SPRITES * 4])
 {
     uint8_t candidate[MP_MAX_OAM_SPRITES * 4];
+    uint8_t best_complete_oam[MP_MAX_OAM_SPRITES * 4];
+    uint8_t best_partial_oam[MP_MAX_OAM_SPRITES * 4];
     int banks[2];
     int bank_count = mp_sml2_player_mapping_banks(banks);
-    int best_count = 0;
+    int best_count = 0, partial_count = 0;
     const int player_x = rd8(0xA23C), player_y = rd8(0xA23B);
     memset(out, 0, MP_MAX_OAM_SPRITES * 4);
+    memset(best_complete_oam, 0, sizeof best_complete_oam);
+    memset(best_partial_oam, 0, sizeof best_partial_oam);
 
-    /* Check the saved selector first, but only if it is a known player pose. */
     for (int bi = 0; bi < bank_count; bi++) {
+        int complete = 0;
         int count = preferred <= 0x15
-            ? mp_sml2_capture_mapping_oam_at(banks[bi], preferred,
-                player_x, player_y, source, candidate) : 0;
-        if (count > best_count) {
-            memcpy(out, candidate, (size_t)count * 4u);
+            ? mp_sml2_capture_mapping_oam_at(banks[bi], preferred, player_x,
+                player_y, source, candidate, &complete) : 0;
+        if (complete && count > best_count) {
+            memcpy(best_complete_oam, candidate, (size_t)count * 4u);
             best_count = count;
+        } else if (!complete && count > partial_count) {
+            memcpy(best_partial_oam, candidate, (size_t)count * 4u);
+            partial_count = count;
         }
     }
 
+    /* The saved selector can be scratch state. Check every player pose at the
+     * stable player-owned origin before considering an inferred origin. */
     for (int bi = 0; bi < bank_count; bi++) {
         for (int mapping = 0; mapping < 0x16; mapping++) {
             if (mapping == preferred) continue;
+            int complete = 0;
             int count = mp_sml2_capture_mapping_oam_at(banks[bi],
-                (uint8_t)mapping, player_x, player_y, source, candidate);
-            if (count > best_count) {
-                memcpy(out, candidate, (size_t)count * 4u);
+                (uint8_t)mapping, player_x, player_y, source, candidate,
+                &complete);
+            if (complete && count > best_count) {
+                memcpy(best_complete_oam, candidate, (size_t)count * 4u);
                 best_count = count;
+            } else if (!complete && count > partial_count) {
+                memcpy(best_partial_oam, candidate, (size_t)count * 4u);
+                partial_count = count;
             }
         }
     }
-    if (best_count >= 8) return best_count;
+    if (best_count >= 8) {
+        memcpy(out, best_complete_oam, (size_t)best_count * 4u);
+        return best_count;
+    }
 
-    /* If the origin scratch changed, infer a nearby origin from a possible
-     * first piece, then validate every item in the ROM mapping against it. */
+    /* Some animation paths move the emitted pieces relative to A23B/A23C.
+     * Infer a nearby origin from a mapped tile, then check the full layout. */
     for (int bi = 0; bi < bank_count; bi++) {
         int rom_bank = banks[bi];
         for (int mapping = 0; mapping < 0x16; mapping++) {
@@ -1044,16 +1045,33 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
                 if (mp_sml2_distance((uint8_t)base_x, player_x) > 24 ||
                     mp_sml2_distance((uint8_t)base_y, player_y) > 24)
                     continue;
+
+                int complete = 0;
                 int count = mp_sml2_capture_mapping_oam_at(rom_bank,
-                    (uint8_t)mapping, base_x, base_y, source, candidate);
-                if (count > best_count) {
-                    memcpy(out, candidate, (size_t)count * 4u);
+                    (uint8_t)mapping, base_x, base_y, source, candidate,
+                    &complete);
+                if (complete && count > best_count) {
+                    memcpy(best_complete_oam, candidate, (size_t)count * 4u);
                     best_count = count;
+                } else if (!complete && count > partial_count) {
+                    memcpy(best_partial_oam, candidate, (size_t)count * 4u);
+                    partial_count = count;
                 }
             }
         }
     }
-    return best_count;
+
+    if (best_count > 0) {
+        memcpy(out, best_complete_oam, (size_t)best_count * 4u);
+        return best_count;
+    }
+    /* Two or more exact map matches give a useful pose without inventing
+     * unrelated pieces. A lone match is too ambiguous to trust. */
+    if (partial_count >= 2) {
+        memcpy(out, best_partial_oam, (size_t)partial_count * 4u);
+        return partial_count;
+    }
+    return 0;
 }
 
 static void mp_sml2_save_player(MpSml2Player *p, int player)
