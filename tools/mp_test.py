@@ -111,6 +111,18 @@ def main() -> int:
     parser.add_argument("--frames", required=True, type=int, help="number of logical two-player frames")
     parser.add_argument("--report-dir", required=True, type=Path, help="directory for JSONL frame reports")
     parser.add_argument("--timeout", type=int, default=90, help="timeout for each replay, in seconds")
+    parser.add_argument("--require-p2-spawn", action="store_true",
+                        help="fail unless Player 2 reaches the game's spawned state")
+    parser.add_argument("--require-p1-movement", action="store_true",
+                        help="fail unless Player 1's world coordinates change")
+    parser.add_argument("--require-p2-movement", action="store_true",
+                        help="fail unless spawned Player 2's world coordinates change")
+    parser.add_argument("--require-camera-scroll", action="store_true",
+                        help="fail unless the camera position changes")
+    parser.add_argument("--require-block-patch", action="store_true",
+                        help="fail unless the runtime records at least one block/tile patch")
+    parser.add_argument("--require-actor-region-change", action="store_true",
+                        help="fail unless the actor-related RAM hash changes")
     args = parser.parse_args()
 
     for path, name in ((args.binary, "binary"), (args.rom, "ROM"), (args.script, "script")):
@@ -148,9 +160,36 @@ def main() -> int:
             return 1
 
     spawned = sum(1 for record in first if record["p2_spawned"])
+    checks = [
+        (args.require_p2_spawn, spawned > 0, "Player 2 never spawned"),
+        (args.require_p1_movement,
+         len({(row["p1_world_x"], row["p1_world_y"]) for row in first}) > 1,
+         "Player 1's world position never changed"),
+        (args.require_p2_movement,
+         len({(row["p2_world_x"], row["p2_world_y"]) for row in first if row["p2_spawned"]}) > 1,
+         "Player 2's world position never changed while spawned"),
+        (args.require_camera_scroll,
+         len({(row["camera_x"], row["camera_y"]) for row in first}) > 1,
+         "The camera never scrolled"),
+        (args.require_block_patch,
+         any(int(row.get("tile_patch_count", 0)) > 0 for row in first),
+         "No block/tile patch was recorded"),
+        (args.require_actor_region_change,
+         len({row["actor_region_hash"] for row in first}) > 1,
+         "The actor-related RAM hash never changed"),
+    ]
+    failed = [message for enabled, passed, message in checks if enabled and not passed]
+    if failed:
+        print(
+            "MULTIPLAYER TEST: FAIL — " + "; ".join(failed) + "\\n"
+            f"Reports: {report_a} and {report_b}",
+            file=sys.stderr,
+        )
+        return 1
+
     print(
         f"MULTIPLAYER TEST: PASS — {args.frames} scripted two-player frames replayed "
-        f"deterministically; Player 2 marked spawned in {spawned} frames.\n"
+        f"deterministically; Player 2 marked spawned in {spawned} frames.\\n"
         f"Reports: {report_a} and {report_b}"
     )
     return 0
