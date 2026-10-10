@@ -1623,7 +1623,12 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t old_ground = rd8(0xA214);
     uint8_t old_air = rd8(0xA215);
     uint8_t old_power = rd8(0xA216);
-    uint8_t old_lives = rd8(0xA22C);
+    /* Lives are stored as packed BCD in A22C. A cloned Player 2 frame must
+     * not be allowed to import a wildly corrupted life count into its private
+     * character state. Legitimate death decrements and a single 1-Up remain
+     * valid; reject invalid BCD and jumps larger than one life. */
+    uint8_t old_lives = p->lives;
+    wr8(0xA22C, old_lives);
     uint8_t coins_low = rd8(0xA262), coins_high = rd8(0xA263);
     uint8_t kills = rd8(0xA28D);
     uint8_t scroll = rd8(0xFFCA);
@@ -1638,6 +1643,17 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (status == 0) run_core(0);
     mp_active = 0;
     if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
+    uint8_t lives_after = rd8(0xA22C);
+    int old_lives_value = mp_sml2_bcd_to_int(old_lives);
+    int new_lives_value = mp_sml2_bcd_to_int(lives_after);
+    int lives_bcd_valid = ((lives_after >> 4) & 0x0Fu) <= 9 &&
+                          (lives_after & 0x0Fu) <= 9;
+    if (!lives_bcd_valid || new_lives_value > old_lives_value + 1) {
+        /* The player clone shares a ROM execution path with global game code.
+         * Never accept a sudden 5 -> 99 (or malformed BCD) transition as a
+         * character life change; restore the previous per-player value. */
+        wr8(0xA22C, old_lives);
+    }
     uint8_t coins_low_after = rd8(0xA262), coins_high_after = rd8(0xA263);
     uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xFFCA);
     memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
