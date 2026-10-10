@@ -171,6 +171,11 @@ static uint8_t mp_sml2_stable_level;
 static uint8_t mp_sml2_stable_bank;
 static uint8_t mp_sml2_map_before[0x1800];
 static uint8_t mp_sml2_map_after[0x1800];
+/* Snapshot the lower shared SRAM as well. Some persistent world/block flags
+ * live outside A800-BFFF; merge those changes only on frames where the
+ * clone changes the current tilemap, not on every simulation tick. */
+static uint8_t mp_sml2_shared_ram_before[0x800];
+static uint8_t mp_sml2_shared_ram_after[0x800];
 static uint8_t mp_sml2_vram_before[0x400];
 static uint8_t mp_sml2_vram_after[0x400];
 static uint8_t mp_buttons, mp_dpad;
@@ -1474,6 +1479,8 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t coins_low = rd8(0xA262), coins_high = rd8(0xA263);
     uint8_t kills = rd8(0xA28D);
     uint8_t scroll = rd8(0xA2B1);
+    for (int i = 0; i < 0x800; i++)
+        mp_sml2_shared_ram_before[i] = cart_ram_read((uint16_t)(0xA000 + i));
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_before[i] = cart_ram_read((uint16_t)(0xA800 + i));
     memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
     gb_set_input(buttons, dpad);
@@ -1486,6 +1493,8 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
     uint8_t coins_low_after = rd8(0xA262), coins_high_after = rd8(0xA263);
     uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xA2B1);
+    for (int i = 0; i < 0x800; i++)
+        mp_sml2_shared_ram_after[i] = cart_ram_read((uint16_t)(0xA000 + i));
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_after[i] = cart_ram_read((uint16_t)(0xA800 + i));
     memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
     mp_sml2_save_player(p, player);
@@ -1518,6 +1527,24 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         memcmp(mp_sml2_vram_before, mp_sml2_vram_after, sizeof mp_sml2_vram_before) != 0;
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+
+    /* A hit block can update persistent collision/used-state flags outside
+     * the visible A800-BFFF map buffers. If its tilemap changed while the
+     * clone used the same camera, merge those related SRAM deltas too.
+     * A100-A1FF is the game's OAM/temporary sprite workspace, and A200-A2FF
+     * contains player-private state; never copy either range from a clone. */
+    int shared_ram_changed = 0;
+    if (merge_world && vram_changed) {
+        for (int i = 0; i < 0x800; i++) {
+            int address = 0xA000 + i;
+            if (address >= 0xA100 && address <= 0xA2FF) continue;
+            if (mp_sml2_shared_ram_before[i] == mp_sml2_shared_ram_after[i])
+                continue;
+            wr8((uint16_t)address, mp_sml2_shared_ram_after[i]);
+            shared_ram_changed = 1;
+        }
+    }
+
     if (map_changed) {
         /* A800-BFFF contains level data and runtime object state. AA80-AAFF is a
          * temporary effect/score-sprite pool, not the level's enemy collision
@@ -1552,7 +1579,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (merge_world && coins_low_after != coins_low) wr8(0xA262, coins_low_after);
     if (merge_world && coins_high_after != coins_high) wr8(0xA263, coins_high_after);
     if (merge_world && kills_after != kills) wr8(0xA28D, kills_after);
-    if (map_changed || vram_changed ||
+    if (map_changed || vram_changed || shared_ram_changed ||
         (merge_world && (coins_low_after != coins_low ||
                          coins_high_after != coins_high || kills_after != kills))) {
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
