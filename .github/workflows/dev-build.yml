@@ -2,7 +2,7 @@ name: PipeClean Dev Build
 
 on:
   push:
-    branches: [main, fix/sml-dx-widescreen-revision]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: pipeclean-dev-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   windows-dev-build:
