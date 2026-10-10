@@ -26,6 +26,7 @@
 #include "events.h"
 #include "util.h"
 #include "branding.h"
+#include "dev_diag.h"
 #include <SDL_image.h>
 
 static SDL_Window *win;
@@ -600,10 +601,12 @@ static int play_multiplayer(int g)
     uint8_t buttons[MAX_MP_PLAYERS] = {0, 0, 0, 0};
     uint8_t dpad[MAX_MP_PLAYERS] = {0, 0, 0, 0};
     Uint64 last = SDL_GetPerformanceCounter();
+    dev_diag_begin(g, player_count, win);
 
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (dev_diag_handle_event(&e)) continue;
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
@@ -613,6 +616,11 @@ static int play_multiplayer(int g)
                     int key = mp_respawn_key(c, player);
                     if (key && e.key.keysym.sym == key) {
                         emu_mp_request_respawn(player);
+                        {
+                            char diagnostic[96];
+                            snprintf(diagnostic, sizeof diagnostic, "%s RESPAWN REQUESTED", mp_player_name(g, player));
+                            dev_diag_event(diagnostic);
+                        }
                         char msg[96];
                         snprintf(msg, sizeof msg, "%s respawn requested.", mp_player_name(g, player));
                         game_notice(msg);
@@ -625,6 +633,11 @@ static int play_multiplayer(int g)
                 if (binding >= 0 && device >= 0 && device < pad_count() &&
                     pad_capture(device, &e) == binding) {
                     emu_mp_request_respawn(player);
+                    {
+                        char diagnostic[96];
+                        snprintf(diagnostic, sizeof diagnostic, "%s RESPAWN REQUESTED", mp_player_name(g, player));
+                        dev_diag_event(diagnostic);
+                    }
                     char msg[96];
                     snprintf(msg, sizeof msg, "%s respawn requested.", mp_player_name(g, player));
                     game_notice(msg);
@@ -639,7 +652,10 @@ static int play_multiplayer(int g)
                 case SDLK_F11:
                     SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                     break;
-                case SDLK_p: paused = !paused; break;
+                case SDLK_p:
+                    paused = !paused;
+                    dev_diag_event(paused ? "GAME PAUSED" : "GAME RESUMED");
+                    break;
                 case SDLK_TAB: emu_set_turbo(1); break;
                 case SDLK_F12: shot = 1; break;
                 }
@@ -716,6 +732,7 @@ static int play_multiplayer(int g)
                                     render_overlay_sml1_mp_oam(f, f->mp_player_oam[player], 0, 0, player);
                             }
                         }
+                        dev_diag_frame(f, g, player_count, buttons, dpad, paused);
                         if (n0 > 0) audio_game_push(a0, n0);
                         if (audio_ok()) audio_game_wait(audio_game_target());
                     }
@@ -778,6 +795,7 @@ static int play_multiplayer(int g)
         SDL_RenderPresent(ren);
     }
 
+    dev_diag_end(quit == 2 ? "main window closed" : "multiplayer exited");
     emu_set_turbo(0);
     audio_game_end();
     emu_mp_end();
