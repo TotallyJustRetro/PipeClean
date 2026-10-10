@@ -190,6 +190,15 @@ int rom_apply_hack(const char *path, RomStatus *st)
         }
     } else {
         if (n < 0x150) { free(buf); free(out); snprintf(st->msg, sizeof st->msg, "That doesn't look like a Game Boy ROM."); return 1; }
+        int patched_id = rom_identify(buf, (size_t)n);
+        if (patched_id != base_game) {
+            free(buf); free(out);
+            snprintf(st->msg, sizeof st->msg,
+                     patched_id >= 0 ? "That ROM is %s, not %s." : "That file isn't a recognizable ROM for %s.",
+                     patched_id >= 0 ? games[patched_id].name : games[base_game].name,
+                     patched_id >= 0 ? games[base_game].name : "");
+            return 1;
+        }
         memcpy(out, buf, (size_t)n);
         olen = (size_t)n;
     }
@@ -248,6 +257,26 @@ int rom_apply_hack(const char *path, RomStatus *st)
         snprintf(st->msg, sizeof st->msg, "%d bytes changed. Data only, so it runs at full speed.", changed);
     else
         snprintf(st->msg, sizeof st->msg, "%d bytes changed. Hack applied.", changed);
+    return 0;
+}
+
+int rom_create_hack_copy(int game, const char *base_path, const char *hack_path,
+                          const char *output_path, RomStatus *st)
+{
+    if (!base_path || !base_path[0] || !hack_path || !hack_path[0] ||
+        !output_path || !output_path[0]) {
+        snprintf(st->msg, sizeof st->msg, "Choose a base ROM and a romhack first.");
+        return 1;
+    }
+    if (rom_load(game, base_path, st)) return 1;
+    if (rom_apply_hack(hack_path, st)) return 1;
+    if (cart_export_rom(output_path)) {
+        snprintf(st->msg, sizeof st->msg, "Couldn't write the separate romhack copy.");
+        return 1;
+    }
+    st->ok = 1;
+    st->hack_loaded = 1;
+    snprintf(st->msg, sizeof st->msg, "Separate patched ROM copy created.");
     return 0;
 }
 
