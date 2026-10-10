@@ -1,5 +1,14 @@
 #pragma once
 #include "gb.h"
+#include "games.h"
+
+#define P2_SFX_EVENT_JUMP       (1u << 0)
+#define P2_SFX_EVENT_FIREBALL   (1u << 1)
+#define P2_SFX_EVENT_POWER_UP   (1u << 2)
+#define P2_SFX_EVENT_POWER_DOWN (1u << 3)
+#define P2_SFX_EVENT_DIE        (1u << 4)
+#define P2_SFX_EVENT_RESPAWN    (1u << 5)
+#define MP_MAX_OAM_SPRITES 40 /* Game Boy OAM contains 40 four-byte entries. */
 
 typedef struct {
     uint8_t shade[GB_H][GB_WMAX], layer[GB_H][GB_WMAX];
@@ -18,9 +27,26 @@ typedef struct {
     uint8_t p2_lives;             /* PipeClean Player 2 lives, decoded to 0..99 */
     uint8_t p2_game_state;        /* Private SML1 state: 0 normal, 3/4 death animation */
     uint8_t p2_visible;           /* 1 while Luigi is active on the shared screen */
+    uint8_t p2_blink_hidden;      /* Temporary flicker during Luigi's post-respawn invulnerability */
+    uint8_t p2_projectile_oam[12]; /* Three private projectile sprites from Player 2. */
+    uint8_t p2_effect_oam[52];      /* Player 2's non-enemy effects (OAM slots 7-19). */
     uint8_t p2_sound_event;       /* P2 triggered a one-shot interaction SFX */
+    uint8_t p2_sfx_events;        /* P2_SFX_EVENT_* bitmask: jump, fireball, power, death. */
+    uint8_t mp_player_count;      /* active SML1 players, 2..4 */
+    uint8_t mp_player_lives[MAX_MP_PLAYERS];
+    uint8_t mp_player_game_state[MAX_MP_PLAYERS];
+    uint8_t mp_player_visible[MAX_MP_PLAYERS];
+    uint8_t mp_player_blink_hidden[MAX_MP_PLAYERS];
+    uint8_t mp_player_oam[MAX_MP_PLAYERS][MP_MAX_OAM_SPRITES * 4]; /* player 2..4 sprite pieces */
+    uint8_t mp_player_sprite_count[MAX_MP_PLAYERS]; /* valid OAM entries per player */
+    uint8_t mp_player_projectile_oam[MAX_MP_PLAYERS][12];
+    uint8_t mp_player_effect_oam[MAX_MP_PLAYERS][52];
+    uint8_t mp_player_sfx_events[MAX_MP_PLAYERS];
+    uint8_t mp_player_sound_event[MAX_MP_PLAYERS];
     uint8_t bg_map[0x400];
     uint8_t tiles[0x1800];
+    uint8_t tiles_cgb1[0x1800]; /* CGB VRAM bank 1 for color-mode sprite overlays. */
+    uint32_t cgb_obj_palette[32]; /* Eight CGB OBJ palettes, four RGB24 colors each. */
     uint64_t seq;
     int lcd_on;
 } Frame;
@@ -37,11 +63,39 @@ uint64_t emu_frames(void);
 int emu_cpu_faulted(void);
 void emu_cpu_fault_info(uint8_t *opcode, uint16_t *pc);
 
-/* Local two-player SML1 runtime: one authoritative world plus an isolated Player 2 state. */
+/* Snapshot emitted by the headless multiplayer test runner. Hashes are
+ * deterministic diagnostics, not assertions about the game's internal format. */
+typedef struct {
+    uint16_t p1_world_x, p1_world_y, p2_world_x, p2_world_y;
+    uint16_t camera_x, camera_y;
+    uint32_t bg_map_hash, level_ram_hash, actor_region_hash;
+    uint8_t level, level_bank, game_mode;
+    uint8_t p1_screen_x, p1_screen_y, p2_screen_x, p2_screen_y;
+    uint8_t p1_grounded, p1_in_air, p2_grounded, p2_in_air;
+    uint8_t p1_lives, p2_lives, p2_spawned, multiplayer_initialized;
+    uint8_t coins_low, coins_high;
+    uint16_t stable_gameplay_frames;
+    uint16_t tile_patch_count;
+    /* Player 2 sprite-selection telemetry for diagnosing wrong/overlapping OAM maps. */
+    uint8_t p2_powerup, p2_animation;
+    uint8_t p2_mapping_preferred, p2_mapping_selected, p2_mapping_bank;
+    uint8_t p2_mapping_source, p2_mapping_inferred, p2_mapping_complete;
+    uint8_t p2_respawn_requested, p2_previous_a, p2_keys_held, p2_keys_pressed;
+} EmuMpTestSnapshot;
+
+/* Local co-op for SML1 and SML2. Player indices are 0=host, 1=Player 2,
+ * 2=Player 3, and 3=Player 4. */
 int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
 void emu_mp_frame_refresh(Frame *frame);
+/* SML2-only diagnostics for scripted headless multiplayer tests. */
+int emu_mp_test_snapshot(EmuMpTestSnapshot *out);
+/* Read bounded SML2 cartridge RAM for opt-in developer incident dumps. */
+int emu_mp_test_read_ram(uint16_t start, uint8_t *out, size_t length);
+/* SML2 multiplayer's cloned PPU has separate sprite graphics per player. */
+const uint8_t *emu_mp_player_sprite_tiles(int player, int bank);
+void emu_mp_request_respawn(int player);
 
 /* Emulator state features */
 int emu_state_save_file(const char *path, int resume_after);

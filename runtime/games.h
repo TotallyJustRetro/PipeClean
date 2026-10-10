@@ -1,4 +1,5 @@
 #pragma once
+#define MAX_MP_PLAYERS 4
 #include <stdint.h>
 
 enum {

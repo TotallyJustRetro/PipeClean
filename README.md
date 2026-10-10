@@ -99,7 +99,34 @@ Expected result:
 MBC1 mapper: PASS
 ```
 
-GitHub Actions runs both regressions, validates the Python tools, builds the full native runtime against a synthetic 512 KiB MBC1/SML2-shaped ROM, and performs a headless widescreen launch without shipping any game ROM.
+GitHub Actions runs the regressions, validates the Python tools, builds the full native runtime against synthetic ROMs, and runs headless smoke tests without shipping any game ROM.
+
+### PipeClean Dev multiplayer diagnostics
+
+The separate **PipeClean Dev** Windows build opens a live diagnostics window whenever local multiplayer starts. It records per-frame inputs, player positions, camera/level state, sprite counts, coins, tilemap/world-memory hashes and a rendered-frame hash. Events such as lives changes, spawn changes, likely movement stalls and sprite-list warnings are recorded too. Closing only the diagnostics window hides it but keeps logging; leaving the multiplayer session finalizes the log.
+
+The Dev build saves a screenshot of the first gameplay frame, then PNG screenshots every 300 gameplay frames (about five seconds) and when important anomalies occur (player spawn changes, lives changes, movement stalls, level changes, and co-op tether activation). Each incident snapshot adds raw SML2 player RAM (`A200–A2DF`), world/object RAM (`A800–BFFF`), the background tilemap, VRAM tile data, player OAM data, and Luigi's captured sprite-tile graphics where available. Press **F10** during multiplayer to request an immediate screenshot and matching memory snapshot. The JSONL file records each screenshot's filename and frame number; image names include the frame and trigger. This makes it possible to pair the exact screen corruption with the game state that produced it. Incident dumps can be larger than the previous log format.
+
+Logs and screenshots are written beside the executable in the `logs` folder. Session logs use names like `PipeClean-dev-multiplayer-YYYYMMDD-HHMMSS-*.jsonl`; screenshots use names like `PipeClean-screen-001234-PLAYER-2-NOT-SPAWNED.png`. The regular PipeClean build does not open this developer window, capture diagnostic screenshots, or dump diagnostic RAM. Download **PipeClean-Dev-Windows-x64** from the separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml).
+
+### Scripted multiplayer replay test
+
+The headless test runner can execute repeatable two-player SML2 input sequences and write a JSONL diagnostic record for every logical frame. Each record includes player coordinates/grounding, camera and level values, sprite counts, tilemap/world-memory hashes, and a render hash. The wrapper replays the same inputs twice and fails if the recorded frames differ.
+
+With a local SML2 ROM, build PipeClean and run:
+
+```bash
+cmake -S . -B build -DROM="path/to/your/Super Mario Land 2.gb"
+cmake --build build --target PipeClean
+python3 tools/mp_test.py \
+  --binary build/PipeClean \
+  --rom "path/to/your/Super Mario Land 2.gb" \
+  --script tests/scenarios/sml2_gameplay_template.txt \
+  --frames 1800 \
+  --report-dir test-results/sml2-coop
+```
+
+Edit the script's frame timings to reach the level and reproduce the interaction you want to test. Input masks are hexadecimal: A=01, B=02, Select=04, Start=08, Right=10, Left=20, Up=40, Down=80. You can add assertions when the scenario is expected to reach gameplay, for example `--require-p2-spawn --require-p1-movement --require-p2-movement --require-camera-scroll`; use `--require-block-patch` to require that the runtime recorded a tile change, or `--require-actor-region-change` to detect activity in the actor-related RAM range. These are useful checks, not proof by themselves that the underlying game behavior is correct. Reports are saved locally and are not uploaded by the test tool. The CI runner uses a synthetic cartridge only to validate scripted stepping and deterministic replay; it does **not** prove that collisions, blocks, or enemy behavior are correct in the commercial game.
 
 See **[Architecture](docs/ARCHITECTURE.md)** for technical details.
 

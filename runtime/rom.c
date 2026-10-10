@@ -10,7 +10,7 @@
 
 const GameDef games[N_GAMES] = {
     {"drmario",    "Dr. Mario",             "Falling-pill puzzle. Recompiled to native code.",                "DR.MARIO",         0xF0225DD0u, 1, 0xE0584C, 200, 0,  0,  0, 0, 0, 0},
-    {"sml",        "Super Mario Land",      "Sarasaland platformer.",                                          "SUPER MARIOLAND",  0,           0, 0x4FA85A, 420, 32, 56, 16, 0, 1, 0},
+    {"sml",        "Super Mario Land",      "Sarasaland platformer.",                                          "SUPER MARIOLAND",  0,           0, 0x4FA85A, 420, 32, 56, 16, 0, 0, 0},
     {"sml2",       "Super Mario Land 2",    "6 Golden Coins.",                                                 "MARIOLAND2",       0,           0, 0xE8B23A, 700, 49, 33,  0, 0, 0, 0},
     {"wario-sml3", "Wario Land: SML3",      "Wario's first adventure.",                "SUPERMARIOLAND3",  0,           0, 0xE4A144, 420,  0,  0,  0, 0, 0, 0},
     {"wario2-gb",  "Wario Land II (GB)",    "The monochrome Game Boy release.",       "WARIOLAND2",       0,           0, 0xC77B44, 420,  0,  0,  0, 0, 0, 0},
@@ -190,6 +190,17 @@ int rom_apply_hack(const char *path, RomStatus *st)
         }
     } else {
         if (n < 0x150) { free(buf); free(out); snprintf(st->msg, sizeof st->msg, "That doesn't look like a Game Boy ROM."); return 1; }
+        int patched_id = rom_identify(buf, (size_t)n);
+        if (patched_id != base_game) {
+            free(buf); free(out);
+            if (patched_id >= 0)
+                snprintf(st->msg, sizeof st->msg, "That ROM is %s, not %s.",
+                         games[patched_id].name, games[base_game].name);
+            else
+                snprintf(st->msg, sizeof st->msg, "That file isn't a recognizable ROM for %s.",
+                         games[base_game].name);
+            return 1;
+        }
         memcpy(out, buf, (size_t)n);
         olen = (size_t)n;
     }
@@ -214,9 +225,14 @@ int rom_apply_hack(const char *path, RomStatus *st)
     if (is_ips_patch && base_game == GAME_SML2 && ci.cgb_flag == 0xC0 && ci.mapper == 5 &&
         olen == 0x100000 && source_crc != 0xD5EC24E4u) {
         free(out);
-        snprintf(st->msg, sizeof st->msg,
-                 "Super Mario Land 2 DX v1.8.1 IPS needs clean USA/Europe v1.0 (expected CRC32 D5EC24E4; this ROM is %08X).",
-                 source_crc);
+        if (source_crc == 0xE6F886E5u) {
+            snprintf(st->msg, sizeof st->msg,
+                     "Recognized SML2 USA/Europe Rev A, but DX v1.8.1 IPS requires v1.0 (CRC32 D5EC24E4). Use a v1.0 ROM or an already-patched DX ROM.");
+        } else {
+            snprintf(st->msg, sizeof st->msg,
+                     "SML2 DX v1.8.1 IPS requires clean USA/Europe v1.0 (CRC32 D5EC24E4); this ROM has CRC32 %08X.",
+                     source_crc);
+        }
         return 1;
     }
 
@@ -243,6 +259,26 @@ int rom_apply_hack(const char *path, RomStatus *st)
         snprintf(st->msg, sizeof st->msg, "%d bytes changed. Data only, so it runs at full speed.", changed);
     else
         snprintf(st->msg, sizeof st->msg, "%d bytes changed. Hack applied.", changed);
+    return 0;
+}
+
+int rom_create_hack_copy(int game, const char *base_path, const char *hack_path,
+                          const char *output_path, RomStatus *st)
+{
+    if (!base_path || !base_path[0] || !hack_path || !hack_path[0] ||
+        !output_path || !output_path[0]) {
+        snprintf(st->msg, sizeof st->msg, "Choose a base ROM and a romhack first.");
+        return 1;
+    }
+    if (rom_load(game, base_path, st)) return 1;
+    if (rom_apply_hack(hack_path, st)) return 1;
+    if (cart_export_rom(output_path)) {
+        snprintf(st->msg, sizeof st->msg, "Couldn't write the separate romhack copy.");
+        return 1;
+    }
+    st->ok = 1;
+    st->hack_loaded = 1;
+    snprintf(st->msg, sizeof st->msg, "Separate patched ROM copy created.");
     return 0;
 }
 
@@ -301,9 +337,14 @@ int rom_load_raw(const char *path)
     uint8_t *buf = NULL;
     long n = read_file(path, &buf);
     if (n < 0) { free(buf); return 1; }
+    /* Raw/developer loads still identify known cartridges by header. This
+     * enables game-specific diagnostics and multiplayer test modes without
+     * requiring the normal checksum-verified launcher path. Unknown ROMs
+     * remain generic interpreter loads. */
+    int detected_game = rom_identify(buf, (size_t)n);
     int r = cart_install(buf, (size_t)n);
     free(buf);
-    base_game = -1;
+    base_game = detected_game;
     interp_needed = 1;
     return r;
 }

@@ -1,0 +1,9 @@
+# Headless-runner smoke scenario (also used by CI).
+# Each event applies from its frame until the next event.
+# Masks are hexadecimal: A=01, B=02, Select=04, Start=08,
+# Right=10, Left=20, Up=40, Down=80.
+# These short actions validate input replay, not a complete level walkthrough.
+0 00 00
+2 11 00
+4 00 11
+6 00 00

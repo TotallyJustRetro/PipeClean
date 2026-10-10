@@ -29,7 +29,11 @@ static int g_target = 2048;
 /* menu music + sfx */
 typedef struct { float *d; long n; } Clip;
 static Clip music, sfx[N_UI_SFX];
+static Clip mp_sfx[MAX_MP_PLAYERS - 1][N_P2_SFX]; /* One independent sound bank for each clone. */
+static long mp_sfx_pos[MAX_MP_PLAYERS - 1][N_P2_SFX];
 static char music_path[512], sfx_path[N_UI_SFX][512];
+static char mp_loaded_path[MAX_MP_PLAYERS - 1][N_P2_SFX][512];
+static int mp_bank_game = GAME_SML;
 static long music_pos;
 static float music_gain, music_target;
 static int music_want_on;
@@ -175,6 +179,129 @@ static void synth_sfx(Clip *c, int which)
     }
 }
 
+static void synth_p2_jump(Clip *c)
+{
+    /* An original, short chiptune jump: springing pitch glide, triangle body,
+     * narrow pulse edge and a tiny bright transient. It doesn't reuse ROM audio. */
+    const double pi = 3.14159265358979323846;
+    const long total = (long)(rate * 0.265);
+    if (!clip_alloc(c, total)) return;
+
+    double phase = 0.0;
+    float prior_noise = 0.0f;
+    float peak = 0.0f;
+    unsigned jump_rng = 2409u;
+    for (long i = 0; i < total; i++) {
+        double t = (double)i / (double)rate;
+        double f;
+        if (t < 0.095) {
+            double u = t / 0.095;
+            f = 245.0 + (720.0 - 245.0) * pow(u, 0.82);
+        } else if (t < 0.160) {
+            double u = (t - 0.095) / 0.065;
+            f = 720.0 - (720.0 - 545.0) * u;
+        } else {
+            double u = (t - 0.160) / (0.265 - 0.160);
+            f = 545.0 - (545.0 - 430.0) * u;
+        }
+        f += 18.0 * sin(2.0 * pi * 7.2 * t) * exp(-9.0 * t);
+        phase += f / (double)rate;
+        double frac = phase - floor(phase);
+        float tri = osc_tri(phase);
+        float pulse = frac < 0.24 ? 1.0f : -1.0f;
+        float sub = (phase * 0.5 - floor(phase * 0.5)) < 0.5 ? 1.0f : -1.0f;
+
+        jump_rng = jump_rng * 1664525u + 1013904223u;
+        float raw = (float)((jump_rng >> 9) & 0xFFFFu) / 32768.0f - 1.0f;
+        float smooth_noise = 0.5f * (prior_noise + raw);
+        prior_noise = raw;
+        double dip = (t - 0.115) / 0.022;
+        double accent = exp(-dip * dip);
+        double tap = (t - 0.108) / 0.028;
+        float env = (float)(exp(-t * 8.6) * (1.0 - 0.17 * accent));
+        float attack = (float)(t < 0.0035 ? t / 0.0035 : 1.0);
+        float transient = smooth_noise * (float)exp(-t * 360.0) * 0.10f;
+        float bright = (float)(sin(2.0 * pi * 1180.0 * t +
+                                   0.2 * sin(2.0 * pi * 15.0 * t)) *
+                               exp(-tap * tap) * 0.11);
+        float sample = tanhf(((0.58f * tri + 0.23f * pulse + 0.12f * sub) *
+                              env * attack + transient + bright) * 1.15f);
+        c->d[i * 2] = sample;
+        c->d[i * 2 + 1] = sample;
+        if (fabsf(sample) > peak) peak = fabsf(sample);
+    }
+
+    if (peak > 0.0f) {
+        float gain = 0.72f / peak;
+        for (long i = 0; i < total * 2; i++) c->d[i] *= gain;
+    }
+}
+
+static void synth_p2_sfx(Clip *c, int which)
+{
+    if (which == P2_SFX_JUMP) {
+        synth_p2_jump(c);
+        return;
+    }
+
+    int duration_ms = which == P2_SFX_FIREBALL ? 190 :
+                      which == P2_SFX_POWER_UP ? 430 :
+                      which == P2_SFX_POWER_DOWN ? 360 :
+                      which == P2_SFX_RESPAWN ? 285 : 690;
+    long total = (long)((double)duration_ms * rate / 1000.0);
+    if (!clip_alloc(c, total)) return;
+
+    /* Original PipeClean chiptune cues. These short motifs are newly composed;
+     * they don't sample or reproduce the game's built-in sound data. */
+    switch (which) {
+    case P2_SFX_FIREBALL:
+        add_note(c, 0, 0.055, 88, W_PULSE25, 0.24f, 0.0f, 0.001, 0.015);
+        add_note(c, (long)(rate * 0.030), 0.075, 79, W_PULSE50, 0.19f, 0.0f, 0.001, 0.025);
+        add_note(c, (long)(rate * 0.075), 0.080, 69, W_TRI, 0.17f, 0.0f, 0.002, 0.035);
+        add_drum(c, 0, 2, 0.12f);
+        break;
+    case P2_SFX_POWER_UP:
+        add_note(c, 0, 0.085, 60, W_PULSE25, 0.22f, 0.0f, 0.002, 0.018);
+        add_note(c, (long)(rate * 0.075), 0.085, 67, W_PULSE25, 0.24f, 0.0f, 0.002, 0.018);
+        add_note(c, (long)(rate * 0.150), 0.095, 72, W_PULSE25, 0.27f, 0.0f, 0.002, 0.022);
+        add_note(c, (long)(rate * 0.235), 0.150, 79, W_PULSE50, 0.28f, 0.0f, 0.002, 0.045);
+        add_note(c, (long)(rate * 0.285), 0.105, 84, W_TRI, 0.12f, 0.0f, 0.003, 0.050);
+        break;
+    case P2_SFX_POWER_DOWN:
+        add_note(c, 0, 0.090, 84, W_PULSE25, 0.25f, 0.0f, 0.001, 0.02);
+        add_note(c, (long)(rate * 0.075), 0.105, 72, W_PULSE25, 0.23f, 0.0f, 0.001, 0.025);
+        add_note(c, (long)(rate * 0.165), 0.135, 60, W_TRI, 0.20f, 0.0f, 0.002, 0.050);
+        add_note(c, (long)(rate * 0.240), 0.085, 53, W_PULSE50, 0.11f, 0.0f, 0.002, 0.035);
+        break;
+    case P2_SFX_DIE:
+        add_note(c, 0, 0.105, 79, W_PULSE25, 0.24f, 0.0f, 0.002, 0.03);
+        add_note(c, (long)(rate * 0.105), 0.125, 72, W_TRI, 0.23f, 0.0f, 0.002, 0.04);
+        add_note(c, (long)(rate * 0.230), 0.145, 64, W_TRI, 0.21f, 0.0f, 0.002, 0.05);
+        add_note(c, (long)(rate * 0.370), 0.190, 55, W_PULSE50, 0.19f, 0.0f, 0.003, 0.075);
+        add_note(c, (long)(rate * 0.480), 0.150, 48, W_TRI, 0.16f, 0.0f, 0.004, 0.100);
+        add_drum(c, (long)(rate * 0.350), 2, 0.10f);
+        break;
+    case P2_SFX_RESPAWN:
+        /* A fresh, buoyant three-note pickup that marks Luigi re-entering play. */
+        add_note(c, 0, 0.075, 64, W_TRI, 0.18f, 0.0f, 0.002, 0.025);
+        add_note(c, (long)(rate * 0.060), 0.080, 76, W_PULSE25, 0.23f, 0.0f, 0.002, 0.025);
+        add_note(c, (long)(rate * 0.125), 0.105, 83, W_PULSE50, 0.25f, 0.0f, 0.002, 0.035);
+        add_note(c, (long)(rate * 0.195), 0.085, 88, W_TRI, 0.12f, 0.0f, 0.003, 0.055);
+        add_drum(c, 0, 1, 0.045f);
+        break;
+    default:
+        break;
+    }
+
+    float peak = 0.0f;
+    for (long i = 0; i < total * 2; i++)
+        if (fabsf(c->d[i]) > peak) peak = fabsf(c->d[i]);
+    if (peak > 0.72f) {
+        float gain = 0.72f / peak;
+        for (long i = 0; i < total * 2; i++) c->d[i] *= gain;
+    }
+}
+
 static void resample_to(float **d, long *n, int from)
 {
     if (from == rate || !*d) return;
@@ -205,6 +332,17 @@ static int load_clip(Clip *c, const char *path)
 }
 
 /* ------------------------------------------------------------ device */
+static char *mp_sfx_setting_path(GameCfg *c, int player, int event)
+{
+    if (!c || event < 0 || event >= N_P2_SFX) return NULL;
+    switch (player) {
+    case 2: return c->p2_sfx_path[event];
+    case 3: return c->p3_sfx_path[event];
+    case 4: return c->p4_sfx_path[event];
+    default: return NULL;
+    }
+}
+
 static void audio_cb(void *ud, Uint8 *stream, int len)
 {
     (void)ud;
@@ -251,6 +389,21 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
             r += c->d[voices[v].pos * 2 + 1] * voices[v].vol;
             voices[v].pos++;
         }
+        for (int player = 0; player < MAX_MP_PLAYERS - 1; player++) {
+            for (int ev = 0; ev < N_P2_SFX; ev++) {
+                long pos = mp_sfx_pos[player][ev];
+                Clip *clip = &mp_sfx[player][ev];
+                if (pos < 0) continue;
+                if (pos >= clip->n || !clip->d) {
+                    mp_sfx_pos[player][ev] = -1;
+                    continue;
+                }
+                l += clip->d[pos * 2] * 0.78f;
+                r += clip->d[pos * 2 + 1] * 0.78f;
+                mp_sfx_pos[player][ev]++;
+                if (mp_sfx_pos[player][ev] >= clip->n) mp_sfx_pos[player][ev] = -1;
+            }
+        }
         if (l > 1) l = 1; else if (l < -1) l = -1;
         if (r > 1) r = 1; else if (r < -1) r = -1;
         out[i * 2] = l; out[i * 2 + 1] = r;
@@ -282,6 +435,11 @@ int audio_init(int latency)
     g_target = rate * tgt_ms[latency < 0 || latency >= N_LAT ? 1 : latency] / 1000;
     synth_music(&music);
     for (int i = 0; i < N_UI_SFX; i++) synth_sfx(&sfx[i], i);
+    for (int player = 0; player < MAX_MP_PLAYERS - 1; player++)
+        for (int i = 0; i < N_P2_SFX; i++) {
+            synth_p2_sfx(&mp_sfx[player][i], i);
+            mp_sfx_pos[player][i] = -1;
+        }
     SDL_PauseAudioDevice(dev, 0);
     return 0;
 }
@@ -290,6 +448,15 @@ void audio_shutdown(void)
 {
     audio_pad_close();
     if (dev) { SDL_CloseAudioDevice(dev); dev = 0; }
+    for (int player = 0; player < MAX_MP_PLAYERS - 1; player++) {
+        for (int i = 0; i < N_P2_SFX; i++) {
+            free(mp_sfx[player][i].d);
+            mp_sfx[player][i].d = NULL;
+            mp_sfx[player][i].n = 0;
+            mp_sfx_pos[player][i] = -1;
+            mp_loaded_path[player][i][0] = 0;
+        }
+    }
 }
 
 int audio_game_target(void) { return g_target; }
@@ -299,6 +466,8 @@ void audio_game_begin(void)
     if (!dev) return;
     SDL_LockMutex(mx);
     g_r = g_w = 0; g_active = 1; g_playing = 0; g_abort = 0; g_paused = 0; underruns = 0;
+    for (int player = 0; player < MAX_MP_PLAYERS - 1; player++)
+        for (int i = 0; i < N_P2_SFX; i++) mp_sfx_pos[player][i] = -1;
     g_last_l = g_last_r = 0;
     music_target = 0;
     SDL_UnlockMutex(mx);
@@ -308,7 +477,7 @@ void audio_game_end(void)
 {
     if (!dev) return;
     SDL_LockMutex(mx);
-    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1;
+    g_active = 0; g_playing = 0; g_r = g_w = 0; g_abort = 1; for (int p = 0; p < MAX_MP_PLAYERS - 1; p++) for (int i = 0; i < N_P2_SFX; i++) mp_sfx_pos[p][i] = -1;
     SDL_UnlockMutex(mx);
     SDL_CondBroadcast(cv);
 }
@@ -412,7 +581,40 @@ void audio_menu_apply(void)
             free(old.d);
         }
     }
+    /* Each multiplayer character owns an independent imported/built-in bank. */
+    GameCfg *mc = &settings.g[mp_bank_game];
+    for (int player = 2; player <= 4; player++) {
+        int pi = player - 2;
+        for (int i = 0; i < N_P2_SFX; i++) {
+            char *path = mp_sfx_setting_path(mc, player, i);
+            if (!path) continue;
+            if (strcmp(mp_loaded_path[pi][i], path)) {
+                Clip tmp = {0};
+                if (path[0] && load_clip(&tmp, path) != 0) path[0] = 0;
+                if (!tmp.d) {
+                    synth_p2_sfx(&tmp, i);
+                    mp_loaded_path[pi][i][0] = 0;
+                } else {
+                    snprintf(mp_loaded_path[pi][i], sizeof mp_loaded_path[pi][i], "%s", path);
+                }
+                SDL_LockMutex(mx);
+                Clip old = mp_sfx[pi][i];
+                mp_sfx[pi][i] = tmp;
+                mp_sfx_pos[pi][i] = -1;
+                SDL_UnlockMutex(mx);
+                free(old.d);
+            }
+        }
+    }
     audio_menu_music(music_want_on);
+}
+
+void audio_mp_set_game(int game)
+{
+    int selected = (game == GAME_SML2) ? GAME_SML2 : GAME_SML;
+    if (selected == mp_bank_game) return;
+    mp_bank_game = selected;
+    audio_menu_apply();
 }
 
 void audio_menu_music(int on)
@@ -438,6 +640,23 @@ void audio_sfx(int which)
     play_sfx(which);
 }
 void audio_sfx_preview(int which) { if (dev && which >= 0 && which < N_UI_SFX) play_sfx(which); }
+
+void audio_mp_sfx(int player, int which)
+{
+    if (!dev || player < 2 || player > MAX_MP_PLAYERS ||
+        which < 0 || which >= N_P2_SFX || !mp_sfx[player - 2][which].d) return;
+    SDL_LockMutex(mx);
+    mp_sfx_pos[player - 2][which] = 0;
+    SDL_UnlockMutex(mx);
+}
+
+void audio_mp_sfx_preview(int player, int which)
+{
+    audio_mp_sfx(player, which);
+}
+
+void audio_p2_sfx(int which) { audio_mp_sfx(2, which); }
+void audio_p2_sfx_preview(int which) { audio_mp_sfx_preview(2, which); }
 
 void audio_music_preview(void)
 {

@@ -21,6 +21,9 @@ int  rom_probe(int game, const char *path, RomStatus *st);
 int  rom_load(int game, const char *path, RomStatus *st);
 /* Apply a romhack (IPS/BPS/UPS patch or an already-patched ROM) on top of the loaded base ROM. */
 int  rom_apply_hack(const char *path, RomStatus *st);
+/* Build a separate patched .gb file for external players; the source ROM is never written. */
+int  rom_create_hack_copy(int game, const char *base_path, const char *hack_path,
+                          const char *output_path, RomStatus *st);
 void rom_clear_hack(RomStatus *st);
 /* Run everything in the interpreter instead of the recompiled code? */
 int  rom_needs_interpreter(void);

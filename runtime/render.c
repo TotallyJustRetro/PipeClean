@@ -6,15 +6,52 @@
 #include "texpack.h"
 
 static SDL_Renderer *ren;
+static int mp_color_game = GAME_SML;
 static SDL_Texture *tex_game, *tex_bloom;
 static int iw, ih;                       /* current picture size */
 static uint32_t *img;
 static float *gacc;                      /* ghost accumulator, 3 floats per pixel */
 static int gacc_valid;
 static uint32_t avg_rgb;
-static FilterCfg cur_f;                  /* filters used for the current picture */
+static FilterCfg cur_f; /* filters used for the current picture */
+
+static const LuigiColor *active_mp_player_color(int player)
+{
+    const GameCfg *c = &settings.g[mp_color_game];
+    int index = player == 1 ? c->p2_color :
+                (player == 2 ? c->p3_color : c->p4_color);
+    if (index < 0 || index >= N_LUIGI_COLORS)
+        index = player == 1 ? LUIGI_GREEN : (player == 2 ? LUIGI_BLUE : LUIGI_YELLOW);
+    return &luigi_colors[index];
+}
+
+static uint32_t luigi_overlay_pixel(int ci, int player)
+{
+    const LuigiColor *c = active_mp_player_color(player);
+    switch (ci & 3) {
+    case 1: return c->light;
+    case 2: return c->mid;
+    case 3: return c->dark;
+    default: return 0xF5E0C0u;
+    }
+}
+
+uint32_t render_sml1_luigi_color(void)
+{
+    return 0xFF000000u | active_mp_player_color(1)->swatch;
+}
+
+uint32_t render_sml1_mp_player_color(int player)
+{
+    if (player < 1 || player >= MAX_MP_PLAYERS) player = 1;
+    return 0xFF000000u | active_mp_player_color(player)->swatch;
+}
 
 void render_init(SDL_Renderer *r) { ren = r; }
+void render_set_mp_game(int game)
+{
+    mp_color_game = (game == GAME_SML2) ? GAME_SML2 : GAME_SML;
+}
 
 static void overlay_free(void);
 void render_shutdown(void)
@@ -55,6 +92,10 @@ void frame_from_ppu(Frame *f)
     memcpy(f->bgtile, ppu_bgtile, sizeof f->bgtile);
     memcpy(f->sprtile, ppu_sprtile, sizeof f->sprtile);
     memcpy(f->tiles, vram, sizeof f->tiles);
+    ppu_cgb_obj_palette_copy(f->cgb_obj_palette);
+    memset(f->p2_projectile_oam, 0, sizeof f->p2_projectile_oam);
+    memset(f->p2_effect_oam, 0, sizeof f->p2_effect_oam);
+    ppu_vram_bank1_copy(f->tiles_cgb1);
     f->lcd_on = ppu_lcd_is_on();
     f->w = ppu_w; f->xoff = ppu_xoff;
     f->player_x = rd8(0xC202); f->player_y = rd8(0xC201);
@@ -191,7 +232,11 @@ static void cpu_filters(const FilterCfg *f, int live, int N)
     free(c);
 }
 
-static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], int dx, int dy, int luigi)
+static void render_overlay_sml1_mario_src(Frame *f, const uint8_t *src_oam,
+                                                int sprite_count, int dx, int dy,
+                                                int mp_player,
+                                                const uint8_t *sprite_tiles,
+                                                const uint8_t *sprite_tiles_cgb1)
 {
     if (!f || !src_oam || !f->lcd_on || f->w <= 0) return;
 
@@ -199,7 +244,7 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
     int h = f->sprite_size16 ? 16 : 8;
     int sprite_neg = L > 8 ? 256 - (L - 8) : 256;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < sprite_count; i++) {
         const uint8_t *src = &src_oam[i * 4];
         if (!src[0]) continue;
 
@@ -215,15 +260,27 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
             if (fl & 0x40) row = h - 1 - row;
             uint8_t t = (uint8_t)(h == 16 ? (tile & 0xFE) : tile);
             int addr = (t + (row >> 3)) * 16 + (row & 7) * 2;
+            /* DX is CGB-only: OBJ attribute bit 3 selects tile data in VRAM bank 1. */
+            const uint8_t *tile_bank = (f->cgb_mode && (fl & 0x08))
+                ? (sprite_tiles_cgb1 ? sprite_tiles_cgb1 : f->tiles_cgb1)
+                : (sprite_tiles ? sprite_tiles : f->tiles);
             for (int px = 0; px < 8; px++) {
                 int x = sx + px;
                 if (x < 0 || x >= W) continue;
                 int bit = (fl & 0x20) ? px : 7 - px;
-                int ci = (((f->tiles[addr + 1] >> bit) & 1) << 1) | ((f->tiles[addr] >> bit) & 1);
+                int ci = (((tile_bank[addr + 1] >> bit) & 1) << 1) |
+                         ((tile_bank[addr] >> bit) & 1);
                 if (!ci) continue;
                 f->shade[y][x] = (pal >> (ci * 2)) & 3;
                 f->layer[y][x] = (fl & 0x10) ? 2 : 1;
-                if (luigi) f->luigi_mask[y][x] = 1;
+                if (mp_player > 0) f->luigi_mask[y][x] = (uint8_t)mp_player;
+                /* Separate overlays don't pass through the native PPU sprite
+                 * compositor, so apply the original CGB OBJ palette directly. */
+                if (f->cgb_mode) {
+                    uint32_t rgb = mp_player > 0 ? luigi_overlay_pixel(ci, mp_player) :
+                        f->cgb_obj_palette[((unsigned)(fl & 7) * 4u) + (unsigned)ci];
+                    f->rgb[y][x] = rgb & 0xFFFFFFu;
+                }
                 f->sprtile[y][x] = (uint16_t)(addr >> 4);
                 f->spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
                                            ((fl & 0x20) ? 0x40 : 0) |
@@ -236,17 +293,39 @@ static void render_overlay_sml1_mario_src(Frame *f, const uint8_t src_oam[16], i
 void render_overlay_sml1_mario(Frame *f, int dx, int dy)
 {
     if (!f) return;
-    render_overlay_sml1_mario_src(f, f->mario_oam, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, f->mario_oam, 4, dx, dy, 0, NULL, NULL);
 }
 
 void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, dx, dy, 0);
+    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 0, NULL, NULL);
 }
 
 void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int dy)
 {
-    render_overlay_sml1_mario_src(f, oam, dx, dy, 1);
+    render_overlay_sml1_mario_src(f, oam, 4, dx, dy, 1, NULL, NULL);
+}
+
+void render_overlay_sml1_mp_oam(Frame *f, const uint8_t *oam, int dx, int dy, int player)
+{
+    if (!f || player < 1 || player >= MAX_MP_PLAYERS) return;
+    int count = f->mp_player_sprite_count[player];
+    if (count < 1 || count > MP_MAX_OAM_SPRITES) return;
+    render_overlay_sml1_mario_src(f, oam, count, dx, dy, player,
+                                   emu_mp_player_sprite_tiles(player, 0),
+                                   emu_mp_player_sprite_tiles(player, 1));
+}
+
+void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy)
+{
+    render_overlay_sml1_mario_src(f, oam, 3, dx, dy, 0, NULL, NULL);
+}
+
+void render_overlay_sml1_effect_oam(Frame *f, const uint8_t oam[52], int dx, int dy)
+{
+    /* Overlay only Player 2's effect pool (slots 7-19); enemy sprites remain
+     * authoritative in Player 1's shared world and must not be duplicated. */
+    render_overlay_sml1_mario_src(f, oam, 13, dx, dy, 0, NULL, NULL);
 }
 
 void render_build(const Frame *f, int game, int live)
@@ -273,11 +352,9 @@ void render_build(const Frame *f, int game, int live)
     for (int y = 0; y < GB_H; y++)
         for (int x = 0; x < gw; x++) {
             int layer = f->layer[y][x] % 3;
-            static const uint32_t luigi_pal[4] = {
-                0xFFF5E0C0u, 0xFF8AE05Au, 0xFF2CA83Du, 0xFF175822u
-            };
             uint32_t col = f->cgb_mode ? (0xFF000000u | (f->rgb[y][x] & 0xFFFFFFu)) :
-                           (f->luigi_mask[y][x] ? luigi_pal[f->shade[y][x] & 3] : t[layer][f->shade[y][x] & 3]);
+                           (f->luigi_mask[y][x] ? (0xFF000000u | luigi_overlay_pixel(f->shade[y][x] & 3, f->luigi_mask[y][x]))
+                                                : t[layer][f->shade[y][x] & 3]);
             sr += (col >> 16) & 255; sg += (col >> 8) & 255; sb += col & 255;
             if (N == 1) { img[y * gw + x] = col; continue; }
             const TexTile *tt = NULL;

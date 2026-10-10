@@ -77,6 +77,12 @@ void ppu_vram_write(uint16_t a, uint8_t value)
 
 uint8_t ppu_vram_bank_read(void) { return (uint8_t)(0xFE | (vram_bank & 1)); }
 
+/* Copy the tile-data area of CGB VRAM bank 1 for frame-local overlays. */
+void ppu_vram_bank1_copy(uint8_t out[0x1800])
+{
+    if (out) memcpy(out, vram_cgb1, 0x1800);
+}
+
 void ppu_set_cgb_mode(int enabled) { cgb_render_enabled = enabled != 0; }
 int ppu_cgb_mode_enabled(void) { return cgb_render_enabled; }
 
@@ -89,6 +95,15 @@ static uint32_t cgb_rgb(const uint8_t *palette, unsigned pal, unsigned ci)
     g = (g * 255u + 15u) / 31u;
     b = (b * 255u + 15u) / 31u;
     return (r << 16) | (g << 8) | b;
+}
+
+/* Snapshot the active CGB OBJ palette as RGB24 for separately rendered P2 sprites. */
+void ppu_cgb_obj_palette_copy(uint32_t out[32])
+{
+    if (!out) return;
+    for (unsigned pal = 0; pal < 8; pal++)
+        for (unsigned ci = 0; ci < 4; ci++)
+            out[pal * 4 + ci] = cgb_rgb(cgb_obj_palette, pal, ci);
 }
 
 /* Resolve one BG/window pixel, including CGB tile attributes. */

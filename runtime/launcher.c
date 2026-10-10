@@ -24,9 +24,9 @@ static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
-enum { TAB_FILTERS = N_GAMES, TAB_AUDIO, N_TABS };
-enum { SUB_GAME, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
-static const char *sub_names[N_SUB] = {"Game", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
+enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, N_TABS };
+enum { SUB_GAME, SUB_ROMHACKS, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
+static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
 static int tab, sub[N_GAMES];
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
@@ -35,7 +35,7 @@ static int hack_ok[N_GAMES];
 static Frame prev[N_GAMES];
 static int prev_ok[N_GAMES];
 static int filter_game;                  /* which game the Filters tab previews */
-static int cap_kind, cap_btn, cap_slot;  /* binding capture: 1 = key, 2 = pad */
+static int cap_kind, cap_btn, cap_slot;  /* 1 key, 2 pad, 3 shortcut key, 4 shortcut pad, 5 P2 key, 6 P2 pad */
 static char toast_msg[200];
 static float toast_t;
 static int click_id;
@@ -50,9 +50,22 @@ static float anim_clock;
 static int wide_dirty, wide_note[N_GAMES];
 static SDL_Texture *state_thumb_tex[N_GAMES][10];
 static char state_thumb_path_cache[N_GAMES][10][1200];
+static SDL_Texture *romhack_thumb_tex[N_GAMES][MAX_ROMHACKS];
+static char romhack_thumb_path_cache[N_GAMES][MAX_ROMHACKS][512];
+static float romhack_scroll[N_GAMES];
+static int romhack_title_editing_game = -1, romhack_title_editing_index = -1;
+static char romhack_title_before[ROMHACK_TITLE_LEN];
 static int load_state_request[N_GAMES];
 static char sfx_test_msg[64];
 static int controller_menu = -1;
+static int multiplayer_name_editing;
+static int multiplayer_count_menu = -1;
+static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
+static int mp_config_game = GAME_SML;
+static int launcher_controller_cursor_active;
+static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
+static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
+static float launcher_controller_x, launcher_controller_y;
 static int clickable(float x, float y, float w, float h, int *over_out);
 
 static void controller_name(int device, char *out, size_t n)
@@ -123,6 +136,51 @@ int launcher_take_load_state(int game)
     return slot;
 }
 
+static void clear_romhack_thumbs(void)
+{
+    for (int g = 0; g < N_GAMES; g++) {
+        for (int i = 0; i < MAX_ROMHACKS; i++) {
+            if (romhack_thumb_tex[g][i]) SDL_DestroyTexture(romhack_thumb_tex[g][i]);
+            romhack_thumb_tex[g][i] = NULL;
+            romhack_thumb_path_cache[g][i][0] = 0;
+        }
+    }
+}
+
+static void clear_romhack_thumbs_game(int g)
+{
+    if (g < 0 || g >= N_GAMES) return;
+    for (int i = 0; i < MAX_ROMHACKS; i++) {
+        if (romhack_thumb_tex[g][i]) SDL_DestroyTexture(romhack_thumb_tex[g][i]);
+        romhack_thumb_tex[g][i] = NULL;
+        romhack_thumb_path_cache[g][i][0] = 0;
+    }
+}
+
+static SDL_Texture *romhack_thumb_get(int g, int index)
+{
+    if (g < 0 || g >= N_GAMES || index < 0 || index >= MAX_ROMHACKS || !g_ren) return NULL;
+    const char *path = settings.g[g].romhacks[index].thumbnail;
+    if (!path[0] || !file_exists(path)) {
+        if (romhack_thumb_tex[g][index]) SDL_DestroyTexture(romhack_thumb_tex[g][index]);
+        romhack_thumb_tex[g][index] = NULL;
+        romhack_thumb_path_cache[g][index][0] = 0;
+        return NULL;
+    }
+    if (romhack_thumb_tex[g][index] &&
+        !strcmp(romhack_thumb_path_cache[g][index], path))
+        return romhack_thumb_tex[g][index];
+    if (romhack_thumb_tex[g][index]) SDL_DestroyTexture(romhack_thumb_tex[g][index]);
+    romhack_thumb_tex[g][index] = NULL;
+    SDL_Surface *surface = IMG_Load(path);
+    if (!surface) return NULL;
+    romhack_thumb_tex[g][index] = SDL_CreateTextureFromSurface(g_ren, surface);
+    SDL_FreeSurface(surface);
+    if (!romhack_thumb_tex[g][index]) return NULL;
+    snprintf(romhack_thumb_path_cache[g][index], sizeof romhack_thumb_path_cache[g][index], "%s", path);
+    return romhack_thumb_tex[g][index];
+}
+
 static void clear_state_thumbs(void)
 {
     for (int g = 0; g < N_GAMES; g++) {
@@ -137,8 +195,9 @@ static void clear_state_thumbs(void)
 static SDL_Texture *state_thumb_get(int g, int slot)
 {
     if (g < 0 || g >= N_GAMES || slot < 0 || slot >= 10 || !g_ren) return NULL;
-    char path[1200];
-    snprintf(path, sizeof path, "%sstates/%s.slot%d.thumb.bmp", settings_dir(), games[g].id, slot);
+    char path[1200], id[128];
+    launcher_game_file_id(g, id, sizeof id);
+    snprintf(path, sizeof path, "%sstates/%s.slot%d.thumb.bmp", settings_dir(), id, slot);
     if (!file_exists(path)) {
         if (state_thumb_tex[g][slot]) SDL_DestroyTexture(state_thumb_tex[g][slot]);
         state_thumb_tex[g][slot] = NULL;
@@ -171,6 +230,7 @@ static void rom_check(int g)
 
 int launcher_prepare(int g, char *err, size_t n)
 {
+    if (g < 0 || g >= N_GAMES) { snprintf(err, n, "Invalid game selection."); return 1; }
     GameCfg *c = &settings.g[g];
     RomStatus st;
     if (!c->rom_path[0] || rom_load(g, c->rom_path, &st)) {
@@ -178,22 +238,59 @@ int launcher_prepare(int g, char *err, size_t n)
         return 1;
     }
     hack_ok[g] = 0;
-    if (c->hack_path[0]) {
-        if (rom_apply_hack(c->hack_path, &st) == 0) {
-            hack_ok[g] = 1;
-            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-        } else {
-            hack_ok[g] = 0;
-            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-            snprintf(err, n, "Couldn't apply the selected romhack: %.180s", st.msg);
+    hack_msg[g][0] = 0;
+    if (c->romhack_selected >= 0) {
+        int index = c->romhack_selected;
+        if (index >= c->romhack_count || index >= MAX_ROMHACKS ||
+            !c->romhacks[index].path[0]) {
+            snprintf(err, n, "Choose a valid ROM hack in the ROM Hacks tab.");
             return 1;
         }
+        const char *hack = c->romhacks[index].path;
+        if (!file_exists(hack)) {
+            snprintf(hack_msg[g], sizeof hack_msg[g], "The selected ROM hack file is missing.");
+            snprintf(err, n, "%s", hack_msg[g]);
+            return 1;
+        }
+        if (rom_apply_hack(hack, &st) != 0) {
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+            snprintf(err, n, "Couldn't apply the selected ROM hack: %.170s", st.msg);
+            return 1;
+        }
+        hack_ok[g] = 1;
+        snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
     }
     int wl, wr;
     wide_dims(g, c->wide, &wl, &wr);
     if (wl + wr > 0 && !wide_install(g, wl, wr)) { wl = wr = 0; wide_note[g] = 1; } else wide_note[g] = 0;
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
+}
+
+void launcher_game_file_id(int g, char *out, size_t n)
+{
+    if (!out || !n) return;
+    if (g < 0 || g >= N_GAMES) { snprintf(out, n, "unknown"); return; }
+    const GameCfg *c = &settings.g[g];
+    int index = c->romhack_selected;
+    if (index >= 0 && index < c->romhack_count && index < MAX_ROMHACKS &&
+        c->romhacks[index].path[0]) {
+        /* Stable across list reordering; also distinguish the same patch used
+         * against different base ROM paths. */
+        uint32_t hash = 2166136261u;
+        const char *parts[2] = {c->rom_path, c->romhacks[index].path};
+        for (int part = 0; part < 2; part++) {
+            for (const unsigned char *p = (const unsigned char *)parts[part]; *p; p++) {
+                hash ^= *p;
+                hash *= 16777619u;
+            }
+            hash ^= 0xFFu;
+            hash *= 16777619u;
+        }
+        snprintf(out, n, "%s-hack%08X", games[g].id, (unsigned)hash);
+    } else {
+        snprintf(out, n, "%s", games[g].id);
+    }
 }
 
 static void ensure_pack(int g)
@@ -230,34 +327,122 @@ static void make_preview(int g)
 
 static void set_rom(int g, const char *path)
 {
+    if (g < 0 || g >= N_GAMES || !path) return;
     snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", path);
     rom_check(g);
     if (rs[g].ok) make_preview(g);
     else prev_ok[g] = 0;
 }
 
-static void set_hack(int g, const char *path)
+static void romhack_title_from_path(const char *path, char *out, size_t n)
+{
+    if (!out || !n) return;
+    out[0] = 0;
+    const char *base = path_base(path ? path : "");
+    if (!base || !base[0]) base = "Untitled ROM Hack";
+    size_t len = strlen(base);
+    const char *dot = strrchr(base, '.');
+    if (dot && dot > base) len = (size_t)(dot - base);
+    if (len >= n) len = n - 1;
+    size_t w = 0;
+    for (size_t i = 0; i < len && w + 1 < n; i++) {
+        char ch = base[i];
+        if (ch == '_') ch = ' ';
+        out[w++] = ch;
+    }
+    out[w] = 0;
+    while (w && out[w - 1] == ' ') out[--w] = 0;
+    if (!w) snprintf(out, n, "Untitled ROM Hack");
+}
+
+static void romhack_migrate_legacy(int g)
 {
     GameCfg *c = &settings.g[g];
-    if (!rs[g].ok) { launcher_toast("Choose the original ROM first."); return; }
-    snprintf(c->hack_path, sizeof c->hack_path, "%s", path);
+    if (!c->hack_path[0]) return;
+    for (int i = 0; i < c->romhack_count && i < MAX_ROMHACKS; i++) {
+        if (!strcmp(c->romhacks[i].path, c->hack_path)) {
+            c->romhack_selected = i;
+            c->hack_path[0] = 0;
+            return;
+        }
+    }
+    if (c->romhack_count >= MAX_ROMHACKS) {
+        c->hack_path[0] = 0;
+        c->romhack_selected = -1;
+        return;
+    }
+    int index = c->romhack_count++;
+    snprintf(c->romhacks[index].path, sizeof c->romhacks[index].path, "%s", c->hack_path);
+    romhack_title_from_path(c->hack_path, c->romhacks[index].title, sizeof c->romhacks[index].title);
+    c->romhack_selected = index;
+    c->hack_path[0] = 0;
+}
+
+static void romhack_add(int g, const char *path)
+{
+    if (g < 0 || g >= N_GAMES || !path || !path[0]) return;
+    GameCfg *c = &settings.g[g];
+    if (!rs[g].ok || !c->rom_path[0]) {
+        launcher_toast("Choose a working original ROM on the Game tab first.");
+        return;
+    }
+    for (int i = 0; i < c->romhack_count && i < MAX_ROMHACKS; i++) {
+        if (c->romhacks[i].path[0] && !strcmp(c->romhacks[i].path, path)) {
+            c->romhack_selected = i;
+            sub[g] = SUB_ROMHACKS;
+            make_preview(g);
+            settings_save();
+            launcher_toast("That ROM hack is already in this library.");
+            return;
+        }
+    }
+    if (c->romhack_count >= MAX_ROMHACKS) {
+        launcher_toast("This game already has the maximum of 16 ROM hacks.");
+        return;
+    }
+
     RomStatus st;
-    if (rom_load(g, c->rom_path, &st)) {
+    if (rom_load(g, c->rom_path, &st) != 0 || rom_apply_hack(path, &st) != 0) {
         hack_ok[g] = 0;
         snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-        launcher_toast(st.msg);
+        launcher_toast(st.msg[0] ? st.msg : "Couldn't validate that ROM hack.");
         return;
     }
-    if (path[0] && rom_apply_hack(path, &st)) {
-        /* Keep the selected path and its error visible so the user can see
-         * why it was rejected and replace it without browsing a second time. */
-        hack_ok[g] = 0;
-        snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
-        launcher_toast(st.msg);
-        return;
+
+    int index = c->romhack_count++;
+    RomHackEntry *entry = &c->romhacks[index];
+    memset(entry, 0, sizeof *entry);
+    snprintf(entry->path, sizeof entry->path, "%s", path);
+    romhack_title_from_path(path, entry->title, sizeof entry->title);
+    c->romhack_selected = index;
+    sub[g] = SUB_ROMHACKS;
+    settings_save();
+    clear_romhack_thumbs_game(g);
+    snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+    hack_ok[g] = 1;
+    make_preview(g);
+    launcher_toast("ROM hack added as a separate game profile. The original ROM file is unchanged.");
+}
+
+static void romhack_remove(int g, int index)
+{
+    if (g < 0 || g >= N_GAMES) return;
+    GameCfg *c = &settings.g[g];
+    if (index < 0 || index >= c->romhack_count || index >= MAX_ROMHACKS) return;
+    if (romhack_title_editing_game == g && romhack_title_editing_index == index) {
+        romhack_title_editing_game = romhack_title_editing_index = -1;
+        SDL_StopTextInput();
     }
-    snprintf(hack_msg[g], sizeof hack_msg[g], "%s", path[0] ? st.msg : "");
-    hack_ok[g] = path[0] != 0;
+    if (c->romhack_selected == index) c->romhack_selected = -1;
+    else if (c->romhack_selected > index) c->romhack_selected--;
+    if (index + 1 < c->romhack_count)
+        memmove(&c->romhacks[index], &c->romhacks[index + 1],
+                (size_t)(c->romhack_count - index - 1) * sizeof c->romhacks[0]);
+    c->romhack_count--;
+    memset(&c->romhacks[c->romhack_count], 0, sizeof c->romhacks[0]);
+    if (c->romhack_count == 0) c->romhack_selected = -1;
+    clear_romhack_thumbs_game(g);
+    settings_save();
     make_preview(g);
 }
 
@@ -273,6 +458,13 @@ static void ensure_background(int g)
 void launcher_init(void)
 {
     clear_state_thumbs();
+    clear_romhack_thumbs();
+    int migrated_legacy_hacks = 0;
+    for (int g = 0; g < N_GAMES; g++) {
+        if (settings.g[g].hack_path[0]) migrated_legacy_hacks = 1;
+        romhack_migrate_legacy(g);
+    }
+    if (migrated_legacy_hacks) settings_save();
     for (int g = 0; g < N_GAMES; g++) load_state_request[g] = -1;
     for (int g = 0; g < N_GAMES; g++) rom_check(g);
     char found[N_GAMES][512];
@@ -281,6 +473,11 @@ void launcher_init(void)
     for (int g = 0; g < N_GAMES; g++)
         if (!rs[g].ok && found[g][0]) { snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", found[g]); rom_check(g); }
     tab = settings.last_tab >= 0 && settings.last_tab < N_TABS ? settings.last_tab : 0;
+    launcher_controller_cursor_active = 0;
+    launcher_controller_confirm_was_down = launcher_controller_back_was_down = 0;
+    launcher_controller_wait_neutral = launcher_ignore_pad_confirm = 0;
+    launcher_controller_x = 136.0f;
+    launcher_controller_y = 129.0f;
     for (int g = 0; g < N_GAMES; g++) if (!games[g].external_player && rs[g].ok && !prev_ok[g]) make_preview(g);
     filter_game = 0;
     if (getenv("GBL_TAB")) { int t = 0, u = 0; sscanf(getenv("GBL_TAB"), "%d,%d", &t, &u); tab = t; if (t < N_GAMES) sub[t] = u; }
@@ -290,6 +487,7 @@ void launcher_init(void)
 void launcher_enter(void)
 {
     clear_state_thumbs();
+    clear_romhack_thumbs();
     for (int g = 0; g < N_GAMES; g++) rom_check(g);
     for (int g = 0; g < N_GAMES; g++) if (rs[g].ok && !prev_ok[g]) make_preview(g);
     loaded_pack_game = -1;
@@ -298,7 +496,7 @@ void launcher_enter(void)
     audio_menu_music(1);
 }
 
-void launcher_shutdown(void) { clear_state_thumbs(); tex_collect_save(); }
+void launcher_shutdown(void) { clear_state_thumbs(); clear_romhack_thumbs(); tex_collect_save(); }
 
 /* ------------------------------------------------------------------ small drawing helpers */
 static SDL_Rect to_px(float x, float y, float w, float h)
@@ -320,6 +518,95 @@ static int clickable(float x, float y, float w, float h, int *over_out)
     if (over_out) *over_out = over;
     if (clicked && ui_sfx_cb) ui_sfx_cb(SFX_CLICK);
     return clicked;
+}
+
+static void launcher_controller_default_cursor(void)
+{
+    /* Start on the selected sidebar entry, so the initial position is clear. */
+    const float sx = 24.0f, sy = 108.0f;
+    const float row = N_GAMES > 4 ? 46.0f : 76.0f;
+    const float h = N_GAMES > 4 ? 42.0f : 68.0f;
+    launcher_controller_x = sx + 112.0f;
+    if (tab < N_GAMES) {
+        launcher_controller_y = sy + tab * row + h * 0.5f;
+    } else {
+        float y2 = sy + N_GAMES * row + 8.0f;
+        launcher_controller_y = y2 + 12.0f + (tab - TAB_MULTIPLAYER) * 52.0f + 22.0f;
+    }
+}
+
+static void launcher_controller_update(float dt)
+{
+    float ax = 0.0f, ay = 0.0f;
+    int confirm = 0, back = 0;
+    pad_poll_launcher(&ax, &ay, &confirm, &back);
+
+    /* A button used for binding capture mustn't also activate a UI control. */
+    if (launcher_ignore_pad_confirm) {
+        if (!confirm) launcher_ignore_pad_confirm = 0;
+        confirm = 0;
+    }
+
+    int input = fabsf(ax) > 0.001f || fabsf(ay) > 0.001f || confirm || back;
+    if (launcher_controller_wait_neutral) {
+        if (input) {
+            launcher_controller_back_was_down = back;
+            return;
+        }
+        launcher_controller_wait_neutral = 0;
+    }
+
+    if (!launcher_controller_cursor_active && input) {
+        launcher_controller_cursor_active = 1;
+        launcher_controller_default_cursor();
+    }
+    if (!launcher_controller_cursor_active) {
+        launcher_controller_back_was_down = back;
+        return;
+    }
+
+    if (dt < 0.0f) dt = 0.0f;
+    if (dt > 0.05f) dt = 0.05f;
+    launcher_controller_x += ax * 560.0f * dt;
+    launcher_controller_y += ay * 560.0f * dt;
+    if (launcher_controller_x < 6.0f) launcher_controller_x = 6.0f;
+    if (launcher_controller_x > UI_W - 6.0f) launcher_controller_x = UI_W - 6.0f;
+    if (launcher_controller_y < 6.0f) launcher_controller_y = 6.0f;
+    if (launcher_controller_y > UI_H - 6.0f) launcher_controller_y = UI_H - 6.0f;
+
+    ui_mouse.x = launcher_controller_x;
+    ui_mouse.y = launcher_controller_y;
+    ui_mouse.inside = 1;
+
+    int can_click = !cap_kind && !multiplayer_name_editing;
+    int ui_confirm = can_click ? confirm : 0;
+    if (ui_confirm != launcher_controller_confirm_was_down)
+        ui_mouse_button(ui_confirm);
+    launcher_controller_confirm_was_down = ui_confirm;
+
+    if (back && !launcher_controller_back_was_down) {
+        SDL_Event cancel;
+        memset(&cancel, 0, sizeof cancel);
+        cancel.type = SDL_KEYDOWN;
+        cancel.key.type = SDL_KEYDOWN;
+        cancel.key.state = SDL_PRESSED;
+        cancel.key.keysym.sym = SDLK_ESCAPE;
+        launcher_event(&cancel);
+        if (controller_menu >= 0) controller_menu = -1;
+        if (multiplayer_count_menu >= 0) multiplayer_count_menu = -1;
+    }
+    launcher_controller_back_was_down = back;
+}
+
+static void launcher_leave_controller_cursor(void)
+{
+    if (!launcher_controller_cursor_active) return;
+    launcher_controller_cursor_active = 0;
+    launcher_controller_wait_neutral = 1;
+    ui_mouse_button(0);
+    /* A virtual release caused by moving the physical mouse isn't a click. */
+    ui_mouse.released = 0;
+    launcher_controller_confirm_was_down = 0;
 }
 
 static uint32_t mixc(uint32_t a, uint32_t b, float t)
@@ -417,6 +704,185 @@ static void sub_external_game(int g, float x, float y)
                  "Battery saves are written alongside the selected ROM as a .sav file. Keep each ROM and its save file together.", 2);
 }
 
+static void romhack_select_profile(int g, int index)
+{
+    if (g < 0 || g >= N_GAMES) return;
+    GameCfg *c = &settings.g[g];
+    if (index < -1 || index >= c->romhack_count || index >= MAX_ROMHACKS) return;
+    c->romhack_selected = index;
+    settings_save();
+
+    if (index < 0) {
+        hack_ok[g] = 0;
+        hack_msg[g][0] = 0;
+        make_preview(g);
+        return;
+    }
+    if (games[g].external_player) {
+        RomStatus st;
+        if (rom_load(g, c->rom_path, &st) ||
+            rom_apply_hack(c->romhacks[index].path, &st)) {
+            hack_ok[g] = 0;
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+            launcher_toast(st.msg);
+        } else {
+            hack_ok[g] = 1;
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+        }
+        return;
+    }
+    make_preview(g);
+    if (!hack_ok[g] && hack_msg[g][0]) launcher_toast(hack_msg[g]);
+}
+
+static void draw_romhack_thumb(int g, int index, float x, float y, float w, float h)
+{
+    ui_rrect(x, y, w, h, 9, HEX(0x0A0D16));
+    SDL_Texture *t = index >= 0 ? romhack_thumb_get(g, index) : NULL;
+    if (t) {
+        int tw = 0, th = 0;
+        SDL_QueryTexture(t, NULL, NULL, &tw, &th);
+        if (tw > 0 && th > 0) draw_cover(t, tw, th, x + 3, y + 3, w - 6, h - 6);
+        return;
+    }
+    uint32_t accent = HEX(index < 0 ? games[g].accent : ui_accent);
+    ui_rrect(x + 4, y + 4, w - 8, h - 8, 7, (accent & 0xFFFFFF00u) | 45u);
+    ui_text_c(F_BOLD, 14, x + w * 0.5f, y + h * 0.5f - 9,
+              index < 0 ? HEX(games[g].accent) : C_TEXT,
+              index < 0 ? "ORIGINAL" : "ROM HACK");
+    ui_text_c(F_REG, 10, x + w * 0.5f, y + h * 0.5f + 12, C_DIM,
+              index < 0 ? "BASE ROM" : "ADD THUMBNAIL");
+}
+
+static void sub_romhacks(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    const float lw = 356.0f, gap = 14.0f, rw = 808.0f - lw - gap;
+    float rx = x + lw + gap;
+    card(x, y, lw, 476, "ROM HACK LIBRARY");
+    ui_text(F_REG, 11, x + 18, y + 34, C_DIM,
+            "Choose the original or a separate patched profile.");
+    if (ui_button(x + lw - 105, y + 10, 88, 30, "Add hack +", B_PRIMARY,
+                  rs[g].ok && c->romhack_count < MAX_ROMHACKS)) {
+        char path[1100];
+        if (dlg_pick(DLG_PATCH, "Add a ROM hack or patched ROM", path, sizeof path))
+            romhack_add(g, path);
+    }
+
+    const float list_x = x + 10, list_y = y + 58;
+    const float list_w = lw - 20, list_h = 350.0f;
+    int count = c->romhack_count;
+    if (count < 0) count = 0;
+    if (count > MAX_ROMHACKS) count = MAX_ROMHACKS;
+    float row_h = 68.0f, row_gap = 7.0f, row_step = row_h + row_gap;
+    float content_h = (count + 1) * row_step;
+    float max_scroll = content_h > list_h ? content_h - list_h : 0.0f;
+    if (ui_hover(list_x, list_y, list_w, list_h) && ui_mouse.wheel != 0)
+        romhack_scroll[g] -= ui_mouse.wheel * 52.0f;
+    if (romhack_scroll[g] < 0) romhack_scroll[g] = 0;
+    if (romhack_scroll[g] > max_scroll) romhack_scroll[g] = max_scroll;
+
+    ui_clip(list_x, list_y, list_w, list_h);
+    for (int row = 0; row <= count; row++) {
+        int index = row - 1; /* Row zero is always the untouched original game. */
+        if (index >= 0 && !c->romhacks[index].path[0]) continue;
+        float ry = list_y + row * row_step - romhack_scroll[g];
+        if (ry + row_h < list_y || ry > list_y + list_h) continue;
+
+        int selected = c->romhack_selected == index;
+        int over = 0;
+        int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
+        uint32_t bg = selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u)
+                               : (over ? C_BTN_H : C_PANEL2);
+        ui_rrect(list_x + 2, ry, list_w - 4, row_h, 9, bg);
+        if (selected) ui_stroke(list_x + 2, ry, list_w - 4, row_h, 9, 1.5f, HEX(ui_accent));
+        draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
+        const char *title = index < 0 ? "Original game" :
+            (c->romhacks[index].title[0] ? c->romhacks[index].title : "Untitled ROM Hack");
+        ui_text_fit_tail(F_BOLD, 12, list_x + 90, ry + 11, list_w - 104, C_TEXT, title);
+        ui_text_fit_tail(F_REG, 10, list_x + 90, ry + 34, list_w - 104, C_DIM,
+                         index < 0 ? "Unmodified base ROM" : path_base(c->romhacks[index].path));
+        if (clicked) romhack_select_profile(g, index);
+    }
+    ui_unclip();
+    if (content_h > list_h) {
+        float track_x = x + lw - 7, track_y = list_y;
+        float track_h = list_h;
+        float thumb_h = track_h * list_h / content_h;
+        if (thumb_h < 26) thumb_h = 26;
+        float thumb_y = track_y + (track_h - thumb_h) * romhack_scroll[g] / max_scroll;
+        ui_rrect(track_x, track_y, 3, track_h, 2, C_LINE);
+        ui_rrect(track_x - 1, thumb_y, 5, thumb_h, 3, HEX(ui_accent));
+    }
+    ui_text_fit(F_REG, 10, x + 14, y + 438, lw - 28, C_DIM,
+                "Scroll to browse. The original ROM file is never modified.");
+
+    card(rx, y, rw, 476, "SELECTED VERSION");
+    int index = c->romhack_selected;
+    if (index < 0 || index >= count || !c->romhacks[index].path[0]) {
+        draw_romhack_thumb(g, -1, rx + 18, y + 50, 164, 122);
+        ui_text_fit_tail(F_BOLD, 18, rx + 198, y + 54, rw - 216, C_TEXT, games[g].name);
+        ui_text(F_REG, 12, rx + 198, y + 83, C_OK, "Original game");
+        ui_text_wrap(F_REG, 12, rx + 198, y + 108, rw - 216, C_DIM,
+                     "This uses the main ROM file with no hack applied.", 3);
+        label(rx + 18, y + 190, "MAIN ROM");
+        path_box(rx + 18, y + 212, rw - 36, c->rom_path, "Choose the original ROM on the Game tab");
+        status_line(rx + 18, y + 262, rw - 36, rs[g].ok ? 1 : 3,
+                    rs[g].ok ? "Ready to play unchanged." : rs[g].msg);
+        ui_text_wrap(F_REG, 12, rx + 18, y + 305, rw - 36, C_DIM,
+                     "Selecting a ROM hack creates a separate play profile. Your base ROM stays as-is.", 3);
+    } else {
+        RomHackEntry *entry = &c->romhacks[index];
+        draw_romhack_thumb(g, index, rx + 18, y + 50, 164, 122);
+        int editing = romhack_title_editing_game == g &&
+                      romhack_title_editing_index == index;
+        if (editing) ui_stroke(rx + 194, y + 49, rw - 212, 31, 6, 1.5f, C_WARN);
+        ui_text_fit_tail(F_BOLD, 17, rx + 200, y + 54, rw - 216, C_TEXT,
+                         entry->title[0] ? entry->title : "Untitled ROM Hack");
+        ui_text_fit_tail(F_REG, 11, rx + 200, y + 82, rw - 216, C_DIM,
+                         path_base(entry->path));
+        int exists = file_exists(entry->path);
+        status_line(rx + 198, y + 110, rw - 214, exists ? (hack_ok[g] ? 1 : 2) : 3,
+                    !exists ? "Hack file is missing." :
+                    (hack_ok[g] ? "Profile selected and ready." :
+                     (hack_msg[g][0] ? hack_msg[g] : "Select profile to validate.")));
+
+        label(rx + 18, y + 190, "ROM HACK FILE");
+        path_box(rx + 18, y + 212, rw - 36, entry->path, "No file selected");
+        float by = y + 264;
+        if (ui_button(rx + 18, by, 94, 32, editing ? "Editing…" : "Rename", B_NORMAL, !editing)) {
+            romhack_title_editing_game = g;
+            romhack_title_editing_index = index;
+            snprintf(romhack_title_before, sizeof romhack_title_before, "%s", entry->title);
+            SDL_StartTextInput();
+            launcher_toast("Type the title; press Enter to save or Esc to cancel.");
+        }
+        if (ui_button(rx + 120, by, 132, 32, "Choose thumbnail", B_NORMAL, !editing)) {
+            char path[1100];
+            if (dlg_pick(DLG_IMAGE, "Choose this ROM hack's thumbnail", path, sizeof path)) {
+                snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", path);
+                clear_romhack_thumbs_game(g);
+                settings_save();
+            }
+        }
+        if (ui_button(rx + 260, by, 80, 32, "Remove", B_DANGER, !editing)) {
+            romhack_remove(g, index);
+            launcher_toast("ROM hack removed from the library.");
+        }
+        if (editing) ui_text(F_REG, 10, rx + 18, y + 305, C_WARN,
+                             "Typing changes the title shown in the library.");
+        else ui_text_wrap(F_REG, 11, rx + 18, y + 305, rw - 36, C_DIM,
+                          "This profile is applied at launch. The base ROM and its save remain separate.", 3);
+    }
+    if (!rs[g].ok) {
+        ui_text_wrap(F_REG, 11, rx + 18, y + 400, rw - 36, C_WARN,
+                     "Add a valid original ROM on the Game tab before playing a hack.", 2);
+    } else {
+        ui_text_fit_tail(F_REG, 10, rx + 18, y + 442, rw - 36, C_DIM,
+                         index < 0 ? "Play launches the original game." : "Play launches the selected ROM hack.");
+    }
+}
+
 /* ------------------------------------------------------------------ game tab: Game */
 static void sub_game(int g, float x, float y)
 {
@@ -441,19 +907,19 @@ static void sub_game(int g, float x, float y)
         }
     }
     status_line(rx + 18, y + 108, rw - 36, rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2), rs[g].msg);
-    /* hack */
-    label(rx + 18, y + 150, "Romhack or patch (optional)");
-    path_box(rx + 18, y + 172, rw - 18 * 2 - 110 - 66, c->hack_path, "None");
-    if (ui_button(rx + rw - 18 - 100 - 60, y + 172, 100, 36, "Browse…", B_NORMAL, rs[g].ok)) {
-        char p[1100];
-        if (dlg_pick(DLG_PATCH, "Choose a romhack or patch", p, sizeof p)) set_hack(g, p);
-    }
-    if (ui_button(rx + rw - 18 - 52, y + 172, 52, 36, "Clear", B_GHOST, c->hack_path[0] != 0)) set_hack(g, "");
-    if (hack_msg[g][0] && c->hack_path[0]) status_line(rx + 18, y + 216, rw - 36, hack_ok[g] ? 1 : 3, hack_msg[g]);
-    else ui_text(F_REG, 12, rx + 18, y + 216, C_DIM, "Accepts .ips  .bps  .ups patches, or an already patched .gb");
-    ui_text_wrap(F_REG, 12, rx + 18, y + 244, rw - 36, C_DIM,
-                 games[g].lifted ? "Dr. Mario runs as native code. If a hack changes the game's program (not just its graphics or data) it automatically switches to compatibility mode."
-                                  : "This game runs through the built-in CPU core with full cartridge bank switching, so romhacks work without any extra step.", 3);
+    /* ROM hack profiles live separately from the source ROM path. */
+    label(rx + 18, y + 150, "ROM hack profiles");
+    ui_text_wrap(F_REG, 12, rx + 18, y + 172, rw - 36, C_DIM,
+                 "Add patches or already-patched ROMs on the ROM Hacks tab. Each entry is a separate selectable game profile; the original ROM file is never changed.", 3);
+    char profile_label[128];
+    if (c->romhack_selected >= 0 && c->romhack_selected < c->romhack_count)
+        snprintf(profile_label, sizeof profile_label, "Selected: %s",
+                 c->romhacks[c->romhack_selected].title[0] ? c->romhacks[c->romhack_selected].title : "ROM hack");
+    else
+        snprintf(profile_label, sizeof profile_label, "Selected: Original game");
+    ui_text_fit_tail(F_REG, 12, rx + 18, y + 224, rw - 36, C_TEXT, profile_label);
+    if (ui_button(rx + 18, y + 250, rw - 36, 34, "Manage ROM Hacks…", B_NORMAL, 1))
+        sub[g] = SUB_ROMHACKS;
     /* save data */
     label(rx + 18, y + 330, "Save data");
     char sp[1200];
@@ -525,27 +991,114 @@ static void sub_display(int g, float x, float y)
 static void bind_cell(int g, float x, float y, float w, int kind, int btn, int slot)
 {
     GameCfg *c = &settings.g[g];
-    int pad_device = slot >= 0 && slot < 2 ? c->pad_device[slot] : -1;
+    int pad_device = slot >= 0 && slot < MAX_MP_PLAYERS ? c->pad_device[slot] : -1;
     int available = kind != 2 || (pad_device >= 0 && pad_device < pad_count());
     int over = 0;
-    int clicked = available ? clickable(x, y, w, 32, &over) : 0;
+    int clicked = available ? clickable(x, y, w, 28, &over) : 0;
     int active = cap_kind == kind && cap_btn == btn && cap_slot == slot;
     uint32_t fill = !available ? RGBA(255,255,255,3) :
                     (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
-    ui_rrect(x, y, w, 32, 8, fill);
+    ui_rrect(x, y, w, 28, 7, fill);
     char b[48];
     if (!available) {
         snprintf(b, sizeof b, "—");
-        ui_text_c(F_REG, 13, x + w / 2, y + 7, C_DIM, b);
-    } else if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 7, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
+        ui_text_c(F_REG, 13, x + w / 2, y + 5, C_DIM, b);
+    } else if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 5, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
     else {
         if (kind == 1) key_code_name(c->key[btn][slot], b, sizeof b); else pad_code_name_device(pad_device, c->pad[btn][slot], b, sizeof b);
         int none = kind == 1 ? !c->key[btn][slot] : c->pad[btn][slot] < 0;
-        ui_text_c(F_REG, 13, x + w / 2, y + 7, none ? C_DIM : C_TEXT, b);
+        ui_text_c(F_REG, 13, x + w / 2, y + 5, none ? C_DIM : C_TEXT, b);
     }
     if (clicked) { cap_kind = kind; cap_btn = btn; cap_slot = slot; }
     if (over && !active && available) ui_hint("Click, then press the key or button you want. Backspace clears, Esc cancels.");
-    else if (!available && ui_hover(x, y, w, 32)) ui_hint("Assign a controller to this player to enable its button bindings.");
+    else if (!available && ui_hover(x, y, w, 28)) ui_hint("Assign a controller to this player to enable its button bindings.");
+}
+
+static char *mp_name_ptr(GameCfg *c, int player_number)
+{
+    if (!c) return NULL;
+    if (player_number == 2) return c->p2_name;
+    if (player_number == 3) return c->p3_name;
+    if (player_number == 4) return c->p4_name;
+    return NULL;
+}
+
+static const char *mp_default_name(int player_number)
+{
+    if (player_number == 2) return "Luigi";
+    if (player_number == 3) return "Bunzo";
+    if (player_number == 4) return "Florbo";
+    return "Player";
+}
+
+static int mp_color_index(const GameCfg *c, int player_number)
+{
+    if (!c) return LUIGI_GREEN;
+    int color = player_number == 2 ? c->p2_color :
+                (player_number == 3 ? c->p3_color : c->p4_color);
+    if (color < 0 || color >= N_LUIGI_COLORS)
+        return player_number == 2 ? LUIGI_GREEN : (player_number == 3 ? LUIGI_BLUE : LUIGI_YELLOW);
+    return color;
+}
+
+static int *mp_respawn_key_ptr(GameCfg *c, int player_slot)
+{
+    if (!c) return NULL;
+    if (player_slot == 1) return &c->p2_respawn_key;
+    if (player_slot == 2) return &c->p3_respawn_key;
+    if (player_slot == 3) return &c->p4_respawn_key;
+    return NULL;
+}
+
+static int *mp_respawn_pad_ptr(GameCfg *c, int player_slot)
+{
+    if (!c) return NULL;
+    if (player_slot == 1) return &c->p2_respawn_pad;
+    if (player_slot == 2) return &c->p3_respawn_pad;
+    if (player_slot == 3) return &c->p4_respawn_pad;
+    return NULL;
+}
+
+static char *mp_sfx_path_ptr(GameCfg *c, int player_number, int event)
+{
+    if (!c || event < 0 || event >= N_P2_SFX) return NULL;
+    if (player_number == 2) return c->p2_sfx_path[event];
+    if (player_number == 3) return c->p3_sfx_path[event];
+    if (player_number == 4) return c->p4_sfx_path[event];
+    return NULL;
+}
+
+static void bind_mp_respawn_cell(int g, int player_slot, float x, float y, float w, int kind)
+{
+    GameCfg *c = &settings.g[g];
+    int *key = mp_respawn_key_ptr(c, player_slot);
+    int *pad = mp_respawn_pad_ptr(c, player_slot);
+    int device = c->pad_device[player_slot];
+    int available = kind != 6 || (device >= 0 && device < pad_count());
+    int over = 0;
+    int clicked = available ? clickable(x, y, w, 28, &over) : 0;
+    int active = cap_kind == kind && cap_btn == player_slot;
+    ui_rrect(x, y, w, 28, 7, !available ? RGBA(255,255,255,3) :
+             (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN)));
+    char value[48];
+    if (!available) snprintf(value, sizeof value, "—");
+    else if (active) snprintf(value, sizeof value, kind == 5 ? "press a key…" : "press a button…");
+    else if (kind == 5) key_code_name(key ? *key : 0, value, sizeof value);
+    else pad_code_name_device(device, pad ? *pad : -1, value, sizeof value);
+    int none = kind == 5 ? (!key || !*key) : (!pad || *pad < 0);
+    ui_text_c(F_REG, 12, x + w / 2, y + 5,
+              (!available || (none && !active)) ? C_DIM : C_TEXT, value);
+    if (clicked) { cap_kind = kind; cap_btn = player_slot; cap_slot = player_slot; }
+    if (over && available && !active)
+        ui_hint(kind == 5 ? "Press a keyboard key for this player's respawn. Backspace clears, Esc cancels."
+                          : "Press a button on this player's controller. Backspace clears, Esc cancels.");
+    else if (!available && ui_hover(x, y, w, 28))
+        ui_hint("Assign this player a controller to bind the controller respawn button.");
+}
+
+static void bind_p2_respawn_cell(int g, float x, float y, float w, int kind)
+{
+    bind_mp_respawn_cell(g, 1, x, y, w, kind);
 }
 
 static void bind_action_cell(int g, float x, float y, float w, int kind, int action)
@@ -599,7 +1152,9 @@ static void sub_save_states(int g, float x, float y)
         float bx = x + 18 + col * 386;
         float by = y + 112 + row * 64;
 
-        snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), games[g].id, slot);
+        char file_id[128];
+        launcher_game_file_id(g, file_id, sizeof file_id);
+        snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), file_id, slot);
         int saved = file_exists(path);
         int selected = slot == c->state_slot;
         int over = 0;
@@ -626,7 +1181,9 @@ static void sub_save_states(int g, float x, float y)
         }
     }
 
-    snprintf(path, sizeof path, "%sstates/%s.suspend.pcs", settings_dir(), games[g].id);
+    char file_id[128];
+    launcher_game_file_id(g, file_id, sizeof file_id);
+    snprintf(path, sizeof path, "%sstates/%s.suspend.pcs", settings_dir(), file_id);
     int suspended = file_exists(path);
     ui_text(F_BOLD, 11, x + 18, y + 443, C_MUTED, "Suspend");
     ui_text(F_REG, 11, x + 78, y + 443, suspended ? C_OK : C_DIM,
@@ -669,15 +1226,8 @@ static void sub_controls(int g, float x, float y)
     card(x, y, 808, 476, "PLAYER CONTROLLERS");
 
     float my = y + 76;
-    label(x + 18, my, "Local multiplayer");
-    if (g == GAME_SML) {
-        if (ui_toggle(x + 154, my - 4, &c->multiplayer) && c->multiplayer && c->pad_device[1] < 0)
-            launcher_toast("Multiplayer enabled. Player 2 can use Keyboard 2 or choose a controller above.");
-        ui_text_fit(F_REG, 11, x + 208, my, 580, C_DIM,
-                    c->multiplayer ? "One SML1 world with two independently controlled Marios on the same screen." : "Off by default; SML1 starts in the normal single-player view.");
-    } else {
-        ui_text(F_REG, 11, x + 154, my, C_DIM, "Available for Super Mario Land 1.");
-    }
+    ui_text_fit(F_REG, 11, x + 18, my, 770, C_DIM,
+                "Local multiplayer settings, Luigi's name/color, and the rescue binding are on the Multiplayer tab.");
 
     static const float colx[5] = {18, 150, 310, 470, 630};
     ui_text(F_BOLD, 12, x + colx[0], y + 112, C_MUTED, "Game Boy button");
@@ -686,23 +1236,24 @@ static void sub_controls(int g, float x, float y)
     ui_text(F_BOLD, 12, x + colx[3] + 10, y + 112, C_MUTED, "Player 1 controller");
     ui_text(F_BOLD, 12, x + colx[4] + 10, y + 112, C_MUTED, "Player 2 controller");
     for (int b = 0; b < N_BTN; b++) {
-        float ry = y + 128 + b * 32;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 32, 8, RGBA(255, 255, 255, 6));
-        ui_text(F_BOLD, 14, x + colx[0], ry + 4, C_TEXT, btn_names[b]);
+        float ry = y + 128 + b * 28;
+        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 28, 7, RGBA(255, 255, 255, 6));
+        ui_text(F_BOLD, 14, x + colx[0], ry + 2, C_TEXT, btn_names[b]);
         bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
         bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
         bind_cell(g, x + colx[3], ry, 150, 2, b, 0);
         bind_cell(g, x + colx[4], ry, 150, 2, b, 1);
     }
-    float by = y + 128 + N_BTN * 32 + 8;
-    if (ui_button(x + 18, by, 170, 36, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controller defaults reset."); }
+    float by = y + 128 + N_BTN * 28 + 4;
+    if (ui_button(x + 18, by, 170, 30, "Reset to defaults", B_NORMAL, 1)) { controls_defaults(c); controller_menu = -1; launcher_toast("Controller bindings reset."); }
     label(x + 220, by + 8, "Stick dead zone");
     ui_slider(x + 330, by + 7, 220, &settings.pad_deadzone, 5, 80);
     char t[16]; snprintf(t, sizeof t, "%d%%", settings.pad_deadzone); ui_text(F_REG, 13, x + 566, by + 8, C_TEXT, t);
+
     char st[128];
     pad_status(st, sizeof st);
-    ui_text_fit(F_REG, 12, x + 18, by + 46, 770, C_DIM, st);
-    ui_text_fit(F_REG, 12, x + 18, by + 64, 770, C_DIM, "Each controller column now belongs to its selected player. For SML1, turn on Local multiplayer to add Player 2 to the same game screen.");
+    ui_text_fit(F_REG, 11, x + 18, by + 48, 770, C_DIM, st);
+    ui_text_fit(F_REG, 11, x + 18, by + 66, 770, C_DIM, "Player 2's buttons use the Keyboard 2 and Player 2 controller columns.");
 
     /*
      * Draw the controller menus last so their popups sit above the binding
@@ -712,7 +1263,248 @@ static void sub_controls(int g, float x, float y)
     controller_dropdown(g, 1, x + 414, y + 34, 374);
 }
 
+/* ------------------------------------------------------------------ dedicated local multiplayer tab */
+static void mp_name_field(GameCfg *c, int player_number, float x, float y, float w)
+{
+    char *name = mp_name_ptr(c, player_number);
+    if (!name) return;
+    int over = 0;
+    int clicked = clickable(x, y, w, 32, &over);
+    int active = multiplayer_name_editing == player_number;
+    int ci = mp_color_index(c, player_number);
+    ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
+             (over ? C_BTN_H : C_BTN));
+    const char *current = name[0] ? name : (active ? "Type a name…" : "Click to rename");
+    ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, name[0] ? C_TEXT : C_DIM, current);
+    ui_rrect(x + w - 25, y + 6, 14, 20, 5, HEX(luigi_colors[ci].swatch));
+    if (active) ui_hint("Type the name. Enter/Escape finishes; Backspace deletes.");
+    else if (over) {
+        char hint[100];
+        snprintf(hint, sizeof hint, "Click to rename Player %d, then type.", player_number);
+        ui_hint(hint);
+    }
+    if (clicked) {
+        cap_kind = 0;
+        multiplayer_name_editing = player_number;
+        name[0] = 0;
+        SDL_StartTextInput();
+    }
+}
+
+
+static void mp_game_target_button(float x, float y, float w, float h)
+{
+    const char *text = mp_config_game == GAME_SML ? "Game Target: SML1" : "Game Target: SML2";
+    if (ui_button(x, y, w, h, text, B_NORMAL, 1)) {
+        mp_config_game = mp_config_game == GAME_SML ? GAME_SML2 : GAME_SML;
+        multiplayer_count_menu = -1;
+        audio_mp_set_game(mp_config_game);
+        settings_save();
+    }
+}
+
+static void tab_multiplayer(float x, float y)
+{
+    GameCfg *c = &settings.g[mp_config_game];
+    card(x, y, 808, 512, mp_config_game == GAME_SML ?
+         "SUPER MARIO LAND 1 — MULTIPLAYER" : "SUPER MARIO LAND 2 — MULTIPLAYER");
+
+    label(x + 18, y + 42, "Local multiplayer");
+    if (ui_toggle(x + 178, y + 38, &c->multiplayer) && c->multiplayer)
+        launcher_toast(mp_config_game == GAME_SML ? "Local multiplayer enabled for SML1." :
+                                                   "Local multiplayer enabled for SML2.");
+    ui_text_fit(F_REG, 12, x + 238, y + 43, 246, C_DIM,
+                c->multiplayer ? "Shared-world local co-op." :
+                                 "Off by default.");
+    mp_game_target_button(x + 520, y + 38, 248, 32);
+
+    label(x + 18, y + 86, "Players");
+    int over = 0;
+    int opened = clickable(x + 540, y + 74, 228, 34, &over);
+    char count_text[64];
+    snprintf(count_text, sizeof count_text, "%d Players", c->multiplayer_players);
+    ui_rrect(x + 540, y + 74, 228, 34, 8,
+             (over || multiplayer_count_menu >= 0) ? C_BTN_H : C_BTN);
+    ui_text_fit(F_REG, 13, x + 552, y + 83, 188, C_TEXT, count_text);
+    ui_tri(x + 746, y + 87, x + 758, y + 87, x + 752, y + 94, C_MUTED);
+    if (opened) multiplayer_count_menu = multiplayer_count_menu < 0 ? 1 : -1;
+    ui_text_fit(F_REG, 11, x + 18, y + 78, 460, C_DIM,
+                "Choose 2–4 independent character simulations.");
+
+    label(x + 18, y + 120, "Player names");
+    for (int i = 0; i < 3; i++) {
+        int p = i + 2;
+        float ry = y + 140 + i * 40.0f;
+        char row_label[24];
+        snprintf(row_label, sizeof row_label, "Player %d", p);
+        ui_text(F_BOLD, 12, x + 18, ry + 8, C_MUTED, row_label);
+        mp_name_field(c, p, x + 100, ry, 350);
+        const char *role = p == 2 ? "Luigi" : (p == 3 ? "Blue • Bunzo" : "Yellow • Florbo");
+        ui_text_fit(F_REG, 11, x + 464, ry + 8, 300, C_DIM, role);
+    }
+
+    if (multiplayer_count_menu >= 0) {
+        const int options[3] = {2, 3, 4};
+        float mx = x + 540, my = y + 110;
+        ui_shadow(mx, my, 228, 3 * 32 + 8, 9, 7, RGBA(0,0,0,100));
+        ui_rrect(mx, my, 228, 3 * 32 + 8, 9, C_BG2);
+        for (int i = 0; i < 3; i++) {
+            float oy = my + 4 + i * 32;
+            int ov = 0;
+            int pick = clickable(mx + 4, oy, 220, 30, &ov);
+            int selected = c->multiplayer_players == options[i];
+            ui_rrect(mx + 4, oy, 220, 30, 6,
+                     selected ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (ov ? C_BTN_H : C_BTN));
+            char label_text[32];
+            snprintf(label_text, sizeof label_text, "%d Players", options[i]);
+            ui_text_fit(F_REG, 13, mx + 14, oy + 7, 198, selected ? HEX(0xFFFFFF) : C_TEXT, label_text);
+            if (pick) {
+                c->multiplayer_players = options[i];
+                multiplayer_count_menu = -1;
+                settings_save();
+                launcher_toast("Multiplayer player count saved.");
+            }
+        }
+    }
+
+    ui_rect(x + 18, y + 270, 772, 1, C_LINE);
+    label(x + 18, y + 281, "Player 2 color");
+    ui_text_fit(F_REG, 11, x + 148, y + 282, 630, C_DIM,
+                "P3 Bunzo starts blue; P4 Florbo starts yellow. Rename them above.");
+    for (int i = 0; i < N_LUIGI_COLORS; i++) {
+        float bx = x + 18 + i * 128.0f, by = y + 304;
+        int hov = 0;
+        int clicked = clickable(bx, by, 120, 38, &hov);
+        int selected = c->p2_color == i;
+        ui_rrect(bx, by, 120, 38, 8, selected ? RGBA(255,255,255,18) : (hov ? C_BTN_H : C_BTN));
+        ui_rrect(bx + 5, by + 5, 18, 28, 6, HEX(luigi_colors[i].swatch));
+        if (selected) ui_stroke(bx, by, 120, 38, 8, 2, HEX(luigi_colors[i].swatch));
+        ui_text_fit(F_BOLD, 12, bx + 29, by + 11, 86, selected ? HEX(0xFFFFFF) : C_TEXT, luigi_colors[i].name);
+        if (clicked) c->p2_color = i;
+    }
+    ui_rect(x + 18, y + 356, 772, 1, C_LINE);
+    ui_text_wrap(F_REG, 12, x + 18, y + 370, 772, C_DIM,
+                 "Use Multiplayer Controllers for independent controller assignments, respawn bindings, and six customizable sound events per character.",
+                 3);
+    ui_text_fit(F_REG, 11, x + 18, y + 446, 770, C_DIM,
+                "Defaults: Luigi (green), Bunzo (blue), and Florbo (yellow).");
+}
+ 
 /* ------------------------------------------------------------------ game tab: DualSense */
+static void tab_mp_controllers(float x, float y)
+{
+    GameCfg *c = &settings.g[mp_config_game];
+    card(x, y, 808, 512, mp_config_game == GAME_SML ?
+         "SML1 MULTIPLAYER CONTROLLERS" : "SML2 MULTIPLAYER CONTROLLERS");
+    mp_game_target_button(x + 592, y + 7, 196, 28);
+
+    for (int player = 0; player < MAX_MP_PLAYERS; player++) {
+        float bx = x + 18 + player * 192.0f;
+        char title[24];
+        snprintf(title, sizeof title, "Player %d", player + 1);
+        label(bx, y + 38, title);
+        controller_dropdown(mp_config_game, player, bx, y + 56, 180);
+    }
+
+    if (ui_button(x + 18, y + 100, 180, 30, "Control bindings",
+                  mp_controller_view == 0 ? B_PRIMARY : B_NORMAL, 1)) mp_controller_view = 0;
+    if (ui_button(x + 206, y + 100, 180, 30, "Character sounds",
+                  mp_controller_view == 1 ? B_PRIMARY : B_NORMAL, 1)) mp_controller_view = 1;
+
+    if (mp_controller_view == 0) {
+        label(x + 405, y + 108, "Keyboard + assigned controller");
+        static const char *control_labels[N_BTN] = {
+            "Jump/A", "B", "Select", "Start", "Right", "Left", "Up", "Down"
+        };
+
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
+            float bx = x + 18 + player * 193.0f;
+            char title[64];
+            if (player == 0) snprintf(title, sizeof title, "P1  Mario");
+            else {
+                char *name = mp_name_ptr(c, player + 1);
+                snprintf(title, sizeof title, "P%d  %.14s", player + 1,
+                         name && name[0] ? name : mp_default_name(player + 1));
+            }
+            uint32_t player_color = player == 0 ? C_TEXT :
+                HEX(luigi_colors[mp_color_index(c, player + 1)].swatch);
+            ui_text_fit(F_BOLD, 12, bx, y + 138, 183, player_color, title);
+            ui_text_c(F_BOLD, 9, bx + 70, y + 157, C_MUTED, "KEY");
+            ui_text_c(F_BOLD, 9, bx + 145, y + 157, C_MUTED, "PAD");
+
+            for (int btn = 0; btn < N_BTN; btn++) {
+                float ry = y + 168 + btn * 29.0f;
+                ui_text_fit(F_REG, 10, bx, ry + 8, 34, C_TEXT, control_labels[btn]);
+                bind_cell(mp_config_game, bx + 36, ry, 69, 1, btn, player);
+                bind_cell(mp_config_game, bx + 109, ry, 74, 2, btn, player);
+            }
+        }
+
+        ui_rect(x + 18, y + 405, 772, 1, C_LINE);
+        label(x + 18, y + 411, "Respawn bindings");
+        ui_text_fit(F_REG, 10, x + 176, y + 412, 600, C_DIM,
+                    "Keyboard and assigned-controller button for each extra character.");
+        for (int player = 1; player < MAX_MP_PLAYERS; player++) {
+            float ry = y + 432 + (player - 1) * 26.0f;
+            char title[18];
+            snprintf(title, sizeof title, "P%d respawn", player + 1);
+            ui_text_fit(F_REG, 10, x + 18, ry + 7, 72, C_TEXT, title);
+            bind_mp_respawn_cell(mp_config_game, player, x + 92, ry, 150, 5);
+            bind_mp_respawn_cell(mp_config_game, player, x + 250, ry, 168, 6);
+        }
+    } else {
+        label(x + 18, y + 142, "Independent character sound banks");
+        ui_text_fit(F_REG, 10, x + 236, y + 143, 545, C_DIM,
+                    "Test, import, or reset sounds per player; empty paths use built-in chiptunes.");
+
+        static const char *sound_names[N_P2_SFX] = {
+            "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn"
+        };
+        static const int players[3] = {2, 3, 4};
+        for (int col = 0; col < 3; col++) {
+            int player = players[col];
+            int ci = mp_color_index(c, player);
+            float bx = x + 18 + col * 258.0f;
+            float cw = 250.0f;
+            ui_rrect(bx, y + 164, cw, 24, 7, RGBA(255,255,255,8));
+            char player_title[56];
+            char *name = mp_name_ptr(c, player);
+            snprintf(player_title, sizeof player_title, "P%d  %.18s", player,
+                     name && name[0] ? name : mp_default_name(player));
+            ui_text_fit(F_BOLD, 12, bx + 8, y + 169, cw - 16,
+                        HEX(luigi_colors[ci].swatch), player_title);
+
+            for (int event = 0; event < N_P2_SFX; event++) {
+                char *path = mp_sfx_path_ptr(c, player, event);
+                float ry = y + 192 + event * 45.0f;
+                ui_text_fit(F_BOLD, 10, bx + 5, ry + 1, 82, C_TEXT, sound_names[event]);
+                ui_text_fit_tail(F_REG, 9, bx + 88, ry + 1, 155, C_DIM,
+                                 path && path[0] ? path_base(path) : "Built-in chiptune");
+                if (ui_button(bx + 4, ry + 14, 48, 24, "Test", B_NORMAL, 1))
+                    audio_mp_sfx_preview(player, event);
+                if (ui_button(bx + 57, ry + 14, 57, 24, "Import", B_NORMAL, 1)) {
+                    char sound_path[1200], title[96];
+                    snprintf(title, sizeof title, "Choose Player %d %s sound", player, sound_names[event]);
+                    if (dlg_pick(DLG_AUDIO, title, sound_path, sizeof sound_path)) {
+                        snprintf(path, 512, "%s", sound_path);
+                        audio_menu_apply();
+                        settings_save();
+                        launcher_toast(path[0] ? "Multiplayer sound imported." : "Could not load sound; using built-in.");
+                    }
+                }
+                if (ui_button(bx + 119, ry + 14, 52, 24, "Reset", B_GHOST, path && path[0])) {
+                    path[0] = 0;
+                    audio_menu_apply();
+                    settings_save();
+                    launcher_toast("Using the built-in multiplayer sound.");
+                }
+            }
+        }
+        ui_text_fit(F_REG, 9, x + 18, y + 494, 770, C_DIM,
+                    "WAV, MP3, OGG and FLAC are supported; each player has an independent six-event bank.");
+    }
+}
+
 static void hue_to_rgb(int hue, uint32_t *rgb)
 {
     float h = hue / 60.0f; int i = (int)h; float f = h - i;
@@ -977,7 +1769,12 @@ static void tab_audio(float x, float y)
 }
 
 /* ------------------------------------------------------------------ frame */
-static const char *tab_labels[N_TABS] = {"", "", "", "Filters", "Audio & menu"};
+static const char *tab_labels[N_TABS] = {
+    [TAB_MULTIPLAYER] = "Multiplayer",
+    [TAB_MP_CONTROLLERS] = "MP Controllers",
+    [TAB_FILTERS] = "Filters",
+    [TAB_AUDIO] = "Audio & menu"
+};
 
 static int tab_button(float x, float y, float w, float h, int selected, uint32_t accent)
 {
@@ -992,10 +1789,11 @@ static int tab_button(float x, float y, float w, float h, int selected, uint32_t
 LauncherResult launcher_frame(float dt)
 {
     LauncherResult res = {-1, 0};
+    launcher_controller_update(dt);
     anim_clock += dt;
-    int g = launcher_current_game();
+    int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? mp_config_game : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
-    ui_accent = tab < N_GAMES ? games[tab].accent : 0x4C8DFF;
+    ui_accent = tab < N_GAMES ? games[tab].accent : ((tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? games[mp_config_game].accent : 0x4C8DFF);
     ensure_background(g);
     bg_update(dt);
 
@@ -1029,34 +1827,48 @@ LauncherResult launcher_frame(float dt)
             status_line(sx + 14, y + 23, 202, kind, msg);
         } else {
             ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
-            status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, rs[i].ok ? (settings.g[i].hack_path[0] && hack_ok[i] ? "Ready with romhack" : "Ready to play") : "ROM needed");
+            const GameCfg *gc = &settings.g[i];
+            const char *ready = !rs[i].ok ? "ROM needed" :
+                (gc->romhack_selected >= 0 ? (hack_ok[i] ? "Ready with ROM hack" : "ROM hack selected") : "Ready to play");
+            status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, ready);
         }
     }
     float y2 = sy + N_GAMES * game_row + 8;
     ui_rect(sx + 8, y2, 208, 1, C_LINE);
-    for (int i = TAB_FILTERS; i < N_TABS; i++) {
-        float y = y2 + 12 + (i - TAB_FILTERS) * 52;
-        if (tab_button(sx, y, 224, 44, tab == i, 0x4C8DFF)) tab = i;
+    for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
+        float y = y2 + 12 + (i - TAB_MULTIPLAYER) * 52;
+        uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
+        if (tab_button(sx, y, 224, 44, tab == i, accent)) tab = i;
         ui_text(F_BOLD, 15, sx + 18, y + 11, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
     }
 
     float cx = 268, cy = 108;
     if (tab < N_GAMES) {
+        GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, games[tab].name);
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, games[tab].sub);
         int can = rs[tab].ok;
-        if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? "Play" : "Needs ROM", B_PRIMARY, can)) res.play = tab;
+        const char *play_label = c->romhack_selected >= 0 ? "Play Hack" : "Play";
+        if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? play_label : "Needs ROM", B_PRIMARY, can)) res.play = tab;
         if (!can) hint_area(cx + 808 - 176, cy + 2, 176, 52, "Choose your ROM on the Game tab (or drop it on this window)");
         float y = cy + 118;
         pad_set_context(tab, 0);
         if (games[tab].external_player) {
-            sub_external_game(tab, cx, y);
+            const char *external_sub_names[2] = {"Game", "ROM Hacks"};
+            int external_sub = sub[tab] == SUB_ROMHACKS ? 1 : 0;
+            ui_seg(cx, cy + 66, 808, 38, external_sub_names, 2, &external_sub);
+            sub[tab] = external_sub ? SUB_ROMHACKS : SUB_GAME;
+            if (sub[tab] == SUB_ROMHACKS) sub_romhacks(tab, cx, y);
+            else sub_external_game(tab, cx, y);
         } else {
             ui_seg(cx, cy + 66, 808, 38, sub_names, N_SUB, &sub[tab]);
             switch (sub[tab]) {
         case SUB_GAME:
             sub_game(tab, cx, y);
+            break;
+        case SUB_ROMHACKS:
+            sub_romhacks(tab, cx, y);
             break;
         case SUB_DISPLAY:
             sub_display(tab, cx, y);
@@ -1079,6 +1891,14 @@ LauncherResult launcher_frame(float dt)
             }
         }
         if (load_state_request[tab] >= 0) res.play = tab;
+    } else if (tab == TAB_MULTIPLAYER) {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Choose 2–4 players and customize names and character colors.");
+        tab_multiplayer(cx, cy + 58);
+    } else if (tab == TAB_MP_CONTROLLERS) {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer Controllers");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Assign controllers, respawn bindings, and independent sound banks for players 2–4.");
+        tab_mp_controllers(cx, cy + 58);
     } else if (tab == TAB_FILTERS) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Make the screen look like a real Game Boy, a CRT TV, or something glowing.");
@@ -1091,7 +1911,10 @@ LauncherResult launcher_frame(float dt)
 
     /* footer */
     const char *h = ui_hint_text();
-    ui_text_fit(F_REG, 12, 28, UI_H - 26, 900, C_DIM, h && h[0] ? h : "Drag and drop a ROM, patch, picture, sound or texture folder anywhere on this window.");
+    const char *footer = launcher_controller_cursor_active && !cap_kind && !multiplayer_name_editing
+        ? "Controller: D-pad/left stick move | A select | B cancel | Move mouse to switch back"
+        : (h && h[0] ? h : "Drag and drop a ROM, patch, picture, sound or texture folder anywhere on this window.");
+    ui_text_fit(F_REG, 12, 28, UI_H - 26, UI_W - 56, C_DIM, footer);
 
     /* toast */
     if (toast_t > 0) {
@@ -1104,17 +1927,30 @@ LauncherResult launcher_frame(float dt)
         ui_text_c(F_BOLD, 14, UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
 
+    /* Draw a high-contrast virtual pointer while controller navigation is active. */
+    if (launcher_controller_cursor_active) {
+        ui_rrect(launcher_controller_x - 7.0f, launcher_controller_y - 7.0f,
+                 14.0f, 14.0f, 7.0f, RGBA(12, 16, 24, 235));
+        ui_stroke(launcher_controller_x - 7.0f, launcher_controller_y - 7.0f,
+                  14.0f, 14.0f, 7.0f, 2.0f, RGBA(174, 232, 255, 255));
+        ui_rrect(launcher_controller_x - 2.0f, launcher_controller_y - 2.0f,
+                 4.0f, 4.0f, 2.0f, RGBA(255, 255, 255, 255));
+    }
+
     /* binding capture hint */
     if (cap_kind) {
-        if (cap_kind == 1 || cap_kind == 3) ui_hint("Press a key. Backspace clears the slot, Esc cancels.");
+        if (cap_kind == 1 || cap_kind == 3 || cap_kind == 5) ui_hint("Press a key. Backspace clears the slot, Esc cancels.");
         else ui_hint("Press a controller button or trigger. Esc (keyboard) cancels.");
     }
 
+    if (romhack_title_editing_game >= 0)
+        ui_hint("Type a title for this ROM hack. Enter saves; Esc cancels.");
     if (wide_dirty && !ui_mouse.down) { make_preview(wide_dirty - 1); wide_dirty = 0; }
     if (ui_mouse.released) click_id = 0;
     settings.last_tab = tab;
     save_timer += dt;
-    if (save_timer > 2.0f && !ui_mouse.down) { save_timer = 0; settings_save(); }
+    if (save_timer > 2.0f && !ui_mouse.down && !multiplayer_name_editing &&
+        romhack_title_editing_game < 0) { save_timer = 0; settings_save(); }
 
     /* pad light follows the tab while in the launcher */
     pad_frame(dt);
@@ -1124,35 +1960,177 @@ LauncherResult launcher_frame(float dt)
 /* ------------------------------------------------------------------ events */
 void launcher_event(const SDL_Event *e)
 {
+    if (e && (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN ||
+              e->type == SDL_MOUSEWHEEL)) {
+        launcher_leave_controller_cursor();
+    }
+    if (romhack_title_editing_game >= 0) {
+        int g = romhack_title_editing_game, index = romhack_title_editing_index;
+        if (g < 0 || g >= N_GAMES || index < 0 ||
+            index >= settings.g[g].romhack_count || index >= MAX_ROMHACKS) {
+            romhack_title_editing_game = romhack_title_editing_index = -1;
+            SDL_StopTextInput();
+            return;
+        }
+        RomHackEntry *entry = &settings.g[g].romhacks[index];
+        if (e->type == SDL_TEXTINPUT) {
+            size_t have = strlen(entry->title), add = strlen(e->text.text);
+            if (have + add < sizeof entry->title &&
+                (unsigned char)e->text.text[0] >= 32)
+                memcpy(entry->title + have, e->text.text, add + 1);
+            return;
+        }
+        if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+            SDL_Keycode k = e->key.keysym.sym;
+            if (k == SDLK_ESCAPE) {
+                snprintf(entry->title, sizeof entry->title, "%s", romhack_title_before);
+                romhack_title_editing_game = romhack_title_editing_index = -1;
+                SDL_StopTextInput();
+                settings_save();
+                return;
+            }
+            if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
+                if (!entry->title[0])
+                    romhack_title_from_path(entry->path, entry->title, sizeof entry->title);
+                romhack_title_editing_game = romhack_title_editing_index = -1;
+                SDL_StopTextInput();
+                settings_save();
+                return;
+            }
+            if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
+                size_t len = strlen(entry->title);
+                if (len) {
+                    len--;
+                    while (len && (((unsigned char)entry->title[len] & 0xC0u) == 0x80u)) len--;
+                    entry->title[len] = 0;
+                }
+                return;
+            }
+            if ((e->key.keysym.mod & KMOD_CTRL) && k == SDLK_a) {
+                entry->title[0] = 0;
+                return;
+            }
+        }
+        if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
+            e->type == SDL_MOUSEBUTTONDOWN) {
+            if (!entry->title[0])
+                romhack_title_from_path(entry->path, entry->title, sizeof entry->title);
+            romhack_title_editing_game = romhack_title_editing_index = -1;
+            SDL_StopTextInput();
+            settings_save();
+        } else {
+            return;
+        }
+    }
+    if (multiplayer_name_editing) {
+        GameCfg *mc = &settings.g[mp_config_game];
+        char *name = mp_name_ptr(mc, multiplayer_name_editing);
+        const char *fallback = mp_default_name(multiplayer_name_editing);
+        if (!name) { multiplayer_name_editing = 0; SDL_StopTextInput(); return; }
+        if (e->type == SDL_TEXTINPUT) {
+            size_t have = strlen(name), add = strlen(e->text.text);
+            if (have + add < 32 && have + add <= 22 &&
+                (unsigned char)e->text.text[0] >= 32)
+                memcpy(name + have, e->text.text, add + 1);
+            return;
+        }
+        if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+            SDL_Keycode k = e->key.keysym.sym;
+            if (k == SDLK_ESCAPE || k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
+                multiplayer_name_editing = 0;
+                SDL_StopTextInput();
+                if (!name[0]) snprintf(name, 32, "%s", fallback);
+                settings_save();
+                return;
+            }
+            if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
+                size_t len = strlen(name);
+                if (len) {
+                    len--;
+                    while (len && (((unsigned char)name[len] & 0xC0u) == 0x80u)) len--;
+                    name[len] = 0;
+                }
+                return;
+            }
+            if ((e->key.keysym.mod & KMOD_CTRL) && k == SDLK_a) {
+                name[0] = 0;
+                return;
+            }
+        }
+        if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
+            e->type == SDL_MOUSEBUTTONDOWN) {
+            multiplayer_name_editing = 0;
+            SDL_StopTextInput();
+            if (!name[0]) snprintf(name, 32, "%s", fallback);
+            settings_save();
+        }
+        return;
+    }
     if (cap_kind) {
-        GameCfg *current = &settings.g[launcher_current_game()];
-        if ((cap_kind == 2 && (cap_slot < 0 || cap_slot > 1 ||
+        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? mp_config_game : launcher_current_game();
+        GameCfg *current = &settings.g[cap_game];
+        if ((cap_kind == 2 && (cap_slot < 0 || cap_slot >= MAX_MP_PLAYERS ||
                                current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())) ||
-            (cap_kind == 4 && (current->pad_device[0] < 0 || current->pad_device[0] >= pad_count())))
+            (cap_kind == 4 && (current->pad_device[0] < 0 || current->pad_device[0] >= pad_count())) ||
+            (cap_kind == 6 && (cap_slot < 1 || cap_slot >= MAX_MP_PLAYERS ||
+                               current->pad_device[cap_slot] < 0 || current->pad_device[cap_slot] >= pad_count())))
             cap_kind = 0;
     }
     if (cap_kind) {
-        GameCfg *c = &settings.g[launcher_current_game()];
+        int cap_game = (tab == TAB_MP_CONTROLLERS || cap_kind == 5 || cap_kind == 6) ? mp_config_game : launcher_current_game();
+        GameCfg *c = &settings.g[cap_game];
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {
             SDL_Keycode k = e->key.keysym.sym;
             if (k == SDLK_ESCAPE) { cap_kind = 0; return; }
             if (cap_kind == 1) {
                 c->key[cap_btn][cap_slot] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
+                settings_save();
             } else if (cap_kind == 3) {
                 c->action_key[cap_btn] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
+            } else if (cap_kind == 5) {
+                int *binding = mp_respawn_key_ptr(c, cap_btn);
+                if (binding) *binding = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
+                cap_kind = 0;
+                settings_save();
+                launcher_toast("Multiplayer respawn key saved.");
             } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
-                if (cap_kind == 2) c->pad[cap_btn][cap_slot] = -1;
+                if (cap_kind == 2) { c->pad[cap_btn][cap_slot] = -1; settings_save(); }
                 else if (cap_kind == 4) c->action_pad[cap_btn] = -1;
+                else if (cap_kind == 6) {
+                    int *binding = mp_respawn_pad_ptr(c, cap_btn);
+                    if (binding) *binding = -1;
+                    settings_save();
+                    launcher_toast("Multiplayer controller respawn binding cleared.");
+                }
                 cap_kind = 0;
             }
         } else if (cap_kind == 2) {
-            int code = pad_capture(cap_kind == 2 ? c->pad_device[cap_slot] : -1, e);
-            if (code >= 0) { c->pad[cap_btn][cap_slot] = code; cap_kind = 0; }
+            int code = pad_capture(c->pad_device[cap_slot], e);
+            if (code >= 0) {
+                c->pad[cap_btn][cap_slot] = code;
+                cap_kind = 0;
+                launcher_ignore_pad_confirm = 1;
+                settings_save();
+            }
         } else if (cap_kind == 4) {
             int code = pad_capture(c->pad_device[0], e);
-            if (code >= 0) { c->action_pad[cap_btn] = code; cap_kind = 0; }
+            if (code >= 0) {
+                c->action_pad[cap_btn] = code;
+                cap_kind = 0;
+                launcher_ignore_pad_confirm = 1;
+            }
+        } else if (cap_kind == 6) {
+            int code = pad_capture(c->pad_device[cap_slot], e);
+            if (code >= 0) {
+                int *binding = mp_respawn_pad_ptr(c, cap_btn);
+                if (binding) *binding = code;
+                cap_kind = 0;
+                launcher_ignore_pad_confirm = 1;
+                settings_save();
+                launcher_toast("Multiplayer controller respawn binding saved.");
+            }
         }
         return;
     }
@@ -1172,6 +2150,16 @@ static int ends_with(const char *s, const char *ext)
 void launcher_drop(const char *path)
 {
     int g = launcher_current_game();
+    int is_patch = ends_with(path, ".ips") || ends_with(path, ".bps") || ends_with(path, ".ups");
+    int is_gb_rom = ends_with(path, ".gb") || ends_with(path, ".gbc");
+
+    /* On the ROM Hacks tab, a supported full patched ROM is a secondary
+     * profile, not a replacement for the game's configured base ROM. */
+    if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS && (is_patch || is_gb_rom)) {
+        romhack_add(tab, path);
+        return;
+    }
+
     int id = rom_identify_file(path);
     if (id >= 0) {
         snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", path);
@@ -1181,8 +2169,25 @@ void launcher_drop(const char *path)
         launcher_toast(rs[id].ok ? "ROM added." : rs[id].msg);
         return;
     }
-    if (ends_with(path, ".ips") || ends_with(path, ".bps") || ends_with(path, ".ups")) { if (tab >= N_GAMES) tab = g; set_hack(tab, path); launcher_toast(hack_msg[tab]); return; }
+    if (is_patch) {
+        if (tab >= N_GAMES) tab = g;
+        if (tab >= 0 && tab < N_GAMES) {
+            romhack_add(tab, path);
+            sub[tab] = SUB_ROMHACKS;
+        } else launcher_toast("Choose a game's tab before adding a ROM hack.");
+        return;
+    }
     if (ends_with(path, ".png") || ends_with(path, ".jpg") || ends_with(path, ".jpeg") || ends_with(path, ".bmp") || ends_with(path, ".gif") || ends_with(path, ".tga")) {
+        if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS &&
+            settings.g[tab].romhack_selected >= 0 &&
+            settings.g[tab].romhack_selected < settings.g[tab].romhack_count) {
+            RomHackEntry *entry = &settings.g[tab].romhacks[settings.g[tab].romhack_selected];
+            snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", path);
+            clear_romhack_thumbs_game(tab);
+            settings_save();
+            launcher_toast("ROM hack thumbnail changed.");
+            return;
+        }
         if (tab >= N_GAMES) tab = g;
         snprintf(settings.g[tab].bg_path, sizeof settings.g[tab].bg_path, "%s", path);
         ensure_background(tab);
@@ -1196,7 +2201,7 @@ void launcher_drop(const char *path)
         launcher_toast(settings.menu_music_path[0] ? "Menu music changed." : "Couldn't read that audio file.");
         return;
     }
-    if (ends_with(path, ".gb") || ends_with(path, ".gbc")) { launcher_toast("That ROM isn't one of the supported games."); return; }
+    if (is_gb_rom) { launcher_toast("That ROM isn't one of the supported games."); return; }
     /* a folder: texture pack */
     {
         SDL_RWops *r = SDL_RWFromFile(path, "rb");
