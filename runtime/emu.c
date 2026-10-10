@@ -10,6 +10,7 @@
 #include "cart.h"
 #include "events.h"
 #include "settings.h"
+#include "dev_diag.h"
 
 EmuDev emu_dev = {.max_frames = -1};
 
@@ -166,6 +167,7 @@ static uint8_t mp_sml2_render_tiles[MAX_MP_PLAYERS][0x1000];
 static uint8_t mp_sml2_render_tiles_cgb1[MAX_MP_PLAYERS][0x1000];
 static uint8_t mp_sml2_render_tiles_valid[MAX_MP_PLAYERS];
 static int mp_sml2_initialized;
+static int mp_sml2_tether_active;
 static unsigned mp_sml2_stable_frames;
 static uint8_t mp_sml2_stable_level;
 static uint8_t mp_sml2_stable_bank;
@@ -817,6 +819,7 @@ int emu_mp_begin(void)
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
     mp_sml2_initialized = 0;
+    mp_sml2_tether_active = 0;
     mp_sml2_tile_patches_clear();
     mp_sml2_stable_frames = 0;
     mp_sml2_stable_level = 0;
@@ -1439,22 +1442,39 @@ static uint16_t mp_sml2_saved_world_x(const MpSml2Player *p)
 
 static void mp_sml2_constrain_horizontal_input(int player, uint8_t *dpad)
 {
-    if (!dpad || player < 0 || player >= mp_player_count ||
-        !mp_sml2_initialized || !mp_sml2_gameplay_active())
+    int active = dpad && player >= 0 && player < mp_player_count &&
+                 mp_sml2_initialized && mp_sml2_gameplay_active();
+    if (!active) {
+        if (player == 0 && mp_sml2_tether_active) {
+            dev_diag_event("CO-OP TETHER RELEASED - GAMEPLAY STATE CHANGED");
+            mp_sml2_tether_active = 0;
+        }
         return;
+    }
 
     uint16_t leader_x = mp_sml2_saved_world_x(&mp_sml2_players[0]);
     if (player == 0) {
         /* P1 owns the camera, but must not push it ahead of any active
          * follower who has fallen behind the usable shared-screen range. */
+        int tether = 0;
         for (int i = 1; i < mp_player_count; i++) {
             const MpSml2Player *follower = &mp_sml2_players[i];
             if (!follower->spawned) continue;
             int gap = (int)leader_x - (int)mp_sml2_saved_world_x(follower);
-            if (gap > MP_SML2_COOP_MAX_BEHIND)
+            if (gap > MP_SML2_COOP_MAX_BEHIND) {
+                tether = 1;
                 *dpad &= (uint8_t)~MP_SML2_DPAD_RIGHT;
-            if (gap < -MP_SML2_COOP_MAX_AHEAD)
+            }
+            if (gap < -MP_SML2_COOP_MAX_AHEAD) {
+                tether = 1;
                 *dpad &= (uint8_t)~MP_SML2_DPAD_LEFT;
+            }
+        }
+        if (tether != mp_sml2_tether_active) {
+            dev_diag_event(tether
+                ? "CO-OP TETHER ACTIVE - P1 WAITS FOR FOLLOWERS"
+                : "CO-OP TETHER RELEASED - PLAYERS BACK IN RANGE");
+            mp_sml2_tether_active = tether;
         }
         return;
     }
