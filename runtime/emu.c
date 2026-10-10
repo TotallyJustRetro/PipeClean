@@ -166,6 +166,13 @@ static uint8_t mp_sml2_render_oam_count[MAX_MP_PLAYERS];
 static uint8_t mp_sml2_render_tiles[MAX_MP_PLAYERS][0x1000];
 static uint8_t mp_sml2_render_tiles_cgb1[MAX_MP_PLAYERS][0x1000];
 static uint8_t mp_sml2_render_tiles_valid[MAX_MP_PLAYERS];
+/* Per-session sprite-map telemetry; excluded from save-state layouts. */
+static uint8_t mp_sml2_debug_mapping_preferred[MAX_MP_PLAYERS];
+static uint8_t mp_sml2_debug_mapping_selected[MAX_MP_PLAYERS];
+static uint8_t mp_sml2_debug_mapping_bank[MAX_MP_PLAYERS];
+static uint8_t mp_sml2_debug_mapping_source[MAX_MP_PLAYERS];
+static uint8_t mp_sml2_debug_mapping_inferred[MAX_MP_PLAYERS];
+static uint8_t mp_sml2_debug_mapping_complete[MAX_MP_PLAYERS];
 static int mp_sml2_initialized;
 static int mp_sml2_tether_active;
 static unsigned mp_sml2_stable_frames;
@@ -1156,38 +1163,119 @@ static int mp_sml2_player_mapping_id_allowed(int mapping)
  * screen origin, an exact mapping match is much safer than guessing a 2x2
  * block from nearby OAM entries. If the ROM omits pieces during clipping,
  * exact partial matches are retained as a last resort. */
-static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
+static void mp_sml2_debug_set_mapping(int player, uint8_t preferred,
+                                    uint8_t selected, int bank, int source,
+                                    int inferred, int complete)
+{
+    if (player <= 0 || player >= MAX_MP_PLAYERS) return;
+    mp_sml2_debug_mapping_preferred[player] = preferred;
+    mp_sml2_debug_mapping_selected[player] = selected;
+    mp_sml2_debug_mapping_bank[player] = bank >= 0 ? (uint8_t)bank : 0xFF;
+    mp_sml2_debug_mapping_source[player] = (uint8_t)source;
+    mp_sml2_debug_mapping_inferred[player] = (uint8_t)(inferred != 0);
+    mp_sml2_debug_mapping_complete[player] = (uint8_t)(complete != 0);
+}
+
+/* Decode the live player-map selector first. Other nearby OAM objects can
+ * overlap the player and accidentally satisfy a different ROM map, so a
+ * larger fallback match must never replace a complete match for the game's
+ * current selector. If the selector's screen origin has drifted slightly,
+ * retry that same map with an inferred origin before considering alternatives. */
+static int mp_sml2_capture_best_mapping_oam(int player, uint8_t preferred,
                                              const uint8_t source[0xA0],
                                              uint8_t out[MP_MAX_OAM_SPRITES * 4])
 {
     uint8_t candidate[MP_MAX_OAM_SPRITES * 4];
+    uint8_t preferred_oam[MP_MAX_OAM_SPRITES * 4];
+    uint8_t preferred_inferred_oam[MP_MAX_OAM_SPRITES * 4];
     uint8_t best_complete_oam[MP_MAX_OAM_SPRITES * 4];
     uint8_t best_partial_oam[MP_MAX_OAM_SPRITES * 4];
     int banks[2];
     int bank_count = mp_sml2_player_mapping_banks(banks);
-    int best_count = 0, partial_count = 0;
+    int best_count = 0, best_bank = -1, best_mapping = -1;
+    int partial_count = 0, partial_bank = -1, partial_mapping = -1;
     const int player_x = rd8(0xA23C), player_y = rd8(0xA23B);
     memset(out, 0, MP_MAX_OAM_SPRITES * 4);
+    memset(preferred_oam, 0, sizeof preferred_oam);
+    memset(preferred_inferred_oam, 0, sizeof preferred_inferred_oam);
     memset(best_complete_oam, 0, sizeof best_complete_oam);
     memset(best_partial_oam, 0, sizeof best_partial_oam);
+    mp_sml2_debug_set_mapping(player, preferred, 0xFF, -1, 0, 0, 0);
 
-    /* Prefer the live selector when it refers to one of this form's maps. */
     if (preferred < 0xF2 && mp_sml2_player_mapping_id_allowed(preferred)) {
+        int preferred_count = 0, preferred_bank = -1;
         for (int bi = 0; bi < bank_count; bi++) {
             int complete = 0;
             int count = mp_sml2_capture_mapping_oam_at(banks[bi], preferred,
                 player_x, player_y, source, candidate, &complete);
-            if (complete && count > best_count) {
-                memcpy(best_complete_oam, candidate, (size_t)count * 4u);
-                best_count = count;
+            if (complete && count > preferred_count) {
+                memcpy(preferred_oam, candidate, (size_t)count * 4u);
+                preferred_count = count;
+                preferred_bank = banks[bi];
             } else if (!complete && count > partial_count) {
                 memcpy(best_partial_oam, candidate, (size_t)count * 4u);
                 partial_count = count;
+                partial_bank = banks[bi];
+                partial_mapping = preferred;
             }
+        }
+        if (preferred_count > 0) {
+            memcpy(out, preferred_oam, (size_t)preferred_count * 4u);
+            mp_sml2_debug_set_mapping(player, preferred, preferred,
+                                      preferred_bank, 1, 0, 1);
+            return preferred_count;
+        }
+
+        /* The live selector remains authoritative if only the origin estimate
+         * is off by a few pixels. Infer the base from that map's first tile,
+         * then validate every mapped tile against live OAM. */
+        int inferred_count = 0, inferred_bank = -1;
+        for (int bi = 0; bi < bank_count; bi++) {
+            int rom_bank = banks[bi];
+            uint16_t pointer_address =
+                (uint16_t)(0x4000u + (uint16_t)preferred * 2u);
+            uint8_t lo = cart_rom_read_bank(rom_bank, pointer_address);
+            uint8_t hi = cart_rom_read_bank(rom_bank,
+                                            (uint16_t)(pointer_address + 1u));
+            uint16_t map = (uint16_t)(lo | ((uint16_t)hi << 8));
+            if (map < 0x41E4 || map >= 0x8000) continue;
+
+            uint8_t raw_dy = cart_rom_read_bank(rom_bank, map);
+            if (raw_dy == 0x80) continue;
+            uint8_t raw_dx = cart_rom_read_bank(rom_bank, (uint16_t)(map + 1u));
+            uint8_t tile0 = cart_rom_read_bank(rom_bank, (uint16_t)(map + 2u));
+            int dy = raw_dy < 0x80 ? (int)raw_dy : (int)raw_dy - 256;
+            int dx = raw_dx < 0x80 ? (int)raw_dx : (int)raw_dx - 256;
+
+            for (int i = 0; i < 40; i++) {
+                const uint8_t *src = &source[i * 4];
+                if (src[2] != tile0) continue;
+                int base_x = (uint8_t)((int)src[1] - dx);
+                int base_y = (uint8_t)((int)src[0] - dy);
+                if (mp_sml2_distance((uint8_t)base_x, player_x) > 24 ||
+                    mp_sml2_distance((uint8_t)base_y, player_y) > 24)
+                    continue;
+
+                int complete = 0;
+                int count = mp_sml2_capture_mapping_oam_at(rom_bank, preferred,
+                    base_x, base_y, source, candidate, &complete);
+                if (complete && count > inferred_count) {
+                    memcpy(preferred_inferred_oam, candidate, (size_t)count * 4u);
+                    inferred_count = count;
+                    inferred_bank = rom_bank;
+                }
+            }
+        }
+        if (inferred_count > 0) {
+            memcpy(out, preferred_inferred_oam, (size_t)inferred_count * 4u);
+            mp_sml2_debug_set_mapping(player, preferred, preferred,
+                                      inferred_bank, 2, 1, 1);
+            return inferred_count;
         }
     }
 
-    /* Search only the mapping families used by Mario in this form. */
+    /* Fallback search is only used when the live selector cannot produce a
+     * complete pose. Prefer a complete candidate over any partial guess. */
     for (int bi = 0; bi < bank_count; bi++) {
         for (int mapping = 0; mapping < 0xF2; mapping++) {
             if (mapping == preferred ||
@@ -1200,24 +1288,32 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
             if (complete && count > best_count) {
                 memcpy(best_complete_oam, candidate, (size_t)count * 4u);
                 best_count = count;
+                best_bank = banks[bi];
+                best_mapping = mapping;
             } else if (!complete && count > partial_count) {
                 memcpy(best_partial_oam, candidate, (size_t)count * 4u);
                 partial_count = count;
+                partial_bank = banks[bi];
+                partial_mapping = mapping;
             }
         }
     }
     if (best_count > 0) {
         memcpy(out, best_complete_oam, (size_t)best_count * 4u);
+        mp_sml2_debug_set_mapping(player, preferred, (uint8_t)best_mapping,
+                                  best_bank, 3, 0, 1);
         return best_count;
     }
 
-    /* Some animation paths move pieces slightly relative to A23B/A23C.
-     * Infer a nearby origin from the first tile in each allowed map, then
-     * validate the entire pose against exact tile IDs and screen positions. */
+    /* Last exact-graphics fallback: search for a nearby origin for alternatives
+     * only after both exact and origin-adjusted matches for the live selector
+     * have failed. */
     for (int bi = 0; bi < bank_count; bi++) {
         int rom_bank = banks[bi];
         for (int mapping = 0; mapping < 0xF2; mapping++) {
-            if (!mp_sml2_player_mapping_id_allowed(mapping)) continue;
+            if (mapping == preferred ||
+                !mp_sml2_player_mapping_id_allowed(mapping))
+                continue;
             uint16_t pointer_address =
                 (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
             uint8_t lo = cart_rom_read_bank(rom_bank, pointer_address);
@@ -1249,9 +1345,13 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
                 if (complete && count > best_count) {
                     memcpy(best_complete_oam, candidate, (size_t)count * 4u);
                     best_count = count;
+                    best_bank = rom_bank;
+                    best_mapping = mapping;
                 } else if (!complete && count > partial_count) {
                     memcpy(best_partial_oam, candidate, (size_t)count * 4u);
                     partial_count = count;
+                    partial_bank = rom_bank;
+                    partial_mapping = mapping;
                 }
             }
         }
@@ -1259,10 +1359,16 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
 
     if (best_count > 0) {
         memcpy(out, best_complete_oam, (size_t)best_count * 4u);
+        mp_sml2_debug_set_mapping(player, preferred, (uint8_t)best_mapping,
+                                  best_bank, 4, 1, 1);
         return best_count;
     }
     if (partial_count >= 2) {
         memcpy(out, best_partial_oam, (size_t)partial_count * 4u);
+        mp_sml2_debug_set_mapping(player, preferred,
+                                  partial_mapping >= 0 ? (uint8_t)partial_mapping : 0xFF,
+                                  partial_bank, partial_mapping == preferred ? 1 : 4,
+                                  partial_mapping == preferred, 0);
         return partial_count;
     }
     return 0;
@@ -1300,7 +1406,7 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
         mp_sml2_render_tiles_valid[player] = 1;
 
         int mapped = mp_sml2_capture_best_mapping_oam(
-            p->h_c6, staged_oam, mp_sml2_render_oam[player]);
+            player, p->h_c6, staged_oam, mp_sml2_render_oam[player]);
         /* Fall back to the stable four-piece matcher if the ROM map cannot
          * be read or doesn't match the live OAM for this game frame. */
         if (mapped >= 2) {
@@ -1326,6 +1432,7 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
                 memcpy(mp_sml2_render_oam[player], p->oam, sizeof p->oam);
                 mp_sml2_render_oam_count[player] = 4;
             }
+            mp_sml2_debug_set_mapping(player, p->h_c6, 0xFF, -1, 5, 0, 0);
         }
     }
 }
