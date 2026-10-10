@@ -171,23 +171,8 @@ static uint8_t mp_sml2_stable_level;
 static uint8_t mp_sml2_stable_bank;
 static uint8_t mp_sml2_map_before[0x1800];
 static uint8_t mp_sml2_map_after[0x1800];
-/* Snapshot the lower shared SRAM as well. Some persistent world/block flags
- * live outside A800-BFFF; merge those changes only on frames where the
- * clone changes the current tilemap, not on every simulation tick. */
-static uint8_t mp_sml2_shared_ram_before[0x800];
-static uint8_t mp_sml2_shared_ram_after[0x800];
 static uint8_t mp_sml2_vram_before[0x400];
 static uint8_t mp_sml2_vram_after[0x400];
-
-#define MP_SML2_MAX_TILE_PATCHES 1024
-typedef struct {
-    uint16_t world_x, world_y; /* pixel coordinates, aligned to 8 */
-    uint8_t level, bank, tile;
-} MpSml2TilePatch;
-static MpSml2TilePatch mp_sml2_tile_patches[MP_SML2_MAX_TILE_PATCHES];
-static unsigned mp_sml2_tile_patch_count;
-static uint8_t mp_sml2_tile_patch_level = 0xFF;
-static uint8_t mp_sml2_tile_patch_bank = 0xFF;
 
 static uint8_t mp_buttons, mp_dpad;
 static int mp_ready;
@@ -332,7 +317,6 @@ static void rewind_free(void);
 static void rewind_init(void);
 static int emu_start_internal(int force_interp, int reset);
 static void mp_sml2_capture_frame(Frame *frame);
-static int mp_sml2_gameplay_active(void);
 
 static int mp_bcd_to_int(uint8_t b)
 {
@@ -889,117 +873,6 @@ static int mp_sml2_private_addr(unsigned address)
     }
 }
 
-/* Persistent background-tile edits for SML2 blocks. The game redraws
- * its scrolling tilemap from level data when the camera moves, so a VRAM-only
- * change is not enough. Cache changed BG cells in world coordinates and put
- * them back whenever that part of the level enters the 32x32 BG map again. */
-static void mp_sml2_tile_patches_clear(void)
-{
-    mp_sml2_tile_patch_count = 0;
-    mp_sml2_tile_patch_level = 0xFF;
-    mp_sml2_tile_patch_bank = 0xFF;
-}
-
-static void mp_sml2_tile_patches_prepare(uint8_t level, uint8_t bank)
-{
-    if (mp_sml2_tile_patch_level != level ||
-        mp_sml2_tile_patch_bank != bank) {
-        mp_sml2_tile_patch_count = 0;
-        mp_sml2_tile_patch_level = level;
-        mp_sml2_tile_patch_bank = bank;
-    }
-}
-
-static uint16_t mp_sml2_read16(unsigned address)
-{
-    return (uint16_t)rd8((uint16_t)address) |
-           ((uint16_t)rd8((uint16_t)(address + 1u)) << 8);
-}
-
-static uint16_t mp_sml2_world_origin_x(void)
-{
-    return (uint16_t)(mp_sml2_read16(0xA227) - rd8(0xA23C));
-}
-
-static uint16_t mp_sml2_world_origin_y(void)
-{
-    return (uint16_t)(mp_sml2_read16(0xA229) - rd8(0xA23B));
-}
-
-static void mp_sml2_record_tile_patches(uint8_t level, uint8_t bank,
-                                         const uint8_t before[0x400],
-                                         const uint8_t after[0x400])
-{
-    mp_sml2_tile_patches_prepare(level, bank);
-    uint16_t origin_x = mp_sml2_world_origin_x();
-    uint16_t origin_y = mp_sml2_world_origin_y();
-    int scx = rd8(0xFF43);
-    int scy = rd8(0xFF42);
-
-    for (int i = 0; i < 0x400; i++) {
-        if (before[i] == after[i]) continue;
-
-        int map_x = i & 31;
-        int map_y = i >> 5;
-        int screen_x = (map_x * 8 - scx) & 0xFF;
-        int screen_y = (map_y * 8 - scy) & 0xFF;
-        uint16_t world_x = (uint16_t)(origin_x + screen_x) & 0xFFF8u;
-        uint16_t world_y = (uint16_t)(origin_y + screen_y) & 0xFFF8u;
-
-        /* First world write wins: if the game later redraws the original
-         * terrain into this circular BG-map slot, do not undo a broken/used
-         * block. A level transition clears this cache. */
-        int found = 0;
-        for (unsigned j = 0; j < mp_sml2_tile_patch_count; j++) {
-            const MpSml2TilePatch *patch = &mp_sml2_tile_patches[j];
-            if (patch->level == level && patch->bank == bank &&
-                patch->world_x == world_x && patch->world_y == world_y) {
-                found = 1;
-                break;
-            }
-        }
-        if (found || mp_sml2_tile_patch_count >= MP_SML2_MAX_TILE_PATCHES)
-            continue;
-
-        MpSml2TilePatch *patch =
-            &mp_sml2_tile_patches[mp_sml2_tile_patch_count++];
-        patch->level = level;
-        patch->bank = bank;
-        patch->world_x = world_x;
-        patch->world_y = world_y;
-        patch->tile = after[i];
-    }
-}
-
-static void mp_sml2_apply_tile_patches(void)
-{
-    /* Pipes, death transitions and short level-mode changes can temporarily
-     * make gameplay_active false. Keep the cache through those frames; clear
-     * it explicitly when multiplayer leaves the level or the level key changes. */
-    if (!mp_sml2_gameplay_active()) return;
-
-    uint8_t level = rd8(0xA269);
-    uint8_t bank = rd8(0xA258);
-    mp_sml2_tile_patches_prepare(level, bank);
-    if (!mp_sml2_tile_patch_count) return;
-
-    uint16_t origin_x = mp_sml2_world_origin_x();
-    uint16_t origin_y = mp_sml2_world_origin_y();
-    int scx = rd8(0xFF43);
-    int scy = rd8(0xFF42);
-
-    for (unsigned i = 0; i < mp_sml2_tile_patch_count; i++) {
-        const MpSml2TilePatch *patch = &mp_sml2_tile_patches[i];
-        int dx = (int16_t)(patch->world_x - origin_x);
-        int dy = (int16_t)(patch->world_y - origin_y);
-        if (dx < 0 || dx >= 256 || dy < 0 || dy >= 256) continue;
-
-        int map_x = (((unsigned)dx + (unsigned)scx) & 0xFFu) >> 3;
-        int map_y = (((unsigned)dy + (unsigned)scy) & 0xFFu) >> 3;
-        vram[0x1800 + map_y * 32 + map_x] = patch->tile;
-    }
-}
-
 static int mp_sml2_distance(uint8_t a, int b)
 {
     int d = abs((int)a - (b & 0xFF));
@@ -1537,9 +1410,6 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (!mp_ready || player < 0 || player >= mp_player_count || !frame) return -1;
     if (player == 0) {
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-        /* Reapply persistent used/broken-block tiles before game logic so
-         * collision checks see them, then again after map streaming below. */
-        mp_sml2_apply_tile_patches();
         uint8_t scroll_before = rd8(0xA2B1);
         gb_set_input(buttons, dpad);
         mp_vblank_waiting = 0;
@@ -1549,7 +1419,6 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         if (status == 0) run_core(0);
         mp_active = 0;
         if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
-        mp_sml2_apply_tile_patches();
         int n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
         mp_sml2_save_player(&mp_sml2_players[0], 0);
@@ -1568,7 +1437,6 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
                 mp_sml2_initialized = 1;
             }
         } else {
-            if (mp_sml2_initialized) mp_sml2_tile_patches_clear();
             mp_sml2_initialized = 0;
             for (int i = 1; i < MAX_MP_PLAYERS; i++) mp_sml2_players[i].spawned = 0;
         }
@@ -1577,7 +1445,6 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     }
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-    mp_sml2_apply_tile_patches();
     MpSml2Player *p = &mp_sml2_players[player];
     p->sfx_events = 0;
     if (!mp_sml2_initialized || !mp_sml2_gameplay_active()) {
@@ -1610,8 +1477,6 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t scroll = rd8(0xA2B1);
     uint8_t scroll_y_before = rd8(0xA2B0);
     uint8_t scx_before = rd8(0xFF43), scy_before = rd8(0xFF42);
-    for (int i = 0; i < 0x800; i++)
-        mp_sml2_shared_ram_before[i] = cart_ram_read((uint16_t)(0xA000 + i));
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_before[i] = cart_ram_read((uint16_t)(0xA800 + i));
     memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
     gb_set_input(buttons, dpad);
@@ -1624,8 +1489,6 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
     uint8_t coins_low_after = rd8(0xA262), coins_high_after = rd8(0xA263);
     uint8_t kills_after = rd8(0xA28D), scroll_after = rd8(0xA2B1);
-    for (int i = 0; i < 0x800; i++)
-        mp_sml2_shared_ram_after[i] = cart_ram_read((uint16_t)(0xA000 + i));
     for (int i = 0; i < 0x1800; i++) mp_sml2_map_after[i] = cart_ram_read((uint16_t)(0xA800 + i));
     memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
     mp_sml2_save_player(p, player);
@@ -1659,32 +1522,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     int vram_changed = merge_world && same_camera &&
         memcmp(mp_sml2_vram_before, mp_sml2_vram_after, sizeof mp_sml2_vram_before) != 0;
 
-    if (vram_changed)
-        mp_sml2_record_tile_patches(level_before, level_bank_before,
-                                    mp_sml2_vram_before, mp_sml2_vram_after);
-
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-
-    /* A hit block can update persistent collision/used-state flags outside
-     * the visible A800-BFFF map buffers. If its tilemap changed while the
-     * clone used the same camera, merge those related SRAM deltas too.
-     * A100-A1FF is the game's OAM/temporary sprite workspace, and A200-A2FF
-     * contains player-private state; never copy either range from a clone. */
-    int shared_ram_changed = 0;
-    if (merge_world && vram_changed) {
-        for (int i = 0; i < 0x800; i++) {
-            int address = 0xA000 + i;
-            /* The A100-A1FF area stages OAM. Keep that transient buffer out of
-             * the merge, but use the explicit player-state whitelist for
-             * A200-A2FF so unrelated shared block/game flags can propagate. */
-            if (address >= 0xA100 && address <= 0xA1FF) continue;
-            if (mp_sml2_private_addr((unsigned)address)) continue;
-            if (mp_sml2_shared_ram_before[i] == mp_sml2_shared_ram_after[i])
-                continue;
-            wr8((uint16_t)address, mp_sml2_shared_ram_after[i]);
-            shared_ram_changed = 1;
-        }
-    }
 
     if (map_changed) {
         /* Merge static level/map bytes only when the clone used the same
@@ -1714,8 +1552,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (merge_world && coins_low_after != coins_low) wr8(0xA262, coins_low_after);
     if (merge_world && coins_high_after != coins_high) wr8(0xA263, coins_high_after);
     if (merge_world && kills_after != kills) wr8(0xA28D, kills_after);
-    mp_sml2_apply_tile_patches();
-    if (map_changed || vram_changed || shared_ram_changed ||
+    if (map_changed || vram_changed ||
         (merge_world && (coins_low_after != coins_low ||
                          coins_high_after != coins_high || kills_after != kills))) {
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
