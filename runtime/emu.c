@@ -1285,11 +1285,46 @@ static void mp_sml2_capture_frame(Frame *frame)
             frame->mp_player_sprite_count[player] =
                 mp_sml2_render_oam_count[player];
         } else {
-            /* Last-resort visibility fallback for frames where the mapping
-             * matcher has no exact matches. Prefer the clone's own four OAM
-             * pieces over suppressing the player entirely. */
             memcpy(frame->mp_player_oam[player], p->oam, sizeof p->oam);
             frame->mp_player_sprite_count[player] = 4;
+        }
+
+        /* If both OAM sources failed to identify the clone's pose, show a
+         * translated copy of Player 1's known-visible pose as a final fallback.
+         * This only affects rendering; the clone keeps independent RAM/physics.
+         * It prevents the overlay from disappearing just because this frame's
+         * character-map lookup or DMA list was incomplete. */
+        if (p->spawned && lives > 0) {
+            int visible_pieces = 0;
+            for (int i = 0; i < frame->mp_player_sprite_count[player]; i++) {
+                const uint8_t *sprite = &frame->mp_player_oam[player][i * 4];
+                if (sprite[0] > 0 && sprite[0] < 160 &&
+                    sprite[1] > 0 && sprite[1] < 168)
+                    visible_pieces++;
+            }
+            if (visible_pieces < 2) {
+                int dx = (int)(uint8_t)(p->ram[0x3C] - rd8(0xA23C));
+                int dy = (int)(uint8_t)(p->ram[0x3B] - rd8(0xA23B));
+                if (dx > 127) dx -= 256;
+                if (dy > 127) dy -= 256;
+                int source_pieces = 0;
+                for (int i = 0; i < 4; i++) {
+                    const uint8_t *sprite = &frame->mario_oam[i * 4];
+                    if (sprite[0] > 0 && sprite[0] < 160 &&
+                        sprite[1] > 0 && sprite[1] < 168)
+                        source_pieces++;
+                }
+                if (source_pieces >= 2) {
+                    memcpy(frame->mp_player_oam[player], frame->mario_oam,
+                           sizeof frame->mario_oam);
+                    for (int i = 0; i < 4; i++) {
+                        uint8_t *sprite = &frame->mp_player_oam[player][i * 4];
+                        sprite[0] = (uint8_t)(sprite[0] + dy);
+                        sprite[1] = (uint8_t)(sprite[1] + dx);
+                    }
+                    frame->mp_player_sprite_count[player] = 4;
+                }
+            }
         }
         frame->mp_player_sfx_events[player] = p->sfx_events;
     }
