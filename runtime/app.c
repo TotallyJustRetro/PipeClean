@@ -798,6 +798,10 @@ static int play_multiplayer(int g)
                 SDL_FreeSurface(snap);
             }
         }
+        /* Capture after the game and HUD are fully drawn, before SDL presents
+         * the backbuffer. The Dev build only performs readback when an incident
+         * or periodic screenshot has been requested. */
+        dev_diag_capture_screen(ren);
         SDL_RenderPresent(ren);
     }
 
