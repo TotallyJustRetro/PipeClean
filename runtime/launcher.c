@@ -681,6 +681,185 @@ static void sub_external_game(int g, float x, float y)
                  "Battery saves are written alongside the selected ROM as a .sav file. Keep each ROM and its save file together.", 2);
 }
 
+static void romhack_select_profile(int g, int index)
+{
+    if (g < 0 || g >= N_GAMES) return;
+    GameCfg *c = &settings.g[g];
+    if (index < -1 || index >= c->romhack_count || index >= MAX_ROMHACKS) return;
+    c->romhack_selected = index;
+    settings_save();
+
+    if (index < 0) {
+        hack_ok[g] = 0;
+        hack_msg[g][0] = 0;
+        make_preview(g);
+        return;
+    }
+    if (games[g].external_player) {
+        RomStatus st;
+        if (rom_load(g, c->rom_path, &st) ||
+            rom_apply_hack(c->romhacks[index].path, &st)) {
+            hack_ok[g] = 0;
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+            launcher_toast(st.msg);
+        } else {
+            hack_ok[g] = 1;
+            snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
+        }
+        return;
+    }
+    make_preview(g);
+    if (!hack_ok[g] && hack_msg[g][0]) launcher_toast(hack_msg[g]);
+}
+
+static void draw_romhack_thumb(int g, int index, float x, float y, float w, float h)
+{
+    ui_rrect(x, y, w, h, 9, HEX(0x0A0D16));
+    SDL_Texture *t = index >= 0 ? romhack_thumb_get(g, index) : NULL;
+    if (t) {
+        int tw = 0, th = 0;
+        SDL_QueryTexture(t, NULL, NULL, &tw, &th);
+        if (tw > 0 && th > 0) draw_cover(t, tw, th, x + 3, y + 3, w - 6, h - 6);
+        return;
+    }
+    uint32_t accent = index < 0 ? games[g].accent : (HEX(ui_accent) & 0xFFFFFF00u) | 255u;
+    ui_rrect(x + 4, y + 4, w - 8, h - 8, 7, (accent & 0xFFFFFF00u) | 45u);
+    ui_text_c(F_BOLD, 14, x + w * 0.5f, y + h * 0.5f - 9,
+              index < 0 ? HEX(games[g].accent) : C_TEXT,
+              index < 0 ? "ORIGINAL" : "ROM HACK");
+    ui_text_c(F_REG, 10, x + w * 0.5f, y + h * 0.5f + 12, C_DIM,
+              index < 0 ? "BASE ROM" : "ADD THUMBNAIL");
+}
+
+static void sub_romhacks(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    const float lw = 356.0f, gap = 14.0f, rw = 808.0f - lw - gap;
+    float rx = x + lw + gap;
+    card(x, y, lw, 476, "ROM HACK LIBRARY");
+    ui_text(F_REG, 11, x + 18, y + 34, C_DIM,
+            "Choose the original or a separate patched profile.");
+    if (ui_button(x + lw - 105, y + 10, 88, 30, "Add hack +", B_PRIMARY,
+                  rs[g].ok && c->romhack_count < MAX_ROMHACKS)) {
+        char path[1100];
+        if (dlg_pick(DLG_PATCH, "Add a ROM hack or patched ROM", path, sizeof path))
+            romhack_add(g, path);
+    }
+
+    const float list_x = x + 10, list_y = y + 58;
+    const float list_w = lw - 20, list_h = 350.0f;
+    int count = c->romhack_count;
+    if (count < 0) count = 0;
+    if (count > MAX_ROMHACKS) count = MAX_ROMHACKS;
+    float row_h = 68.0f, row_gap = 7.0f, row_step = row_h + row_gap;
+    float content_h = (count + 1) * row_step;
+    float max_scroll = content_h > list_h ? content_h - list_h : 0.0f;
+    if (ui_hover(list_x, list_y, list_w, list_h) && ui_mouse.wheel != 0)
+        romhack_scroll[g] -= ui_mouse.wheel * 52.0f;
+    if (romhack_scroll[g] < 0) romhack_scroll[g] = 0;
+    if (romhack_scroll[g] > max_scroll) romhack_scroll[g] = max_scroll;
+
+    ui_clip(list_x, list_y, list_w, list_h);
+    for (int row = 0; row <= count; row++) {
+        int index = row - 1; /* Row zero is always the untouched original game. */
+        if (index >= 0 && !c->romhacks[index].path[0]) continue;
+        float ry = list_y + row * row_step - romhack_scroll[g];
+        if (ry + row_h < list_y || ry > list_y + list_h) continue;
+
+        int selected = c->romhack_selected == index;
+        int over = 0;
+        int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
+        uint32_t bg = selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u)
+                               : (over ? C_BTN_H : C_PANEL2);
+        ui_rrect(list_x + 2, ry, list_w - 4, row_h, 9, bg);
+        if (selected) ui_stroke(list_x + 2, ry, list_w - 4, row_h, 9, 1.5f, HEX(ui_accent));
+        draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
+        const char *title = index < 0 ? "Original game" :
+            (c->romhacks[index].title[0] ? c->romhacks[index].title : "Untitled ROM Hack");
+        ui_text_fit_tail(F_BOLD, 12, list_x + 90, ry + 11, list_w - 104, C_TEXT, title);
+        ui_text_fit_tail(F_REG, 10, list_x + 90, ry + 34, list_w - 104, C_DIM,
+                         index < 0 ? "Unmodified base ROM" : path_base(c->romhacks[index].path));
+        if (clicked) romhack_select_profile(g, index);
+    }
+    ui_unclip();
+    if (content_h > list_h) {
+        float track_x = x + lw - 7, track_y = list_y;
+        float track_h = list_h;
+        float thumb_h = track_h * list_h / content_h;
+        if (thumb_h < 26) thumb_h = 26;
+        float thumb_y = track_y + (track_h - thumb_h) * romhack_scroll[g] / max_scroll;
+        ui_rrect(track_x, track_y, 3, track_h, 2, C_LINE);
+        ui_rrect(track_x - 1, thumb_y, 5, thumb_h, 3, HEX(ui_accent));
+    }
+    ui_text_fit(F_REG, 10, x + 14, y + 438, lw - 28, C_DIM,
+                "Scroll to browse. The original ROM file is never modified.");
+
+    card(rx, y, rw, 476, "SELECTED VERSION");
+    int index = c->romhack_selected;
+    if (index < 0 || index >= count || !c->romhacks[index].path[0]) {
+        draw_romhack_thumb(g, -1, rx + 18, y + 50, 164, 122);
+        ui_text_fit_tail(F_BOLD, 18, rx + 198, y + 54, rw - 216, C_TEXT, games[g].name);
+        ui_text(F_REG, 12, rx + 198, y + 83, C_OK, "Original game");
+        ui_text_wrap(F_REG, 12, rx + 198, y + 108, rw - 216, C_DIM,
+                     "This uses the main ROM file with no hack applied.", 3);
+        label(rx + 18, y + 190, "MAIN ROM");
+        path_box(rx + 18, y + 212, rw - 36, c->rom_path, "Choose the original ROM on the Game tab");
+        status_line(rx + 18, y + 262, rw - 36, rs[g].ok ? 1 : 3,
+                    rs[g].ok ? "Ready to play unchanged." : rs[g].msg);
+        ui_text_wrap(F_REG, 12, rx + 18, y + 305, rw - 36, C_DIM,
+                     "Selecting a ROM hack creates a separate play profile. Your base ROM stays as-is.", 3);
+    } else {
+        RomHackEntry *entry = &c->romhacks[index];
+        draw_romhack_thumb(g, index, rx + 18, y + 50, 164, 122);
+        int editing = romhack_title_editing_game == g &&
+                      romhack_title_editing_index == index;
+        if (editing) ui_stroke(rx + 194, y + 49, rw - 212, 31, 6, 1.5f, C_WARN);
+        ui_text_fit_tail(F_BOLD, 17, rx + 200, y + 54, rw - 216, C_TEXT,
+                         entry->title[0] ? entry->title : "Untitled ROM Hack");
+        ui_text_fit_tail(F_REG, 11, rx + 200, y + 82, rw - 216, C_DIM,
+                         path_base(entry->path));
+        int exists = file_exists(entry->path);
+        status_line(rx + 198, y + 110, rw - 214, exists ? (hack_ok[g] ? 1 : 2) : 3,
+                    !exists ? "Hack file is missing." :
+                    (hack_ok[g] ? "Profile selected and ready." :
+                     (hack_msg[g][0] ? hack_msg[g] : "Select profile to validate.")));
+
+        label(rx + 18, y + 190, "ROM HACK FILE");
+        path_box(rx + 18, y + 212, rw - 36, entry->path, "No file selected");
+        float by = y + 264;
+        if (ui_button(rx + 18, by, 94, 32, editing ? "Editing…" : "Rename", B_NORMAL, !editing)) {
+            romhack_title_editing_game = g;
+            romhack_title_editing_index = index;
+            snprintf(romhack_title_before, sizeof romhack_title_before, "%s", entry->title);
+            SDL_StartTextInput();
+            launcher_toast("Type the title; press Enter to save or Esc to cancel.");
+        }
+        if (ui_button(rx + 120, by, 132, 32, "Choose thumbnail", B_NORMAL, !editing)) {
+            char path[1100];
+            if (dlg_pick(DLG_IMAGE, "Choose this ROM hack's thumbnail", path, sizeof path)) {
+                snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", path);
+                clear_romhack_thumbs_game(g);
+                settings_save();
+            }
+        }
+        if (ui_button(rx + 260, by, 80, 32, "Remove", B_DANGER, !editing)) {
+            romhack_remove(g, index);
+            launcher_toast("ROM hack removed from the library.");
+        }
+        if (editing) ui_text(F_REG, 10, rx + 18, y + 305, C_WARN,
+                             "Typing changes the title shown in the library.");
+        else ui_text_wrap(F_REG, 11, rx + 18, y + 305, rw - 36, C_DIM,
+                          "This profile is applied at launch. The base ROM and its save remain separate.", 3);
+    }
+    if (!rs[g].ok) {
+        ui_text_wrap(F_REG, 11, rx + 18, y + 400, rw - 36, C_WARN,
+                     "Add a valid original ROM on the Game tab before playing a hack.", 2);
+    } else {
+        ui_text_fit_tail(F_REG, 10, rx + 18, y + 442, rw - 36, C_DIM,
+                         index < 0 ? "Play launches the original game." : "Play launches the selected ROM hack.");
+    }
+}
+
 /* ------------------------------------------------------------------ game tab: Game */
 static void sub_game(int g, float x, float y)
 {
