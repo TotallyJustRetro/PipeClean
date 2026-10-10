@@ -196,6 +196,15 @@ jobs:
             --frames 8 \
             --report-dir ci/mp-test-report
 
+      - name: Upload multiplayer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: PipeClean-Multiplayer-Diagnostics
+          path: ci/mp-test-report/*.jsonl
+          if-no-files-found: ignore
+          retention-days: 7
+
   windows-build:
     runs-on: windows-latest
     steps:
