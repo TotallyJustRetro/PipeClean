@@ -207,9 +207,9 @@ void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
     if (diag.log) {
         fprintf(diag.log,
                 "{\"type\":\"session_start\",\"game\":\"%s\","
-                "\"players\":%d,\"log_file\":\"%s\","
+                "\"players\":%d,\"log_file\":\"logs/%s\","
                 "\"build\":\"PIPECLEAN_DEV_BUILD\"}\n",
-                diag.game_name, player_count, diag.log_path);
+                diag.game_name, player_count, path_base(diag.log_path));
         fflush(diag.log);
     }
     char event[120];
