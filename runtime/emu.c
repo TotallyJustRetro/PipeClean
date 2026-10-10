@@ -966,9 +966,13 @@ static int mp_sml2_capture_mapping_oam_at(int rom_bank, uint8_t mapping,
 static int mp_sml2_player_mapping_banks(int banks[2])
 {
     const CartInfo *ci = cart_info();
-    if (ci && ci->mapper == 5 && ci->rom_banks >= 64) {
-        banks[0] = 44; /* Mario mapping set */
-        banks[1] = 45; /* alternate/CGB player mapping set */
+    /* Do not infer "DX" from cartridge size alone. The original game is
+     * always the default profile; only an explicitly selected patched image
+     * may use the DX mapping tables in banks 44/45. This keeps the retail
+     * player's sprite path isolated from ROM-hack-specific data. */
+    if (rom_hack_active() && ci && ci->mapper == 5 && ci->rom_banks >= 64) {
+        banks[0] = 44; /* SML2 DX primary player mapping set */
+        banks[1] = 45; /* alternate/CGB mapping set */
         return 2;
     }
     banks[0] = 1;
