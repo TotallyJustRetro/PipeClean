@@ -1348,7 +1348,8 @@ static void mp_sml2_offset_player(MpSml2Player *p, int dx)
     /* A227/A228 is a 16-bit world coordinate. Carry the spawn offset into its
      * high byte; incrementing only A227 teleported a respawned clone 256px
      * backward whenever the low byte crossed $FF (for example $05EC + 24). */
-    uint16_t world_x = mp_sml2_saved_world_x(p);
+    uint16_t world_x = (uint16_t)p->ram[0x27] |
+                       ((uint16_t)p->ram[0x28] << 8);
     world_x = (uint16_t)(world_x + dx);
     p->ram[0x27] = (uint8_t)world_x;
     p->ram[0x28] = (uint8_t)(world_x >> 8);
