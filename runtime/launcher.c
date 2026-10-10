@@ -325,6 +325,15 @@ static void make_preview(int g)
     tex_collect_save();
 }
 
+static void set_rom(int g, const char *path)
+{
+    if (g < 0 || g >= N_GAMES || !path) return;
+    snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", path);
+    rom_check(g);
+    if (rs[g].ok) make_preview(g);
+    else prev_ok[g] = 0;
+}
+
 static void romhack_title_from_path(const char *path, char *out, size_t n)
 {
     if (!out || !n) return;
@@ -1835,6 +1844,7 @@ LauncherResult launcher_frame(float dt)
 
     float cx = 268, cy = 108;
     if (tab < N_GAMES) {
+        GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, games[tab].name);
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, games[tab].sub);
