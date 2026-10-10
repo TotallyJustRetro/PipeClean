@@ -2512,6 +2512,18 @@ int emu_mp_test_snapshot(EmuMpTestSnapshot *out)
         out->p2_in_air = p->ram[0x15];
         out->p2_lives = mp_sml2_test_bcd(p->lives);
         out->p2_spawned = (uint8_t)(p->spawned != 0);
+        out->p2_powerup = p->ram[0x16];
+        out->p2_animation = p->ram[0x17];
+        out->p2_mapping_preferred = mp_sml2_debug_mapping_preferred[1];
+        out->p2_mapping_selected = mp_sml2_debug_mapping_selected[1];
+        out->p2_mapping_bank = mp_sml2_debug_mapping_bank[1];
+        out->p2_mapping_source = mp_sml2_debug_mapping_source[1];
+        out->p2_mapping_inferred = mp_sml2_debug_mapping_inferred[1];
+        out->p2_mapping_complete = mp_sml2_debug_mapping_complete[1];
+        out->p2_respawn_requested = (uint8_t)(p->respawn_requested != 0);
+        out->p2_previous_a = p->previous_a;
+        out->p2_keys_held = p->keys_held;
+        out->p2_keys_pressed = p->keys_pressed;
     }
 
     uint32_t bg_hash = 2166136261u;
