@@ -32,9 +32,20 @@ enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 #define PAD_AXIS_BASE 100               /* controller binding codes >= 100 are triggers: 100 = L2, 101 = R2 */
 #define MAX_EVENTS 8
 #define N_UI_SFX 5                      /* hover, click, confirm, back, toggle */
+#define MAX_ROMHACKS 16
+#define ROMHACK_TITLE_LEN 96
+
+typedef struct {
+    char path[512];
+    char title[ROMHACK_TITLE_LEN];
+    char thumbnail[512];
+} RomHackEntry;
 
 typedef struct {
     char rom_path[512], hack_path[512], bg_path[512], tex_path[512];
+    int romhack_count;                  /* number of registered secondary ROM profiles */
+    int romhack_selected;                /* -1 = original ROM, otherwise index in romhacks[] */
+    RomHackEntry romhacks[MAX_ROMHACKS];
     int palette, aspect, scaling, size;
     int bg_dim;                         /* 0..80 percent darkening of the background image */
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
