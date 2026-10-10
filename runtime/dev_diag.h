@@ -8,6 +8,8 @@
  * launcher links the same API to no-op implementations. */
 void dev_diag_begin(int game, int player_count, SDL_Window *game_window);
 void dev_diag_event(const char *message);
+/* Save a screenshot plus matching memory snapshot on the next rendered frame. */
+void dev_diag_request_screenshot(const char *reason);
 void dev_diag_frame(const Frame *frame, int game, int player_count,
                     const uint8_t buttons[MAX_MP_PLAYERS],
                     const uint8_t dpad[MAX_MP_PLAYERS], int paused);
