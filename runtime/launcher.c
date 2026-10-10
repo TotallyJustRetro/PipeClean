@@ -2150,6 +2150,16 @@ void launcher_drop(const char *path)
         return;
     }
     if (ends_with(path, ".png") || ends_with(path, ".jpg") || ends_with(path, ".jpeg") || ends_with(path, ".bmp") || ends_with(path, ".gif") || ends_with(path, ".tga")) {
+        if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS &&
+            settings.g[tab].romhack_selected >= 0 &&
+            settings.g[tab].romhack_selected < settings.g[tab].romhack_count) {
+            RomHackEntry *entry = &settings.g[tab].romhacks[settings.g[tab].romhack_selected];
+            snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", path);
+            clear_romhack_thumbs_game(tab);
+            settings_save();
+            launcher_toast("ROM hack thumbnail changed.");
+            return;
+        }
         if (tab >= N_GAMES) tab = g;
         snprintf(settings.g[tab].bg_path, sizeof settings.g[tab].bg_path, "%s", path);
         ensure_background(tab);
