@@ -274,10 +274,23 @@ void launcher_game_file_id(int g, char *out, size_t n)
     const GameCfg *c = &settings.g[g];
     int index = c->romhack_selected;
     if (index >= 0 && index < c->romhack_count && index < MAX_ROMHACKS &&
-        c->romhacks[index].path[0])
-        snprintf(out, n, "%s-hack%02d", games[g].id, index + 1);
-    else
+        c->romhacks[index].path[0]) {
+        /* Stable across list reordering; also distinguish the same patch used
+         * against different base ROM paths. */
+        uint32_t hash = 2166136261u;
+        const char *parts[2] = {c->rom_path, c->romhacks[index].path};
+        for (int part = 0; part < 2; part++) {
+            for (const unsigned char *p = (const unsigned char *)parts[part]; *p; p++) {
+                hash ^= *p;
+                hash *= 16777619u;
+            }
+            hash ^= 0xFFu;
+            hash *= 16777619u;
+        }
+        snprintf(out, n, "%s-hack%08X", games[g].id, (unsigned)hash);
+    } else {
         snprintf(out, n, "%s", games[g].id);
+    }
 }
 
 static void ensure_pack(int g)
