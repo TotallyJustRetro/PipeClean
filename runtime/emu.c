@@ -953,12 +953,12 @@ static void mp_sml2_record_tile_patches(uint8_t level, uint8_t bank,
         uint16_t world_y = (uint16_t)(origin_y + screen_y) & 0xFFF8u;
         int found = 0;
         for (unsigned j = 0; j < mp_sml2_tile_patch_count; j++) {
-            MpSml2TilePatch *patch = &mp_sml2_tile_patches[j];
+            const MpSml2TilePatch *patch = &mp_sml2_tile_patches[j];
             if (patch->level == level && patch->bank == bank &&
                 patch->world_x == world_x && patch->world_y == world_y) {
-                /* The same block can be hit more than once; keep its latest
-                 * interaction tile, not a prior intermediate animation. */
-                patch->tile = after[i];
+                /* Keep the first interaction result. Later map streaming can
+                 * rewrite the circular BG slot with original terrain; that
+                 * redraw must not overwrite the cached used/broken tile. */
                 found = 1;
                 break;
             }
