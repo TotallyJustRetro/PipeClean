@@ -181,7 +181,7 @@ def main() -> int:
     failed = [message for enabled, passed, message in checks if enabled and not passed]
     if failed:
         print(
-            "MULTIPLAYER TEST: FAIL — " + "; ".join(failed) + "\\n"
+            "MULTIPLAYER TEST: FAIL — " + "; ".join(failed) + "\n"
             f"Reports: {report_a} and {report_b}",
             file=sys.stderr,
         )
@@ -189,7 +189,7 @@ def main() -> int:
 
     print(
         f"MULTIPLAYER TEST: PASS — {args.frames} scripted two-player frames replayed "
-        f"deterministically; Player 2 marked spawned in {spawned} frames.\\n"
+        f"deterministically; Player 2 marked spawned in {spawned} frames.\n"
         f"Reports: {report_a} and {report_b}"
     )
     return 0
