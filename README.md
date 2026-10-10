@@ -101,6 +101,12 @@ MBC1 mapper: PASS
 
 GitHub Actions runs the regressions, validates the Python tools, builds the full native runtime against synthetic ROMs, and runs headless smoke tests without shipping any game ROM.
 
+### PipeClean Dev multiplayer diagnostics
+
+The separate **PipeClean Dev** Windows build opens a live diagnostics window whenever local multiplayer starts. It records per-frame inputs, player positions, camera/level state, sprite counts, coins, tilemap/world-memory hashes and a rendered-frame hash. Events such as lives changes, spawn changes, likely movement stalls and sprite-list warnings are recorded too. Closing only the diagnostics window hides it but keeps logging; leaving the multiplayer session finalizes the log.
+
+Logs are written beside the executable in `logs/PipeClean-dev-multiplayer-YYYYMMDD-HHMMSS-*.jsonl`. The regular PipeClean build does not open this developer window or create these session logs. Download **PipeClean-Dev-Windows-x64** from the separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml).
+
 ### Scripted multiplayer replay test
 
 The headless test runner can execute repeatable two-player SML2 input sequences and write a JSONL diagnostic record for every logical frame. Each record includes player coordinates/grounding, camera and level values, sprite counts, tilemap/world-memory hashes, and a render hash. The wrapper replays the same inputs twice and fails if the recorded frames differ.
