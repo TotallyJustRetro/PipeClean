@@ -978,10 +978,45 @@ static int mp_sml2_player_mapping_banks(int banks[2])
     return 1;
 }
 
-/* Keep a complete mapping whenever possible. If the frame's OAM omits one
- * or more pieces (often during animation/edge clipping), retain only exact
- * mapping+coordinate matches as a last resort rather than pulling nearby
- * enemy/effect sprites into a guessed four-piece player. */
+/* The game does not use mapping IDs 0-21 for every Mario pose. Its player
+ * animation selector is shifted by +32 for small Mario, +69/+95 for the
+ * carrot forms, and +112/+144 for fire forms. During a flash animation it
+ * can temporarily use the +32 set regardless of power-up. The early IDs
+ * include unrelated effects/enemies, which is why searching only 0-21
+ * could assemble an unrelated sprite out of nearby OAM entries. */
+static int mp_sml2_player_mapping_id_allowed(int mapping)
+{
+    int powerup = rd8(0xA216);
+    int animation = rd8(0xA217);
+    if (animation & 0x04)
+        return mapping >= 0x20 && mapping <= 0x35;
+
+    switch (powerup) {
+    case 0:
+        return mapping >= 0x20 && mapping <= 0x35;
+    case 1:
+        return mapping <= 0x15;
+    case 2:
+        return (mapping >= 0x45 && mapping <= 0x5A) ||
+               (mapping >= 0x5F && mapping <= 0x74);
+    case 3:
+        return (mapping >= 0x70 && mapping <= 0x85) ||
+               (mapping >= 0x90 && mapping <= 0xA5);
+    default:
+        /* Keep reasonable player-pose ranges if the ROM uses an unexpected
+         * power-up value, rather than falling back to arbitrary world maps. */
+        return (mapping <= 0x15) ||
+               (mapping >= 0x20 && mapping <= 0x35) ||
+               (mapping >= 0x45 && mapping <= 0x5A) ||
+               (mapping >= 0x5F && mapping <= 0x85) ||
+               (mapping >= 0x90 && mapping <= 0xA5);
+    }
+}
+
+/* Decode only mapping IDs used by the current player form. At the stable
+ * screen origin, an exact mapping match is much safer than guessing a 2x2
+ * block from nearby OAM entries. If the ROM omits pieces during clipping,
+ * exact partial matches are retained as a last resort. */
 static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
                                              const uint8_t source[0xA0],
                                              uint8_t out[MP_MAX_OAM_SPRITES * 4])
@@ -997,25 +1032,28 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
     memset(best_complete_oam, 0, sizeof best_complete_oam);
     memset(best_partial_oam, 0, sizeof best_partial_oam);
 
-    for (int bi = 0; bi < bank_count; bi++) {
-        int complete = 0;
-        int count = preferred <= 0x15
-            ? mp_sml2_capture_mapping_oam_at(banks[bi], preferred, player_x,
-                player_y, source, candidate, &complete) : 0;
-        if (complete && count > best_count) {
-            memcpy(best_complete_oam, candidate, (size_t)count * 4u);
-            best_count = count;
-        } else if (!complete && count > partial_count) {
-            memcpy(best_partial_oam, candidate, (size_t)count * 4u);
-            partial_count = count;
+    /* Prefer the live selector when it refers to one of this form's maps. */
+    if (preferred < 0xF2 && mp_sml2_player_mapping_id_allowed(preferred)) {
+        for (int bi = 0; bi < bank_count; bi++) {
+            int complete = 0;
+            int count = mp_sml2_capture_mapping_oam_at(banks[bi], preferred,
+                player_x, player_y, source, candidate, &complete);
+            if (complete && count > best_count) {
+                memcpy(best_complete_oam, candidate, (size_t)count * 4u);
+                best_count = count;
+            } else if (!complete && count > partial_count) {
+                memcpy(best_partial_oam, candidate, (size_t)count * 4u);
+                partial_count = count;
+            }
         }
     }
 
-    /* The saved selector can be scratch state. Check every player pose at the
-     * stable player-owned origin before considering an inferred origin. */
+    /* Search only the mapping families used by Mario in this form. */
     for (int bi = 0; bi < bank_count; bi++) {
-        for (int mapping = 0; mapping < 0x16; mapping++) {
-            if (mapping == preferred) continue;
+        for (int mapping = 0; mapping < 0xF2; mapping++) {
+            if (mapping == preferred ||
+                !mp_sml2_player_mapping_id_allowed(mapping))
+                continue;
             int complete = 0;
             int count = mp_sml2_capture_mapping_oam_at(banks[bi],
                 (uint8_t)mapping, player_x, player_y, source, candidate,
@@ -1029,19 +1067,23 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
             }
         }
     }
-    if (best_count >= 8) {
+    if (best_count > 0) {
         memcpy(out, best_complete_oam, (size_t)best_count * 4u);
         return best_count;
     }
 
-    /* Some animation paths move the emitted pieces relative to A23B/A23C.
-     * Infer a nearby origin from a mapped tile, then check the full layout. */
+    /* Some animation paths move pieces slightly relative to A23B/A23C.
+     * Infer a nearby origin from the first tile in each allowed map, then
+     * validate the entire pose against exact tile IDs and screen positions. */
     for (int bi = 0; bi < bank_count; bi++) {
         int rom_bank = banks[bi];
-        for (int mapping = 0; mapping < 0x16; mapping++) {
-            uint16_t pointer_address = (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
+        for (int mapping = 0; mapping < 0xF2; mapping++) {
+            if (!mp_sml2_player_mapping_id_allowed(mapping)) continue;
+            uint16_t pointer_address =
+                (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
             uint8_t lo = cart_rom_read_bank(rom_bank, pointer_address);
-            uint8_t hi = cart_rom_read_bank(rom_bank, (uint16_t)(pointer_address + 1u));
+            uint8_t hi = cart_rom_read_bank(rom_bank,
+                                            (uint16_t)(pointer_address + 1u));
             uint16_t map = (uint16_t)(lo | ((uint16_t)hi << 8));
             if (map < 0x41E4 || map >= 0x8000) continue;
 
@@ -1080,8 +1122,6 @@ static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
         memcpy(out, best_complete_oam, (size_t)best_count * 4u);
         return best_count;
     }
-    /* Two or more exact map matches give a useful pose without inventing
-     * unrelated pieces. A lone match is too ambiguous to trust. */
     if (partial_count >= 2) {
         memcpy(out, best_partial_oam, (size_t)partial_count * 4u);
         return partial_count;
@@ -1124,12 +1164,11 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
             p->h_c6, staged_oam, mp_sml2_render_oam[player]);
         /* Fall back to the stable four-piece matcher if the ROM map cannot
          * be read or doesn't match the live OAM for this game frame. */
-        if (mapped >= 4) {
+        if (mapped >= 2) {
+            /* Even a clipped partial map is exact; do not replace it with a
+             * guessed 2x2 which can include enemy/effect sprites. */
             mp_sml2_render_oam_count[player] = (uint8_t)mapped;
         } else {
-            /* A partial mapping can be technically valid but leave the
-             * character effectively invisible. Retry against the PPU's live
-             * OAM for this clone before using the staged-OAM cache. */
             uint8_t live_player_oam[16];
             mp_sml2_capture_oam_from(oam, live_player_oam);
             int live_pieces = 0;
@@ -1144,12 +1183,7 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
                 memcpy(mp_sml2_render_oam[player], live_player_oam,
                        sizeof live_player_oam);
                 mp_sml2_render_oam_count[player] = 4;
-            } else if (mapped > 0) {
-                /* Preserve exact mapping matches if live OAM isn't complete. */
-                mp_sml2_render_oam_count[player] = (uint8_t)mapped;
             } else {
-                /* Last resort: retain the clone's own four-piece capture.
-                 * It is preferable to suppressing the player overlay. */
                 memcpy(mp_sml2_render_oam[player], p->oam, sizeof p->oam);
                 mp_sml2_render_oam_count[player] = 4;
             }
