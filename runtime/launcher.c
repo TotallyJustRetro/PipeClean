@@ -195,8 +195,9 @@ static void clear_state_thumbs(void)
 static SDL_Texture *state_thumb_get(int g, int slot)
 {
     if (g < 0 || g >= N_GAMES || slot < 0 || slot >= 10 || !g_ren) return NULL;
-    char path[1200];
-    snprintf(path, sizeof path, "%sstates/%s.slot%d.thumb.bmp", settings_dir(), games[g].id, slot);
+    char path[1200], id[128];
+    launcher_game_file_id(g, id, sizeof id);
+    snprintf(path, sizeof path, "%sstates/%s.slot%d.thumb.bmp", settings_dir(), id, slot);
     if (!file_exists(path)) {
         if (state_thumb_tex[g][slot]) SDL_DestroyTexture(state_thumb_tex[g][slot]);
         state_thumb_tex[g][slot] = NULL;
@@ -1129,7 +1130,9 @@ static void sub_save_states(int g, float x, float y)
         float bx = x + 18 + col * 386;
         float by = y + 112 + row * 64;
 
-        snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), games[g].id, slot);
+        char file_id[128];
+        launcher_game_file_id(g, file_id, sizeof file_id);
+        snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), file_id, slot);
         int saved = file_exists(path);
         int selected = slot == c->state_slot;
         int over = 0;
@@ -1156,7 +1159,9 @@ static void sub_save_states(int g, float x, float y)
         }
     }
 
-    snprintf(path, sizeof path, "%sstates/%s.suspend.pcs", settings_dir(), games[g].id);
+    char file_id[128];
+    launcher_game_file_id(g, file_id, sizeof file_id);
+    snprintf(path, sizeof path, "%sstates/%s.suspend.pcs", settings_dir(), file_id);
     int suspended = file_exists(path);
     ui_text(F_BOLD, 11, x + 18, y + 443, C_MUTED, "Suspend");
     ui_text(F_REG, 11, x + 78, y + 443, suspended ? C_OK : C_DIM,
