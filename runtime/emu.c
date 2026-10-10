@@ -1419,6 +1419,55 @@ static int mp_sml2_gameplay_active(void)
            rd8(0xA258) == mp_sml2_stable_bank;
 }
 
+/* Keep each co-op character inside the shared 160px gameplay view. The
+ * original game has one camera and one collision tilemap; allowing the leader
+ * to scroll far ahead leaves the other clone simulating against unrelated
+ * scenery. At the normal P1 screen anchor (~63), a 56px trailing gap keeps a
+ * follower on-screen, while the larger forward gap leaves room for a player
+ * who runs slightly ahead. Inputs toward increasing the gap are held until
+ * the other player catches up. */
+#define MP_SML2_COOP_MAX_BEHIND 56
+#define MP_SML2_COOP_MAX_AHEAD 88
+#define MP_SML2_DPAD_RIGHT 0x01u
+#define MP_SML2_DPAD_LEFT  0x02u
+
+static uint16_t mp_sml2_saved_world_x(const MpSml2Player *p)
+{
+    return p ? (uint16_t)p->ram[0x27] |
+               ((uint16_t)p->ram[0x28] << 8) : 0;
+}
+
+static void mp_sml2_constrain_horizontal_input(int player, uint8_t *dpad)
+{
+    if (!dpad || player < 0 || player >= mp_player_count ||
+        !mp_sml2_initialized || !mp_sml2_gameplay_active())
+        return;
+
+    uint16_t leader_x = mp_sml2_saved_world_x(&mp_sml2_players[0]);
+    if (player == 0) {
+        /* P1 owns the camera, but must not push it ahead of any active
+         * follower who has fallen behind the usable shared-screen range. */
+        for (int i = 1; i < mp_player_count; i++) {
+            const MpSml2Player *follower = &mp_sml2_players[i];
+            if (!follower->spawned) continue;
+            int gap = (int)leader_x - (int)mp_sml2_saved_world_x(follower);
+            if (gap > MP_SML2_COOP_MAX_BEHIND)
+                *dpad &= (uint8_t)~MP_SML2_DPAD_RIGHT;
+            if (gap < -MP_SML2_COOP_MAX_AHEAD)
+                *dpad &= (uint8_t)~MP_SML2_DPAD_LEFT;
+        }
+        return;
+    }
+
+    const MpSml2Player *follower = &mp_sml2_players[player];
+    if (!follower->spawned) return;
+    int gap = (int)leader_x - (int)mp_sml2_saved_world_x(follower);
+    if (gap > MP_SML2_COOP_MAX_BEHIND)
+        *dpad &= (uint8_t)~MP_SML2_DPAD_LEFT;
+    if (gap < -MP_SML2_COOP_MAX_AHEAD)
+        *dpad &= (uint8_t)~MP_SML2_DPAD_RIGHT;
+}
+
 static void mp_sml2_capture_frame(Frame *frame)
 {
     if (!frame) return;
@@ -1545,7 +1594,9 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         uint8_t level_before = rd8(0xA269), level_bank_before = rd8(0xA258);
         uint8_t ground_before = rd8(0xA214), air_before = rd8(0xA215);
         memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
-        gb_set_input(buttons, dpad);
+        uint8_t effective_dpad = dpad;
+        mp_sml2_constrain_horizontal_input(player, &effective_dpad);
+        gb_set_input(buttons, effective_dpad);
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
         mp_active = 1;
@@ -1635,7 +1686,9 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     uint8_t scroll_y_before = rd8(0xFFC8);
     uint8_t scx_before = rd8(0xFF43), scy_before = rd8(0xFF42);
     memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
-    gb_set_input(buttons, dpad);
+    uint8_t effective_dpad = dpad;
+    mp_sml2_constrain_horizontal_input(player, &effective_dpad);
+    gb_set_input(buttons, effective_dpad);
     mp_vblank_waiting = 0;
     gb_mp_vblank_watch = 0;
     mp_active = 1;
