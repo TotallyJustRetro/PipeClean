@@ -963,6 +963,21 @@ static int mp_sml2_capture_mapping_oam_at(int rom_bank, uint8_t mapping,
     return count;
 }
 
+/* The retail ROM keeps Mario mappings in bank 1. SML2 DX v1.8.1
+ * relocates its CGB player mapping tables to banks 44/45. */
+static int mp_sml2_player_mapping_banks(int banks[2])
+{
+    const CartInfo *ci = cart_info();
+    if (rom_hack_active() && ci && ci->mapper == 5 && ci->rom_banks >= 64) {
+        banks[0] = 44;
+        banks[1] = 45;
+        return 2;
+    }
+    banks[0] = 1;
+    banks[1] = -1;
+    return 1;
+}
+
 /* Keep a complete mapping whenever possible. If the frame's OAM omits one
  * or more pieces (often during animation/edge clipping), retain only exact
  * mapping+coordinate matches as a last resort rather than pulling nearby
