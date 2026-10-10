@@ -663,6 +663,10 @@ static int play_multiplayer(int g)
                     dev_diag_event(paused ? "GAME PAUSED" : "GAME RESUMED");
                     break;
                 case SDLK_TAB: emu_set_turbo(1); break;
+                case SDLK_F10:
+                    dev_diag_request_screenshot("manual F10");
+                    game_notice("Diagnostic screenshot queued in the logs folder.");
+                    break;
                 case SDLK_F12: shot = 1; break;
                 }
             } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
