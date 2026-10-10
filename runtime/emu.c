@@ -2251,6 +2251,79 @@ int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t
     return result;
 }
 
+static uint32_t mp_sml2_test_hash_ram(uint16_t first, uint16_t end)
+{
+    uint32_t hash = 2166136261u;
+    for (uint32_t address = first; address < (uint32_t)end; address++) {
+        hash ^= rd8((uint16_t)address);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+static uint16_t mp_sml2_test_read16(unsigned address)
+{
+    return (uint16_t)rd8((uint16_t)address) |
+           ((uint16_t)rd8((uint16_t)(address + 1u)) << 8);
+}
+
+static uint8_t mp_sml2_test_bcd(uint8_t value)
+{
+    return (uint8_t)((((value >> 4) & 0x0Fu) * 10u) + (value & 0x0Fu));
+}
+
+int emu_mp_test_snapshot(EmuMpTestSnapshot *out)
+{
+    if (!out || !mp_ready || mp_game != GAME_SML2) return -1;
+    memset(out, 0, sizeof *out);
+
+    out->p1_world_x = mp_sml2_test_read16(0xA227);
+    out->p1_world_y = mp_sml2_test_read16(0xA229);
+    out->camera_x = mp_sml2_test_read16(0xFFCA);
+    out->camera_y = mp_sml2_test_read16(0xFFC8);
+    out->level = rd8(0xA269);
+    out->level_bank = rd8(0xA258);
+    out->game_mode = rd8(0xFF9B);
+    out->p1_screen_x = rd8(0xA23C);
+    out->p1_screen_y = rd8(0xA23B);
+    out->p1_grounded = rd8(0xA214);
+    out->p1_in_air = rd8(0xA215);
+    out->p1_lives = mp_sml2_test_bcd(rd8(0xA22C));
+    out->coins_low = rd8(0xA262);
+    out->coins_high = rd8(0xA263);
+    out->multiplayer_initialized = (uint8_t)(mp_sml2_initialized != 0);
+    out->stable_gameplay_frames = (uint16_t)(
+        mp_sml2_stable_frames > 0xFFFFu ? 0xFFFFu : mp_sml2_stable_frames);
+    out->tile_patch_count = (uint16_t)(
+        mp_sml2_tile_patch_count > 0xFFFFu ? 0xFFFFu : mp_sml2_tile_patch_count);
+
+    if (mp_player_count > 1) {
+        const MpSml2Player *p = &mp_sml2_players[1];
+        out->p2_world_x = (uint16_t)p->ram[0x27] |
+                          ((uint16_t)p->ram[0x28] << 8);
+        out->p2_world_y = (uint16_t)p->ram[0x29] |
+                          ((uint16_t)p->ram[0x2A] << 8);
+        out->p2_screen_x = p->ram[0x3C];
+        out->p2_screen_y = p->ram[0x3B];
+        out->p2_grounded = p->ram[0x14];
+        out->p2_in_air = p->ram[0x15];
+        out->p2_lives = mp_sml2_test_bcd(p->lives);
+        out->p2_spawned = (uint8_t)(p->spawned != 0);
+    }
+
+    uint32_t bg_hash = 2166136261u;
+    for (unsigned i = 0; i < 0x400; i++) {
+        bg_hash ^= vram[0x1800 + i];
+        bg_hash *= 16777619u;
+    }
+    out->bg_map_hash = bg_hash;
+    /* These opaque hashes let tests compare repeated runs and spot unexpected
+     * world/object RAM changes without pretending the ranges are a stable ABI. */
+    out->level_ram_hash = mp_sml2_test_hash_ram(0xA800, 0xC000);
+    out->actor_region_hash = mp_sml2_test_hash_ram(0xAF00, 0xB000);
+    return 0;
+}
+
 void emu_mp_request_respawn(int player)
 {
     if (!mp_ready || player < 1 || player >= mp_player_count) return;
