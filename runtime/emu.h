@@ -86,6 +86,8 @@ void emu_mp_end(void);
 void emu_mp_frame_refresh(Frame *frame);
 /* SML2-only diagnostics for scripted headless multiplayer tests. */
 int emu_mp_test_snapshot(EmuMpTestSnapshot *out);
+/* Read bounded SML2 cartridge RAM for opt-in developer incident dumps. */
+int emu_mp_test_read_ram(uint16_t start, uint8_t *out, size_t length);
 /* SML2 multiplayer's cloned PPU has separate sprite graphics per player. */
 const uint8_t *emu_mp_player_sprite_tiles(int player, int bank);
 void emu_mp_request_respawn(int player);
