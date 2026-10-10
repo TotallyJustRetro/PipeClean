@@ -1247,8 +1247,13 @@ static void mp_sml2_capture_frame(Frame *frame)
             frame->mp_player_sprite_count[player] =
                 mp_sml2_render_oam_count[player];
         } else {
-            memcpy(frame->mp_player_oam[player], p->oam, sizeof p->oam);
-            frame->mp_player_sprite_count[player] = 4;
+            /* Never draw the old guessed 2x2 fallback here. It can combine
+             * nearby enemy/effect OAM entries and make Luigi visibly corrupt.
+             * The mapping matcher already keeps safe partial matches when
+             * possible; otherwise omit this overlay for the current frame. */
+            memset(frame->mp_player_oam[player], 0,
+                   sizeof frame->mp_player_oam[player]);
+            frame->mp_player_sprite_count[player] = 0;
         }
         frame->mp_player_sfx_events[player] = p->sfx_events;
     }
