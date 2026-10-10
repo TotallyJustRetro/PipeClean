@@ -1357,6 +1357,11 @@ static void mp_sml2_capture_frame(Frame *frame)
                         sprite[1] = (uint8_t)(sprite[1] + dx);
                     }
                     frame->mp_player_sprite_count[player] = 4;
+                    /* This fallback copied Player 1's OAM, so it must use
+                     * Player 1's frame-local tile data as well. The clone's
+                     * private tile snapshot can have different tile contents
+                     * at the same IDs and would render this pose as stripes. */
+                    mp_sml2_render_tiles_valid[player] = 0;
                 }
             }
         }
