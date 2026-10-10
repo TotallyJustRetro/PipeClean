@@ -63,12 +63,29 @@ uint64_t emu_frames(void);
 int emu_cpu_faulted(void);
 void emu_cpu_fault_info(uint8_t *opcode, uint16_t *pc);
 
+/* Snapshot emitted by the headless multiplayer test runner. Hashes are
+ * deterministic diagnostics, not assertions about the game's internal format. */
+typedef struct {
+    uint16_t p1_world_x, p1_world_y, p2_world_x, p2_world_y;
+    uint16_t camera_x, camera_y;
+    uint32_t bg_map_hash, level_ram_hash, actor_region_hash;
+    uint8_t level, level_bank, game_mode;
+    uint8_t p1_screen_x, p1_screen_y, p2_screen_x, p2_screen_y;
+    uint8_t p1_grounded, p1_in_air, p2_grounded, p2_in_air;
+    uint8_t p1_lives, p2_lives, p2_spawned, multiplayer_initialized;
+    uint8_t coins_low, coins_high;
+    uint16_t stable_gameplay_frames;
+    uint16_t tile_patch_count;
+} EmuMpTestSnapshot;
+
 /* Local co-op for SML1 and SML2. Player indices are 0=host, 1=Player 2,
  * 2=Player 3, and 3=Player 4. */
 int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
 void emu_mp_end(void);
 void emu_mp_frame_refresh(Frame *frame);
+/* SML2-only diagnostics for scripted headless multiplayer tests. */
+int emu_mp_test_snapshot(EmuMpTestSnapshot *out);
 /* SML2 multiplayer's cloned PPU has separate sprite graphics per player. */
 const uint8_t *emu_mp_player_sprite_tiles(int player, int bank);
 void emu_mp_request_respawn(int player);
