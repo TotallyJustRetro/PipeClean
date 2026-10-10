@@ -917,7 +917,8 @@ static void mp_sml2_capture_oam(uint8_t out[16])
 /* SML2's player renderer indexes a pointer table at $4000 in ROM bank 1.
  * Decode that exact mapping (Y offset, X offset, tile, attributes) and match
  * its pieces against hardware OAM, rather than assuming every pose is a 2x2. */
-static int mp_sml2_capture_mapping_oam_at(uint8_t mapping, int base_x, int base_y,
+static int mp_sml2_capture_mapping_oam_at(int rom_bank, uint8_t mapping,
+                                          int base_x, int base_y,
                                           const uint8_t source[0xA0],
                                           uint8_t out[MP_MAX_OAM_SPRITES * 4])
 {
@@ -925,23 +926,22 @@ static int mp_sml2_capture_mapping_oam_at(uint8_t mapping, int base_x, int base_
     if (mapping >= 0xF2) return 0; /* 242 pointers occupy $4000-$41E3. */
 
     uint16_t pointer_address = (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
-    uint8_t lo = cart_rom_read_bank(1, pointer_address);
-    uint8_t hi = cart_rom_read_bank(1, (uint16_t)(pointer_address + 1u));
+    uint8_t lo = cart_rom_read_bank(rom_bank, pointer_address);
+    uint8_t hi = cart_rom_read_bank(rom_bank, (uint16_t)(pointer_address + 1u));
     uint16_t map = (uint16_t)(lo | ((uint16_t)hi << 8));
     if (map < 0x41E4 || map >= 0x8000) return 0;
 
     uint8_t used[40] = {0};
     int count = 0, expected = 0;
     for (int entry = 0; entry < MP_MAX_OAM_SPRITES; entry++) {
-        uint8_t raw_dy = cart_rom_read_bank(1, map++);
+        uint8_t raw_dy = cart_rom_read_bank(rom_bank, map++);
         if (raw_dy == 0x80) break;
-        uint8_t raw_dx = cart_rom_read_bank(1, map++);
-        uint8_t tile = cart_rom_read_bank(1, map++);
-        (void)cart_rom_read_bank(1, map++); /* Attributes can be toggled at runtime. */
+        uint8_t raw_dx = cart_rom_read_bank(rom_bank, map++);
+        uint8_t tile = cart_rom_read_bank(rom_bank, map++);
+        (void)cart_rom_read_bank(rom_bank, map++); /* Runtime OAM owns the attributes. */
         expected++;
 
-        /* Mapping offsets are signed 8-bit values. Common poses use F8 (-8)
-         * and FC (-4); treating them as unsigned shifts pieces far away. */
+        /* Mapping offsets are signed 8-bit values. */
         int dy = raw_dy < 0x80 ? (int)raw_dy : (int)raw_dy - 256;
         int dx = raw_dx < 0x80 ? (int)raw_dx : (int)raw_dx - 256;
         uint8_t want_y = (uint8_t)(base_y + dy);
@@ -956,81 +956,96 @@ static int mp_sml2_capture_mapping_oam_at(uint8_t mapping, int base_x, int base_
             break;
         }
     }
-    /* Never draw a partial mapping: a missing piece would look like a
-     * corrupted pose. Return zero so the caller uses its prior fallback. */
+    /* Only accept complete mappings; partial maps visibly corrupt a pose. */
     return expected > 0 && count == expected ? count : 0;
 }
 
-/* Some SML2 animation paths reuse FFC6 or update FFC4/FFC5 after the
- * character map is emitted. First try the live HRAM origin; if that fails,
- * infer a nearby origin from a matching OAM tile and verify the entire shape. */
+/* The retail ROM keeps Mario mappings in bank 1. SML2 DX v1.8.1 moves its
+ * CGB player mapping tables to banks 44/45 and leaves bank 1's table as
+ * FFFE placeholders. Probe only the known player mappings in those tables. */
+static int mp_sml2_player_mapping_banks(int banks[2])
+{
+    const CartInfo *ci = cart_info();
+    if (ci && ci->mapper == 5 && ci->rom_banks >= 64) {
+        banks[0] = 44; /* Mario mapping set */
+        banks[1] = 45; /* alternate/CGB player mapping set */
+        return 2;
+    }
+    banks[0] = 1;
+    banks[1] = -1;
+    return 1;
+}
+
+/* The animation selector can be reused later in the frame. Search valid
+ * player mappings at the stable player-specific origin, across the mapping
+ * banks actually used by this ROM, and keep the largest complete match. */
 static int mp_sml2_capture_best_mapping_oam(uint8_t preferred,
                                              const uint8_t source[0xA0],
                                              uint8_t out[MP_MAX_OAM_SPRITES * 4])
 {
     uint8_t candidate[MP_MAX_OAM_SPRITES * 4];
+    int banks[2];
+    int bank_count = mp_sml2_player_mapping_banks(banks);
     int best_count = 0;
-    /* FFC4/FFC5 are shared sprite-rendering scratch registers and may have
-     * been overwritten by enemies/effects later in the frame. A23B/A23C are
-     * the character-specific screen origin saved by SML2's Mario update. */
     const int player_x = rd8(0xA23C), player_y = rd8(0xA23B);
     memset(out, 0, MP_MAX_OAM_SPRITES * 4);
 
-    int count = 0;
-    /* The player animation code selects mappings 0x00-0x15. C6 is reused by
-     * other render paths later in the frame, so reject selectors outside that
-     * verified player range rather than accepting an enemy/effect mapping. */
-    if (preferred <= 0x15)
-        count = mp_sml2_capture_mapping_oam_at(preferred, player_x, player_y,
-                                                source, candidate);
-    if (count > 0) {
-        memcpy(out, candidate, (size_t)count * 4u);
-        best_count = count;
-    }
-
-    /* Compare only player poses at the stable player origin and keep the
-     * largest complete match; never steal a nearby enemy's unrelated map. */
-    for (int mapping = 0; mapping < 0x16; mapping++) {
-        if (mapping == preferred) continue;
-        count = mp_sml2_capture_mapping_oam_at((uint8_t)mapping, player_x,
-                                                player_y, source, candidate);
+    /* Check the saved selector first, but only if it is a known player pose. */
+    for (int bi = 0; bi < bank_count; bi++) {
+        int count = preferred <= 0x15
+            ? mp_sml2_capture_mapping_oam_at(banks[bi], preferred,
+                player_x, player_y, source, candidate) : 0;
         if (count > best_count) {
             memcpy(out, candidate, (size_t)count * 4u);
             best_count = count;
         }
     }
-    if (best_count >= 8) return best_count;
 
-    /* If the origin scratch was changed later in the frame, infer a candidate
-     * origin from each possible first-piece tile. Keep the search local to the
-     * character, and still require every piece of a ROM mapping to match. */
-    for (int mapping = 0; mapping < 0x16; mapping++) {
-        uint16_t pointer_address = (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
-        uint8_t lo = cart_rom_read_bank(1, pointer_address);
-        uint8_t hi = cart_rom_read_bank(1, (uint16_t)(pointer_address + 1u));
-        uint16_t map = (uint16_t)(lo | ((uint16_t)hi << 8));
-        if (map < 0x41E4 || map >= 0x8000) continue;
-
-        uint8_t dy0 = cart_rom_read_bank(1, map);
-        if (dy0 == 0x80) continue;
-        uint8_t dx0 = cart_rom_read_bank(1, (uint16_t)(map + 1u));
-        uint8_t tile0 = cart_rom_read_bank(1, (uint16_t)(map + 2u));
-        int dy = dy0 < 0x80 ? (int)dy0 : (int)dy0 - 256;
-        int dx = dx0 < 0x80 ? (int)dx0 : (int)dx0 - 256;
-
-        for (int i = 0; i < 40; i++) {
-            const uint8_t *src = &source[i * 4];
-            if (src[2] != tile0) continue;
-            int base_x = (uint8_t)((int)src[1] - dx);
-            int base_y = (uint8_t)((int)src[0] - dy);
-            if (mp_sml2_distance((uint8_t)base_x, player_x) > 24 ||
-                mp_sml2_distance((uint8_t)base_y, player_y) > 24)
-                continue;
-            count = mp_sml2_capture_mapping_oam_at((uint8_t)mapping, base_x,
-                                                    base_y, source, candidate);
+    for (int bi = 0; bi < bank_count; bi++) {
+        for (int mapping = 0; mapping < 0x16; mapping++) {
+            if (mapping == preferred) continue;
+            int count = mp_sml2_capture_mapping_oam_at(banks[bi],
+                (uint8_t)mapping, player_x, player_y, source, candidate);
             if (count > best_count) {
                 memcpy(out, candidate, (size_t)count * 4u);
                 best_count = count;
+            }
+        }
+    }
+    if (best_count >= 8) return best_count;
+
+    /* If the origin scratch changed, infer a nearby origin from a possible
+     * first piece, then validate every item in the ROM mapping against it. */
+    for (int bi = 0; bi < bank_count; bi++) {
+        int rom_bank = banks[bi];
+        for (int mapping = 0; mapping < 0x16; mapping++) {
+            uint16_t pointer_address = (uint16_t)(0x4000u + (uint16_t)mapping * 2u);
+            uint8_t lo = cart_rom_read_bank(rom_bank, pointer_address);
+            uint8_t hi = cart_rom_read_bank(rom_bank, (uint16_t)(pointer_address + 1u));
+            uint16_t map = (uint16_t)(lo | ((uint16_t)hi << 8));
+            if (map < 0x41E4 || map >= 0x8000) continue;
+
+            uint8_t raw_dy = cart_rom_read_bank(rom_bank, map);
+            if (raw_dy == 0x80) continue;
+            uint8_t raw_dx = cart_rom_read_bank(rom_bank, (uint16_t)(map + 1u));
+            uint8_t tile0 = cart_rom_read_bank(rom_bank, (uint16_t)(map + 2u));
+            int dy = raw_dy < 0x80 ? (int)raw_dy : (int)raw_dy - 256;
+            int dx = raw_dx < 0x80 ? (int)raw_dx : (int)raw_dx - 256;
+
+            for (int i = 0; i < 40; i++) {
+                const uint8_t *src = &source[i * 4];
+                if (src[2] != tile0) continue;
+                int base_x = (uint8_t)((int)src[1] - dx);
+                int base_y = (uint8_t)((int)src[0] - dy);
+                if (mp_sml2_distance((uint8_t)base_x, player_x) > 24 ||
+                    mp_sml2_distance((uint8_t)base_y, player_y) > 24)
+                    continue;
+                int count = mp_sml2_capture_mapping_oam_at(rom_bank,
+                    (uint8_t)mapping, base_x, base_y, source, candidate);
+                if (count > best_count) {
+                    memcpy(out, candidate, (size_t)count * 4u);
+                    best_count = count;
+                }
             }
         }
     }
