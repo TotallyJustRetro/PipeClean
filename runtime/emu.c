@@ -2420,6 +2420,19 @@ int emu_mp_test_snapshot(EmuMpTestSnapshot *out)
     return 0;
 }
 
+/* Only the Dev diagnostics call this API, and it is deliberately restricted
+ * to the active SML2 cartridge-RAM window so a malformed request cannot read
+ * arbitrary CPU/PPU memory. */
+int emu_mp_test_read_ram(uint16_t start, uint8_t *out, size_t length)
+{
+    if (!out || !length || !mp_ready || mp_game != GAME_SML2 ||
+        start < 0xA000u || (size_t)start + length > 0xC000u)
+        return -1;
+    for (size_t i = 0; i < length; i++)
+        out[i] = rd8((uint16_t)(start + i));
+    return 0;
+}
+
 void emu_mp_request_respawn(int player)
 {
     if (!mp_ready || player < 1 || player >= mp_player_count) return;
