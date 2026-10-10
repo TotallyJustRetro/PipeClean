@@ -218,15 +218,22 @@ static int run_mp_test(const char *script_path, const char *report_path, int fra
             "\"mp_initialized\":%u,\"stable_frames\":%u,\"tile_patch_count\":%u,"
             "\"bg_map_hash\":\"%08X\",\"level_ram_hash\":\"%08X\","
             "\"actor_region_hash\":\"%08X\",\"render_hash\":\"%08X\"}\n",
-            logical_frame, p1_mask, p2_mask, snap.game_mode, snap.level, snap.level_bank,
-            snap.camera_x, snap.camera_y, snap.p1_world_x, snap.p1_world_y,
-            snap.p1_screen_x, snap.p1_screen_y, snap.p1_grounded, snap.p1_in_air,
-            snap.p1_lives, snap.p2_spawned, snap.p2_world_x, snap.p2_world_y,
-            snap.p2_screen_x, snap.p2_screen_y, snap.p2_grounded, snap.p2_in_air,
-            snap.p2_lives, frame->mp_player_sprite_count[1], snap.coins_low,
-            snap.coins_high, snap.multiplayer_initialized, snap.stable_gameplay_frames,
-            snap.tile_patch_count, snap.bg_map_hash, snap.level_ram_hash,
-            snap.actor_region_hash, mp_test_frame_hash(frame)) < 0) {
+            logical_frame, (unsigned)p1_mask, (unsigned)p2_mask,
+            (unsigned)snap.game_mode, (unsigned)snap.level, (unsigned)snap.level_bank,
+            (unsigned)snap.camera_x, (unsigned)snap.camera_y,
+            (unsigned)snap.p1_world_x, (unsigned)snap.p1_world_y,
+            (unsigned)snap.p1_screen_x, (unsigned)snap.p1_screen_y,
+            (unsigned)snap.p1_grounded, (unsigned)snap.p1_in_air,
+            (unsigned)snap.p1_lives, (unsigned)snap.p2_spawned,
+            (unsigned)snap.p2_world_x, (unsigned)snap.p2_world_y,
+            (unsigned)snap.p2_screen_x, (unsigned)snap.p2_screen_y,
+            (unsigned)snap.p2_grounded, (unsigned)snap.p2_in_air,
+            (unsigned)snap.p2_lives, (unsigned)frame->mp_player_sprite_count[1],
+            (unsigned)snap.coins_low, (unsigned)snap.coins_high,
+            (unsigned)snap.multiplayer_initialized, (unsigned)snap.stable_gameplay_frames,
+            (unsigned)snap.tile_patch_count, (unsigned)snap.bg_map_hash,
+            (unsigned)snap.level_ram_hash, (unsigned)snap.actor_region_hash,
+            (unsigned)mp_test_frame_hash(frame)) < 0) {
             fprintf(stderr, "Could not write multiplayer report: %s\n", report_path);
             result = 1;
             break;
