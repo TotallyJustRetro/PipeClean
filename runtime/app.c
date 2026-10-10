@@ -79,10 +79,11 @@ static int thumb_pending_delay = 0;
 
 static void state_thumb_path(int g, int slot, char *out, size_t n)
 {
-    char dir[1200];
+    char dir[1200], id[128];
     snprintf(dir, sizeof dir, "%sstates/", settings_dir());
     mkdir_u(dir);
-    snprintf(out, n, "%s%s.slot%d.thumb.bmp", dir, games[g].id, slot);
+    launcher_game_file_id(g, id, sizeof id);
+    snprintf(out, n, "%s%s.slot%d.thumb.bmp", dir, id, slot);
 }
 
 static void queue_state_thumbnail(int g, int slot)
@@ -130,18 +131,20 @@ static void capture_pending_state_thumbnail(void)
 
 static void state_path(int g, int slot, char *out, size_t n)
 {
-    char dir[1200];
+    char dir[1200], id[128];
     snprintf(dir, sizeof dir, "%sstates/", settings_dir());
     mkdir_u(dir);
-    snprintf(out, n, "%s%s.slot%d.pcs", dir, games[g].id, slot);
+    launcher_game_file_id(g, id, sizeof id);
+    snprintf(out, n, "%s%s.slot%d.pcs", dir, id, slot);
 }
 
 static void suspend_path(int g, char *out, size_t n)
 {
-    char dir[1200];
+    char dir[1200], id[128];
     snprintf(dir, sizeof dir, "%sstates/", settings_dir());
     mkdir_u(dir);
-    snprintf(out, n, "%s%s.suspend.pcs", dir, games[g].id);
+    launcher_game_file_id(g, id, sizeof id);
+    snprintf(out, n, "%s%s.suspend.pcs", dir, id);
 }
 
 static int game_state_save(int g, int paused)
