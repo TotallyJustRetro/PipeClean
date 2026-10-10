@@ -884,19 +884,19 @@ static void sub_game(int g, float x, float y)
         }
     }
     status_line(rx + 18, y + 108, rw - 36, rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2), rs[g].msg);
-    /* hack */
-    label(rx + 18, y + 150, "Romhack or patch (optional)");
-    path_box(rx + 18, y + 172, rw - 18 * 2 - 110 - 66, c->hack_path, "None");
-    if (ui_button(rx + rw - 18 - 100 - 60, y + 172, 100, 36, "Browse…", B_NORMAL, rs[g].ok)) {
-        char p[1100];
-        if (dlg_pick(DLG_PATCH, "Choose a romhack or patch", p, sizeof p)) set_hack(g, p);
-    }
-    if (ui_button(rx + rw - 18 - 52, y + 172, 52, 36, "Clear", B_GHOST, c->hack_path[0] != 0)) set_hack(g, "");
-    if (hack_msg[g][0] && c->hack_path[0]) status_line(rx + 18, y + 216, rw - 36, hack_ok[g] ? 1 : 3, hack_msg[g]);
-    else ui_text(F_REG, 12, rx + 18, y + 216, C_DIM, "Accepts .ips  .bps  .ups patches, or an already patched .gb");
-    ui_text_wrap(F_REG, 12, rx + 18, y + 244, rw - 36, C_DIM,
-                 games[g].lifted ? "Dr. Mario runs as native code. If a hack changes the game's program (not just its graphics or data) it automatically switches to compatibility mode."
-                                  : "This game runs through the built-in CPU core with full cartridge bank switching, so romhacks work without any extra step.", 3);
+    /* ROM hack profiles live separately from the source ROM path. */
+    label(rx + 18, y + 150, "ROM hack profiles");
+    ui_text_wrap(F_REG, 12, rx + 18, y + 172, rw - 36, C_DIM,
+                 "Add patches or already-patched ROMs on the ROM Hacks tab. Each entry is a separate selectable game profile; the original ROM file is never changed.", 3);
+    char profile_label[128];
+    if (c->romhack_selected >= 0 && c->romhack_selected < c->romhack_count)
+        snprintf(profile_label, sizeof profile_label, "Selected: %s",
+                 c->romhacks[c->romhack_selected].title[0] ? c->romhacks[c->romhack_selected].title : "ROM hack");
+    else
+        snprintf(profile_label, sizeof profile_label, "Selected: Original game");
+    ui_text_fit_tail(F_REG, 12, rx + 18, y + 224, rw - 36, C_TEXT, profile_label);
+    if (ui_button(rx + 18, y + 250, rw - 36, 34, "Manage ROM Hacks…", B_NORMAL, 1))
+        sub[g] = SUB_ROMHACKS;
     /* save data */
     label(rx + 18, y + 330, "Save data");
     char sp[1200];
