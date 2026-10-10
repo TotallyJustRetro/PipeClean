@@ -76,6 +76,11 @@ typedef struct {
     uint8_t coins_low, coins_high;
     uint16_t stable_gameplay_frames;
     uint16_t tile_patch_count;
+    /* Player 2 sprite-selection telemetry for diagnosing wrong/overlapping OAM maps. */
+    uint8_t p2_powerup, p2_animation;
+    uint8_t p2_mapping_preferred, p2_mapping_selected, p2_mapping_bank;
+    uint8_t p2_mapping_source, p2_mapping_inferred, p2_mapping_complete;
+    uint8_t p2_respawn_requested, p2_previous_a, p2_keys_held, p2_keys_pressed;
 } EmuMpTestSnapshot;
 
 /* Local co-op for SML1 and SML2. Player indices are 0=host, 1=Player 2,
