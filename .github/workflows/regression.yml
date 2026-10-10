@@ -60,7 +60,8 @@ jobs:
             tools/sm83.py \
             tools/gbdis.py \
             tools/discover.py \
-            tools/make_font.py
+            tools/make_font.py \
+            tools/mp_test.py
 
       - name: Generate synthetic SML2-shaped 512 KiB ROM
         run: |
@@ -81,6 +82,32 @@ jobs:
 
           Path("ci/sml2_smoke.gb").parent.mkdir(parents=True, exist_ok=True)
           Path("ci/sml2_smoke.gb").write_bytes(rom)
+          PY
+
+      - name: Generate synthetic SML2 VBlank driver for multiplayer tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          rom = bytearray(512 * 1024)
+          rom[0x134:0x134 + 10] = b"MARIOLAND2"
+          rom[0x147] = 0x03   # MBC1 + RAM + battery
+          rom[0x148] = 0x04   # 512 KiB ROM
+          rom[0x149] = 0x03   # 32 KiB RAM
+          rom[0x0040] = 0xD9  # VBlank ISR: RETI, so the multiplayer frame watcher can yield
+          # Initialize stack/LCD/IE, enable interrupts, then idle in HALT.
+          rom[0x0100:0x0110] = bytes([
+              0x31, 0xFE, 0xFF,       # LD SP,$FFFE
+              0x3E, 0x91,             # LD A,$91
+              0xE0, 0x40,             # LDH ($FF40),A (LCD on)
+              0x3E, 0x01,             # LD A,$01
+              0xEA, 0xFF, 0xFF,       # LD ($FFFF),A (VBlank IRQ enabled)
+              0xFB,                   # EI
+              0x76,                   # HALT
+              0x18, 0xFD,             # JR back to HALT
+          ])
+          rom[0x801C] = 0x19  # SML2 widescreen signature for header-compatible tooling
+          Path("ci/sml2_mp_driver.gb").write_bytes(rom)
           PY
 
       - name: Generate synthetic Wario mapper smoke ROMs
@@ -159,6 +186,15 @@ jobs:
             --no-crc-check \
             --wide 100 \
             ci/sml2_smoke.gb
+
+      - name: Test scripted multiplayer runner and deterministic replay
+        run: |
+          python3 tools/mp_test.py \
+            --binary build-ci/PipeClean \
+            --rom ci/sml2_mp_driver.gb \
+            --script tests/scenarios/runner_smoke.txt \
+            --frames 8 \
+            --report-dir ci/mp-test-report
 
   windows-build:
     runs-on: windows-latest
