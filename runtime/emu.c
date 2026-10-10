@@ -2317,10 +2317,10 @@ int emu_mp_test_snapshot(EmuMpTestSnapshot *out)
         bg_hash *= 16777619u;
     }
     out->bg_map_hash = bg_hash;
-    /* These opaque hashes let tests compare repeated runs and spot unexpected
-     * world/object RAM changes without pretending the ranges are a stable ABI. */
+    /* Keep a broad level-memory hash plus a focused hash of the runtime
+     * world-object/enemy pool that multiplayer bugs have affected. */
     out->level_ram_hash = mp_sml2_test_hash_ram(0xA800, 0xC000);
-    out->actor_region_hash = mp_sml2_test_hash_ram(0xAF00, 0xB000);
+    out->actor_region_hash = mp_sml2_test_hash_ram(0xAD00, 0xAF00);
     return 0;
 }
 
