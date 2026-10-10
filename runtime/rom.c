@@ -337,9 +337,14 @@ int rom_load_raw(const char *path)
     uint8_t *buf = NULL;
     long n = read_file(path, &buf);
     if (n < 0) { free(buf); return 1; }
+    /* Raw/developer loads still identify known cartridges by header. This
+     * enables game-specific diagnostics and multiplayer test modes without
+     * requiring the normal checksum-verified launcher path. Unknown ROMs
+     * remain generic interpreter loads. */
+    int detected_game = rom_identify(buf, (size_t)n);
     int r = cart_install(buf, (size_t)n);
     free(buf);
-    base_game = -1;
+    base_game = detected_game;
     interp_needed = 1;
     return r;
 }
