@@ -608,9 +608,11 @@ void dev_diag_frame(const Frame *frame, int game, int player_count,
     DiagSample sample;
     diag.current_frame = frame;
     sample_current(frame,game,player_count,buttons,dpad,paused,&sample);
+    /* Incident snapshots are emitted during update_events(), so publish the
+     * matching render hash first rather than leaving the previous frame's hash. */
+    diag.last_render_hash=sample.render_hash;
     update_events(&sample);
     diag.sample=sample;
-    diag.last_render_hash=sample.render_hash;
     log_frame(&sample);
     if (diag.frame_count > 0 && diag.frame_count % 900u == 0 &&
         diag.last_periodic_frame != diag.frame_count) {
