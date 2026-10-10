@@ -172,6 +172,16 @@ static uint8_t mp_sml2_stable_bank;
 static uint8_t mp_sml2_vram_before[0x400];
 static uint8_t mp_sml2_vram_after[0x400];
 
+#define MP_SML2_MAX_TILE_PATCHES 1024
+typedef struct {
+    uint16_t world_x, world_y; /* tile-aligned world pixel coordinates */
+    uint8_t level, bank, tile;
+} MpSml2TilePatch;
+static MpSml2TilePatch mp_sml2_tile_patches[MP_SML2_MAX_TILE_PATCHES];
+static unsigned mp_sml2_tile_patch_count;
+static uint8_t mp_sml2_tile_patch_level = 0xFF;
+static uint8_t mp_sml2_tile_patch_bank = 0xFF;
+
 static uint8_t mp_buttons, mp_dpad;
 static int mp_ready;
 static int mp_player_count = 2;
@@ -315,6 +325,7 @@ static void rewind_free(void);
 static void rewind_init(void);
 static int emu_start_internal(int force_interp, int reset);
 static void mp_sml2_capture_frame(Frame *frame);
+static int mp_sml2_gameplay_active(void);
 
 static int mp_bcd_to_int(uint8_t b)
 {
@@ -805,6 +816,7 @@ int emu_mp_begin(void)
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
     mp_sml2_initialized = 0;
+    mp_sml2_tile_patches_clear();
     mp_sml2_stable_frames = 0;
     mp_sml2_stable_level = 0;
     mp_sml2_stable_bank = 0;
@@ -868,6 +880,125 @@ static int mp_sml2_private_addr(unsigned address)
         return 1;
     default:
         return 0;
+    }
+}
+
+/* Track only tiles that change near a player while the player is
+ * airborne and neither the game camera nor the PPU tilemap scrolls. The ROM
+ * rebuilds the circular BG map from level data as the camera moves; keeping
+ * only these local interaction changes lets used/broken blocks survive that
+ * rebuild without pinning ordinary scenery or scrolling rows. */
+static void mp_sml2_tile_patches_clear(void)
+{
+    mp_sml2_tile_patch_count = 0;
+    mp_sml2_tile_patch_level = 0xFF;
+    mp_sml2_tile_patch_bank = 0xFF;
+}
+
+static void mp_sml2_tile_patches_prepare(uint8_t level, uint8_t bank)
+{
+    if (mp_sml2_tile_patch_level != level ||
+        mp_sml2_tile_patch_bank != bank) {
+        mp_sml2_tile_patch_count = 0;
+        mp_sml2_tile_patch_level = level;
+        mp_sml2_tile_patch_bank = bank;
+    }
+}
+
+static uint16_t mp_sml2_read16(unsigned address)
+{
+    return (uint16_t)rd8((uint16_t)address) |
+           ((uint16_t)rd8((uint16_t)(address + 1u)) << 8);
+}
+
+static int mp_sml2_signed_delta(uint8_t a, uint8_t b)
+{
+    int d = (int)a - (int)b;
+    if (d > 127) d -= 256;
+    if (d < -128) d += 256;
+    return d;
+}
+
+static int mp_sml2_tile_near_player(int tile_x, int tile_y,
+                                    int player_x, int player_y)
+{
+    int dx = mp_sml2_signed_delta((uint8_t)(tile_x + 4), (uint8_t)player_x);
+    int dy = mp_sml2_signed_delta((uint8_t)(tile_y + 4), (uint8_t)player_y);
+    /* Head-hit blocks sit above the player; allow a small amount below for
+     * used blocks and pickups, but reject unrelated scenery across the view. */
+    return dx >= -24 && dx <= 24 && dy >= -36 && dy <= 16;
+}
+
+static void mp_sml2_record_tile_patches(uint8_t level, uint8_t bank,
+                                        const uint8_t before[0x400],
+                                        const uint8_t after[0x400],
+                                        int scx, int scy,
+                                        uint8_t player_x, uint8_t player_y)
+{
+    mp_sml2_tile_patches_prepare(level, bank);
+    uint16_t origin_x = (uint16_t)(mp_sml2_read16(0xA227) - player_x);
+    uint16_t origin_y = (uint16_t)(mp_sml2_read16(0xA229) - player_y);
+
+    for (int i = 0; i < 0x400; i++) {
+        if (before[i] == after[i]) continue;
+        int map_x = i & 31;
+        int map_y = i >> 5;
+        int screen_x = (map_x * 8 - scx) & 0xFF;
+        int screen_y = (map_y * 8 - scy) & 0xFF;
+        if (!mp_sml2_tile_near_player(screen_x, screen_y, player_x, player_y))
+            continue;
+
+        uint16_t world_x = (uint16_t)(origin_x + screen_x) & 0xFFF8u;
+        uint16_t world_y = (uint16_t)(origin_y + screen_y) & 0xFFF8u;
+        int found = 0;
+        for (unsigned j = 0; j < mp_sml2_tile_patch_count; j++) {
+            MpSml2TilePatch *patch = &mp_sml2_tile_patches[j];
+            if (patch->level == level && patch->bank == bank &&
+                patch->world_x == world_x && patch->world_y == world_y) {
+                /* The same block can be hit more than once; keep its latest
+                 * interaction tile, not a prior intermediate animation. */
+                patch->tile = after[i];
+                found = 1;
+                break;
+            }
+        }
+        if (found || mp_sml2_tile_patch_count >= MP_SML2_MAX_TILE_PATCHES)
+            continue;
+        MpSml2TilePatch *patch =
+            &mp_sml2_tile_patches[mp_sml2_tile_patch_count++];
+        patch->world_x = world_x;
+        patch->world_y = world_y;
+        patch->level = level;
+        patch->bank = bank;
+        patch->tile = after[i];
+    }
+}
+
+static void mp_sml2_apply_tile_patches(void)
+{
+    if (!mp_sml2_gameplay_active()) return;
+    uint8_t level = rd8(0xA269);
+    uint8_t bank = rd8(0xA258);
+    mp_sml2_tile_patches_prepare(level, bank);
+    if (!mp_sml2_tile_patch_count) return;
+
+    uint16_t origin_x = (uint16_t)(mp_sml2_read16(0xA227) - rd8(0xA23C));
+    uint16_t origin_y = (uint16_t)(mp_sml2_read16(0xA229) - rd8(0xA23B));
+    int scx = rd8(0xFF43);
+    int scy = rd8(0xFF42);
+    for (unsigned i = 0; i < mp_sml2_tile_patch_count; i++) {
+        const MpSml2TilePatch *patch = &mp_sml2_tile_patches[i];
+        if (patch->level != level || patch->bank != bank) continue;
+        int dx = mp_sml2_signed_delta((uint8_t)patch->world_x,
+                                      (uint8_t)origin_x);
+        int dy = mp_sml2_signed_delta((uint8_t)patch->world_y,
+                                      (uint8_t)origin_y);
+        /* World coordinates above 255px wrap in the low byte. For a patch to
+         * be on the live 32x32 tilemap, its signed low-byte offset is enough. */
+        if (dx < 0 || dx >= 256 || dy < 0 || dy >= 256) continue;
+        int map_x = (((unsigned)dx + (unsigned)scx) & 0xFFu) >> 3;
+        int map_y = (((unsigned)dy + (unsigned)scy) & 0xFFu) >> 3;
+        vram[0x1800 + map_y * 32 + map_x] = patch->tile;
     }
 }
 
@@ -1408,7 +1539,13 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (!mp_ready || player < 0 || player >= mp_player_count || !frame) return -1;
     if (player == 0) {
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
+        mp_sml2_apply_tile_patches();
         uint8_t scroll_before = rd8(0xFFCA);
+        uint8_t scroll_y_before = rd8(0xFFC8);
+        uint8_t scx_before = rd8(0xFF43), scy_before = rd8(0xFF42);
+        uint8_t level_before = rd8(0xA269), level_bank_before = rd8(0xA258);
+        uint8_t ground_before = rd8(0xA214), air_before = rd8(0xA215);
+        memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
         gb_set_input(buttons, dpad);
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
@@ -1417,6 +1554,24 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         if (status == 0) run_core(0);
         mp_active = 0;
         if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
+        memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
+        int level_unchanged = level_before == rd8(0xA269) &&
+                              level_bank_before == rd8(0xA258);
+        int camera_unchanged = scroll_before == rd8(0xFFCA) &&
+                               scroll_y_before == rd8(0xFFC8) &&
+                               scx_before == rd8(0xFF43) &&
+                               scy_before == rd8(0xFF42);
+        int player_airborne = air_before || !ground_before ||
+                              rd8(0xA215) || !rd8(0xA214);
+        if (level_unchanged && camera_unchanged && player_airborne &&
+            mp_sml2_gameplay_active() &&
+            memcmp(mp_sml2_vram_before, mp_sml2_vram_after,
+                   sizeof mp_sml2_vram_before) != 0) {
+            mp_sml2_record_tile_patches(level_before, level_bank_before,
+                mp_sml2_vram_before, mp_sml2_vram_after,
+                scx_before, scy_before, rd8(0xA23C), rd8(0xA23B));
+        }
+        mp_sml2_apply_tile_patches();
         int n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
         mp_sml2_save_player(&mp_sml2_players[0], 0);
@@ -1516,6 +1671,13 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         rd8(0xFF43) == scx_before && rd8(0xFF42) == scy_before;
     int vram_changed = merge_world && same_camera &&
         memcmp(mp_sml2_vram_before, mp_sml2_vram_after, sizeof mp_sml2_vram_before) != 0;
+    int player_airborne = old_air || !old_ground ||
+                          rd8(0xA215) || !rd8(0xA214);
+    if (vram_changed && player_airborne) {
+        mp_sml2_record_tile_patches(level_before, level_bank_before,
+            mp_sml2_vram_before, mp_sml2_vram_after,
+            scx_before, scy_before, rd8(0xA23C), rd8(0xA23B));
+    }
 
     if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
 
@@ -1527,6 +1689,7 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
     if (merge_world && coins_low_after != coins_low) wr8(0xA262, coins_low_after);
     if (merge_world && coins_high_after != coins_high) wr8(0xA263, coins_high_after);
     if (merge_world && kills_after != kills) wr8(0xA28D, kills_after);
+    mp_sml2_apply_tile_patches();
     if (vram_changed ||
         (merge_world && (coins_low_after != coins_low ||
                          coins_high_after != coins_high || kills_after != kills))) {
@@ -2110,6 +2273,7 @@ void emu_mp_end(void)
     mp_active = 0;
     mp_game = GAME_SML;
     mp_sml2_initialized = 0;
+    mp_sml2_tile_patches_clear();
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
