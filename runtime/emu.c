@@ -1124,15 +1124,35 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
             p->h_c6, staged_oam, mp_sml2_render_oam[player]);
         /* Fall back to the stable four-piece matcher if the ROM map cannot
          * be read or doesn't match the live OAM for this game frame. */
-        if (mapped > 0) {
+        if (mapped >= 4) {
             mp_sml2_render_oam_count[player] = (uint8_t)mapped;
         } else {
-            /* Keep the clone visible when the ROM mapping table cannot be
-             * matched to this frame's staged OAM. This four-piece capture is
-             * the stable legacy path used by the clone simulation; hiding the
-             * whole player made Luigi disappear on valid gameplay frames. */
-            memcpy(mp_sml2_render_oam[player], p->oam, sizeof p->oam);
-            mp_sml2_render_oam_count[player] = 4;
+            /* A partial mapping can be technically valid but leave the
+             * character effectively invisible. Retry against the PPU's live
+             * OAM for this clone before using the staged-OAM cache. */
+            uint8_t live_player_oam[16];
+            mp_sml2_capture_oam_from(oam, live_player_oam);
+            int live_pieces = 0;
+            for (int i = 0; i < 4; i++) {
+                const uint8_t *sprite = &live_player_oam[i * 4];
+                if (sprite[0] > 0 && sprite[0] < 160 &&
+                    sprite[1] > 0 && sprite[1] < 168)
+                    live_pieces++;
+            }
+
+            if (live_pieces >= 3) {
+                memcpy(mp_sml2_render_oam[player], live_player_oam,
+                       sizeof live_player_oam);
+                mp_sml2_render_oam_count[player] = 4;
+            } else if (mapped > 0) {
+                /* Preserve exact mapping matches if live OAM isn't complete. */
+                mp_sml2_render_oam_count[player] = (uint8_t)mapped;
+            } else {
+                /* Last resort: retain the clone's own four-piece capture.
+                 * It is preferable to suppressing the player overlay. */
+                memcpy(mp_sml2_render_oam[player], p->oam, sizeof p->oam);
+                mp_sml2_render_oam_count[player] = 4;
+            }
         }
     }
 }
