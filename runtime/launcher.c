@@ -1800,7 +1800,10 @@ LauncherResult launcher_frame(float dt)
             status_line(sx + 14, y + 23, 202, kind, msg);
         } else {
             ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
-            status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, rs[i].ok ? (settings.g[i].hack_path[0] && hack_ok[i] ? "Ready with romhack" : "Ready to play") : "ROM needed");
+            const GameCfg *gc = &settings.g[i];
+            const char *ready = !rs[i].ok ? "ROM needed" :
+                (gc->romhack_selected >= 0 ? (hack_ok[i] ? "Ready with ROM hack" : "ROM hack selected") : "Ready to play");
+            status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, ready);
         }
     }
     float y2 = sy + N_GAMES * game_row + 8;
@@ -1818,17 +1821,26 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, games[tab].name);
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, games[tab].sub);
         int can = rs[tab].ok;
-        if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? "Play" : "Needs ROM", B_PRIMARY, can)) res.play = tab;
+        const char *play_label = c->romhack_selected >= 0 ? "Play Hack" : "Play";
+        if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? play_label : "Needs ROM", B_PRIMARY, can)) res.play = tab;
         if (!can) hint_area(cx + 808 - 176, cy + 2, 176, 52, "Choose your ROM on the Game tab (or drop it on this window)");
         float y = cy + 118;
         pad_set_context(tab, 0);
         if (games[tab].external_player) {
-            sub_external_game(tab, cx, y);
+            const char *external_sub_names[2] = {"Game", "ROM Hacks"};
+            int external_sub = sub[tab] == SUB_ROMHACKS ? 1 : 0;
+            ui_seg(cx, cy + 66, 808, 38, external_sub_names, 2, &external_sub);
+            sub[tab] = external_sub ? SUB_ROMHACKS : SUB_GAME;
+            if (sub[tab] == SUB_ROMHACKS) sub_romhacks(tab, cx, y);
+            else sub_external_game(tab, cx, y);
         } else {
             ui_seg(cx, cy + 66, 808, 38, sub_names, N_SUB, &sub[tab]);
             switch (sub[tab]) {
         case SUB_GAME:
             sub_game(tab, cx, y);
+            break;
+        case SUB_ROMHACKS:
+            sub_romhacks(tab, cx, y);
             break;
         case SUB_DISPLAY:
             sub_display(tab, cx, y);
