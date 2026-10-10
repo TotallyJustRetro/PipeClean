@@ -1127,9 +1127,12 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
         if (mapped > 0) {
             mp_sml2_render_oam_count[player] = (uint8_t)mapped;
         } else {
-            memset(mp_sml2_render_oam[player], 0,
-                   sizeof mp_sml2_render_oam[player]);
-            mp_sml2_render_oam_count[player] = 0;
+            /* Keep the clone visible when the ROM mapping table cannot be
+             * matched to this frame's staged OAM. This four-piece capture is
+             * the stable legacy path used by the clone simulation; hiding the
+             * whole player made Luigi disappear on valid gameplay frames. */
+            memcpy(mp_sml2_render_oam[player], p->oam, sizeof p->oam);
+            mp_sml2_render_oam_count[player] = 4;
         }
     }
 }
@@ -1262,13 +1265,11 @@ static void mp_sml2_capture_frame(Frame *frame)
             frame->mp_player_sprite_count[player] =
                 mp_sml2_render_oam_count[player];
         } else {
-            /* Never draw the old guessed 2x2 fallback here. It can combine
-             * nearby enemy/effect OAM entries and make Luigi visibly corrupt.
-             * The mapping matcher already keeps safe partial matches when
-             * possible; otherwise omit this overlay for the current frame. */
-            memset(frame->mp_player_oam[player], 0,
-                   sizeof frame->mp_player_oam[player]);
-            frame->mp_player_sprite_count[player] = 0;
+            /* Last-resort visibility fallback for frames where the mapping
+             * matcher has no exact matches. Prefer the clone's own four OAM
+             * pieces over suppressing the player entirely. */
+            memcpy(frame->mp_player_oam[player], p->oam, sizeof p->oam);
+            frame->mp_player_sprite_count[player] = 4;
         }
         frame->mp_player_sfx_events[player] = p->sfx_events;
     }
