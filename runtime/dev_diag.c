@@ -9,6 +9,7 @@
 void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
 { (void)game; (void)player_count; (void)game_window; }
 void dev_diag_event(const char *message) { (void)message; }
+void dev_diag_request_screenshot(const char *reason) { (void)reason; }
 void dev_diag_frame(const Frame *frame, int game, int player_count,
                     const uint8_t buttons[MAX_MP_PLAYERS],
                     const uint8_t dpad[MAX_MP_PLAYERS], int paused)
@@ -71,6 +72,7 @@ typedef struct {
     uint64_t last_dump_frame, last_screenshot_frame, last_periodic_frame;
     uint64_t last_bg_snapshot_frame;
     int screenshot_pending;
+    int memory_snapshot_pending;
     char screenshot_reason[80];
     char recent[DIAG_MAX_EVENTS][128];
     int recent_head, recent_count;
@@ -357,6 +359,14 @@ void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
     char event[120];
     snprintf(event, sizeof event, "SESSION STARTED - %s", diag.game_name);
     diag_event_log(event);
+    /* Always take a first-frame screenshot so short sessions still produce an
+     * image even when no heuristic anomaly is detected. Capture it after the
+     * first simulation frame so its image and memory snapshot line up. */
+    if (diag.log) {
+        diag.screenshot_pending = 1;
+        diag.memory_snapshot_pending = 1;
+        snprintf(diag.screenshot_reason, sizeof diag.screenshot_reason, "session-start");
+    }
     if (!diag.log) fprintf(stderr, "PipeClean Dev: couldn't create multiplayer log at %s\n",
                            diag.log_path);
 }
@@ -611,10 +621,18 @@ void dev_diag_frame(const Frame *frame, int game, int player_count,
     /* Incident snapshots are emitted during update_events(), so publish the
      * matching render hash first rather than leaving the previous frame's hash. */
     diag.last_render_hash=sample.render_hash;
+    if (diag.memory_snapshot_pending) {
+        diag.memory_snapshot_pending = 0;
+        diag.last_dump_frame = diag.frame_count;
+        log_memory_snapshot(diag.screenshot_reason[0]
+            ? diag.screenshot_reason : "requested");
+    }
     update_events(&sample);
     diag.sample=sample;
     log_frame(&sample);
-    if (diag.frame_count > 0 && diag.frame_count % 900u == 0 &&
+    /* Five-second cadence at 60 logical frames per second; this is short
+     * enough to catch transient visuals without needing a special event. */
+    if (diag.frame_count > 0 && diag.frame_count % 300u == 0 &&
         diag.last_periodic_frame != diag.frame_count) {
         diag.last_periodic_frame = diag.frame_count;
         request_incident_capture("periodic", 1);
@@ -624,6 +642,16 @@ void dev_diag_frame(const Frame *frame, int game, int player_count,
         diag.last_draw_ticks=now;
         draw_dashboard();
     }
+}
+
+void dev_diag_request_screenshot(const char *reason)
+{
+    if (!diag.log) return;
+    diag.screenshot_pending = 1;
+    diag.memory_snapshot_pending = 1;
+    snprintf(diag.screenshot_reason, sizeof diag.screenshot_reason, "%s",
+             reason && reason[0] ? reason : "manual");
+    diag_event_log("MANUAL SCREENSHOT REQUESTED");
 }
 
 void dev_diag_capture_screen(SDL_Renderer *game_renderer)
