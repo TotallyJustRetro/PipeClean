@@ -118,7 +118,7 @@ python3 tools/mp_test.py \
   --report-dir test-results/sml2-coop
 ```
 
-Edit the script's frame timings to reach the level and reproduce the interaction you want to test. Input masks are hexadecimal: A=01, B=02, Select=04, Start=08, Right=10, Left=20, Up=40, Down=80. Reports are saved locally and are not uploaded by the test tool. The CI runner uses a synthetic cartridge only to validate scripted stepping and deterministic replay; it does **not** prove that collisions, blocks, or enemy behavior are correct in the commercial game.
+Edit the script's frame timings to reach the level and reproduce the interaction you want to test. Input masks are hexadecimal: A=01, B=02, Select=04, Start=08, Right=10, Left=20, Up=40, Down=80. You can add assertions when the scenario is expected to reach gameplay, for example `--require-p2-spawn --require-p1-movement --require-p2-movement --require-camera-scroll`; use `--require-block-patch` to require that the runtime recorded a tile change, or `--require-actor-region-change` to detect activity in the actor-related RAM range. These are useful checks, not proof by themselves that the underlying game behavior is correct. Reports are saved locally and are not uploaded by the test tool. The CI runner uses a synthetic cartridge only to validate scripted stepping and deterministic replay; it does **not** prove that collisions, blocks, or enemy behavior are correct in the commercial game.
 
 See **[Architecture](docs/ARCHITECTURE.md)** for technical details.
 
