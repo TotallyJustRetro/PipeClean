@@ -435,6 +435,13 @@ static void ensure_background(int g)
 void launcher_init(void)
 {
     clear_state_thumbs();
+    clear_romhack_thumbs();
+    int migrated_legacy_hacks = 0;
+    for (int g = 0; g < N_GAMES; g++) {
+        if (settings.g[g].hack_path[0]) migrated_legacy_hacks = 1;
+        romhack_migrate_legacy(g);
+    }
+    if (migrated_legacy_hacks) settings_save();
     for (int g = 0; g < N_GAMES; g++) load_state_request[g] = -1;
     for (int g = 0; g < N_GAMES; g++) rom_check(g);
     char found[N_GAMES][512];
@@ -457,6 +464,7 @@ void launcher_init(void)
 void launcher_enter(void)
 {
     clear_state_thumbs();
+    clear_romhack_thumbs();
     for (int g = 0; g < N_GAMES; g++) rom_check(g);
     for (int g = 0; g < N_GAMES; g++) if (rs[g].ok && !prev_ok[g]) make_preview(g);
     loaded_pack_game = -1;
@@ -465,7 +473,7 @@ void launcher_enter(void)
     audio_menu_music(1);
 }
 
-void launcher_shutdown(void) { clear_state_thumbs(); tex_collect_save(); }
+void launcher_shutdown(void) { clear_state_thumbs(); clear_romhack_thumbs(); tex_collect_save(); }
 
 /* ------------------------------------------------------------------ small drawing helpers */
 static SDL_Rect to_px(float x, float y, float w, float h)
