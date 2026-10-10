@@ -17,10 +17,12 @@ void dev_diag_frame(const Frame *frame, int game, int player_count,
     (void)buttons; (void)dpad; (void)paused;
 }
 void dev_diag_end(const char *reason) { (void)reason; }
+void dev_diag_capture_screen(SDL_Renderer *game_renderer) { (void)game_renderer; }
 int dev_diag_handle_event(const SDL_Event *event) { (void)event; return 0; }
 
 #else
 
+#include <SDL_image.h>
 #include <time.h>
 #include <ctype.h>
 #include "games.h"
@@ -65,12 +67,125 @@ typedef struct {
     uint32_t last_coins;
     uint32_t last_map_hash;
     uint16_t last_camera_x, last_camera_y;
+    uint64_t last_dump_frame, last_screenshot_frame, last_periodic_frame;
+    uint64_t last_bg_snapshot_frame;
+    int screenshot_pending;
+    char screenshot_reason[80];
     char recent[DIAG_MAX_EVENTS][128];
     int recent_head, recent_count;
     DiagSample sample;
 } DiagState;
 
 static DiagState diag;
+
+
+static void write_json_string(FILE *file, const char *value)
+{
+    if (!file) return;
+    fputc('"', file);
+    if (value) {
+        for (const unsigned char *p = (const unsigned char *)value; *p; p++) {
+            if (*p == '"' || *p == '\\') fputc('\\', file);
+            if (*p >= 32) fputc(*p, file);
+        }
+    }
+    fputc('"', file);
+}
+
+static void write_hex_bytes(FILE *file, const uint8_t *bytes, size_t count)
+{
+    if (!file || !bytes) return;
+    for (size_t i = 0; i < count; i++)
+        fprintf(file, "%02X", bytes[i]);
+}
+
+static void log_memory_snapshot(const char *reason)
+{
+    if (!diag.log) return;
+
+    EmuMpTestSnapshot state;
+    int have_sml2 = emu_mp_test_snapshot(&state) == 0;
+    uint8_t player_ram[0xE0];
+    uint8_t world_ram[0x1800];
+    int have_ram = have_sml2 &&
+        emu_mp_test_read_ram(0xA200, player_ram, sizeof player_ram) == 0 &&
+        emu_mp_test_read_ram(0xA800, world_ram, sizeof world_ram) == 0;
+
+    fprintf(diag.log, "{\"type\":\"incident_snapshot\",\"frame\":%llu,\"reason\":",
+            (unsigned long long)diag.frame_count);
+    write_json_string(diag.log, reason ? reason : "unknown");
+    fputs(",\"game\":", diag.log);
+    write_json_string(diag.log, diag.game_name);
+    fprintf(diag.log, ",\"players\":%d,\"sml2_available\":%s",
+            diag.player_count, have_sml2 ? "true" : "false");
+    if (have_sml2) {
+        fprintf(diag.log,
+            ",\"state\":{\"p1_world\":[%u,%u],\"p2_world\":[%u,%u],"
+            "\"p1_screen\":[%u,%u],\"p2_screen\":[%u,%u],"
+            "\"camera\":[%u,%u],\"level\":[%u,%u],\"mode\":%u,"
+            "\"lives\":[%u,%u],\"spawned\":%u,\"grounded\":[%u,%u],"
+            "\"in_air\":[%u,%u],\"coins\":[%u,%u],"
+            "\"hashes\":[\"%08X\",\"%08X\",\"%08X\",\"%08X\"],"
+            "\"tile_patches\":%u}",
+            state.p1_world_x, state.p1_world_y, state.p2_world_x, state.p2_world_y,
+            state.p1_screen_x, state.p1_screen_y, state.p2_screen_x, state.p2_screen_y,
+            state.camera_x, state.camera_y, state.level, state.level_bank, state.game_mode,
+            state.p1_lives, state.p2_lives, state.p2_spawned,
+            state.p1_grounded, state.p2_grounded, state.p1_in_air, state.p2_in_air,
+            state.coins_low, state.coins_high, state.bg_map_hash, state.level_ram_hash,
+            state.actor_region_hash, diag.last_render_hash, state.tile_patch_count);
+    }
+    if (have_ram) {
+        fputs(",\"ram_hex\":{\"A200_A2DF\":\"", diag.log);
+        write_hex_bytes(diag.log, player_ram, sizeof player_ram);
+        fputs("\",\"A800_BFFF\":\"", diag.log);
+        write_hex_bytes(diag.log, world_ram, sizeof world_ram);
+        fputc('"', diag.log);
+        fputc('}', diag.log);
+    } else {
+        fputs(",\"ram_hex_available\":false", diag.log);
+    }
+    fputs("}\n", diag.log);
+    fflush(diag.log);
+}
+
+static int diag_event_warrants_capture(const char *message)
+{
+    if (!message) return 0;
+    return strstr(message, "PLAYER 2 NOT SPAWNED") ||
+           strstr(message, "PLAYER 2 SPAWNED") ||
+           strstr(message, "PLAYER 2 VISIBLE WITH FEW SPRITES") ||
+           strstr(message, "INPUT HELD BUT POSITION STATIC") ||
+           strstr(message, "LIVES ") ||
+           strstr(message, "RESPAWN REQUESTED") ||
+           strstr(message, "LEVEL CHANGED") ||
+           strstr(message, "CO-OP TETHER ACTIVE");
+}
+
+static void request_incident_capture(const char *reason, int periodic)
+{
+    uint64_t frame = diag.frame_count;
+    int bg_change = reason && strstr(reason, "BG MAP CHANGED WITH STATIC CAMERA");
+    if (bg_change) {
+        if (diag.last_bg_snapshot_frame &&
+            frame < diag.last_bg_snapshot_frame + 600u) return;
+        diag.last_bg_snapshot_frame = frame;
+    }
+    if (diag.last_dump_frame == frame) return;
+
+    diag.last_dump_frame = frame;
+    diag.screenshot_pending = 1;
+    snprintf(diag.screenshot_reason, sizeof diag.screenshot_reason, "%s",
+             reason ? reason : (periodic ? "periodic" : "incident"));
+    log_memory_snapshot(diag.screenshot_reason);
+}
+
+static void diag_event_capture_request(const char *message)
+{
+    if (diag_event_warrants_capture(message) ||
+        (message && strstr(message, "BG MAP CHANGED WITH STATIC CAMERA")))
+        request_incident_capture(message, 0);
+}
 
 /* Compact built-in 3x5 font; avoids extra DLLs and is readable in a small
  * always-available developer window. Bits 2..0 are the pixels in each row. */
@@ -144,6 +259,7 @@ static void diag_event_log(const char *message)
         fputs("\"}\n", diag.log);
         fflush(diag.log);
     }
+    diag_event_capture_request(message);
 }
 
 void dev_diag_event(const char *message)
@@ -469,11 +585,95 @@ void dev_diag_frame(const Frame *frame, int game, int player_count,
     diag.sample=sample;
     diag.last_render_hash=sample.render_hash;
     log_frame(&sample);
+    if (diag.frame_count > 0 && diag.frame_count % 900u == 0 &&
+        diag.last_periodic_frame != diag.frame_count) {
+        diag.last_periodic_frame = diag.frame_count;
+        request_incident_capture("periodic", 1);
+    }
     Uint32 now=SDL_GetTicks();
     if(diag.window && (Uint32)(now-diag.last_draw_ticks)>=100u) {
         diag.last_draw_ticks=now;
         draw_dashboard();
     }
+}
+
+void dev_diag_capture_screen(SDL_Renderer *game_renderer)
+{
+    if (!game_renderer || !diag.screenshot_pending) return;
+
+    int width = 0, height = 0;
+    if (SDL_GetRendererOutputSize(game_renderer, &width, &height) != 0 ||
+        width <= 0 || height <= 0) {
+        diag_event_log("SCREENSHOT FAILED - INVALID RENDERER SIZE");
+        diag.screenshot_pending = 0;
+        return;
+    }
+
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(
+        0, width, height, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (!surface) {
+        diag_event_log("SCREENSHOT FAILED - SURFACE ALLOCATION");
+        diag.screenshot_pending = 0;
+        return;
+    }
+    if (SDL_RenderReadPixels(game_renderer, NULL, SDL_PIXELFORMAT_ARGB8888,
+                             surface->pixels, surface->pitch) != 0) {
+        SDL_FreeSurface(surface);
+        diag_event_log("SCREENSHOT FAILED - RENDER READBACK");
+        diag.screenshot_pending = 0;
+        return;
+    }
+
+    char folder[1200];
+    snprintf(folder, sizeof folder, "%s", diag.log_path);
+    char *slash = strrchr(folder, '/');
+    char *backslash = strrchr(folder, '\\');
+    if (!slash || (backslash && backslash > slash)) slash = backslash;
+    if (slash) slash[1] = 0;
+    else snprintf(folder, sizeof folder, "%s", settings_dir());
+
+    char slug[64];
+    size_t used = 0;
+    const char *reason = diag.screenshot_reason[0]
+        ? diag.screenshot_reason : "incident";
+    for (const unsigned char *p = (const unsigned char *)reason;
+         *p && used + 1 < sizeof slug; p++) {
+        if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+            (*p >= '0' && *p <= '9')) {
+            slug[used++] = (char)*p;
+        } else if (used && slug[used - 1] != '-' && used + 1 < sizeof slug) {
+            slug[used++] = '-';
+        }
+    }
+    while (used && slug[used - 1] == '-') used--;
+    if (!used) { memcpy(slug, "incident", 9); used = 8; }
+    slug[used] = 0;
+
+    char path[1500];
+    snprintf(path, sizeof path, "%sPipeClean-screen-%06llu-%s.png",
+             folder, (unsigned long long)diag.frame_count, slug);
+    int saved = IMG_SavePNG(surface, path);
+    SDL_FreeSurface(surface);
+
+    if (saved == 0) {
+        if (diag.log) {
+            fprintf(diag.log, "{\"type\":\"screenshot\",\"frame\":%llu,\"reason\":",
+                    (unsigned long long)diag.frame_count);
+            write_json_string(diag.log, reason);
+            fputs(",\"path\":", diag.log);
+            write_json_string(diag.log, path_base(path));
+            fprintf(diag.log, ",\"width\":%d,\"height\":%d}\n", width, height);
+            fflush(diag.log);
+        }
+        diag.last_screenshot_frame = diag.frame_count;
+    } else if (diag.log) {
+        fprintf(diag.log, "{\"type\":\"screenshot_error\",\"frame\":%llu,\"error\":",
+                (unsigned long long)diag.frame_count);
+        write_json_string(diag.log, IMG_GetError());
+        fputs("}\n", diag.log);
+        fflush(diag.log);
+    }
+    diag.screenshot_pending = 0;
 }
 
 void dev_diag_end(const char *reason)
