@@ -154,6 +154,8 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->bg_dim = 25;
     c->wide = 0;
     c->state_slot = 0;
+    c->romhack_count = 0;
+    c->romhack_selected = -1; /* The unmodified game is the default profile. */
     c->p2_color = LUIGI_GREEN;
     c->p3_color = LUIGI_BLUE;
     c->p4_color = LUIGI_YELLOW;
@@ -228,6 +230,8 @@ static int field_table(Field *t, int cap)
 #define GI(nm, p, l, h) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
 #define GS(nm, p) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
         GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path);
+        GI("romhack_count", c->romhack_count, 0, MAX_ROMHACKS);
+        GI("romhack_selected", c->romhack_selected, -1, MAX_ROMHACKS - 1);
         GS("p2_name", c->p2_name);
         GS("p2_sfx_jump", c->p2_sfx_path[P2_SFX_JUMP]); GS("p2_sfx_fireball", c->p2_sfx_path[P2_SFX_FIREBALL]);
         GS("p2_sfx_power_up", c->p2_sfx_path[P2_SFX_POWER_UP]); GS("p2_sfx_power_down", c->p2_sfx_path[P2_SFX_POWER_DOWN]);
@@ -296,8 +300,15 @@ void settings_load(void)
             size_t gl = strlen(games[g].id);
             if (strncmp(line, games[g].id, gl) || line[gl] != '.') continue;
             const char *k = line + gl + 1;
-            int b, s2;
-            if (sscanf(k, "key%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < MAX_MP_PLAYERS) settings.g[g].key[b][s2] = atoi(v);
+            int b, s2, hi;
+            char profile_field[32];
+            if (sscanf(k, "romhack%d_%31s", &hi, profile_field) == 2 &&
+                hi >= 0 && hi < MAX_ROMHACKS) {
+                RomHackEntry *entry = &settings.g[g].romhacks[hi];
+                if (!strcmp(profile_field, "path")) snprintf(entry->path, sizeof entry->path, "%s", v);
+                else if (!strcmp(profile_field, "title")) snprintf(entry->title, sizeof entry->title, "%s", v);
+                else if (!strcmp(profile_field, "thumbnail")) snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", v);
+            } else if (sscanf(k, "key%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < MAX_MP_PLAYERS) settings.g[g].key[b][s2] = atoi(v);
             else if (sscanf(k, "pad%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < MAX_MP_PLAYERS) settings.g[g].pad[b][s2] = atoi(v);
             else if (sscanf(k, "actionkey%d", &b) == 1 && b >= 0 && b < N_ACTION) settings.g[g].action_key[b] = atoi(v);
             else if (sscanf(k, "actionpad%d", &b) == 1 && b >= 0 && b < N_ACTION) settings.g[g].action_pad[b] = atoi(v);
@@ -305,6 +316,16 @@ void settings_load(void)
         }
     }
     fclose(f);
+    for (int g = 0; g < N_GAMES; g++) {
+        GameCfg *c = &settings.g[g];
+        int highest = 0;
+        for (int i = 0; i < MAX_ROMHACKS; i++)
+            if (c->romhacks[i].path[0]) highest = i + 1;
+        if (c->romhack_count < highest) c->romhack_count = highest;
+        if (c->romhack_count > MAX_ROMHACKS) c->romhack_count = MAX_ROMHACKS;
+        if (c->romhack_selected < -1 || c->romhack_selected >= c->romhack_count)
+            c->romhack_selected = -1;
+    }
     if (settings.last_tab > N_GAMES + 3) settings.last_tab = 0;
 }
 
@@ -331,6 +352,13 @@ void settings_save(void)
             fprintf(f, "%s.actionpad%d=%d\n", games[g].id, a, settings.g[g].action_pad[a]);
         }
         fprintf(f, "%s.ledcolor=%06X\n", games[g].id, settings.g[g].ds_color);
+        for (int i = 0; i < MAX_ROMHACKS; i++) {
+            const RomHackEntry *entry = &settings.g[g].romhacks[i];
+            if (!entry->path[0]) continue;
+            fprintf(f, "%s.romhack%d_path=%s\n", games[g].id, i, entry->path);
+            fprintf(f, "%s.romhack%d_title=%s\n", games[g].id, i, entry->title);
+            fprintf(f, "%s.romhack%d_thumbnail=%s\n", games[g].id, i, entry->thumbnail);
+        }
     }
     fclose(f);
 }
