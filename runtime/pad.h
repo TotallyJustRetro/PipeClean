@@ -19,6 +19,8 @@ int  pad_touchpad_event(const SDL_Event *e, float *x, float *y, int *kind);
 const char *pad_status(char *buf, size_t n);
 
 void pad_poll(int game, uint8_t *buttons, uint8_t *dpad);
+/* Virtual on-screen controls feed the same Game Boy input path as keys/pads. */
+void pad_set_touch_input(int game, int player, uint8_t buttons, uint8_t dpad);
 void pad_poll_player(int game, int player, uint8_t *buttons, uint8_t *dpad);
 /* Launcher navigation does not require a per-game controller assignment. */
 void pad_poll_launcher(float *x_axis, float *y_axis, int *confirm, int *back);
