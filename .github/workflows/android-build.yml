@@ -1,9 +1,8 @@
 name: PipeClean Android APK
 
 on:
-  push:
-    branches: [feature/online-android-foundation]
   pull_request:
+    branches: [fix/sml-dx-widescreen-revision]
   workflow_dispatch:
 
 permissions:
