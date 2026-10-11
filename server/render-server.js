@@ -219,24 +219,30 @@ wss.on('connection', (websocket, request) => {
 
   tcp.on('data', (chunk) => {
     relayBuffer += chunk.toString('utf8');
-    if (relayBuffer.length > MAX_RELAY_BUFFER) {
-      closeSocket(websocket, 1011, 'Invalid relay response');
-      tcp.destroy();
-      return;
-    }
     let newline;
-    while ((newline = relayBuffer.indexOf('\n')) !== -1) {
-      const line = relayBuffer.slice(0, newline).replace(/\r$/, '');
+    while ((newline = relayBuffer.indexOf('\\n')) !== -1) {
+      const line = relayBuffer.slice(0, newline).replace(/\\r$/, '');
       relayBuffer = relayBuffer.slice(newline + 1);
-      if (websocket.readyState !== WebSocket.OPEN) return;
-      if (Buffer.byteLength(line, 'utf8') > MAX_MESSAGE_BYTES) {
+      const bytes = Buffer.byteLength(line, 'utf8');
+      if (bytes > MAX_MESSAGE_BYTES) {
         closeSocket(websocket, 1011, 'Relay response too large');
+        tcp.destroy();
+        return;
+      }
+      if (websocket.readyState !== WebSocket.OPEN) return;
+      if (websocket.bufferedAmount + bytes > MAX_RELAY_BUFFER) {
+        closeSocket(websocket, 1013, 'Client is too slow');
         tcp.destroy();
         return;
       }
       websocket.send(line, { binary: false }, (error) => {
         if (error) tcp.destroy();
       });
+    }
+    /* Bound only the unterminated tail, not a valid burst of complete lines. */
+    if (Buffer.byteLength(relayBuffer, 'utf8') > MAX_MESSAGE_BYTES) {
+      closeSocket(websocket, 1011, 'Invalid relay response');
+      tcp.destroy();
     }
   });
 
