@@ -195,35 +195,35 @@ function processLine(client, line) {
     return;
   }
   const room = client.room;
-  if (/^SELECT_GAME\\t[12]$/.test(line)) {
+  if (/^SELECT_GAME\t[12]$/.test(line)) {
     if (client !== room.host) {
       rejectClient(client, 'Only the host can choose the game');
       return;
     }
-    room.selectedGame = Number(line.slice('SELECT_GAME\\t'.length));
+    room.selectedGame = Number(line.slice('SELECT_GAME\t'.length));
     reply(client, line);
     reply(client.peer, line);
     return;
   }
-  if (/^START_GAME\\t[12]$/.test(line)) {
+  if (/^START_GAME\t[12]$/.test(line)) {
     if (client !== room.host) {
       rejectClient(client, 'Only the host can start the game');
       return;
     }
-    if (room.selectedGame !== Number(line.slice('START_GAME\\t'.length))) {
-      reply(client, 'ERR\\tChoose that game in the lobby before starting');
+    if (room.selectedGame !== Number(line.slice('START_GAME\t'.length))) {
+      reply(client, 'ERR\tChoose that game in the lobby before starting');
       return;
     }
     reply(client.peer, line);
     return;
   }
-  if (line.startsWith('CHAT\\t')) {
+  if (line.startsWith('CHAT\t')) {
     const message = line.slice(5);
-    if (!message || message.length > 88 || /[\\t\\r\\n\\u0000-\\u001f\\u007f]/.test(message)) {
+    if (!message || message.length > 88 || /[\t\r\n\u0000-\u001f\u007f]/.test(message)) {
       rejectClient(client, 'Invalid chat message');
       return;
     }
-    const chatLine = 'CHAT\\t' + client.name + '\\t' + message;
+    const chatLine = 'CHAT\t' + client.name + '\t' + message;
     reply(client, chatLine);
     reply(client.peer, chatLine);
     return;
