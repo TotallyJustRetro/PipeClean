@@ -32,6 +32,33 @@
 static SDL_Window *win;
 static SDL_Renderer *ren;
 static int win_w = 1100, win_h = 720;
+static SDL_FingerID launcher_touch_finger;
+static int launcher_touch_active, launcher_touch_pointer;
+
+static void launcher_touch_event(const SDL_Event *e)
+{
+    if (!e) return;
+    if (e->type == SDL_FINGERDOWN && !launcher_touch_active) {
+        launcher_touch_active = 1;
+        launcher_touch_pointer = 1;
+        launcher_touch_finger = e->tfinger.fingerId;
+        ui_touch_to_dp(e->tfinger.x, e->tfinger.y, &ui_mouse.x, &ui_mouse.y);
+        ui_mouse.inside = 1;
+        ui_mouse_button(1);
+    } else if ((e->type == SDL_FINGERMOTION || e->type == SDL_FINGERUP) &&
+               launcher_touch_active && e->tfinger.fingerId == launcher_touch_finger) {
+        launcher_touch_pointer = 1;
+        ui_touch_to_dp(e->tfinger.x, e->tfinger.y, &ui_mouse.x, &ui_mouse.y);
+        ui_mouse.inside = 1;
+        if (e->type == SDL_FINGERUP) {
+            ui_mouse_button(0);
+            launcher_touch_active = 0;
+        }
+    } else if (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN ||
+               e->type == SDL_MOUSEBUTTONUP) {
+        launcher_touch_pointer = 0;
+    }
+}
 
 static void sfx(int w) { audio_sfx(w); }
 
@@ -1275,6 +1302,7 @@ int app_run(const char *autorun, const char *hack)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            launcher_touch_event(&e);
             pad_event(&e);
             launcher_event(&e);
             switch (e.type) {
@@ -1288,7 +1316,7 @@ int app_run(const char *autorun, const char *hack)
                 break;
             }
         }
-        mouse_sync();
+        if (!launcher_touch_pointer) mouse_sync();
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
         last = now;
