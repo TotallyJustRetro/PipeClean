@@ -64,8 +64,8 @@ async function main() {
     port = started;
 
     const invalid = await connectClient(port);
-    invalid.socket.write('UNSUPPORTED\\tcommand\\n');
-    assert.match(await waitForLine(invalid), /^ERR\\tFirst message must be HOST or JOIN$/);
+    invalid.socket.write('UNSUPPORTED\tcommand\n');
+    assert.match(await waitForLine(invalid), /^ERR\tFirst message must be HOST or JOIN$/);
     invalid.socket.destroy();
 
     const host = await connectClient(port);
@@ -73,7 +73,7 @@ async function main() {
     host.socket.write('HOST\tHost\n');
     const hosted = await waitForLine(host);
     const match = hosted.match(/^HOSTED\t([A-HJ-NP-Z2-9]{8})$/);
-    assert.ok(match, 'host receives a eight-character room code');
+    assert.ok(match, 'host receives an eight-character room code');
 
     guest.socket.write('JOIN\t' + match[1] + '\tGuest\n');
     const [joined, peerJoined] = await Promise.all([waitForLine(guest), waitForLine(host)]);
@@ -83,8 +83,8 @@ async function main() {
     guest.socket.write('INPUT\t1\t5\t2\t1\n');
     assert.equal(await waitForLine(host), 'INPUT\t1\t5\t2\t1');
 
-    guest.socket.write('UNSUPPORTED\\tcommand\\n');
-    assert.equal(await waitForLine(guest), 'ERR\\tUnsupported or malformed gameplay message');
+    guest.socket.write('UNSUPPORTED\tcommand\n');
+    assert.equal(await waitForLine(guest), 'ERR\tUnsupported or malformed gameplay message');
     assert.equal(await waitForLine(host), 'PEER_LEFT');
     host.socket.end();
     process.stdout.write('PipeClean relay integration: PASS\n');
