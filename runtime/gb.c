@@ -42,6 +42,8 @@ void gb_set_cpu_fault_hook(GbCpuFaultHook hook) { cpu_fault_hook = hook; }
 
 static GbInstructionHook cpu_instruction_hook;
 void gb_set_instruction_hook(GbInstructionHook hook) { cpu_instruction_hook = hook; }
+static int suppress_hardware_timing;
+void gb_set_timing_suppressed(int suppressed) { suppress_hardware_timing = suppressed != 0; }
 
 /* ------------------------------------------------------------------ */
 static uint8_t joyp_read(void)
@@ -251,6 +253,7 @@ static void timer_tick(int n)
 
 void hw_tick(int n)
 {
+    if (suppress_hardware_timing) return;
     total_cycles += (uint64_t)n;
     /* Timer/CPU clocks double in CGB double-speed mode; LCD and APU stay at
      * the normal base clock. CPU instruction timing remains expressed in CPU
@@ -429,6 +432,7 @@ void gb_dump_misses(const char *path)
 /* ------------------------------------------------------------------ */
 void gb_reset(void)
 {
+    suppress_hardware_timing = 0;
     memset(&cpu, 0, sizeof cpu);
     cart_reset();
     /* Model the CPU state left by the boot ROM before entry at 0100.
