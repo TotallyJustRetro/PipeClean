@@ -97,6 +97,9 @@ typedef struct {
     int menu_music, menu_music_vol, ui_sfx, ui_sfx_vol;
     char menu_music_path[512], ui_sfx_path[N_UI_SFX][512];
     int last_tab, show_stats;
+    int launcher_ui_scale;              /* 75..125 percent, persisted UI zoom */
+    int launcher_window_size;           /* 0 = compact, 1 = default, 2 = large */
+    int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
     char online_name[32];
     char online_server[160];          /* relay host:port */
     int online_color;                /* default profile colour, 0xRRGGBB */
