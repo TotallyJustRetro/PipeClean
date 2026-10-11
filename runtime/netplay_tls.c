@@ -262,6 +262,13 @@ int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
         tls_free_contexts();
         return -1;
     }
+    /* Render's HTTPS edge supports TLS 1.2. Pin to TLS 1.2 instead of
+       allowing TLS 1.3, whose PSA key-generation path can fail with
+       MBEDTLS_ERR_SSL_INTERNAL_ERROR on some Mbed TLS builds. Keep full
+       certificate and hostname verification enabled. */
+    mbedtls_ssl_conf_max_version(&tls_config,
+                                 MBEDTLS_SSL_MAJOR_VERSION_3,
+                                 MBEDTLS_SSL_MINOR_VERSION_3);
     mbedtls_ssl_conf_authmode(&tls_config, MBEDTLS_SSL_VERIFY_REQUIRED);
     mbedtls_ssl_conf_ca_chain(&tls_config, &tls_ca, NULL);
     mbedtls_ssl_conf_rng(&tls_config, mbedtls_ctr_drbg_random, &tls_drbg);
