@@ -129,7 +129,7 @@ function processLine(client, line) {
         return;
       }
       const room = rooms.get(code);
-      if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code) || !room ||
+      if (!/^[A-HJ-NP-Z2-9]{8}$/.test(code) || !room ||
           (room.expiresAt && Date.now() > room.expiresAt) || room.guest) {
         if (room && room.expiresAt && Date.now() > room.expiresAt) forgetRoom(room);
         rejectClient(client, 'Invite code not found or room is full');
