@@ -338,6 +338,15 @@ static inline int PXx(float x) { return (int)floorf(ox + x * ui_scale + 0.5f); }
 static inline int PXy(float y) { return (int)floorf(oy + y * ui_scale + 0.5f); }
 static inline int PXs(float v) { return (int)floorf(v * ui_scale + 0.5f); }
 
+/* Keep labels legible on low-density / small Android render targets. Geometry
+   still follows the fitted scale; only the glyph atlas gets a small pixel floor. */
+static int text_px(float logical_size)
+{
+    int px = PXs(logical_size);
+    if (ui_scale < 0.70f && px < 7) px = 7;
+    return px;
+}
+
 static void set_col(uint32_t c)
 {
     SDL_SetRenderDrawBlendMode(ren, (c & 255) == 255 ? SDL_BLENDMODE_NONE : SDL_BLENDMODE_BLEND);
@@ -503,7 +512,7 @@ static const Glyph *glyph_of(Atlas *a, int cp)
 float ui_text_w(int font, float size, const char *s)
 {
     if (!fonts_ok) return 0;
-    Atlas *a = get_atlas(font, PXs(size));
+    Atlas *a = get_atlas(font, text_px(size));
     float w = 0;
     while (*s) w += glyph_of(a, next_cp(&s))->adv;
     return w / ui_scale;
