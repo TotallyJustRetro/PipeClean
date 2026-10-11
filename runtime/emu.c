@@ -918,6 +918,7 @@ static int mp_sml2_private_addr(unsigned address)
     case 0xA22B: case 0xA22C: case 0xA232: case 0xA233:
     case 0xA235: case 0xA236: case 0xA237: case 0xA238:
     case 0xA23B: case 0xA23C: case 0xA23D: case 0xA24F:
+    case 0xA24D: /* private vertical-physics cooldown used by collision reactions */
     case 0xA25A: case 0xA25C: case 0xA268: case 0xA26B: case 0xA26C:
     case 0xA26D: case 0xA271: case 0xA272: case 0xA279: case 0xA27A:
     case 0xA27C: case 0xA283: case 0xA284: case 0xA285:
@@ -1927,6 +1928,8 @@ static void mp_sml2_direct_collision_update(void)
          * result and put Mario's live character state back before continuing. */
         wr8(0xA221, shared_pipe_transition);
         wr8(0xA20E, shared_level_transition);
+        for (unsigned i = 0; i < sizeof scratch_addr / sizeof scratch_addr[0]; i++)
+            wr8(scratch_addr[i], scratch_saved[i]);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
@@ -1965,6 +1968,16 @@ static void mp_sml2_instruction_hook(uint16_t pc)
     CPU p1_cpu = cpu;
     const uint8_t shared_pipe_transition = rd8(0xA221);
     const uint8_t shared_level_transition = rd8(0xA20E);
+    /* Enemy-contact routines use these RAM bytes as scratch to describe the
+     * last actor tested. Preserve P1's scratch output while keeping actor-pool
+     * mutations from Luigi's collision pass. */
+    static const uint16_t scratch_addr[] = {
+        0xA244, 0xA245, 0xA246, 0xA247,
+        0xA2A9, 0xA2AA, 0xA2AB, 0xA2AC, 0xA2AD, 0xA2AE, 0xA2AF, 0xA2D4
+    };
+    uint8_t scratch_saved[sizeof scratch_addr / sizeof scratch_addr[0]];
+    for (unsigned i = 0; i < sizeof scratch_addr / sizeof scratch_addr[0]; i++)
+        scratch_saved[i] = rd8(scratch_addr[i]);
     MpSml2Player p1_restore;
     mp_sml2_save_player_state(&p1_restore);
     mp_sml2_players[0] = p1_restore;
