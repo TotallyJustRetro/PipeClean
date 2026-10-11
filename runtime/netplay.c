@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "netplay.h"
+#include "games.h"
 #include "netplay_tls.h"
 #include <mbedtls/base64.h>
 #include <mbedtls/ctr_drbg.h>
@@ -47,6 +48,11 @@ static int np_running, np_stop, np_is_host;
 static char np_status[128] = "Not connected";
 static char np_code[16], np_peer[32];
 static char np_endpoint[160], np_name[32], np_join_code[16];
+static int np_selected_game = -1;
+static int np_start_request = -1;
+#define NP_CHAT_CAP 8
+static NetplayChatMessage np_chat[NP_CHAT_CAP];
+static int np_chat_head, np_chat_count;
 
 #define NP_INPUT_CAP 256
 #define NP_SEND_CAP 128
@@ -91,6 +97,42 @@ static void np_set_peer(const char *peer)
     snprintf(np_peer, sizeof np_peer, "%s", peer ? peer : "");
     np_unlock();
 }
+
+static void np_chat_add_locked(const char *name, const char *text)
+{
+    int index;
+    if (np_chat_count < NP_CHAT_CAP) {
+        index = (np_chat_head + np_chat_count) % NP_CHAT_CAP;
+        np_chat_count++;
+    } else {
+        index = np_chat_head;
+        np_chat_head = (np_chat_head + 1) % NP_CHAT_CAP;
+    }
+    snprintf(np_chat[index].name, sizeof np_chat[index].name, "%s", name ? name : "Player");
+    snprintf(np_chat[index].text, sizeof np_chat[index].text, "%s", text ? text : "");
+}
+
+static void np_handle_chat_line(const char *line)
+{
+    const char *name, *tab;
+    char clean_name[32], clean_text[96];
+    size_t name_len;
+    if (!line || strncmp(line, "CHAT\t", 5) != 0) return;
+    name = line + 5;
+    tab = strchr(name, '\t');
+    if (!tab || !tab[1]) return;
+    name_len = (size_t)(tab - name);
+    if (name_len == 0 || name_len >= sizeof clean_name ||
+        strlen(tab + 1) >= sizeof clean_text) return;
+    memcpy(clean_name, name, name_len);
+    clean_name[name_len] = 0;
+    snprintf(clean_text, sizeof clean_text, "%s", tab + 1);
+    np_lock();
+    np_chat_add_locked(clean_name, clean_text);
+    if (np_cond) SDL_CondBroadcast(np_cond);
+    np_unlock();
+}
+
 static int np_stopping(void)
 {
     int stop;
@@ -818,12 +860,41 @@ static int SDLCALL np_worker(void *unused)
             break;
         }
         if (!strncmp(line, "PEER_JOINED\t", 12)) {
+            int selected;
+            char select_line[32];
             np_set_peer(line + 12);
             np_set_status(NETPLAY_CONNECTED, "Player connected to your room");
+            np_lock();
+            selected = np_selected_game;
+            np_unlock();
+            if (is_host && (selected == GAME_SML || selected == GAME_SML2)) {
+                snprintf(select_line, sizeof select_line, "SELECT_GAME\t%d\n", selected);
+                (void)np_send_current(select_line);
+            }
         } else if (!strcmp(line, "PEER_LEFT")) {
             np_set_peer("");
             if (is_host) np_set_status(NETPLAY_HOSTING, "Player left; room is open again");
             else { np_set_status(NETPLAY_ERROR, "Host ended the session"); break; }
+        } else if (!strncmp(line, "SELECT_GAME\t", 12)) {
+            int selected = atoi(line + 12);
+            if (selected == GAME_SML || selected == GAME_SML2) {
+                np_lock();
+                np_selected_game = selected;
+                np_unlock();
+            }
+        } else if (!strncmp(line, "START_GAME\t", 11)) {
+            int selected = atoi(line + 11);
+            np_lock();
+            if (selected == np_selected_game &&
+                (selected == GAME_SML || selected == GAME_SML2)) {
+                np_start_request = selected;
+                if (np_cond) SDL_CondBroadcast(np_cond);
+            } else {
+                snprintf(np_status, sizeof np_status, "Host selected a game that isn't ready locally");
+            }
+            np_unlock();
+        } else if (!strncmp(line, "CHAT\t", 5)) {
+            np_handle_chat_line(line);
         } else if (!strncmp(line, "GAME\t", 5)) {
             np_handle_game_line(line);
         } else if (!strcmp(line, "GAME_END")) {
@@ -905,6 +976,14 @@ static int netplay_start(int is_host, const char *endpoint, const char *code, co
     snprintf(np_join_code, sizeof np_join_code, "%s", code ? code : "");
     np_code[0] = np_peer[0] = 0;
     np_state = NETPLAY_CONNECTING;
+    if (is_host) {
+        if (np_selected_game != GAME_SML && np_selected_game != GAME_SML2)
+            np_selected_game = GAME_SML2;
+    } else {
+        np_selected_game = -1;
+    }
+    np_start_request = -1;
+    np_chat_head = np_chat_count = 0;
     snprintf(np_status, sizeof np_status, "Connecting to relay...");
     np_unlock();
     created = SDL_CreateThread(np_worker, "PipeCleanNetplay", NULL);
@@ -947,6 +1026,9 @@ void netplay_disconnect(void)
     np_state = NETPLAY_OFFLINE;
     snprintf(np_status, sizeof np_status, "Not connected");
     np_code[0] = np_peer[0] = 0;
+    np_selected_game = -1;
+    np_start_request = -1;
+    np_chat_head = np_chat_count = 0;
     np_send_head = np_send_count = 0;
     np_tls_mode = 0;
     np_ws_mode = np_ws_ready = 0;
@@ -1000,6 +1082,91 @@ int netplay_is_host(void)
     NetplayInfo info;
     netplay_get_info(&info);
     return info.is_host != 0;
+}
+
+int netplay_lobby_set_game(int game)
+{
+    int should_send;
+    char command[32];
+    if (game != GAME_SML && game != GAME_SML2) return 0;
+    np_lock();
+    if (!np_is_host && np_state != NETPLAY_OFFLINE && np_state != NETPLAY_ERROR) {
+        np_unlock();
+        return 0;
+    }
+    np_selected_game = game;
+    should_send = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] != 0;
+    np_unlock();
+    if (!should_send) return 1;
+    snprintf(command, sizeof command, "SELECT_GAME\t%d\n", game);
+    return np_send_current(command);
+}
+
+int netplay_lobby_get_game(void)
+{
+    int game;
+    np_lock();
+    game = np_selected_game;
+    np_unlock();
+    return game;
+}
+
+int netplay_lobby_start_game(int game)
+{
+    char command[32];
+    int valid;
+    np_lock();
+    valid = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] != 0 &&
+            np_selected_game == game && (game == GAME_SML || game == GAME_SML2);
+    if (valid) np_start_request = game;
+    np_unlock();
+    if (!valid) return 0;
+    snprintf(command, sizeof command, "START_GAME\t%d\n", game);
+    if (!np_send_current(command)) {
+        np_lock();
+        if (np_start_request == game) np_start_request = -1;
+        np_unlock();
+        return 0;
+    }
+    return 1;
+}
+
+int netplay_take_start_request(void)
+{
+    int game;
+    np_lock();
+    game = np_start_request;
+    np_start_request = -1;
+    np_unlock();
+    return game;
+}
+
+int netplay_chat_send(const char *text)
+{
+    char command[112];
+    size_t length = 0;
+    if (!text) return 0;
+    while (text[length] && length < 88) {
+        unsigned char ch = (unsigned char)text[length];
+        if (ch < 32 || ch == 127 || ch == '\t' || ch == '\r' || ch == '\n') return 0;
+        length++;
+    }
+    if (!length || text[length] != 0) return 0;
+    snprintf(command, sizeof command, "CHAT\t%.*s\n", (int)length, text);
+    return np_send_current(command);
+}
+
+int netplay_chat_snapshot(NetplayChatMessage *out, int capacity)
+{
+    int count, start;
+    if (!out || capacity <= 0) return 0;
+    np_lock();
+    count = np_chat_count < capacity ? np_chat_count : capacity;
+    start = (np_chat_head + np_chat_count - count) % NP_CHAT_CAP;
+    for (int i = 0; i < count; i++)
+        out[i] = np_chat[(start + i) % NP_CHAT_CAP];
+    np_unlock();
+    return count;
 }
 
 int netplay_game_begin(int game_id, uint32_t rom_crc)
