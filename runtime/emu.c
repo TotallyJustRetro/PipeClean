@@ -2145,11 +2145,7 @@ static void mp_sml2_direct_collision_update(void)
 
     for (int player = 1; player < mp_player_count; player++) {
         MpSml2Player *p = &mp_sml2_players[player];
-        /* A character with zero lives must still be allowed to finish the
-         * death animation that consumed its last life. Outside that animation,
-         * zero lives prevents movement/render/respawn work. */
-        if (!p->spawned ||
-            (mp_sml2_bcd_to_int(p->lives) == 0 && p->ram[0x24] != 0xFF)) {
+        if (!p->spawned || mp_sml2_bcd_to_int(p->lives) == 0) {
             mp_sml2_render_oam_count[player] = 0;
             continue;
         }
@@ -2285,7 +2281,9 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             (void)mp_sml2_try_safe_spawn(player);
             p = &mp_sml2_players[player];
         }
-        if (!p->spawned || p->respawn_requested || mp_sml2_bcd_to_int(p->lives) == 0) {
+        /* Preserve the final death animation even after it consumes the last life. */
+        if (!p->spawned || p->respawn_requested ||
+            (mp_sml2_bcd_to_int(p->lives) == 0 && p->ram[0x24] != 0xFF)) {
             memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
             mp_sml2_render_oam_count[player] = 0;
             continue;
