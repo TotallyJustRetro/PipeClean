@@ -1997,6 +1997,69 @@ static int mp_sml2_capture_direct_oam(int player, MpSml2Player *p)
     return ok;
 }
 
+/* Run the ROM's normal falling/death animation for a secondary character.
+ * The stock routine writes a global game-mode and music command when Mario
+ * finishes dying, so isolate those shared side effects while preserving the
+ * character's updated coordinates and the death-frame OAM. */
+static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
+                                            int *finished)
+{
+    if (player < 1 || player >= MAX_MP_PLAYERS || !p) return 0;
+    if (finished) *finished = 0;
+
+    uint8_t saved_oam[0xA0];
+    for (int i = 0; i < (int)sizeof saved_oam; i++)
+        saved_oam[i] = rd8((uint16_t)(0xA100 + i));
+    uint8_t saved_cursor = rd8(0xFF8D);
+    uint8_t saved_oam_end = rd8(0xA26E);
+    uint8_t saved_obj_mode = rd8(0xFFBB);
+    uint8_t saved_sfx_scratch = rd8(0xA460);
+    uint8_t saved_bank_latch = rd8(0xA24E);
+    uint8_t saved_game_mode = rd8(0xFF9B);
+    uint8_t saved_music_command = rd8(0xA468);
+    uint8_t saved_sprite_clear = rd8(0xA266);
+    uint8_t saved_sprite_set = rd8(0xA267);
+
+    for (int i = 0; i < (int)sizeof saved_oam; i++)
+        wr8((uint16_t)(0xA100 + i), 0);
+    wr8(0xFF8D, 0);
+
+    /* $315C is the original game-mode-9 death animation. Unlike the regular
+     * movement path, it applies the dead velocity table and renders the
+     * falling pose. It may set mode 9 and queue a music command at completion;
+     * neither effect may take over the shared game for Player 1. */
+    int ok = mp_sml2_run_original_subroutine(0x315C, 8000, 0);
+    int death_finished = rd8(0xFF9B) != saved_game_mode;
+
+    unsigned bytes = rd8(0xFF8D);
+    if (bytes > sizeof saved_oam) bytes = sizeof saved_oam;
+    bytes &= ~3u;
+    memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+    for (unsigned i = 0; i < bytes; i++)
+        mp_sml2_render_oam[player][i] = rd8((uint16_t)(0xA100 + i));
+    mp_sml2_render_oam_count[player] = (uint8_t)(bytes / 4u);
+    mp_sml2_render_tiles_valid[player] = 0;
+    memset(p->oam, 0, sizeof p->oam);
+    if (bytes > sizeof p->oam) bytes = sizeof p->oam;
+    memcpy(p->oam, mp_sml2_render_oam[player], bytes);
+
+    for (int i = 0; i < (int)sizeof saved_oam; i++)
+        wr8((uint16_t)(0xA100 + i), saved_oam[i]);
+    wr8(0xFF8D, saved_cursor);
+    wr8(0xA26E, saved_oam_end);
+    wr8(0xFFBB, saved_obj_mode);
+    wr8(0xA460, saved_sfx_scratch);
+    wr8(0xFF9B, saved_game_mode);
+    wr8(0xA468, saved_music_command);
+    wr8(0xA266, saved_sprite_clear);
+    wr8(0xA267, saved_sprite_set);
+    wr8(0x2100, saved_bank_latch);
+    wr8(0xA24E, saved_bank_latch);
+
+    if (finished) *finished = death_finished;
+    return ok;
+}
+
 static void mp_sml2_direct_collision_update(void)
 {
     if (!mp_sml2_direct_world || !mp_ready || !mp_active ||
@@ -2023,6 +2086,10 @@ static void mp_sml2_direct_collision_update(void)
             mp_sml2_render_oam_count[player] = 0;
             continue;
         }
+        /* Dead characters animate through the stock death routine from the
+         * instruction hook. Do not run collision resolution or normal-pose
+         * rendering over that frame. */
+        if (p->ram[0x24] == 0xFF) continue;
 
         const uint8_t old_ground = p->ram[0x14];
         const uint8_t old_air = p->ram[0x15];
@@ -2142,6 +2209,48 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         if (!p->spawned || p->respawn_requested || mp_sml2_bcd_to_int(p->lives) == 0) {
             memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
             mp_sml2_render_oam_count[player] = 0;
+            continue;
+        }
+
+        /* The retail main loop branches to $315C once the character's private
+         * damage timer changes A224 to $FF. Mario gets this branch naturally;
+         * secondary characters must run it themselves, without letting the
+         * ROM switch the one shared game into its death/game-over modes. */
+        if (p->ram[0x24] == 0xFF) {
+            int death_finished = 0;
+            if (!mp_sml2_capture_direct_death_oam(player, p, &death_finished)) {
+                wr8(0xA221, shared_pipe_transition);
+                wr8(0xA20E, shared_level_transition);
+                mp_sml2_player_scratch_restore(movement_scratch_saved);
+                mp_sml2_load_player(&p1_restore);
+                cpu = p1_cpu;
+                longjmp(stop_jmp, 4);
+            }
+            mp_sml2_save_player_state(p);
+            if (death_finished) {
+                int remaining_lives = mp_sml2_bcd_to_int(p->lives);
+                if (remaining_lives > 0) remaining_lives--;
+                p->lives = (uint8_t)(((remaining_lives / 10) << 4) |
+                                     (remaining_lives % 10));
+                p->ram[0x2C] = p->lives;
+                p->ram[0x24] = 0;
+                p->spawned = 0;
+                p->respawn_requested = (uint8_t)(remaining_lives > 0);
+                p->sfx_events |= P2_SFX_EVENT_DIE;
+                memset(mp_sml2_render_oam[player], 0,
+                       sizeof mp_sml2_render_oam[player]);
+                mp_sml2_render_oam_count[player] = 0;
+                dev_diag_event(remaining_lives > 0
+                    ? "LUIGI STOCK DEATH ANIMATION COMPLETE; ONE LIFE LOST"
+                    : "LUIGI STOCK DEATH ANIMATION COMPLETE; NO LIVES REMAIN");
+                dev_diag_request_screenshot("Luigi death animation completed");
+            }
+
+            wr8(0xA221, shared_pipe_transition);
+            wr8(0xA20E, shared_level_transition);
+            mp_sml2_player_scratch_restore(movement_scratch_saved);
+            mp_sml2_load_player(&p1_restore);
+            cpu = p1_cpu;
             continue;
         }
 
