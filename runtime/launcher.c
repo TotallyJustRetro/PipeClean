@@ -25,7 +25,7 @@ static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
-enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, N_TABS };
+enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, TAB_DISPLAY, N_TABS };
 enum { SUB_GAME, SUB_ROMHACKS, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
 static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
@@ -2072,6 +2072,56 @@ static void tab_online(float x, float y)
     }
 }
 
+static void tab_display(float x, float y)
+{
+    ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "LAUNCHER DISPLAY");
+    ui_text_wrap(F_REG, 12, x + 36, y + 112, 724, C_MUTED,
+                 "These options affect the launcher on desktop and Android. Per-game image shape and scaling remain in each game's Display page.", 3);
+
+    ui_text(F_REG, 13, x + 36, y + 165, C_TEXT, "Interface size");
+    int scale_changed = ui_slider(x + 210, y + 160, 340,
+                                  &settings.launcher_ui_scale, 75, 125);
+    char scale_label[24];
+    snprintf(scale_label, sizeof scale_label, "%d%%", settings.launcher_ui_scale);
+    ui_text_r(F_BOLD, 13, x + 610, y + 164, C_TEXT, scale_label);
+    if (scale_changed) {
+        ui_set_scale_preference(settings.launcher_ui_scale);
+        settings_save();
+    }
+    ui_text_fit(F_REG, 11, x + 36, y + 190, 700, C_DIM,
+                "Use 75–90% when more of the interface needs to fit. Larger values improve readability but may crop the edges.");
+
+    ui_rect(x + 36, y + 226, 728, 1, C_LINE);
+    ui_text(F_REG, 13, x + 36, y + 245, C_TEXT, "Desktop window size");
+    static const char *sizes[] = {"Compact", "Balanced", "Large"};
+    int size = settings.launcher_window_size;
+    if (ui_seg(x + 210, y + 237, 400, 38, sizes, 3, &size)) {
+        settings.launcher_window_size = size;
+        settings_save();
+    }
+#if defined(__ANDROID__)
+    ui_text_fit(F_REG, 11, x + 36, y + 287, 700, C_DIM,
+                "Android sizes the app to your device. Interface size still applies; rotate or resize the app window if your device supports it.");
+    ui_text(F_REG, 13, x + 36, y + 327, C_TEXT, "Fullscreen");
+    ui_text(F_REG, 12, x + 210, y + 327, C_DIM, "Managed by Android");
+#else
+    ui_text(F_REG, 13, x + 36, y + 297, C_TEXT, "Fullscreen launcher");
+    if (ui_toggle(x + 210, y + 293, &settings.launcher_fullscreen))
+        settings_save();
+    ui_text_fit(F_REG, 11, x + 36, y + 330, 700, C_DIM,
+                "Window size is restored when fullscreen is turned off. The game's own Display settings can still change game window size.");
+#endif
+    if (ui_button(x + 36, y + 394, 180, 36, "Reset display options", B_NORMAL, 1)) {
+        settings.launcher_ui_scale = 100;
+        settings.launcher_window_size = 1;
+        settings.launcher_fullscreen = 0;
+        ui_set_scale_preference(100);
+        settings_save();
+        launcher_toast("Launcher display options reset.");
+    }
+}
+
 /* ------------------------------------------------------------------ frame */
 
 /* ------------------------------------------------------------------ frame */
@@ -2080,7 +2130,8 @@ static const char *tab_labels[N_TABS] = {
     [TAB_MP_CONTROLLERS] = "MP Controllers",
     [TAB_FILTERS] = "Filters",
     [TAB_AUDIO] = "Audio & menu",
-    [TAB_ONLINE] = "Online"
+    [TAB_ONLINE] = "Online",
+    [TAB_DISPLAY] = "Display"
 };
 
 static int tab_button(float x, float y, float w, float h, int selected, uint32_t accent)
@@ -2214,10 +2265,14 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Audio & menu");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Game volume, the launcher's own music and the little click sounds.");
         tab_audio(cx, cy + 58);
-    } else {
+    } else if (tab == TAB_ONLINE) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Online");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Session invites, player identity, and cross-platform play.");
         tab_online(cx, cy + 58);
+    } else {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Display & layout");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Adjust the launcher's size on desktop and Android.");
+        tab_display(cx, cy + 58);
     }
 
     /* footer */
