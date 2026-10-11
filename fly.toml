@@ -20,7 +20,7 @@ primary_region = "iad"
 
   [[services.ports]]
     port = 443
-    handlers = ["tls"]
+    handlers = ["tls", "proxy_proto"]
     proxy_proto_options = { version = "v2" }
 
   [[services.tcp_checks]]
