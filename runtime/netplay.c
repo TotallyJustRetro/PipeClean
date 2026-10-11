@@ -81,6 +81,8 @@ static int np_local_game_pending, np_local_game, np_local_game_verified;
 static int np_local_game_mismatch, np_remote_game_seen, np_remote_game;
 static uint32_t np_local_crc, np_remote_crc;
 static int np_game_end_received;
+static uint32_t np_wait_window_total_ms, np_wait_window_max_ms, np_wait_window_slow;
+static unsigned np_wait_window_samples;
 
 static void np_lock(void) { if (np_mutex) SDL_LockMutex(np_mutex); }
 static void np_unlock(void) { if (np_mutex) SDL_UnlockMutex(np_mutex); }
@@ -1361,7 +1363,7 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
                             uint8_t *p2_buttons, uint8_t *p2_dpad, uint8_t *p2_actions)
 {
     char message[96];
-    Uint32 started;
+    Uint32 started, wait_ms = 0;
     NetInput remote;
     int got_remote = 0, ok = 0, host;
     if (!p1_buttons || !p1_dpad || !p1_actions || !p2_buttons || !p2_dpad || !p2_actions ||
@@ -1414,6 +1416,21 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
         }
     }
     if (got_remote && !np_game_end_received && np_state == NETPLAY_CONNECTED) {
+        wait_ms = SDL_GetTicks() - started;
+        np_wait_window_total_ms += wait_ms;
+        if (wait_ms > np_wait_window_max_ms) np_wait_window_max_ms = wait_ms;
+        if (wait_ms >= 8u) np_wait_window_slow++;
+        np_wait_window_samples++;
+        /* Emit a compact one-line measurement every 120 successful frames,
+         * rather than logging every input packet and perturbing frame timing. */
+        if (np_wait_window_samples >= 120u) {
+            fprintf(stderr, "[netplay] input wait over %u frames: avg=%u ms max=%u ms slow(>=8ms)=%u\n",
+                    np_wait_window_samples,
+                    np_wait_window_total_ms / np_wait_window_samples,
+                    np_wait_window_max_ms, np_wait_window_slow);
+            np_wait_window_total_ms = np_wait_window_max_ms = np_wait_window_slow = 0;
+            np_wait_window_samples = 0;
+        }
         if (host) {
             *p1_buttons = local_buttons; *p1_dpad = local_dpad; *p1_actions = local_actions;
             *p2_buttons = remote.buttons; *p2_dpad = remote.dpad; *p2_actions = remote.actions;
