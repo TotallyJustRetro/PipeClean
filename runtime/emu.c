@@ -1978,6 +1978,18 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
          * timing is suppressed, so bypass only the waits, not the tile/counter
          * updates that follow them. The addresses are in fixed ROM bank 0. */
         if (mp_sml2_inline_active) {
+            /* Stock SML2's death routine writes command 2 to $A468 at
+             * $3188 after Luigi falls off-screen. That command is consumed by
+             * the shared sound sequencer on the next real Player 1 frame and
+             * replaces/stops level music. The sound-RAM rollback alone is not
+             * sufficient for every ROM-RAM mapper/configuration, so skip this
+             * one store at the point of origin in clone-only execution. */
+            if (cpu.pc == 0x3188 && rom &&
+                rom[0x3188] == 0xEA && rom[0x3189] == 0x68 &&
+                rom[0x318A] == 0xA4) {
+                cpu.pc = 0x318B; /* Skip LD ($A468), A; keep death cleanup. */
+                continue;
+            }
             switch (cpu.pc) {
             case 0x1DC1: /* coin tile: first STAT wait */
             case 0x1DC7: /* coin tile: second STAT wait */
