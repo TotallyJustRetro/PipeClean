@@ -122,6 +122,7 @@ revisions and identical ROM-hack/patch results.
 - Oracle deployments terminate TLS with Nginx and forward PROXY protocol v2 to
   the local relay. The Node relay binds to `127.0.0.1:27800`; only ports 80
   and 443 need public ingress (plus SSH for deployment).
+- WSS clients send masked WebSocket ping/pong control frames and an application-level `PING`/`PONG` heartbeat during idle periods. The application heartbeat also counts as incoming WebSocket traffic for Render Free's idle timer and is not forwarded to the other player.
 - The relay creates unpredictable eight-character invite codes, rate-limits
   using original peer addresses when available, expires unattended rooms after
   15 minutes, keeps idle sockets open long enough for that expiry to take effect,
