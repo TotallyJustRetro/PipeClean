@@ -347,9 +347,13 @@ static int np_tls_write_all(NetSocket sock, const char *data, size_t length)
     return np_tls_write_all_raw(sock, data, length);
 }
 
-static int np_tls_read_exact(NetSocket sock, unsigned char *out, size_t length)
+static int np_tls_flush_outgoing(NetSocket sock);
+
+static int np_tls_read_exact_timeout(NetSocket sock, unsigned char *out, size_t length,
+                                     Uint32 first_byte_timeout_ms)
 {
     size_t used = 0;
+    Uint32 started = SDL_GetTicks();
     while (used < length && !np_stopping()) {
         int n = netplay_tls_read(sock, out + used, length - used);
         if (n > 0) {
@@ -357,10 +361,21 @@ static int np_tls_read_exact(NetSocket sock, unsigned char *out, size_t length)
             continue;
         }
         if (n < 0) return 0;
-        if (netplay_tls_wait(sock, netplay_tls_wants_write(), 50, np_stopping) < 0 &&
+        /* Flush controller/game messages even while no incoming WS frame is ready.
+           This is essential for lockstep: both peers may be waiting on each other. */
+        if (!np_tls_flush_outgoing(sock)) return 0;
+        if (first_byte_timeout_ms && used == 0 &&
+            (Uint32)(SDL_GetTicks() - started) >= first_byte_timeout_ms)
+            return 2; /* idle timeout, caller may send a keepalive ping */
+        if (netplay_tls_wait(sock, netplay_tls_wants_write(), 10, np_stopping) < 0 &&
             !np_stopping()) return 0;
     }
-    return used == length;
+    return used == length ? 1 : 0;
+}
+
+static int np_tls_read_exact(NetSocket sock, unsigned char *out, size_t length)
+{
+    return np_tls_read_exact_timeout(sock, out, length, 0) == 1;
 }
 
 static int np_websocket_handshake(NetSocket sock, const char *host)
@@ -444,7 +459,16 @@ static int np_ws_read_line(NetSocket sock, char *out, size_t cap)
         unsigned char header[2], extended[8], mask[4], payload[512];
         uint64_t length;
         unsigned opcode, fin, masked;
-        if (!np_tls_read_exact(sock, header, sizeof header)) return 0;
+        int header_read = np_tls_read_exact_timeout(sock, header, sizeof header, 30_000u);
+        if (header_read == 2) {
+            unsigned char ping[4];
+            if (!np_ws_rng_ready ||
+                mbedtls_ctr_drbg_random(&np_ws_drbg, ping, sizeof ping) != 0 ||
+                !np_ws_send_frame(sock, 9u, ping, sizeof ping))
+                return 0;
+            continue;
+        }
+        if (header_read != 1) return 0;
         fin = header[0] >> 7;
         opcode = header[0] & 0x0fu;
         masked = header[1] >> 7;
