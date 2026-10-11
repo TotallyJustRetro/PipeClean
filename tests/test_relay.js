@@ -63,6 +63,11 @@ async function main() {
     });
     port = started;
 
+    const invalid = await connectClient(port);
+    invalid.socket.write('UNSUPPORTED\\tcommand\\n');
+    assert.match(await waitForLine(invalid), /^ERR\\tFirst message must be HOST or JOIN$/);
+    invalid.socket.destroy();
+
     const host = await connectClient(port);
     const guest = await connectClient(port);
     host.socket.write('HOST\tHost\n');
