@@ -34,7 +34,7 @@ jobs:
           sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
 
       - name: Fetch pinned SDL dependencies and Gradle wrapper
-        run: ./android/setup-android.sh
+        run: bash ./android/setup-android.sh
 
       - name: Build debug APK
         working-directory: android
