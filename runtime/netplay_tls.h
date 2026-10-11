@@ -14,6 +14,8 @@ typedef int NetplayTlsSocket;
    byte count, 0 when the socket must be polled, and -1 on a fatal TLS error. */
 int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
                      int (*should_stop)(void));
+/* Diagnostic for the most recent TLS open failure; valid until the next attempt. */
+const char *netplay_tls_last_error(void);
 int netplay_tls_read(NetplayTlsSocket sock, void *buffer, size_t capacity);
 int netplay_tls_write(NetplayTlsSocket sock, const void *buffer, size_t length);
 int netplay_tls_wants_write(void);
