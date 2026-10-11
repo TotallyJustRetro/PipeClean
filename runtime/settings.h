@@ -54,19 +54,19 @@ typedef struct {
     int multiplayer_players;             /* selected player count, clamped to 2..4 */
     char p2_name[32];                    /* Player 2 default name: Luigi */
     int p2_color;
-    uint32_t p2_rgb;                     /* custom character colour, 0xRRGGBB */
+    int p2_rgb;                     /* custom character colour, 0xRRGGBB */
     int p2_custom;                        /* use p2_rgb instead of the legacy preset */
     int p2_respawn_key, p2_respawn_pad;
     char p2_sfx_path[N_P2_SFX][512];
     char p3_name[32];                    /* Player 3 default name: Bunzo */
     int p3_color;
-    uint32_t p3_rgb;
+    int p3_rgb;
     int p3_custom;
     int p3_respawn_key, p3_respawn_pad;
     char p3_sfx_path[N_P2_SFX][512];
     char p4_name[32];                    /* Player 4 default name: Florbo */
     int p4_color;
-    uint32_t p4_rgb;
+    int p4_rgb;
     int p4_custom;
     int p4_respawn_key, p4_respawn_pad;
     char p4_sfx_path[N_P2_SFX][512];
@@ -98,7 +98,7 @@ typedef struct {
     char menu_music_path[512], ui_sfx_path[N_UI_SFX][512];
     int last_tab, show_stats;
     char online_name[32];
-    uint32_t online_color;                /* default profile colour, 0xRRGGBB */
+    int online_color;                /* default profile colour, 0xRRGGBB */
     int touch_controls;                   /* on-screen controls are enabled */
     FilterCfg flt;
     GameCfg g[N_GAMES];
