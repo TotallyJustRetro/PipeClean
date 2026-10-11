@@ -53,7 +53,7 @@ session. Use identical ROM revisions and identical ROM-hack/patch results.
 
 ## Security warning
 
-The relay currently uses **plain TCP with no TLS or account authentication**.
+The native client now refuses public relay IP addresses while this transport is unencrypted, and the relay itself binds to loopback by default. To play on a trusted LAN, explicitly expose it only to that LAN as described above. The relay currently uses **plain TCP with no TLS or account authentication**.
 It now binds to loopback by default, limits connections and invite attempts,
 expires unattended rooms, and only forwards recognized gameplay protocol
 messages with bounded sizes and message rates. Those measures reduce accidental
