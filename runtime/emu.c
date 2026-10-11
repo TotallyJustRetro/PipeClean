@@ -932,14 +932,21 @@ static int mp_sml2_private_addr(unsigned address)
     case 0xA227: case 0xA228: case 0xA229: case 0xA22A:
     case 0xA22B: case 0xA22C: case 0xA232: case 0xA233:
     case 0xA235: case 0xA236: case 0xA237: case 0xA238:
-    case 0xA23B: case 0xA23C: case 0xA23D: case 0xA24F:
+    case 0xA23B: case 0xA23C: case 0xA23D:
+    /* These movement scratch bytes must travel with the character. The
+     * secondary player otherwise reuses Mario's prior-frame collision state,
+     * which can desynchronize ground contact and vertical movement. */
+    case 0xA244: case 0xA245: case 0xA246: case 0xA247: case 0xA24F:
     case 0xA24D: /* private vertical-physics cooldown used by collision reactions */
     case 0xA25A: case 0xA25C: case 0xA268: case 0xA26B: case 0xA26C:
     case 0xA26D: case 0xA271: case 0xA272: case 0xA279: case 0xA27A:
     case 0xA27B: /* preserve each character's previous tile-contact state */
     case 0xA27C: case 0xA283: case 0xA284: case 0xA285: case 0xA286:
     case 0xA28A: /* side-collision state drives grounded/wall contact */
-    case 0xA291: case 0xA2A0: case 0xA2B2: case 0xA2B3: case 0xA2DE:
+    case 0xA291: case 0xA2A0:
+    case 0xA2A9: case 0xA2AA: case 0xA2AB: case 0xA2AC:
+    case 0xA2AD: case 0xA2AE: case 0xA2AF:
+    case 0xA2B2: case 0xA2B3: case 0xA2D4: case 0xA2DE:
         return 1;
     default:
         return 0;

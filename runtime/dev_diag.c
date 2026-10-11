@@ -29,6 +29,8 @@ int dev_diag_handle_event(const SDL_Event *event) { (void)event; return 0; }
 #include "games.h"
 #include "settings.h"
 #include "util.h"
+#include "cart.h"
+#include "rom.h"
 
 #define DIAG_WIDTH 960
 #define DIAG_HEIGHT 640
@@ -356,11 +358,28 @@ void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
     }
 
     if (diag.log) {
-        fprintf(diag.log,
-                "{\"type\":\"session_start\",\"game\":\"%s\","
-                "\"players\":%d,\"log_file\":\"logs/%s\","
-                "\"build\":\"PIPECLEAN_DEV_BUILD\"}\n",
-                diag.game_name, player_count, path_base(diag.log_path));
+        const CartInfo *cart = cart_info();
+        char cart_title[18] = {0};
+        if (cart) {
+            memcpy(cart_title, cart->title, sizeof cart->title);
+            cart_title[sizeof cart->title] = '\0';
+        }
+        fputs("{\"type\":\"session_start\",\"game\":", diag.log);
+        write_json_string(diag.log, diag.game_name);
+        fprintf(diag.log, ",\"players\":%d,\"log_file\":", player_count);
+        char relative_log[256];
+        snprintf(relative_log, sizeof relative_log, "logs/%s", path_base(diag.log_path));
+        write_json_string(diag.log, relative_log);
+        if (cart) {
+            fputs(",\"cart_title\":", diag.log);
+            write_json_string(diag.log, cart_title);
+            fprintf(diag.log,
+                    ",\"rom_size\":%lu,\"rom_crc32\":\"%08X\","
+                    "\"romhack_active\":%s",
+                    (unsigned long)cart->size, cart->crc,
+                    rom_hack_active() ? "true" : "false");
+        }
+        fputs(",\"build\":\"PIPECLEAN_DEV_BUILD\"}\n", diag.log);
         fflush(diag.log);
     }
     char event[120];
