@@ -838,8 +838,8 @@ int emu_mp_begin(void)
     memset(mp_sml2_input_dpad, 0, sizeof mp_sml2_input_dpad);
     mp_sml2_direct_world = 0;
     mp_sml2_inline_active = 0;
+    mp_sml2_inline_ran = 0;
     mp_sml2_inline_frame = ~0u;
-    mp_sml2_inline_runs = 0;
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
@@ -1501,10 +1501,15 @@ static void mp_sml2_offset_player(MpSml2Player *p, int dx)
     p->ram[0x27] = (uint8_t)world_x;
     p->ram[0x28] = (uint8_t)(world_x >> 8);
     p->ram[0x3C] = (uint8_t)(p->ram[0x3C] + dx);
-    p->h_c2 = (uint8_t)(p->h_c2 + dx);
+    uint16_t register_world_x = (uint16_t)p->h_c2 |
+                                ((uint16_t)p->h_c3 << 8);
+    register_world_x = (uint16_t)(register_world_x + dx);
+    p->h_c2 = (uint8_t)register_world_x;
+    p->h_c3 = (uint8_t)(register_world_x >> 8);
     p->h_c5 = (uint8_t)(p->h_c5 + dx);
     p->ram[0x00] = 0x80; /* A200: stationary horizontal-velocity sentinel */
-    p->ram[0x21] = 0;    /* A221: don't inherit Mario's pipe/level transition */
+    p->ram[0x21] = 0;    /* A221 is shared; pipe transitions stay with P1. */
+    p->keys_held = p->keys_pressed = 0;
     p->previous_a = 0;
     p->invulnerability_frames = 90;
 }
