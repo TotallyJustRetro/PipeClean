@@ -2114,6 +2114,14 @@ static void tab_display(float x, float y)
                 "Use 75–90% when more of the interface needs to fit. Larger values improve readability but may crop the edges.");
 
     ui_rect(x + 36, y + 226, 728, 1, C_LINE);
+#if defined(__ANDROID__)
+    ui_text(F_REG, 13, x + 36, y + 245, C_TEXT, "Layout behavior");
+    ui_text(F_REG, 13, x + 210, y + 245, C_OK, "Adapts to device");
+    ui_text_fit(F_REG, 11, x + 36, y + 287, 700, C_DIM,
+                "Android sizes the app to your device. Interface size still applies; rotate or resize the app window if your device supports it.");
+    ui_text(F_REG, 13, x + 36, y + 327, C_TEXT, "Fullscreen");
+    ui_text(F_REG, 12, x + 210, y + 327, C_DIM, "Managed by Android");
+#else
     ui_text(F_REG, 13, x + 36, y + 245, C_TEXT, "Desktop window size");
     static const char *sizes[] = {"Compact", "Balanced", "Large"};
     int size = settings.launcher_window_size;
@@ -2121,12 +2129,6 @@ static void tab_display(float x, float y)
         settings.launcher_window_size = size;
         settings_save();
     }
-#if defined(__ANDROID__)
-    ui_text_fit(F_REG, 11, x + 36, y + 287, 700, C_DIM,
-                "Android sizes the app to your device. Interface size still applies; rotate or resize the app window if your device supports it.");
-    ui_text(F_REG, 13, x + 36, y + 327, C_TEXT, "Fullscreen");
-    ui_text(F_REG, 12, x + 210, y + 327, C_DIM, "Managed by Android");
-#else
     ui_text(F_REG, 13, x + 36, y + 297, C_TEXT, "Fullscreen launcher");
     if (ui_toggle(x + 210, y + 293, &settings.launcher_fullscreen))
         settings_save();
