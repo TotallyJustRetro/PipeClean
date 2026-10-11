@@ -523,7 +523,7 @@ float ui_line_h(float size) { return size * 1.5f; }
 void ui_text(int font, float size, float x, float y, uint32_t c, const char *s)
 {
     if (!fonts_ok || !s) return;
-    Atlas *a = get_atlas(font, PXs(size));
+    Atlas *a = get_atlas(font, text_px(size));
     if (!a->tex) return;
     tint(a->tex, c);
     float px = (float)PXx(x);
