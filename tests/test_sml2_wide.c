@@ -59,7 +59,7 @@ int main(void)
         wide_sml2_tile_at(0, 768, &resolved_tile)) return 31;
 
     /* Matching centre tiles unlock margin rendering; the centre itself is excluded. */
-    wide_sml2_prepare_frame(l, r, 0x30, 0x00, 0xE3, 0x07, 0x88);
+    wide_sml2_prepare_frame(l, r, 0x30, 0x00, 0xE3, 0x07, 0x88, vram);
     int world_x = -1, world_y = -1;
     if (!wide_sml2_margin_tile(0, 0, &resolved_tile, &world_x, &world_y) ||
         world_x != 511 || world_y != 0) return 32;

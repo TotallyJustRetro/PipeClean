@@ -16,6 +16,6 @@ void wide_state_reset(void);
 /* Live block-map helpers used to build seamless Super Mario Land 2 margins. */
 int wide_sml2_tile_at(int world_x, int world_y, uint8_t *tile);
 void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
-                             int lcdc, int wx, int wy);
+                             int lcdc, int wx, int wy, const uint8_t *tilemap);
 int wide_sml2_margin_tile(int screen_x, int screen_y, uint8_t *tile,
                           int *world_x, int *world_y);

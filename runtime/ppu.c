@@ -238,7 +238,7 @@ static void render_line(int y)
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
     if (y == 0 && ppu_w > GB_W)
-        wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy);
+        wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
     uint8_t *out = ppu_shade[y];
     uint32_t *rgb = ppu_rgb[y];
     memset(ppu_layer[y], 0, W);

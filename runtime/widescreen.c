@@ -97,12 +97,13 @@ int wide_sml2_tile_at(int world_x, int world_y, uint8_t *tile)
 /* Prepare a per-frame world transform, then compare the decoded block map
  * against the real PPU tilemap. Unsupported scenes fail closed. */
 void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
-                             int lcdc, int wx, int wy)
+                             int lcdc, int wx, int wy, const uint8_t *tilemap)
 {
     sml2_compositor_frame_ok = 0;
     sml2_compositor_left = left;
     sml2_compositor_right = right;
-    if (!sml2_compositor_installed || left + right <= 0 || left < 0 || right < 0)
+    if (!sml2_compositor_installed || !tilemap ||
+        left + right <= 0 || left < 0 || right < 0)
         return;
 
     unsigned mode = rd8(SML2_MODE_ADDR);
@@ -134,7 +135,7 @@ void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
             unsigned map_index = (unsigned)map_off +
                 (unsigned)(((sy + scy) >> 3) & 31) * 32u +
                 (unsigned)(((sx + scx) >> 3) & 31);
-            if (decoded == vram[map_index]) hits++;
+            if (decoded == tilemap[map_index]) hits++;
             samples++;
         }
     }
