@@ -1795,6 +1795,9 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
     cpu.ime = 0;
     cpu.ei_pending = 0;
     mp_sml2_inline_active = 1;
+    /* This character-only replay is part of the same displayed frame. Do not
+     * advance the PPU, timers, audio clock, or VBlank callback a second time. */
+    gb_set_timing_suppressed(1);
 
     while (budget && cpu.pc != sentinel) {
         budget--;
@@ -1810,6 +1813,7 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
 
     int ok = cpu.pc == sentinel;
     CPU result = cpu;
+    gb_set_timing_suppressed(0);
     mp_sml2_inline_active = 0;
     cpu = saved;
     if (ok && keep_result_registers) {
@@ -1859,9 +1863,10 @@ static int mp_sml2_capture_direct_oam(int player, MpSml2Player *p)
 
 static void mp_sml2_instruction_hook(uint16_t pc)
 {
-    if (pc != 0x061B || mp_sml2_inline_active || !mp_sml2_direct_world ||
-        !mp_ready || !mp_active || mp_game != GAME_SML2 ||
-        mp_player_count < 2 || mp_sml2_inline_frame == (unsigned)frame_count)
+    if (pc != 0x061B || mp_sml2_inline_active || mp_sml2_inline_ran ||
+        !mp_sml2_direct_world || !mp_ready || !mp_active ||
+        mp_game != GAME_SML2 || mp_player_count < 2 ||
+        mp_sml2_inline_frame == (unsigned)frame_count)
         return;
 
     mp_sml2_inline_frame = (unsigned)frame_count;
@@ -1879,6 +1884,8 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         return;
 
     CPU p1_cpu = cpu;
+    const uint8_t shared_pipe_transition = rd8(0xA221);
+    const uint8_t shared_level_transition = rd8(0xA20E);
     MpSml2Player p1_restore;
     mp_sml2_save_player_state(&p1_restore);
     mp_sml2_players[0] = p1_restore;
@@ -1961,6 +1968,10 @@ static void mp_sml2_instruction_hook(uint16_t pc)
 
         /* Restore Mario's private values only. Block/coin/pickup changes that
          * Luigi made above remain in the one authoritative cartridge world. */
+        /* Pipe/door transition flags belong to the one shared world. Luigi
+         * can collide with pipe tiles, but cannot launch a second transition. */
+        wr8(0xA221, shared_pipe_transition);
+        wr8(0xA20E, shared_level_transition);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
