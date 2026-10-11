@@ -2811,11 +2811,16 @@ void emu_mp_request_respawn(int player)
 void emu_mp_end(void)
 {
     if (mp_ready && save_path[0]) cart_write_save(save_path);
+    gb_set_instruction_hook(NULL);
     mp_active = 0;
+    mp_sml2_direct_world = 0;
+    mp_sml2_inline_active = 0;
     mp_game = GAME_SML;
     mp_sml2_initialized = 0;
     mp_sml2_tile_patches_clear();
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_input_buttons, 0, sizeof mp_sml2_input_buttons);
+    memset(mp_sml2_input_dpad, 0, sizeof mp_sml2_input_dpad);
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
