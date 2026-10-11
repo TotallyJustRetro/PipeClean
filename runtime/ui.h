@@ -23,6 +23,7 @@ typedef struct {
 } UiMouse;
 extern UiMouse ui_mouse;
 extern float ui_scale;          /* pixels per dp */
+void ui_set_scale_preference(int percent); /* 75..125 percent, launcher UI zoom */
 extern float ui_dt;             /* seconds since last frame */
 extern void (*ui_sfx_cb)(int);  /* hover / click sounds (SFX_*) */
 
