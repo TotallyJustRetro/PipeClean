@@ -56,10 +56,13 @@ TLS endpoint by default; existing settings still using the previous
 preserved.
 
 The Fly TLS handler terminates client TLS on port 443 and forwards the relay
-protocol to port 27800 inside Fly's private network. The configuration keeps
-port 27800 private, enables a TCP health check, and keeps one machine running
-because room codes are stored in process memory. Never expose port 27800
-directly to the public Internet.
+protocol to port 27800 inside Fly's private network. The public listener adds a
+PROXY protocol v2 header; the relay validates it and uses the original client
+address for per-IP rate limits, rather than treating all players as the edge
+proxy. This option must only be enabled behind a trusted proxy that inserts
+the header. The configuration keeps port 27800 private, enables a TCP health
+check, and keeps one machine running because room codes are stored in process
+memory. Never expose port 27800 directly to the public Internet.
 
 You can also deploy manually with the Fly CLI if preferred: set the `app` value
 in `fly.toml` to your unique app name, create the app in your Fly organization,
@@ -116,9 +119,13 @@ revisions and identical ROM-hack/patch results.
 
 - Plain TCP is restricted to loopback/private network destinations.
 - `tls://` uses mbedTLS certificate-chain and hostname verification.
-- The relay creates unpredictable eight-character invite codes, limits
-  connections/join attempts/message rates, expires unattended rooms, bounds
-  messages, and allows only recognized protocol messages after pairing.
+- Hosted Fly deployments use a TLS edge and PROXY protocol v2. The relay only
+  trusts that header when `PIPECLEAN_RELAY_PROXY_PROTOCOL=1` is explicitly set;
+  the host port remains private.
+- The relay creates unpredictable eight-character invite codes, rate-limits
+  using original peer addresses when available, expires unattended rooms after
+  15 minutes, keeps idle sockets open long enough for that expiry to take effect,
+  bounds messages, and allows only recognized protocol messages after pairing.
 - TLS encrypts traffic in transit but this version has no account login,
   platform-level abuse monitoring, or matchmaking. Invite codes function as
   bearer credentials.
