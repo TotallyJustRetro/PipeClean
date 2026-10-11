@@ -9,12 +9,23 @@ enum {
     NETPLAY_ERROR
 };
 
+enum {
+    NETPLAY_ROM_UNCHECKED = 0,
+    NETPLAY_ROM_WAITING,
+    NETPLAY_ROM_MATCH,
+    NETPLAY_ROM_MISMATCH,
+    NETPLAY_ROM_INVALID
+};
+
 typedef struct {
     int state;
     int is_host;
     char status[128];
     char code[16];
     char peer[32];
+    int rom_check_state;
+    int rom_check_game;
+    char rom_check_status[128];
 } NetplayInfo;
 
 typedef struct {
@@ -36,6 +47,7 @@ int netplay_is_host(void);
 int netplay_lobby_set_game(int game);
 int netplay_lobby_get_game(void);
 int netplay_lobby_start_game(int game);
+int netplay_lobby_report_rom(int game, uint32_t rom_crc, int valid);
 int netplay_take_start_request(void);
 int netplay_chat_send(const char *text);
 int netplay_chat_snapshot(NetplayChatMessage *out, int capacity);
