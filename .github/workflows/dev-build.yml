@@ -72,7 +72,7 @@ jobs:
         run: |
           mkdir -p dist/PipeClean-Dev-Windows-x64/assets
           cp build-dev/PipeClean.exe dist/PipeClean-Dev-Windows-x64/PipeClean.exe
-          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp dist/PipeClean-Dev-Windows-x64/assets/
+          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Dev-Windows-x64/assets/
           {
             ldd build-dev/PipeClean.exe
             ldd /ucrt64/bin/SDL2.dll
@@ -82,6 +82,7 @@ jobs:
           test -s dist/PipeClean-Dev-Windows-x64/assets/pipeclean-icon.svg
           test -s dist/PipeClean-Dev-Windows-x64/assets/pipeclean-logo.svg
           test -s dist/PipeClean-Dev-Windows-x64/assets/pipeclean-logo.webp
+          test -s dist/PipeClean-Dev-Windows-x64/assets/cacert.pem
 
       - name: Package PipeClean Dev artifact
         shell: pwsh
