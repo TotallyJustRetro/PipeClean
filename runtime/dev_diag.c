@@ -488,7 +488,7 @@ static void update_events(const DiagSample *s)
         if (diag.last_lives[0] >= 0 && diag.last_map_hash != m->bg_map_hash &&
             diag.last_camera_x == m->camera_x && diag.last_camera_y == m->camera_y) {
             char text[120];
-            snprintf(text, sizeof text, "WORLD MAP HASH %08X -> %08X WITH STATIC CAMERA",
+            snprintf(text, sizeof text, "BG MAP CHANGED WITH STATIC CAMERA %08X -> %08X",
                      diag.last_map_hash, m->bg_map_hash);
             diag_event_log(text);
         }
