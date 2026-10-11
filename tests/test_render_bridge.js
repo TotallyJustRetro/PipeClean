@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
-const WebSocket = require('ws');
+const WebSocket = require(require.resolve('ws', { paths: [path.join(__dirname, '../server')] }));
 
 function reservePort() {
   return new Promise((resolve, reject) => {
