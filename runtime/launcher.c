@@ -2028,7 +2028,7 @@ static void tab_online(float x, float y)
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
                  "Use host:port for a trusted LAN, or tls://hostname:443 for an encrypted Internet relay. Host first, then share the invite code.", 2);
 
-    ui_text(F_REG, 10, x + 408, y + 151, C_MUTED, "Relay address (host:port)");
+    ui_text_fit(F_REG, 10, x + 408, y + 151, 360, C_MUTED, "Relay address (host:port or tls://host:443)");
     int server_over = 0;
     int server_clicked = clickable(x + 408, y + 164, 360, 30, &server_over);
     ui_rrect(x + 408, y + 164, 360, 30, 7,
