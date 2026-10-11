@@ -647,18 +647,30 @@ void audio_sfx(int which)
 }
 void audio_sfx_preview(int which) { if (dev && which >= 0 && which < N_UI_SFX) play_sfx(which); }
 
-void audio_mp_sfx(int player, int which)
+static void audio_mp_sfx_play(int player, int which, int preview)
 {
     if (!dev || player < 2 || player > MAX_MP_PLAYERS ||
         which < 0 || which >= N_P2_SFX || !mp_sfx[player - 2][which].d) return;
+
+    /* In SML2, gameplay SFX should come from the cartridge sound engine.
+     * Keep composed defaults available for previews and allow explicit
+     * user-imported clips, but don't mix launcher defaults over native audio. */
+    if (!preview && mp_bank_game == GAME_SML2 &&
+        mp_loaded_path[player - 2][which][0] == '\0') return;
+
     SDL_LockMutex(mx);
     mp_sfx_pos[player - 2][which] = 0;
     SDL_UnlockMutex(mx);
 }
 
+void audio_mp_sfx(int player, int which)
+{
+    audio_mp_sfx_play(player, which, 0);
+}
+
 void audio_mp_sfx_preview(int player, int which)
 {
-    audio_mp_sfx(player, which);
+    audio_mp_sfx_play(player, which, 1);
 }
 
 void audio_p2_sfx(int which) { audio_mp_sfx(2, which); }
