@@ -57,6 +57,130 @@ static void game_notice_draw(float dt)
     ui_text_c(F_BOLD, 13, UI_W * 0.5f, y + 8, RGBA(245, 247, 252, (int)(255 * a)), game_notice_text);
 }
 
+typedef struct {
+    float x, y, w, h;
+    uint8_t buttons, dpad;
+    const char *label;
+} TouchRegion;
+
+typedef struct {
+    SDL_FingerID id;
+    int active;
+    int region;
+} TouchFinger;
+
+static TouchFinger touch_fingers[10];
+static const TouchRegion touch_regions[] = {
+    {74, UI_H - 206, 46, 46, 0, 0x04, "UP"},
+    {74, UI_H - 110, 46, 46, 0, 0x08, "DN"},
+    {26, UI_H - 158, 46, 46, 0, 0x02, "LT"},
+    {122, UI_H - 158, 46, 46, 0, 0x01, "RT"},
+    {UI_W - 130, UI_H - 188, 56, 56, 0x01, 0, "A"},
+    {UI_W - 205, UI_H - 131, 56, 56, 0x02, 0, "B"},
+    {UI_W - 315, UI_H - 72, 45, 34, 0x04, 0, "SEL"},
+    {UI_W - 258, UI_H - 72, 54, 34, 0x08, 0, "START"}
+};
+
+static int touch_overlay_visible(void)
+{
+    if (!settings.touch_controls) return 0;
+#if defined(__ANDROID__)
+    return 1;
+#else
+    return SDL_GetNumTouchDevices() > 0;
+#endif
+}
+
+static int touch_finger_slot(SDL_FingerID id)
+{
+    for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++)
+        if (touch_fingers[i].active && touch_fingers[i].id == id) return i;
+    return -1;
+}
+
+static int touch_region_at(float x, float y)
+{
+    for (int i = 0; i < (int)(sizeof touch_regions / sizeof touch_regions[0]); i++) {
+        const TouchRegion *r = &touch_regions[i];
+        if (x >= r->x && x < r->x + r->w && y >= r->y && y < r->y + r->h)
+            return i;
+    }
+    return -1;
+}
+
+static void touch_handle_event(const SDL_Event *e)
+{
+    if (!e || (e->type != SDL_FINGERDOWN && e->type != SDL_FINGERMOTION &&
+               e->type != SDL_FINGERUP)) return;
+    if (!settings.touch_controls) {
+        memset(touch_fingers, 0, sizeof touch_fingers);
+        return;
+    }
+    SDL_FingerID id = e->tfinger.fingerId;
+    int slot = touch_finger_slot(id);
+    if (e->type == SDL_FINGERUP) {
+        if (slot >= 0) touch_fingers[slot].active = 0;
+        return;
+    }
+    if (slot < 0 && e->type == SDL_FINGERDOWN) {
+        for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++) {
+            if (!touch_fingers[i].active) { slot = i; break; }
+        }
+        if (slot >= 0) {
+            touch_fingers[slot].id = id;
+            touch_fingers[slot].active = 1;
+            touch_fingers[slot].region = -1;
+        }
+    }
+    if (slot < 0) return;
+    float x, y;
+    ui_touch_to_dp(e->tfinger.x, e->tfinger.y, &x, &y);
+    touch_fingers[slot].region = touch_region_at(x, y);
+}
+
+static int touch_region_held(int region)
+{
+    for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++)
+        if (touch_fingers[i].active && touch_fingers[i].region == region) return 1;
+    return 0;
+}
+
+static void touch_apply_inputs(int game, int paused)
+{
+    uint8_t buttons = 0, dpad = 0;
+    if (settings.touch_controls && !paused) {
+        for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++) {
+            if (!touch_fingers[i].active || touch_fingers[i].region < 0 ||
+                touch_fingers[i].region >= (int)(sizeof touch_regions / sizeof touch_regions[0])) continue;
+            buttons |= touch_regions[touch_fingers[i].region].buttons;
+            dpad |= touch_regions[touch_fingers[i].region].dpad;
+        }
+    }
+    pad_set_touch_input(game, 0, buttons, dpad);
+}
+
+static void touch_reset_game(int game)
+{
+    memset(touch_fingers, 0, sizeof touch_fingers);
+    pad_set_touch_input(game, 0, 0, 0);
+}
+
+static void touch_draw_overlay(int paused)
+{
+    if (!touch_overlay_visible() || paused) return;
+    for (int i = 0; i < (int)(sizeof touch_regions / sizeof touch_regions[0]); i++) {
+        const TouchRegion *r = &touch_regions[i];
+        int held = touch_region_held(i);
+        uint32_t fill = held ? RGBA(76, 141, 255, 190) : RGBA(14, 18, 29, 112);
+        uint32_t edge = held ? RGBA(225, 237, 255, 235) : RGBA(205, 216, 240, 125);
+        ui_rrect(r->x, r->y, r->w, r->h, 10, fill);
+        ui_stroke(r->x, r->y, r->w, r->h, 10, 1, edge);
+        ui_text_c(F_BOLD, 11, r->x + r->w * 0.5f,
+                  r->y + (r->h - ui_line_h(11)) * 0.5f,
+                  RGBA(255, 255, 255, held ? 255 : 220), r->label);
+    }
+}
+
 static int app_key_down(int key)
 {
     if (!key) return 0;
@@ -606,6 +730,7 @@ static int play_multiplayer(int g)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            touch_handle_event(&e);
             if (dev_diag_handle_event(&e)) continue;
             if (e.type == SDL_WINDOWEVENT &&
                 e.window.event == SDL_WINDOWEVENT_CLOSE &&
@@ -613,6 +738,7 @@ static int play_multiplayer(int g)
                 quit = 2;
                 continue;
             }
+            touch_handle_event(&e);
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
@@ -708,6 +834,7 @@ static int play_multiplayer(int g)
                 rewind_held = 0;
             }
             if (!paused) {
+                touch_apply_inputs(g, paused);
                 for (int player = 0; player < player_count; player++)
                     pad_poll_player(g, player, &buttons[player], &dpad[player]);
                 /* SML2's shared-world mode advances secondary characters from
@@ -804,6 +931,7 @@ static int play_multiplayer(int g)
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
         }
         game_notice_draw(dt);
+        touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
         pad_frame(dt);
@@ -826,6 +954,7 @@ static int play_multiplayer(int g)
         SDL_RenderPresent(ren);
     }
 
+    touch_reset_game(g);
     dev_diag_end(quit == 2 ? "main window closed" : "multiplayer exited");
     emu_set_turbo(0);
     audio_game_end();
@@ -989,6 +1118,7 @@ static int play(int g)
         if (emu_cpu_faulted()) { quit = 1; break; }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            touch_handle_event(&e);
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
@@ -1036,6 +1166,7 @@ static int play(int g)
             render_reset();
             rewind_held = 0;
         }
+        touch_apply_inputs(g, paused);
         uint8_t b, d;
         pad_poll(g, &b, &d);
         emu_input(rewind_held ? 0 : b, rewind_held ? 0 : d);
@@ -1070,6 +1201,7 @@ static int play(int g)
             ui_text_c(F_BOLD, 13, UI_W / 2, 26, C_TEXT, "REWIND");
         }
         game_notice_draw(dt);
+        touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
         pad_frame(dt);
@@ -1078,6 +1210,7 @@ static int play(int g)
                              char p[1200]; snprintf(p, sizeof p, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks()); SDL_SaveBMP(s, p); SDL_FreeSurface(s); } }
         SDL_RenderPresent(ren);
     }
+    touch_reset_game(g);
     emu_stop();
     if (emu_cpu_faulted()) {
         uint8_t opcode = 0; uint16_t pc = 0; char msg[144];
