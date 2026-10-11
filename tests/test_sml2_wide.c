@@ -14,6 +14,7 @@ int frame_count;
 uint8_t vram[0x2000];
 static uint8_t test_level_map[0x3000];
 static uint8_t test_block_defs[0x200];
+static uint8_t test_hram[0x80];
 
 uint8_t rd8(uint16_t a)
 {
@@ -26,6 +27,7 @@ uint8_t rd8(uint16_t a)
     if (a == 0xA28B) return 0;    /* not a bonus/minigame room */
     if (a >= 0xB000 && a < 0xE000) return test_level_map[a - 0xB000];
     if (a >= 0xA600 && a < 0xA800) return test_block_defs[a - 0xA600];
+    if (a >= 0xFF80 && a <= 0xFFFE) return test_hram[a - 0xFF80];
     return 0;
 }
 
@@ -141,6 +143,31 @@ int main(void)
     total_cycles = 0;
     if (wide_intercept_sml2(0x19)) return 20;
     if (HL() != 0x0100 || total_cycles != 0) return 21;
+
+    /* Capture one enemy metasprite before the ROM's native-screen clipping. */
+    memset(test_hram, 0, sizeof test_hram);
+    test_hram[0xFFD0 - 0xFF80] = 0x02; /* actor X = 520 */
+    test_hram[0xFFD1 - 0xFF80] = 0x08;
+    test_hram[0xFFD3 - 0xFF80] = 0x00; /* actor Y = 72 */
+    test_hram[0xFFD4 - 0xFF80] = 0x48;
+    test_hram[0xFFDB - 0xFF80] = 0;
+    test_hram[0xFFE2 - 0xFF80] = 0;
+    rom[0xC0B1] = 0x00; rom[0xC0B2] = 0x41; /* bank-3 pointer -> $4100 */
+    rom[0xC100] = 0x00;
+    rom[0xC101] = 0x00;
+    rom[0xC102] = 0x21;
+    rom[0xC103] = 0x00;
+    rom[0xC104] = 0x80; /* metasprite sentinel */
+    cpu.pc = 0x401B;
+    if (wide_sml2_read_tap(0xFFE2, 0) != 0) return 34;
+    wide_sml2_snapshot_actors();
+    int actor_count = 0, world_left = 0, world_top = 0;
+    const WideSml2Sprite *actors = wide_sml2_actor_sprites(&actor_count);
+    if (!actors || actor_count != 1 || actors[0].x != 520 ||
+        actors[0].y != 72 || actors[0].tile != 0x21 || actors[0].attr != 0)
+        return 35;
+    if (!wide_sml2_world_origin(&world_left, &world_top) ||
+        world_left != 511 || world_top != 0) return 36;
 
     free(rom);
     puts("SML2 widescreen hook: PASS");
