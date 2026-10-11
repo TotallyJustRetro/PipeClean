@@ -2244,11 +2244,20 @@ LauncherResult launcher_frame(float dt)
         }
         float y2 = sy + N_GAMES * game_row + 8;
         ui_rect(sx + 8, y2, 208, 1, C_LINE);
+        float nav_y = y2 + 8;
+        int nav_count = N_TABS - TAB_MULTIPLAYER;
+        float nav_available = UI_H - 52.0f - nav_y;
+        float nav_step = nav_available / (float)nav_count;
+        if (nav_step > 43.0f) nav_step = 43.0f;
+        float nav_h = nav_step - 3.0f;
+        if (nav_h > 38.0f) nav_h = 38.0f;
         for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
-            float y = y2 + 8 + (i - TAB_MULTIPLAYER) * 43;
+            float y = nav_y + (i - TAB_MULTIPLAYER) * nav_step;
             uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
-            if (tab_button(sx, y, 224, 38, tab == i, accent)) tab = i;
-            ui_text(F_BOLD, 14, sx + 18, y + 8, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
+            if (tab_button(sx, y, 224, nav_h, tab == i, accent)) tab = i;
+            ui_text_fit(F_BOLD, nav_h < 32.0f ? 12 : 14, sx + 18,
+                        y + (nav_h - 21.0f) * 0.5f, 194,
+                        tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
         }
     }
 
