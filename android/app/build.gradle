@@ -4,6 +4,7 @@ plugins {
 
 def sdl2Dir = new File(rootProject.projectDir, "deps/SDL")
 def sdl2ImageDir = new File(rootProject.projectDir, "deps/SDL_image")
+def mbedtlsDir = new File(rootProject.projectDir, "deps/mbedtls")
 
 android {
     namespace "com.pipeclean.app"
@@ -25,6 +26,7 @@ android {
             cmake {
                 arguments "-DPIPECLEAN_SDL2_SOURCE_DIR=" + sdl2Dir.absolutePath,
                           "-DPIPECLEAN_SDL2_IMAGE_SOURCE_DIR=" + sdl2ImageDir.absolutePath,
+                          "-DPIPECLEAN_MBEDTLS_SOURCE_DIR=" + mbedtlsDir.absolutePath,
                           "-DANDROID_STL=c++_static"
                 targets "main"
             }
@@ -72,6 +74,9 @@ tasks.register("verifyPipeCleanAndroidDeps") {
         }
         if (!new File(sdl2ImageDir, "CMakeLists.txt").exists()) {
             throw new GradleException("Missing SDL2_image. Run android/setup-android.ps1 or android/setup-android.sh.")
+        }
+        if (!new File(mbedtlsDir, "CMakeLists.txt").exists()) {
+            throw new GradleException("Missing mbedTLS. Run android/setup-android.ps1 or android/setup-android.sh.")
         }
     }
 }
