@@ -68,6 +68,8 @@ typedef struct {
     int sprite_warned[MAX_MP_PLAYERS];
     int last_level, last_bank;
     int last_lives[MAX_MP_PLAYERS];
+    int last_p2_powerup, last_p2_grounded, last_p2_in_air, last_p2_spawned;
+    uint8_t last_buttons[MAX_MP_PLAYERS];
     uint32_t last_coins;
     uint32_t last_map_hash;
     uint16_t last_camera_x, last_camera_y;
@@ -196,6 +198,12 @@ static int diag_event_warrants_capture(const char *message)
            strstr(message, "LIVES ") ||
            strstr(message, "RESPAWN REQUESTED") ||
            strstr(message, "LEVEL CHANGED") ||
+           strstr(message, "P2 POWER STATE") ||
+           strstr(message, "P2 AIRBORNE WITHOUT") ||
+           strstr(message, "P2 POSITION SNAP") ||
+           strstr(message, "P2 LIFE COUNT") ||
+           strstr(message, "COINS ") ||
+           strstr(message, "WORLD LEVEL") ||
            strstr(message, "CO-OP TETHER ACTIVE");
 }
 
@@ -336,6 +344,8 @@ void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
     diag.last_level = -1;
     diag.last_bank = -1;
     for (int i = 0; i < MAX_MP_PLAYERS; i++) diag.last_lives[i] = -1;
+    diag.last_p2_powerup = diag.last_p2_grounded = -1;
+    diag.last_p2_in_air = diag.last_p2_spawned = -1;
     snprintf(diag.game_name, sizeof diag.game_name, "%s",
              (game >= 0 && game < N_GAMES) ? games[game].name : "UNKNOWN GAME");
     make_log_path();
@@ -470,17 +480,71 @@ static void update_events(const DiagSample *s)
             diag_event_log(text);
         }
         uint32_t current_coins = ((uint32_t)m->coins_high << 8) | m->coins_low;
-        if (diag.last_lives[0] >= 0 && diag.last_coins != current_coins)
-            diag_event_log("COIN COUNTER CHANGED");
+        if (diag.last_lives[0] >= 0 && diag.last_coins != current_coins) {
+            char text[120];
+            snprintf(text, sizeof text, "COINS %u -> %u", diag.last_coins, current_coins);
+            diag_event_log(text);
+        }
         if (diag.last_lives[0] >= 0 && diag.last_map_hash != m->bg_map_hash &&
-            diag.last_camera_x == m->camera_x && diag.last_camera_y == m->camera_y)
-            diag_event_log("BG MAP CHANGED WITH STATIC CAMERA");
+            diag.last_camera_x == m->camera_x && diag.last_camera_y == m->camera_y) {
+            char text[120];
+            snprintf(text, sizeof text, "WORLD MAP HASH %08X -> %08X WITH STATIC CAMERA",
+                     diag.last_map_hash, m->bg_map_hash);
+            diag_event_log(text);
+        }
+        if (diag.last_level >= 0 &&
+            (diag.last_level != m->level || diag.last_bank != m->level_bank)) {
+            char text[120];
+            snprintf(text, sizeof text, "WORLD LEVEL %02X/%02X -> %02X/%02X",
+                     diag.last_level, diag.last_bank, m->level, m->level_bank);
+            diag_event_log(text);
+        }
+        if (diag.last_p2_powerup >= 0 && diag.last_p2_powerup != m->p2_powerup) {
+            char text[120];
+            snprintf(text, sizeof text, "P2 POWER STATE %02X -> %02X",
+                     diag.last_p2_powerup, m->p2_powerup);
+            diag_event_log(text);
+        }
+        if (diag.last_p2_spawned >= 0 && diag.last_p2_spawned != m->p2_spawned)
+            diag_event_log(m->p2_spawned ? "P2 SPAWN STATE 0 -> 1" : "P2 SPAWN STATE 1 -> 0");
+        if (diag.has_sample && diag.last_p2_grounded == 1 && m->p2_in_air &&
+            !(s->buttons[1] & 0x03u)) {
+            char text[120];
+            snprintf(text, sizeof text,
+                     "P2 AIRBORNE WITHOUT A/B INPUT (POSSIBLE HIT, EDGE, OR STATE BUG)");
+            diag_event_log(text);
+        }
+        if (diag.has_sample) {
+            int dx = (int)m->p2_world_x - diag.sample.sml2.p2_world_x;
+            int dy = (int)m->p2_world_y - diag.sample.sml2.p2_world_y;
+            if (dx > 12 || dx < -12 || dy > 16 || dy < -16) {
+                char text[120];
+                snprintf(text, sizeof text, "P2 POSITION SNAP DX=%d DY=%d", dx, dy);
+                diag_event_log(text);
+            }
+            if (s->buttons[1] != diag.sample.buttons[1]) {
+                char text[120];
+                snprintf(text, sizeof text, "P2 INPUT BUTTONS %02X -> %02X",
+                         diag.sample.buttons[1], s->buttons[1]);
+                diag_event_log(text);
+            }
+            if (s->dpad[1] != diag.sample.dpad[1]) {
+                char text[120];
+                snprintf(text, sizeof text, "P2 INPUT DPAD %02X -> %02X",
+                         diag.sample.dpad[1], s->dpad[1]);
+                diag_event_log(text);
+            }
+        }
         diag.last_coins = current_coins;
         diag.last_map_hash = m->bg_map_hash;
         diag.last_camera_x = m->camera_x;
         diag.last_camera_y = m->camera_y;
         diag.last_lives[0] = m->p1_lives;
         diag.last_lives[1] = m->p2_lives;
+        diag.last_p2_powerup = m->p2_powerup;
+        diag.last_p2_grounded = m->p2_grounded;
+        diag.last_p2_in_air = m->p2_in_air;
+        diag.last_p2_spawned = m->p2_spawned;
     }
 
     for (int i = 0; i < s->player_count && i < MAX_MP_PLAYERS; i++) {
@@ -518,19 +582,27 @@ static void update_events(const DiagSample *s)
     diag.has_sample = 1;
 }
 
+static void log_hex_field(const char *name, const uint8_t *bytes, size_t count)
+{
+    if (!diag.log || !name || !bytes) return;
+    fprintf(diag.log, ",\"%s\":\"", name);
+    write_hex_bytes(diag.log, bytes, count);
+    fputc('\"', diag.log);
+}
+
 static void log_frame(const DiagSample *s)
 {
     if (!diag.log) return;
     if (s->has_sml2) {
         const EmuMpTestSnapshot *m = &s->sml2;
         fprintf(diag.log,
-            "{\"type\":\"frame\",\"n\":%llu,\"paused\":%d,"
+            "{\"type\":\"frame\",\"schema\":2,\"n\":%llu,\"paused\":%d,"
             "\"inputs\":[[%u,%u],[%u,%u],[%u,%u],[%u,%u]],"
             "\"p1\":[%d,%d,%d,%d,%d,%d,%u],"
             "\"p2\":[%d,%d,%d,%d,%d,%d,%u,%u,%u],"
             "\"camera\":[%u,%u],\"level\":[%u,%u],\"mode\":%u,"
             "\"coins\":[%u,%u],\"hashes\":[\"%08X\",\"%08X\",\"%08X\",\"%08X\"],"
-            "\"tile_patches\":%u}\n",
+            "\"tile_patches\":%u",
             (unsigned long long)s->frame, s->paused,
             s->buttons[0], s->dpad[0], s->buttons[1], s->dpad[1],
             s->buttons[2], s->dpad[2], s->buttons[3], s->dpad[3],
@@ -542,9 +614,26 @@ static void log_frame(const DiagSample *s)
             m->game_mode, m->coins_low, m->coins_high, m->bg_map_hash,
             m->level_ram_hash, m->actor_region_hash, s->render_hash,
             m->tile_patch_count);
+        log_hex_field("p1_ram_A200_A2DF", m->p1_ram, sizeof m->p1_ram);
+        log_hex_field("p2_private_ram", m->p2_ram, sizeof m->p2_ram);
+        log_hex_field("p1_oam", s->has_sml2 ? s->sml2.p1_ram : m->p1_ram, 0);
+        if (s->frame % 5u == 0)
+            log_hex_field("actor_ram_AD00_AEFF", m->actor_ram, sizeof m->actor_ram);
+        if (s->frame % 30u == 0) {
+            uint8_t world_ram[0x1800];
+            if (emu_mp_test_read_ram(0xA800, world_ram, sizeof world_ram) == 0)
+                log_hex_field("world_ram_A800_BFFF", world_ram, sizeof world_ram);
+        }
+        if (diag.current_frame) {
+            log_hex_field("p1_oam_bytes", diag.current_frame->mario_oam,
+                          sizeof diag.current_frame->mario_oam);
+            log_hex_field("p2_oam_bytes", diag.current_frame->mp_player_oam[1],
+                          sizeof diag.current_frame->mp_player_oam[1]);
+        }
+        fputs("}\n", diag.log);
     } else {
         fprintf(diag.log,
-            "{\"type\":\"frame\",\"n\":%llu,\"paused\":%d,"
+            "{\"type\":\"frame\",\"schema\":2,\"n\":%llu,\"paused\":%d,"
             "\"inputs\":[[%u,%u],[%u,%u]],\"p1_screen\":[%d,%d],"
             "\"p2_visible\":%u,\"p2_screen\":[%d,%d],\"p2_sprites\":%u,"
             "\"coins\":[%u,%u],\"scroll_x\":%u,\"render_hash\":\"%08X\"}\n",
@@ -552,9 +641,7 @@ static void log_frame(const DiagSample *s)
             s->buttons[0], s->dpad[0], s->buttons[1], s->dpad[1],
             s->screen_x[0], s->screen_y[0], s->visible[1],
             s->screen_x[1], s->screen_y[1], s->sprites[1],
-            s->has_sml2 ? s->sml2.coins_low : 0,
-            s->has_sml2 ? s->sml2.coins_high : 0,
-            0u, s->render_hash);
+            0u, 0u, 0u, s->render_hash);
     }
     if ((s->frame % 60u) == 0) fflush(diag.log);
 }
