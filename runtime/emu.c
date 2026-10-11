@@ -1771,7 +1771,8 @@ static int mp_sml2_direct_signature(void)
      * the one shared enemy/world update. Unknown revisions remain on fallback. */
     return rom &&
         rom[0x0618] == 0xCD && rom[0x0619] == 0x0A && rom[0x061A] == 0x2D &&
-        rom[0x061B] == 0xCD && rom[0x061C] == 0x82 && rom[0x061D] == 0x2C;
+        rom[0x061B] == 0xCD && rom[0x061C] == 0x82 && rom[0x061D] == 0x2C &&
+        rom[0x0623] == 0xDC && rom[0x0624] == 0x7D && rom[0x0625] == 0x2D;
 }
 
 static int mp_sml2_skip_secondary_call(uint16_t pc)
@@ -1862,8 +1863,89 @@ static int mp_sml2_capture_direct_oam(int player, MpSml2Player *p)
     return ok;
 }
 
+static void mp_sml2_direct_collision_update(void)
+{
+    if (!mp_sml2_direct_world || !mp_ready || !mp_active ||
+        mp_game != GAME_SML2 || !mp_sml2_initialized ||
+        !mp_sml2_gameplay_active() || rd8(0xA20E) != 0)
+        return;
+
+    const uint8_t shared_pipe_transition = rd8(0xA221);
+    const uint8_t shared_level_transition = rd8(0xA20E);
+    /* The original game only calls the enemy-contact resolver while it is in
+     * ordinary play. Keep this exactly aligned with the P1 conditional call. */
+    if (shared_pipe_transition >= 0x10) return;
+
+    CPU p1_cpu = cpu;
+    MpSml2Player p1_restore;
+    mp_sml2_save_player_state(&p1_restore);
+    mp_sml2_players[0] = p1_restore;
+
+    for (int player = 1; player < mp_player_count; player++) {
+        MpSml2Player *p = &mp_sml2_players[player];
+        if (!p->spawned || mp_sml2_bcd_to_int(p->lives) == 0) {
+            mp_sml2_render_oam_count[player] = 0;
+            continue;
+        }
+
+        const uint8_t old_ground = p->ram[0x14];
+        const uint8_t old_air = p->ram[0x15];
+        const uint8_t old_power = p->ram[0x16];
+        const uint8_t old_lives = p->lives;
+        const int old_lives_value = mp_sml2_bcd_to_int(old_lives);
+
+        mp_sml2_load_player(p);
+        if (!mp_sml2_run_original_subroutine(0x2D7D, 40000, 0) ||
+            !mp_sml2_capture_direct_oam(player, p)) {
+            wr8(0xA221, shared_pipe_transition);
+            wr8(0xA20E, shared_level_transition);
+            mp_sml2_load_player(&p1_restore);
+            cpu = p1_cpu;
+            longjmp(stop_jmp, 4);
+        }
+
+        mp_sml2_save_player_state(p);
+        const uint8_t new_lives = p->lives;
+        const int new_lives_value = mp_sml2_bcd_to_int(new_lives);
+        const int valid_lives = ((new_lives >> 4) & 0x0Fu) <= 9 &&
+                                (new_lives & 0x0Fu) <= 9;
+        if (!valid_lives || new_lives_value > old_lives_value + 1) {
+            p->lives = old_lives;
+            p->ram[0x2C] = old_lives;
+            wr8(0xA22C, old_lives);
+        } else {
+            if (old_power != p->ram[0x16])
+                p->sfx_events |= p->ram[0x16] > old_power
+                    ? P2_SFX_EVENT_POWER_UP : P2_SFX_EVENT_POWER_DOWN;
+            if (new_lives_value < old_lives_value) {
+                p->sfx_events |= P2_SFX_EVENT_DIE;
+                p->respawn_requested = (uint8_t)(new_lives_value > 0);
+                if (new_lives_value == 0) p->spawned = 0;
+            }
+            if ((!old_ground || old_air) && p->ram[0x14] && !p->ram[0x15])
+                p->sfx_events |= P2_SFX_EVENT_JUMP;
+        }
+
+        /* The resolver changes shared enemy slots, but its temporary player
+         * flags and pipe state belong only to this pass. Keep the enemy/world
+         * result and put Mario's live character state back before continuing. */
+        wr8(0xA221, shared_pipe_transition);
+        wr8(0xA20E, shared_level_transition);
+        mp_sml2_load_player(&p1_restore);
+        cpu = p1_cpu;
+    }
+}
+
 static void mp_sml2_instruction_hook(uint16_t pc)
 {
+    if (pc == 0x0626 && mp_sml2_inline_ran && !mp_sml2_inline_active &&
+        mp_sml2_direct_world && mp_ready && mp_active &&
+        mp_game == GAME_SML2 && mp_player_count >= 2) {
+        /* P1 has just executed the normal enemy-contact pass. Run the same
+         * resolver for Luigi against the now-updated shared actor pool. */
+        mp_sml2_direct_collision_update();
+        return;
+    }
     if (pc != 0x061B || mp_sml2_inline_active || mp_sml2_inline_ran ||
         !mp_sml2_direct_world || !mp_ready || !mp_active ||
         mp_game != GAME_SML2 || mp_player_count < 2 ||
