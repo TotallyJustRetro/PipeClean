@@ -40,7 +40,7 @@ function makeCode() {
   for (let tries = 0; tries < 100; tries += 1) {
     let code = '';
     const bytes = crypto.randomBytes(12);
-    for (let i = 0; i < 6; i += 1) code += ALPHABET[bytes[i] % ALPHABET.length];
+    for (let i = 0; i < 8; i += 1) code += ALPHABET[bytes[i] % ALPHABET.length];
     if (!rooms.has(code)) return code;
   }
   throw new Error('Could not allocate an invite code');
