@@ -1,0 +1,22 @@
+# Deploy with: fly apps create <your-unique-app-name>
+# Replace the app value below with that exact name, then run: fly deploy
+app = "pipeclean-relay-change-this"
+primary_region = "iad"
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[env]
+  PIPECLEAN_RELAY_BIND = "0.0.0.0"
+  PIPECLEAN_RELAY_PORT = "27800"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 27800
+  auto_start_machines = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls"]
