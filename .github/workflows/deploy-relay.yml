@@ -1,6 +1,12 @@
 name: Deploy PipeClean traversal relay
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/deploy-relay.yml"
+      - "fly.toml"
+      - "server/**"
+      - "tests/test_relay.js"
   workflow_dispatch:
     inputs:
       app_name:
@@ -21,7 +27,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-traversal:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate relay syntax and integration
+        run: |
+          node --check server/relay.js
+          node tests/test_relay.js
+
+      - name: Validate Fly service configuration
+        run: |
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          config = tomllib.loads(Path("fly.toml").read_text(encoding="utf-8"))
+          services = config.get("services", [])
+          assert len(services) == 1, "Expected one relay service"
+          service = services[0]
+          assert service.get("internal_port") == 27800
+          ports = service.get("ports", [])
+          assert any(
+              port.get("port") == 443
+              and "tls" in port.get("handlers", [])
+              and "proxy_proto" in port.get("handlers", [])
+              and port.get("proxy_proto_options", {}).get("version") == "v2"
+              for port in ports
+          ), "Port 443 must terminate TLS and forward PROXY protocol v2"
+          assert config.get("env", {}).get("PIPECLEAN_RELAY_PROXY_PROTOCOL") == "1"
+          print("Fly traversal configuration: PASS")
+          PY
+
   deploy:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
