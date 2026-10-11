@@ -71,6 +71,7 @@ static char online_chat_buffer[96];
 static char online_server_before[160];
 static int online_selected_game = GAME_SML2;
 static int online_last_netplay_state = NETPLAY_OFFLINE;
+static int online_rom_reported_game = -1;
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -1952,6 +1953,30 @@ static const char *online_game_name(int game)
     return "Choose a game";
 }
 
+static void online_report_local_rom(int game)
+{
+    char err[256];
+    const CartInfo *ci;
+    online_rom_reported_game = game;
+    if (launcher_prepare(game, err, sizeof err)) {
+        (void)netplay_lobby_report_rom(game, 0, 0);
+        launcher_toast(err[0] ? err : "Choose a valid ROM for this game first.");
+        return;
+    }
+    ci = cart_info();
+    if (!ci || !ci->size || !ci->crc) {
+        (void)netplay_lobby_report_rom(game, 0, 0);
+        launcher_toast("Couldn't calculate the selected ROM checksum.");
+        return;
+    }
+    if (!netplay_lobby_report_rom(game, ci->crc, 1)) {
+        online_rom_reported_game = -1;
+        launcher_toast("Couldn't submit the ROM check. Try again.");
+        return;
+    }
+    launcher_toast("ROM checksum sent. Waiting for the other player to finish checking.");
+}
+
 static void tab_online_lobby(float x, float y, const NetplayInfo *np)
 {
     const int connected = np->state == NETPLAY_CONNECTED && np->peer[0];
@@ -2018,6 +2043,15 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     }
     ui_text_wrap(F_REG, 10, x + 34, y + 316, 312, C_DIM,
                  "Both players need the same game and matching ROM. More games can be added to online play later.", 3);
+    uint32_t rom_status_color = np->rom_check_state == NETPLAY_ROM_MATCH ? C_OK :
+        (np->rom_check_state == NETPLAY_ROM_MISMATCH ||
+         np->rom_check_state == NETPLAY_ROM_INVALID ? C_WARN : C_MUTED);
+    ui_text_fit(F_REG, 10, x + 34, y + 356, 310, rom_status_color,
+                np->rom_check_status[0] ? np->rom_check_status : "ROM check hasn't started yet.");
+    if (connected && ui_button(x + 190, y + 378, 156, 25, "Recheck ROM", B_GHOST, 1)) {
+        online_rom_reported_game = -1;
+        online_report_local_rom(selected_game);
+    }
 
     ui_rrect(x + 374, y + 82, 416, 328, 12, C_PANEL);
     ui_text(F_BOLD, 13, x + 390, y + 94, C_TEXT, "SESSION CHAT");
@@ -2057,7 +2091,9 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     ui_text_fit(F_REG, 11, x + 24, y + 426, 540, C_DIM,
                 np->status[0] ? np->status : "Connected to the PipeClean relay.");
     if (np->is_host) {
-        int can_play = connected && (selected_game == GAME_SML || selected_game == GAME_SML2);
+        int can_play = connected &&
+            (selected_game == GAME_SML || selected_game == GAME_SML2) &&
+            np->rom_check_state == NETPLAY_ROM_MATCH;
         if (ui_button(x + 592, y + 428, 180, 44, "Play for Everyone",
                       B_PRIMARY, can_play)) {
             if (!netplay_lobby_start_game(selected_game))
@@ -2351,6 +2387,15 @@ LauncherResult launcher_frame(float dt)
         tab = TAB_ONLINE;
     online_last_netplay_state = online_frame_info.state;
     {
+        int connected_peer = online_frame_info.state == NETPLAY_CONNECTED &&
+                             online_frame_info.peer[0] != 0;
+        int selected_game = netplay_lobby_get_game();
+        if (!connected_peer) {
+            online_rom_reported_game = -1;
+        } else if ((selected_game == GAME_SML || selected_game == GAME_SML2) &&
+                   online_rom_reported_game != selected_game) {
+            online_report_local_rom(selected_game);
+        }
         int shared_start = netplay_take_start_request();
         if (shared_start >= 0) res.play = shared_start;
     }
