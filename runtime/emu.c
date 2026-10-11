@@ -1966,15 +1966,30 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
                             Frame *frame, int16_t *audio, int audio_max)
 {
     if (!mp_ready || player < 0 || player >= mp_player_count || !frame) return -1;
+    if (player > 0 && mp_sml2_direct_world) {
+        /* Secondary movement already ran inside Player 1's real game frame.
+         * Do not restore a saved world or advance the game a second time. */
+        if (!mp_sml2_inline_ran) {
+            for (int i = 1; i < mp_player_count; i++) {
+                mp_sml2_players[i].sfx_events = 0;
+                mp_sml2_render_oam_count[i] = 0;
+            }
+        }
+        mp_sml2_capture_frame(frame);
+        if (player == mp_player_count - 1) mp_sml2_inline_ran = 0;
+        return 0;
+    }
     if (player == 0) {
         if (gb_state_load(mp_state, GB_STATE_BYTES)) return -1;
-        mp_sml2_apply_tile_patches();
+        if (!mp_sml2_direct_world) mp_sml2_apply_tile_patches();
+        mp_sml2_inline_ran = 0;
         uint8_t scroll_before = rd8(0xFFCA);
         uint8_t scroll_y_before = rd8(0xFFC8);
         uint8_t scx_before = rd8(0xFF43), scy_before = rd8(0xFF42);
         uint8_t level_before = rd8(0xA269), level_bank_before = rd8(0xA258);
         uint8_t ground_before = rd8(0xA214), air_before = rd8(0xA215);
-        memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
+        if (!mp_sml2_direct_world)
+            memcpy(mp_sml2_vram_before, &vram[0x1800], sizeof mp_sml2_vram_before);
         uint8_t effective_dpad = dpad;
         mp_sml2_constrain_horizontal_input(player, &effective_dpad);
         gb_set_input(buttons, effective_dpad);
@@ -1985,33 +2000,35 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         if (status == 0) run_core(0);
         mp_active = 0;
         if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
-        memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
-        int level_unchanged = level_before == rd8(0xA269) &&
-                              level_bank_before == rd8(0xA258);
-        int camera_unchanged = scroll_before == rd8(0xFFCA) &&
-                               scroll_y_before == rd8(0xFFC8) &&
-                               scx_before == rd8(0xFF43) &&
-                               scy_before == rd8(0xFF42);
-        int player_airborne = air_before || !ground_before ||
-                              rd8(0xA215) || !rd8(0xA214);
-        if (level_unchanged && camera_unchanged && player_airborne &&
-            mp_sml2_gameplay_active() &&
-            memcmp(mp_sml2_vram_before, mp_sml2_vram_after,
-                   sizeof mp_sml2_vram_before) != 0) {
-            mp_sml2_record_tile_patches(level_before, level_bank_before,
-                mp_sml2_vram_before, mp_sml2_vram_after,
-                scx_before, scy_before, rd8(0xA23C), rd8(0xA23B));
+        if (!mp_sml2_direct_world) {
+            memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
+            int level_unchanged = level_before == rd8(0xA269) &&
+                                  level_bank_before == rd8(0xA258);
+            int camera_unchanged = scroll_before == rd8(0xFFCA) &&
+                                   scroll_y_before == rd8(0xFFC8) &&
+                                   scx_before == rd8(0xFF43) &&
+                                   scy_before == rd8(0xFF42);
+            int player_airborne = air_before || !ground_before ||
+                                  rd8(0xA215) || !rd8(0xA214);
+            if (level_unchanged && camera_unchanged && player_airborne &&
+                mp_sml2_gameplay_active() &&
+                memcmp(mp_sml2_vram_before, mp_sml2_vram_after,
+                       sizeof mp_sml2_vram_before) != 0) {
+                mp_sml2_record_tile_patches(level_before, level_bank_before,
+                    mp_sml2_vram_before, mp_sml2_vram_after,
+                    scx_before, scy_before, rd8(0xA23C), rd8(0xA23B));
+            }
+            mp_sml2_apply_tile_patches();
         }
-        mp_sml2_apply_tile_patches();
         int n = (audio && audio_max > 0) ? apu_drain(audio, audio_max) : 0;
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
         mp_sml2_save_player(&mp_sml2_players[0], 0);
         mp_sml2_update_gameplay_stability();
         int camera_dx = mp_scroll_delta(rd8(0xFFCA), scroll_before);
-        if (camera_dx && mp_sml2_initialized && mp_sml2_gameplay_active()) {
-            /* Player 1 owns the camera. Translate each clone's cached screen
-             * coordinates and sprite X positions when the authoritative view
-             * scrolls, leaving its world coordinates and physics untouched. */
+        if (!mp_sml2_direct_world && camera_dx &&
+            mp_sml2_initialized && mp_sml2_gameplay_active()) {
+            /* The legacy cloned renderer caches screen-space coordinates.
+             * Direct-world players are re-rendered from world coordinates. */
             for (int i = 1; i < mp_player_count; i++)
                 mp_sml2_shift_screen_x(&mp_sml2_players[i], -camera_dx);
         }
