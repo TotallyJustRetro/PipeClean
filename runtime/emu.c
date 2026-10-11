@@ -1945,6 +1945,10 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
     mp_sml2_inline_active = 1;
     /* This character-only replay is part of the same displayed frame. Do not
      * advance the PPU, timers, audio clock, or VBlank callback a second time. */
+    /* The ROM simulation is only for one secondary character, but FF10-FF3F
+     * are shared physical audio registers. Do not let a character-only call
+     * power down or reconfigure Mario's channels. */
+    int saved_apu_write_suppression = apu_set_write_suppressed(1);
     gb_set_timing_suppressed(1);
 
     while (budget && cpu.pc != sentinel) {
@@ -1983,6 +1987,7 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
     int ok = cpu.pc == sentinel;
     CPU result = cpu;
     gb_set_timing_suppressed(0);
+    (void)apu_set_write_suppressed(saved_apu_write_suppression);
     mp_sml2_inline_active = 0;
     cpu = saved;
     if (ok && keep_result_registers) {
