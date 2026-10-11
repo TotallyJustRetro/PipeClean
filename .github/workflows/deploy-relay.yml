@@ -104,8 +104,9 @@ jobs:
           endpoint = f"tls://{sys.argv[1]}.fly.dev:443"
           path = Path("runtime/settings.h")
           source = path.read_text(encoding="utf-8")
-          updated, count = re.subn(
-              r'(?m)^#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "[^"]+"              f'#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "{endpoint}"',
+          pattern = re.compile(r"(?m)^#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT .+$")
+          updated, count = pattern.subn(
+              lambda _match: f'#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "{endpoint}"',
               source,
               count=1,
           )
