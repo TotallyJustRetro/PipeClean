@@ -2430,8 +2430,10 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         const uint8_t shared_coins_low_after = rd8(0xA262);
         const uint8_t shared_coins_high_after = rd8(0xA263);
         const uint8_t shared_counter_after = rd8(0xA28D);
-        if (p2_collected_coin)
+        if (p2_collected_coin) {
+            p->sfx_events |= P2_SFX_EVENT_COIN;
             dev_diag_event("LUIGI SHARED COIN COUNTER UPDATED");
+        }
 
         mp_sml2_save_player_state(p);
         const uint8_t new_lives = p->lives;
@@ -2498,8 +2500,6 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         wr8(0xA263, shared_coins_high_after);
         wr8(0xA28D, shared_counter_after);
         wr8(0xA20D, shared_coin_contact_before);
-        if (p2_collected_coin && shared_sfx_command == 0)
-            wr8(0xA460, 7);
         cpu = p1_cpu;
     }
 }
