@@ -2075,7 +2075,7 @@ static void tab_online(float x, float y)
     ui_rrect(x + 408, y + 215, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
     const char *server_text = settings.online_server[0] ? settings.online_server :
-                              (online_server_editing ? "Type host:port or tls://host:443…" : "127.0.0.1:27800");
+                              (online_server_editing ? "Type host:port or tls://host:443…" : PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
     ui_text_fit(F_REG, 12, x + 420, y + 223, 336,
                 (online_server_editing && !settings.online_server[0]) ? C_DIM : C_TEXT,
                 server_text);
@@ -2503,7 +2503,8 @@ void launcher_event(const SDL_Event *e)
                     (editing_server ? settings.online_server : online_join_code);
         size_t cap = editing_name ? sizeof settings.online_name :
                      (editing_server ? sizeof settings.online_server : sizeof online_join_code);
-        const char *fallback = editing_name ? "Player" : "127.0.0.1:27800";
+        const char *fallback = editing_name ? "Player" :
+                              (editing_server ? PIPECLEAN_DEFAULT_RELAY_ENDPOINT : "");
         if (!dst || cap == 0) {
             online_name_editing = online_code_editing = online_server_editing = 0;
             SDL_StopTextInput();
