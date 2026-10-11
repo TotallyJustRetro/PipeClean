@@ -19,7 +19,23 @@ function waitForLine(client, timeoutMs = 3000) {
     client.waiters.push(waiter);
   });
 }
-function connectClient(port) {
+function makeProxyV2Header(sourceIp, destinationPort) {
+  const signature = Buffer.from([13, 10, 13, 10, 0, 13, 10, 81, 85, 73, 84, 10]);
+  const source = Buffer.from(sourceIp.split('.').map(Number));
+  assert.equal(source.length, 4);
+  const addresses = Buffer.alloc(12);
+  source.copy(addresses, 0);
+  Buffer.from([127, 0, 0, 1]).copy(addresses, 4);
+  addresses.writeUInt16BE(40000, 8);
+  addresses.writeUInt16BE(destinationPort, 10);
+  const header = Buffer.alloc(16);
+  signature.copy(header, 0);
+  header[12] = 0x21; // PROXY command, version 2
+  header[13] = 0x11; // TCP over IPv4
+  header.writeUInt16BE(addresses.length, 14);
+  return Buffer.concat([header, addresses]);
+}
+function connectClient(port, sourceIp = '198.51.100.10') {
   const socket = net.createConnection({ host: '127.0.0.1', port });
   const client = { socket, lines: [], waiters: [], buffer: '' };
   socket.setEncoding('utf8');
@@ -35,12 +51,19 @@ function connectClient(port) {
     }
   });
   return new Promise((resolve, reject) => {
-    socket.once('connect', () => resolve(client));
+    socket.once('connect', () => {
+      socket.write(makeProxyV2Header(sourceIp, port));
+      resolve(client);
+    });
     socket.once('error', reject);
   });
 }
 async function main() {
-  const relayEnv = { ...process.env, PIPECLEAN_RELAY_PORT: '0' };
+  const relayEnv = {
+    ...process.env,
+    PIPECLEAN_RELAY_PORT: '0',
+    PIPECLEAN_RELAY_PROXY_PROTOCOL: '1'
+  };
   /* Verify the server's loopback-only default, even if the parent environment
      happens to set an override. */
   delete relayEnv.PIPECLEAN_RELAY_BIND;
@@ -67,13 +90,13 @@ async function main() {
     });
     port = started;
 
-    const invalid = await connectClient(port);
+    const invalid = await connectClient(port, '198.51.100.20');
     invalid.socket.write('UNSUPPORTED\tcommand\n');
     assert.match(await waitForLine(invalid), /^ERR\tFirst message must be HOST or JOIN$/);
     invalid.socket.destroy();
 
-    const host = await connectClient(port);
-    const guest = await connectClient(port);
+    const host = await connectClient(port, '198.51.100.21');
+    const guest = await connectClient(port, '198.51.100.22');
     host.socket.write('HOST\tHost\n');
     const hosted = await waitForLine(host);
     const match = hosted.match(/^HOSTED\t([A-HJ-NP-Z2-9]{8})$/);
