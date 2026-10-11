@@ -376,7 +376,7 @@ void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
         }
         fputs("{\"type\":\"session_start\",\"game\":", diag.log);
         write_json_string(diag.log, diag.game_name);
-        fprintf(diag.log, ",\"players\":%d,\"log_file\":", player_count);
+        fprintf(diag.log, ",\"diagnostic_schema\":2,\"telemetry_profile\":\"sml2-multiplayer-state-ram-oam\",\"players\":%d,\"log_file\":", player_count);
         char relative_log[256];
         snprintf(relative_log, sizeof relative_log, "logs/%s", path_base(diag.log_path));
         write_json_string(diag.log, relative_log);
@@ -500,7 +500,7 @@ static void update_events(const DiagSample *s)
         }
         if (diag.last_p2_spawned >= 0 && diag.last_p2_spawned != m->p2_spawned)
             diag_event_log(m->p2_spawned ? "P2 SPAWN STATE 0 -> 1" : "P2 SPAWN STATE 1 -> 0");
-        if (diag.has_sample && diag.last_p2_grounded == 1 && m->p2_in_air &&
+        if (diag.has_sample && diag.last_p2_grounded != 0 && m->p2_in_air &&
             !(s->buttons[1] & 0x03u)) {
             char text[120];
             snprintf(text, sizeof text,
