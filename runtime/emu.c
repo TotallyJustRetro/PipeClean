@@ -3091,13 +3091,15 @@ int emu_mp_test_snapshot(EmuMpTestSnapshot *out)
     return 0;
 }
 
-/* Only the Dev diagnostics call this API, and it is deliberately restricted
- * to the active SML2 cartridge-RAM window so a malformed request cannot read
- * arbitrary CPU/PPU memory. */
+/* Dev diagnostics may inspect bounded SML2 external RAM (A000-BFFF) and
+ * work RAM (C000-DFFF). Keep requests inside one region so they cannot cross
+ * into memory-mapped I/O or PPU registers. */
 int emu_mp_test_read_ram(uint16_t start, uint8_t *out, size_t length)
 {
+    size_t end = (size_t)start + length;
     if (!out || !length || !mp_ready || mp_game != GAME_SML2 ||
-        start < 0xA000u || (size_t)start + length > 0xC000u)
+        start < 0xA000u || end > 0xE000u ||
+        (start < 0xC000u && end > 0xC000u))
         return -1;
     for (size_t i = 0; i < length; i++)
         out[i] = rd8((uint16_t)(start + i));
