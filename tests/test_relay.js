@@ -40,8 +40,12 @@ function connectClient(port) {
   });
 }
 async function main() {
+  const relayEnv = { ...process.env, PIPECLEAN_RELAY_PORT: '0' };
+  /* Verify the server's loopback-only default, even if the parent environment
+     happens to set an override. */
+  delete relayEnv.PIPECLEAN_RELAY_BIND;
   const relay = spawn(process.execPath, ['server/relay.js'], {
-    env: { ...process.env, PIPECLEAN_RELAY_PORT: '0', PIPECLEAN_RELAY_BIND: '127.0.0.1' },
+    env: relayEnv,
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let output = '';
