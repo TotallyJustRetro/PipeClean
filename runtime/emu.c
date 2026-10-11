@@ -2035,9 +2035,11 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         cpu.f = 0x80;
         if (!mp_sml2_run_original_subroutine(0x0F71, 30000, 1) ||
             !mp_sml2_capture_direct_oam(player, p)) {
-            cpu = p1_cpu;
+            wr8(0xA221, shared_pipe_transition);
+            wr8(0xA20E, shared_level_transition);
             mp_sml2_player_scratch_restore(movement_scratch_saved);
             mp_sml2_load_player(&p1_restore);
+            cpu = p1_cpu;
             longjmp(stop_jmp, 4);
         }
 
