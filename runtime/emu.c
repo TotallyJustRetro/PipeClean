@@ -175,6 +175,16 @@ static uint8_t mp_sml2_debug_mapping_inferred[MAX_MP_PLAYERS];
 static uint8_t mp_sml2_debug_mapping_complete[MAX_MP_PLAYERS];
 static int mp_sml2_initialized;
 static int mp_sml2_tether_active;
+/* Preferred SML2 path: update extra characters inside the original main loop,
+ * sharing the live level/enemy state. Unsupported/test ROMs keep the legacy
+ * fallback until they expose the verified player-update callsite. */
+static int mp_sml2_direct_world;
+static int mp_sml2_inline_active;
+static uint8_t mp_sml2_input_buttons[MAX_MP_PLAYERS];
+static uint8_t mp_sml2_input_dpad[MAX_MP_PLAYERS];
+static void mp_sml2_instruction_hook(uint16_t pc);
+static unsigned mp_sml2_inline_frame;
+static unsigned mp_sml2_inline_runs;
 static unsigned mp_sml2_stable_frames;
 static uint8_t mp_sml2_stable_level;
 static uint8_t mp_sml2_stable_bank;
