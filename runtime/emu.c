@@ -2202,15 +2202,6 @@ static void mp_sml2_direct_collision_update(void)
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
         mp_sml2_load_player(&p1_restore);
-        /* These are shared world counters, so do not let a later character
-         * restore discard a pickup or the shared HUD-counter update. */
-        wr8(0xA262, shared_coins_low_after);
-        wr8(0xA263, shared_coins_high_after);
-        wr8(0xA28D, shared_counter_after);
-        /* Coin sounds pass through the cartridge's normal sound command. The
-         * character-isolation restore above would otherwise drop Luigi's cue. */
-        if (p2_collected_coin && shared_sfx_command == 0)
-            wr8(0xA460, 7);
         cpu = p1_cpu;
     }
 }
@@ -2449,6 +2440,13 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
         mp_sml2_load_player(&p1_restore);
+        /* Coins and the HUD counter are world state; keep Luaigi's successful
+         * pickup visible after Mario's character-only RAM is restored. */
+        wr8(0xA262, shared_coins_low_after);
+        wr8(0xA263, shared_coins_high_after);
+        wr8(0xA28D, shared_counter_after);
+        if (p2_collected_coin && shared_sfx_command == 0)
+            wr8(0xA460, 7);
         cpu = p1_cpu;
     }
 }
