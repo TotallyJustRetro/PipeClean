@@ -102,7 +102,7 @@ async function main() {
     const match = hosted.match(/^HOSTED\t([A-HJ-NP-Z2-9]{8})$/);
     assert.ok(match, 'host receives an eight-character room code');
 
-    host.socket.write('PING\\n');
+    host.socket.write('PING\n');
     assert.equal(await waitForLine(host), 'PONG');
 
 
