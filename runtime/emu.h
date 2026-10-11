@@ -87,6 +87,8 @@ typedef struct {
  * 2=Player 3, and 3=Player 4. */
 int emu_mp_begin(void);
 int emu_mp_step(int player, uint8_t buttons, uint8_t dpad, Frame *frame, int16_t *audio, int audio_max);
+/* Supplies secondary inputs before Player 1 advances the shared SML2 world. */
+void emu_mp_set_player_input(int player, uint8_t buttons, uint8_t dpad);
 void emu_mp_end(void);
 void emu_mp_frame_refresh(Frame *frame);
 /* SML2-only diagnostics for scripted headless multiplayer tests. */
