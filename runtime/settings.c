@@ -156,9 +156,9 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->state_slot = 0;
     c->romhack_count = 0;
     c->romhack_selected = -1; /* The unmodified game is the default profile. */
-    c->p2_color = LUIGI_GREEN;
-    c->p3_color = LUIGI_BLUE;
-    c->p4_color = LUIGI_YELLOW;
+    c->p2_color = LUIGI_GREEN; c->p2_rgb = 0x2CA83D;
+    c->p3_color = LUIGI_BLUE; c->p3_rgb = 0x2676D9;
+    c->p4_color = LUIGI_YELLOW; c->p4_rgb = 0xD8B51A;
     c->multiplayer_players = 2;
     if (game == GAME_SML || game == GAME_SML2) {
         snprintf(c->p2_name, sizeof c->p2_name, "Luigi");
@@ -181,6 +181,9 @@ void settings_defaults(Settings *s)
     s->pad_deadzone = 35;
     s->menu_music = 1; s->menu_music_vol = 55;
     s->ui_sfx = 1; s->ui_sfx_vol = 70;
+    snprintf(s->online_name, sizeof s->online_name, "Player");
+    s->online_color = 0x2CA83D;
+    s->touch_controls = 1;
     for (int i = 0; i < N_GAMES; i++) game_cfg_defaults(&s->g[i], i);
 }
 
@@ -217,6 +220,8 @@ static int field_table(Field *t, int cap)
     static char names[N_UI_SFX][24];
     for (int i = 0; i < N_UI_SFX; i++) { snprintf(names[i], sizeof names[i], "ui_sfx_path%d", i); S(names[i], s->ui_sfx_path[i]); }
     I("last_tab", s->last_tab, 0, 20); I("show_stats", s->show_stats, 0, 1);
+    S("online_name", s->online_name); I("online_color", s->online_color, 0, 0xFFFFFF);
+    I("touch_controls", s->touch_controls, 0, 1);
     FilterCfg *f = &s->flt;
     I("f_grid", f->lcd_grid, 0, 100); I("f_ghost", f->ghost, 0, 100); I("f_scan", f->scanlines, 0, 100);
     I("f_mask", f->mask, 0, 100); I("f_curve", f->curve, 0, 100); I("f_bloom", f->bloom, 0, 100);
@@ -236,17 +241,17 @@ static int field_table(Field *t, int cap)
         GS("p2_sfx_jump", c->p2_sfx_path[P2_SFX_JUMP]); GS("p2_sfx_fireball", c->p2_sfx_path[P2_SFX_FIREBALL]);
         GS("p2_sfx_power_up", c->p2_sfx_path[P2_SFX_POWER_UP]); GS("p2_sfx_power_down", c->p2_sfx_path[P2_SFX_POWER_DOWN]);
         GS("p2_sfx_die", c->p2_sfx_path[P2_SFX_DIE]); GS("p2_sfx_respawn", c->p2_sfx_path[P2_SFX_RESPAWN]); GS("p2_sfx_coin", c->p2_sfx_path[P2_SFX_COIN]);
-        GI("p2_color", c->p2_color, 0, N_LUIGI_COLORS - 1);
+        GI("p2_color", c->p2_color, 0, N_LUIGI_COLORS - 1); GI("p2_rgb", c->p2_rgb, 0, 0xFFFFFF); GI("p2_custom", c->p2_custom, 0, 1);
         GS("p3_name", c->p3_name);
         GS("p3_sfx_jump", c->p3_sfx_path[P2_SFX_JUMP]); GS("p3_sfx_fireball", c->p3_sfx_path[P2_SFX_FIREBALL]);
         GS("p3_sfx_power_up", c->p3_sfx_path[P2_SFX_POWER_UP]); GS("p3_sfx_power_down", c->p3_sfx_path[P2_SFX_POWER_DOWN]);
         GS("p3_sfx_die", c->p3_sfx_path[P2_SFX_DIE]); GS("p3_sfx_respawn", c->p3_sfx_path[P2_SFX_RESPAWN]); GS("p3_sfx_coin", c->p3_sfx_path[P2_SFX_COIN]);
-        GI("p3_color", c->p3_color, 0, N_LUIGI_COLORS - 1);
+        GI("p3_color", c->p3_color, 0, N_LUIGI_COLORS - 1); GI("p3_rgb", c->p3_rgb, 0, 0xFFFFFF); GI("p3_custom", c->p3_custom, 0, 1);
         GS("p4_name", c->p4_name);
         GS("p4_sfx_jump", c->p4_sfx_path[P2_SFX_JUMP]); GS("p4_sfx_fireball", c->p4_sfx_path[P2_SFX_FIREBALL]);
         GS("p4_sfx_power_up", c->p4_sfx_path[P2_SFX_POWER_UP]); GS("p4_sfx_power_down", c->p4_sfx_path[P2_SFX_POWER_DOWN]);
         GS("p4_sfx_die", c->p4_sfx_path[P2_SFX_DIE]); GS("p4_sfx_respawn", c->p4_sfx_path[P2_SFX_RESPAWN]); GS("p4_sfx_coin", c->p4_sfx_path[P2_SFX_COIN]);
-        GI("p4_color", c->p4_color, 0, N_LUIGI_COLORS - 1);
+        GI("p4_color", c->p4_color, 0, N_LUIGI_COLORS - 1); GI("p4_rgb", c->p4_rgb, 0, 0xFFFFFF); GI("p4_custom", c->p4_custom, 0, 1);
         GI("multiplayer_players", c->multiplayer_players, 2, MAX_MP_PLAYERS);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
@@ -277,8 +282,8 @@ void settings_load(void)
     FILE *f = fopen(path, "r");
     if (!f) { legacy_ini_path(path, sizeof path); f = fopen(path, "r"); }
     if (!f) return;
-    Field tab[600];
-    int nf = field_table(tab, 400);
+    Field tab[800];
+    int nf = field_table(tab, 800);
     char line[700];
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -335,8 +340,8 @@ void settings_save(void)
     ini_path(path, sizeof path);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    Field tab[600];
-    int nf = field_table(tab, 400);
+    Field tab[800];
+    int nf = field_table(tab, 800);
     for (int i = 0; i < nf; i++) {
         if (tab[i].ip) fprintf(f, "%s=%d\n", tab[i].name, *tab[i].ip);
         else fprintf(f, "%s=%s\n", tab[i].name, tab[i].sp);
