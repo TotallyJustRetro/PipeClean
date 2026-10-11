@@ -1589,8 +1589,10 @@ static int mp_sml2_gameplay_active(void)
 
 static uint16_t mp_sml2_saved_world_x(const MpSml2Player *p)
 {
-    return p ? (uint16_t)p->ram[0x27] |
-               ((uint16_t)p->ram[0x28] << 8) : 0;
+    if (!p) return 0;
+    if (mp_sml2_direct_world)
+        return (uint16_t)p->h_c2 | ((uint16_t)p->h_c3 << 8);
+    return (uint16_t)p->ram[0x27] | ((uint16_t)p->ram[0x28] << 8);
 }
 
 static void mp_sml2_constrain_horizontal_input(int player, uint8_t *dpad)
@@ -1647,8 +1649,8 @@ static void mp_sml2_capture_frame(Frame *frame)
     mp_capture_frame(frame, 0);
     memset(frame->luigi_mask, 0, sizeof frame->luigi_mask);
     frame->mp_player_count = (uint8_t)mp_player_count;
-    frame->player_x = rd8(0xA227);
-    frame->player_y = rd8(0xA229);
+    frame->player_x = mp_sml2_direct_world ? rd8(0xFFC2) : rd8(0xA227);
+    frame->player_y = mp_sml2_direct_world ? rd8(0xFFC0) : rd8(0xA229);
     frame->scroll_x = rd8(0xFFCA);
     /* SML2 maps its character as four 8x8 OAM entries. */
     frame->sprite_size16 = 0;
@@ -1667,7 +1669,6 @@ static void mp_sml2_capture_frame(Frame *frame)
         int lives = mp_sml2_bcd_to_int(p->lives);
         frame->mp_player_lives[player] = (uint8_t)lives;
         frame->mp_player_game_state[player] = 0;
-        frame->mp_player_visible[player] = (uint8_t)(p->spawned && lives > 0);
         frame->mp_player_blink_hidden[player] = (uint8_t)(
             p->invulnerability_frames > 0 && ((frame_count / 4) & 1));
         if (mp_sml2_render_oam_count[player] > 0) {
@@ -1676,17 +1677,18 @@ static void mp_sml2_capture_frame(Frame *frame)
                    mp_sml2_render_oam[player], bytes);
             frame->mp_player_sprite_count[player] =
                 mp_sml2_render_oam_count[player];
+        } else if (mp_sml2_direct_world) {
+            memset(frame->mp_player_oam[player], 0, sizeof frame->mp_player_oam[player]);
+            frame->mp_player_sprite_count[player] = 0;
         } else {
             memcpy(frame->mp_player_oam[player], p->oam, sizeof p->oam);
             frame->mp_player_sprite_count[player] = 4;
         }
 
-        /* If both OAM sources failed to identify the clone's pose, show a
-         * translated copy of Player 1's known-visible pose as a final fallback.
-         * This only affects rendering; the clone keeps independent RAM/physics.
-         * It prevents the overlay from disappearing just because this frame's
-         * character-map lookup or DMA list was incomplete. */
-        if (p->spawned && lives > 0) {
+        /* The shared-world renderer only shows the exact pose emitted by the
+         * ROM. The translated Mario fallback is retained for the test/legacy
+         * clone path, but must not mask a failed direct capture with wrong art. */
+        if (!mp_sml2_direct_world && p->spawned && lives > 0) {
             int visible_pieces = 0;
             for (int i = 0; i < frame->mp_player_sprite_count[player]; i++) {
                 const uint8_t *sprite = &frame->mp_player_oam[player][i * 4];
@@ -1723,6 +1725,8 @@ static void mp_sml2_capture_frame(Frame *frame)
                 }
             }
         }
+        frame->mp_player_visible[player] = (uint8_t)(p->spawned && lives > 0 &&
+            (!mp_sml2_direct_world || frame->mp_player_sprite_count[player] > 0));
         frame->mp_player_sfx_events[player] = p->sfx_events;
     }
     frame->p1_lives = rd8(0xA22C);
