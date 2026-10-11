@@ -18,6 +18,7 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/ssl.h>
+#include <mbedtls/error.h>
 #include <mbedtls/x509_crt.h>
 #include <mbedtls/net_sockets.h>
 
@@ -29,6 +30,24 @@ static mbedtls_x509_crt tls_ca;
 static NetplayTlsSocket tls_socket;
 static int tls_initialized;
 static int tls_want_write;
+static char tls_error_text[128];
+
+static void tls_set_error(const char *message)
+{
+    snprintf(tls_error_text, sizeof tls_error_text, "%s", message ? message : "TLS error");
+}
+
+static void tls_set_mbedtls_error(const char *stage, int code)
+{
+    char detail[80];
+    mbedtls_strerror(code, detail, sizeof detail);
+    snprintf(tls_error_text, sizeof tls_error_text, "%s: %.80s (%d)", stage, detail, code);
+}
+
+const char *netplay_tls_last_error(void)
+{
+    return tls_error_text;
+}
 
 static int tls_stop_requested(int (*should_stop)(void))
 {
@@ -209,7 +228,11 @@ int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
 {
     static const unsigned char personalization[] = "PipeClean relay";
     int rc, verify_flags;
-    if (!hostname || !hostname[0]) return -1;
+    tls_error_text[0] = 0;
+    if (!hostname || !hostname[0]) {
+        tls_set_error("missing TLS hostname");
+        return -1;
+    }
 
     mbedtls_ssl_init(&tls_ssl);
     mbedtls_ssl_config_init(&tls_config);
@@ -220,12 +243,14 @@ int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
     tls_socket = sock;
 
     if (!tls_load_ca_bundle()) {
+        tls_set_error("CA bundle missing or invalid");
         tls_free_contexts();
         return -2;
     }
     rc = mbedtls_ctr_drbg_seed(&tls_drbg, mbedtls_entropy_func, &tls_entropy,
                                personalization, sizeof personalization - 1);
     if (rc != 0) {
+        tls_set_mbedtls_error("TLS RNG setup", rc);
         tls_free_contexts();
         return -1;
     }
@@ -233,6 +258,7 @@ int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
                                      MBEDTLS_SSL_TRANSPORT_STREAM,
                                      MBEDTLS_SSL_PRESET_DEFAULT);
     if (rc != 0) {
+        tls_set_mbedtls_error("TLS config setup", rc);
         tls_free_contexts();
         return -1;
     }
@@ -242,7 +268,13 @@ int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
 
     rc = mbedtls_ssl_setup(&tls_ssl, &tls_config);
     if (rc == 0) rc = mbedtls_ssl_set_hostname(&tls_ssl, hostname);
-    if (rc != 0 || !tls_set_nonblocking(sock)) {
+    if (rc != 0) {
+        tls_set_mbedtls_error("TLS session setup", rc);
+        tls_free_contexts();
+        return -1;
+    }
+    if (!tls_set_nonblocking(sock)) {
+        tls_set_error("could not set TLS socket nonblocking");
         tls_free_contexts();
         return -1;
     }
@@ -264,15 +296,19 @@ int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
             int wait_result = tls_wait_internal(sock, rc == MBEDTLS_ERR_SSL_WANT_WRITE, 100,
                                                 should_stop);
             if (wait_result < 0) {
+                tls_set_error("TLS handshake socket wait failed");
                 tls_free_contexts();
                 return -1;
             }
             continue;
         }
         verify_flags = (int)mbedtls_ssl_get_verify_result(&tls_ssl);
+        if (verify_flags) tls_set_error("server certificate verification failed");
+        else tls_set_mbedtls_error("TLS handshake", rc);
         tls_free_contexts();
         return verify_flags ? -3 : -1;
     }
+    tls_set_error("TLS handshake cancelled");
     tls_free_contexts();
     return -1;
 }
