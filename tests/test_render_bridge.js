@@ -81,7 +81,7 @@ async function main() {
     const match = hosted.data.match(/^HOSTED\t([A-HJ-NP-Z2-9]{8})$/);
     assert.ok(match, 'Render WebSocket bridge passes host command to TCP relay');
 
-    host.send('PING\\n');
+    host.send('PING\n');
     assert.equal((await waitForMessage(host)).data, 'PONG');
 
 
