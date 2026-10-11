@@ -206,6 +206,24 @@ static void mp_sml2_player_scratch_restore(const uint8_t in[MP_SML2_PLAYER_SCRAT
         wr8(mp_sml2_player_scratch_addr[i], in[i]);
 }
 
+/* The SML2 sound sequencer stores much more than its four command bytes in
+ * cartridge RAM. A cloned player's death/movement routines can touch the live
+ * track pointers and per-channel counters at $A400-$A53F. Keep this whole
+ * workspace private during the clone simulation, then reissue only one-shot
+ * SFX requests through the existing pending-command path. */
+#define MP_SML2_SOUND_RAM_BASE 0xA400u
+#define MP_SML2_SOUND_RAM_SIZE 0x140u
+static void mp_sml2_sound_ram_save(uint8_t out[MP_SML2_SOUND_RAM_SIZE])
+{
+    for (unsigned i = 0; i < MP_SML2_SOUND_RAM_SIZE; i++)
+        out[i] = rd8((uint16_t)(MP_SML2_SOUND_RAM_BASE + i));
+}
+static void mp_sml2_sound_ram_restore(const uint8_t in[MP_SML2_SOUND_RAM_SIZE])
+{
+    for (unsigned i = 0; i < MP_SML2_SOUND_RAM_SIZE; i++)
+        wr8((uint16_t)(MP_SML2_SOUND_RAM_BASE + i), in[i]);
+}
+
 /* SML2 queues original cartridge SFX requests through $A460. Each cloned
  * character runs the stock movement/collision routines, but their sound RAM
  * must be isolated from Mario's. Keep a request only when Mario has not
@@ -2097,9 +2115,8 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
     /* Preserve the complete cartridge sound-engine workspace. Luigi's
      * death routine may queue a music transition at $A468, but that command
      * must never escape into Mario's one shared level audio. */
-    uint8_t saved_sound_state[0x80];
-    for (unsigned i = 0; i < sizeof saved_sound_state; i++)
-        saved_sound_state[i] = rd8((uint16_t)(0xA400 + i));
+    uint8_t saved_sound_state[MP_SML2_SOUND_RAM_SIZE];
+    mp_sml2_sound_ram_save(saved_sound_state);
 
     for (int i = 0; i < (int)sizeof saved_oam; i++)
         wr8((uint16_t)(0xA100 + i), 0);
@@ -2147,8 +2164,7 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
     wr8(0xA26E, saved_oam_end);
     wr8(0xFFBB, saved_obj_mode);
     wr8(0xFF9B, saved_game_mode);
-    for (unsigned i = 0; i < sizeof saved_sound_state; i++)
-        wr8((uint16_t)(0xA400 + i), saved_sound_state[i]);
+    mp_sml2_sound_ram_restore(saved_sound_state);
     wr8(0xA50D, saved_fast_music);
     wr8(0xA266, saved_sprite_clear);
     wr8(0xA267, saved_sprite_set);
@@ -2172,6 +2188,8 @@ static void mp_sml2_direct_collision_update(void)
     const uint8_t shared_music_command = rd8(0xA468);
     const uint8_t shared_current_song = rd8(0xA469);
     const uint8_t shared_fast_music = rd8(0xA50D);
+    uint8_t shared_sound_state[MP_SML2_SOUND_RAM_SIZE];
+    mp_sml2_sound_ram_save(shared_sound_state);
     /* The original game only calls the enemy-contact resolver while it is in
      * ordinary play. Keep this exactly aligned with the P1 conditional call. */
     if (shared_pipe_transition >= 0x10) return;
@@ -2211,6 +2229,7 @@ static void mp_sml2_direct_collision_update(void)
             wr8(0xA468, shared_music_command);
             wr8(0xA469, shared_current_song);
             wr8(0xA50D, shared_fast_music);
+            mp_sml2_sound_ram_restore(shared_sound_state);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -2263,6 +2282,7 @@ static void mp_sml2_direct_collision_update(void)
         wr8(0xA468, shared_music_command);
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
+        mp_sml2_sound_ram_restore(shared_sound_state);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
@@ -2310,6 +2330,8 @@ static void mp_sml2_instruction_hook(uint16_t pc)
     const uint8_t shared_music_command = rd8(0xA468);
     const uint8_t shared_current_song = rd8(0xA469);
     const uint8_t shared_fast_music = rd8(0xA50D);
+    uint8_t shared_sound_state[MP_SML2_SOUND_RAM_SIZE];
+    mp_sml2_sound_ram_save(shared_sound_state);
     MpSml2Player p1_restore;
     mp_sml2_save_player_state(&p1_restore);
     mp_sml2_players[0] = p1_restore;
@@ -2367,6 +2389,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
                 wr8(0xA468, shared_music_command);
                 wr8(0xA469, shared_current_song);
                 wr8(0xA50D, shared_fast_music);
+                mp_sml2_sound_ram_restore(shared_sound_state);
                 mp_sml2_load_player(&p1_restore);
                 cpu = p1_cpu;
                 longjmp(stop_jmp, 4);
@@ -2405,6 +2428,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA468, shared_music_command);
             wr8(0xA469, shared_current_song);
             wr8(0xA50D, shared_fast_music);
+            mp_sml2_sound_ram_restore(shared_sound_state);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             mp_sml2_apply_native_sfx(shared_sfx_command);
@@ -2443,6 +2467,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA221, shared_pipe_transition);
             wr8(0xA20E, shared_level_transition);
             mp_sml2_player_scratch_restore(movement_scratch_saved);
+            mp_sml2_sound_ram_restore(shared_sound_state);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -2465,6 +2490,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA468, shared_music_command);
             wr8(0xA469, shared_current_song);
             wr8(0xA50D, shared_fast_music);
+            mp_sml2_sound_ram_restore(shared_sound_state);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -2546,6 +2572,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         wr8(0xA468, shared_music_command);
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
+        mp_sml2_sound_ram_restore(shared_sound_state);
         mp_sml2_load_player(&p1_restore);
         /* Coins and the HUD counter are world state; preserve Luigi's
          * successful pickup after Mario's character-only RAM is restored.
