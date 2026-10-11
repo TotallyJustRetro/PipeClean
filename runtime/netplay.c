@@ -114,10 +114,52 @@ static void np_close_published_socket(NetSocket sock)
     net_close_socket(sock);
 }
 
-static NetSocket np_connect(const char *host, const char *port)
+static int np_ipv4_is_private(uint32_t address)
+{
+    /* address is in host byte order. Only loopback, RFC1918, and link-local
+       destinations are permitted while this plain-TCP prototype is LAN-only. */
+    return (address & 0xFF000000u) == 0x7F000000u ||
+           (address & 0xFF000000u) == 0x0A000000u ||
+           (address & 0xFFF00000u) == 0xAC100000u ||
+           (address & 0xFFFF0000u) == 0xC0A80000u ||
+           (address & 0xFFFF0000u) == 0xA9FE0000u;
+}
+
+static int np_is_allowed_relay_address(const struct addrinfo *entry)
+{
+    if (!entry || !entry->ai_addr) return 0;
+    if (entry->ai_family == AF_INET &&
+        entry->ai_addrlen >= (socklen_t)sizeof(struct sockaddr_in)) {
+        const struct sockaddr_in *addr = (const struct sockaddr_in *)entry->ai_addr;
+        return np_ipv4_is_private(ntohl(addr->sin_addr.s_addr));
+    }
+#ifdef AF_INET6
+    if (entry->ai_family == AF_INET6 &&
+        entry->ai_addrlen >= (socklen_t)sizeof(struct sockaddr_in6)) {
+        const struct sockaddr_in6 *addr = (const struct sockaddr_in6 *)entry->ai_addr;
+        const unsigned char *b = addr->sin6_addr.s6_addr;
+        int loopback = 1, mapped = 1;
+        for (int i = 0; i < 15; i++) if (b[i] != 0) loopback = 0;
+        if (loopback && b[15] == 1) return 1; /* ::1 */
+        if ((b[0] & 0xFEu) == 0xFCu) return 1; /* Unique-local fc00::/7 */
+        if (b[0] == 0xFEu && (b[1] & 0xC0u) == 0x80u) return 1; /* fe80::/10 */
+        for (int i = 0; i < 10; i++) if (b[i] != 0) mapped = 0;
+        if (mapped && b[10] == 0xFFu && b[11] == 0xFFu) {
+            uint32_t v4 = ((uint32_t)b[12] << 24) | ((uint32_t)b[13] << 16) |
+                          ((uint32_t)b[14] << 8) | (uint32_t)b[15];
+            return np_ipv4_is_private(v4);
+        }
+    }
+#endif
+    return 0;
+}
+
+static NetSocket np_connect(const char *host, const char *port, int *blocked_public_target)
 {
     struct addrinfo hints, *list = NULL, *it;
     NetSocket result = NET_INVALID_SOCKET;
+    int have_private_target = 0, have_public_target = 0;
+    if (blocked_public_target) *blocked_public_target = 0;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -125,6 +167,11 @@ static NetSocket np_connect(const char *host, const char *port)
     if (getaddrinfo(host, port, &hints, &list) != 0) return NET_INVALID_SOCKET;
 
     for (it = list; it && !np_stopping(); it = it->ai_next) {
+        if (!np_is_allowed_relay_address(it)) {
+            have_public_target = 1;
+            continue;
+        }
+        have_private_target = 1;
         NetSocket sock = (NetSocket)socket(it->ai_family, it->ai_socktype, it->ai_protocol);
         int connected = 0, pending = 0;
 #ifdef _WIN32
@@ -220,6 +267,8 @@ static NetSocket np_connect(const char *host, const char *port)
     }
 
     freeaddrinfo(list);
+    if (result == NET_INVALID_SOCKET && !have_private_target && have_public_target &&
+        blocked_public_target) *blocked_public_target = 1;
     return result;
 }
 static int np_send_all(NetSocket sock, const char *data, size_t length)
@@ -401,10 +450,15 @@ static int SDLCALL np_worker(void *unused)
         np_set_status(NETPLAY_ERROR, "Relay address must be host:port");
         goto finished;
     }
-    sock = np_connect(host, port);
-    if (sock == NET_INVALID_SOCKET) {
-        np_set_status(NETPLAY_ERROR, "Couldn't connect. Check relay address and port.");
-        goto finished;
+    {
+        int blocked_public_target = 0;
+        sock = np_connect(host, port, &blocked_public_target);
+        if (sock == NET_INVALID_SOCKET) {
+            np_set_status(NETPLAY_ERROR, blocked_public_target
+                ? "Unencrypted relay blocked: use localhost or a private LAN address."
+                : "Couldn't connect. Check relay address and port.");
+            goto finished;
+        }
     }
     np_lock();
     if (np_stop) {
