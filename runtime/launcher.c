@@ -2157,6 +2157,7 @@ LauncherResult launcher_frame(float dt)
 
     /* backdrop */
     float vx = ui_view_x0(), vy = ui_view_y0(), vw = ui_view_w(), vh = ui_view_h();
+    int compact_layout = ui_scale < 0.75f;
     ui_vgrad(vx, vy, vw, vh, C_BG2, C_BG);
     int bw, bh;
     SDL_Texture *bt = bg_texture(&bw, &bh);
@@ -2167,40 +2168,68 @@ LauncherResult launcher_frame(float dt)
 
     /* Use only the supplied transparent PipeClean logo in the header. */
     SDL_Texture *brand_logo = branding_logo_texture();
-    if (brand_logo) ui_image(brand_logo, NULL, 20, 1, 170, 83);
-    ui_rect(20, 90, UI_W - 40, 1, C_LINE);
+    if (compact_layout) {
+        float nav_left = vx + 170.0f;
+        float nav_w = vw - 190.0f;
+        if (nav_w < 620.0f) nav_w = 620.0f;
+        if (brand_logo) ui_image(brand_logo, NULL, vx + 14, 10, 138, 68);
+        /* Small windows move navigation into the header instead of squeezing
+           the content beside a permanent sidebar. */
+        float game_w = nav_w / (float)N_GAMES;
+        if (game_w > 220.0f) game_w = 220.0f;
+        for (int i = 0; i < N_GAMES; i++) {
+            float x = nav_left + i * game_w;
+            if (tab_button(x, 8, game_w - 5, 32, tab == i, games[i].accent)) tab = i;
+            ui_text_fit(F_BOLD, 13, x + 8, 17, game_w - 20,
+                        tab == i ? C_TEXT : C_MUTED, games[i].name);
+        }
+        int global_count = N_TABS - TAB_MULTIPLAYER;
+        float global_w = nav_w / (float)global_count;
+        if (global_w > 220.0f) global_w = 220.0f;
+        for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
+            float x = nav_left + (i - TAB_MULTIPLAYER) * global_w;
+            uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
+            if (tab_button(x, 48, global_w - 5, 32, tab == i, accent)) tab = i;
+            ui_text_fit(F_BOLD, 12, x + 7, 57, global_w - 17,
+                        tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
+        }
+        ui_rect(vx + 12, 90, vw - 24, 1, C_LINE);
+    } else {
+        if (brand_logo) ui_image(brand_logo, NULL, 20, 1, 170, 83);
+        ui_rect(20, 90, UI_W - 40, 1, C_LINE);
 
-    /* sidebar */
-    float sx = 24, sy = 108;
-    int compact_games = N_GAMES > 4;
-    float game_row = compact_games ? 46.0f : 76.0f;
-    float game_h = compact_games ? 42.0f : 68.0f;
-    for (int i = 0; i < N_GAMES; i++) {
-        float y = sy + i * game_row;
-        if (tab_button(sx, y, 224, game_h, tab == i, games[i].accent)) { tab = i; }
-        if (compact_games) {
-            ui_text_fit(F_BOLD, 13, sx + 14, y + 4, 202, tab == i ? C_TEXT : C_MUTED, games[i].name);
-            int kind = rs[i].ok ? 1 : (settings.g[i].rom_path[0] ? 3 : 2);
-            const char *msg = rs[i].ok ? "Ready to play" : (settings.g[i].rom_path[0] ? "ROM issue" : "ROM needed");
-            status_line(sx + 14, y + 23, 202, kind, msg);
-        } else {
-            ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
-            const GameCfg *gc = &settings.g[i];
-            const char *ready = !rs[i].ok ? "ROM needed" :
-                (gc->romhack_selected >= 0 ? (hack_ok[i] ? "Ready with ROM hack" : "ROM hack selected") : "Ready to play");
-            status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, ready);
+        /* Desktop sidebar */
+        float sx = 24, sy = 108;
+        int compact_games = N_GAMES > 4;
+        float game_row = compact_games ? 46.0f : 76.0f;
+        float game_h = compact_games ? 42.0f : 68.0f;
+        for (int i = 0; i < N_GAMES; i++) {
+            float y = sy + i * game_row;
+            if (tab_button(sx, y, 224, game_h, tab == i, games[i].accent)) tab = i;
+            if (compact_games) {
+                ui_text_fit(F_BOLD, 13, sx + 14, y + 4, 202, tab == i ? C_TEXT : C_MUTED, games[i].name);
+                int kind = rs[i].ok ? 1 : (settings.g[i].rom_path[0] ? 3 : 2);
+                const char *msg = rs[i].ok ? "Ready to play" : (settings.g[i].rom_path[0] ? "ROM issue" : "ROM needed");
+                status_line(sx + 14, y + 23, 202, kind, msg);
+            } else {
+                ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
+                const GameCfg *gc = &settings.g[i];
+                const char *ready = !rs[i].ok ? "ROM needed" :
+                    (gc->romhack_selected >= 0 ? (hack_ok[i] ? "Ready with ROM hack" : "ROM hack selected") : "Ready to play");
+                status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, ready);
+            }
+        }
+        float y2 = sy + N_GAMES * game_row + 8;
+        ui_rect(sx + 8, y2, 208, 1, C_LINE);
+        for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
+            float y = y2 + 8 + (i - TAB_MULTIPLAYER) * 43;
+            uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
+            if (tab_button(sx, y, 224, 38, tab == i, accent)) tab = i;
+            ui_text(F_BOLD, 14, sx + 18, y + 8, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
         }
     }
-    float y2 = sy + N_GAMES * game_row + 8;
-    ui_rect(sx + 8, y2, 208, 1, C_LINE);
-    for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
-        float y = y2 + 8 + (i - TAB_MULTIPLAYER) * 43;
-        uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
-        if (tab_button(sx, y, 224, 38, tab == i, accent)) tab = i;
-        ui_text(F_BOLD, 14, sx + 18, y + 8, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
-    }
 
-    float cx = 268, cy = 108;
+    float cx = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f, cy = 108;
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
@@ -2280,17 +2309,19 @@ LauncherResult launcher_frame(float dt)
     const char *footer = launcher_controller_cursor_active && !cap_kind && !multiplayer_name_editing
         ? "Controller: D-pad/left stick move | A select | B cancel | Move mouse to switch back"
         : (h && h[0] ? h : "Drag and drop a ROM, patch, picture, sound or texture folder anywhere on this window.");
-    ui_text_fit(F_REG, 12, 28, UI_H - 26, UI_W - 56, C_DIM, footer);
+    ui_text_fit(F_REG, 12, compact_layout ? vx + 14 : 28, compact_layout ? vy + vh - 26 : UI_H - 26,
+                compact_layout ? vw - 28 : UI_W - 56, C_DIM, footer);
 
     /* toast */
     if (toast_t > 0) {
         toast_t -= dt;
         float a = toast_t < 0.4f ? toast_t / 0.4f : 1.0f;
         float tw = ui_text_w(F_BOLD, 14, toast_msg) + 40;
-        float tx = UI_W * 0.5f - tw * 0.5f, ty = UI_H - 74;
+        float tx = (compact_layout ? vx + vw * 0.5f : UI_W * 0.5f) - tw * 0.5f;
+        float ty = compact_layout ? vy + vh - 74 : UI_H - 74;
         ui_shadow(tx, ty, tw, 40, 12, 10, RGBA(0, 0, 0, (int)(90 * a)));
         ui_rrect(tx, ty, tw, 40, 12, RGBA(40, 46, 66, (int)(250 * a)));
-        ui_text_c(F_BOLD, 14, UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
+        ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
 
     /* Draw a high-contrast virtual pointer while controller navigation is active. */
