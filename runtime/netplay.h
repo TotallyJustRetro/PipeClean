@@ -17,7 +17,7 @@ typedef struct {
     char peer[32];
 } NetplayInfo;
 
-/* Relay address is a hostname or IPv4 address followed by :port. */
+/* Relay address may be host:port, tls://host:port, or wss://hostname (port defaults to 443). */
 void netplay_init(void);
 void netplay_shutdown(void);
 int netplay_host(const char *endpoint, const char *name);
