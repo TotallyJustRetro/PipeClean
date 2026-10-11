@@ -542,6 +542,47 @@ static void mouse_sync(void)
     ui_set_mouse(mx, my, ww, wh);
 }
 
+static int launcher_applied_scale = -1;
+static int launcher_applied_window_size = -1;
+static int launcher_applied_fullscreen = -1;
+
+static void launcher_display_cache_reset(void)
+{
+    launcher_applied_scale = -1;
+    launcher_applied_window_size = -1;
+    launcher_applied_fullscreen = -1;
+}
+
+static void apply_launcher_display_preferences(void)
+{
+    if (launcher_applied_scale != settings.launcher_ui_scale) {
+        ui_set_scale_preference(settings.launcher_ui_scale);
+        launcher_applied_scale = settings.launcher_ui_scale;
+    }
+#if !defined(__ANDROID__)
+    int width = 1100, height = 720;
+    if (settings.launcher_window_size == 0) { width = 900; height = 580; }
+    else if (settings.launcher_window_size == 2) { width = 1440; height = 900; }
+
+    int fullscreen_changed = launcher_applied_fullscreen != settings.launcher_fullscreen;
+    int size_changed = launcher_applied_window_size != settings.launcher_window_size;
+    if (fullscreen_changed) {
+        SDL_SetWindowFullscreen(win, settings.launcher_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        launcher_applied_fullscreen = settings.launcher_fullscreen;
+        if (!settings.launcher_fullscreen) size_changed = 1;
+    }
+    if (size_changed) {
+        if (!settings.launcher_fullscreen) {
+            win_w = width;
+            win_h = height;
+            SDL_SetWindowSize(win, win_w, win_h);
+            SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        }
+        launcher_applied_window_size = settings.launcher_window_size;
+    }
+#endif
+}
+
 static void set_game_window(int g)
 {
     const GameCfg *c = &settings.g[g];
@@ -963,6 +1004,7 @@ static int play_multiplayer(int g)
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
         last = now;
+        apply_launcher_display_preferences();
         int W, H;
         out_size(&W, &H);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
@@ -1325,6 +1367,10 @@ int app_run(const char *autorun, const char *hack)
         fprintf(stderr, "SDL_image: %s\\n", IMG_GetError());
     }
     settings_load();
+#if !defined(__ANDROID__)
+    if (settings.launcher_window_size == 0) { win_w = 900; win_h = 580; }
+    else if (settings.launcher_window_size == 2) { win_w = 1440; win_h = 900; }
+#endif
     win = SDL_CreateWindow("PipeClean", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
                            SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!win) { fprintf(stderr, "window: %s\n", SDL_GetError()); return 1; }
@@ -1349,7 +1395,12 @@ int app_run(const char *autorun, const char *hack)
     int quit = 0;
     if (autorun) {
         int id = rom_identify_file(autorun);
-        if (id >= 0) { snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", autorun); quit = play(id); launcher_enter(); }
+        if (id >= 0) {
+            snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", autorun);
+            quit = play(id);
+            launcher_enter();
+            launcher_display_cache_reset();
+        }
     }
     Uint64 last = SDL_GetPerformanceCounter();
     while (!quit) {
@@ -1397,6 +1448,7 @@ int app_run(const char *autorun, const char *hack)
             settings_save();
             quit = play(r.play);
             launcher_enter();
+            launcher_display_cache_reset();
             memset(&ui_mouse, 0, sizeof ui_mouse);
         }
         if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_SHOWN)) SDL_Delay(30);
