@@ -11,6 +11,9 @@
 extern void wide_sml2_prepare_frame(int, int, int, int, int, int, int,
                                     const uint8_t *) __attribute__((weak));
 extern int wide_sml2_margin_tile(int, int, uint8_t *, int *, int *) __attribute__((weak));
+extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
+extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
+extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -245,8 +248,13 @@ static void render_line(int y)
 {
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
-    if (y == 0 && ppu_w > GB_W && wide_sml2_prepare_frame)
-        wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
+    if (y == 0 && ppu_w > GB_W) {
+        /* Captures were collected during the preceding game update. Snapshot
+           them before starting the next frame's margin rendering. */
+        if (wide_sml2_snapshot_actors) wide_sml2_snapshot_actors();
+        if (wide_sml2_prepare_frame)
+            wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
+    }
     uint8_t *out = ppu_shade[y];
     uint32_t *rgb = ppu_rgb[y];
     memset(ppu_layer[y], 0, W);
@@ -325,6 +333,53 @@ static void render_line(int y)
         if (drew) wlc++;
     }
 
+    /* The ROM clips many SML2 metasprites at the native 160px edge. Paint
+       only their out-of-centre pieces from the captured world-space list.
+       The original PPU remains authoritative for every centre pixel. */
+    if (wide_on && W > GB_W && y < wy &&
+        wide_sml2_actor_sprites && wide_sml2_world_origin) {
+        int count = 0, world_left = 0, world_top = 0;
+        const WideSml2Sprite *sprites = wide_sml2_actor_sprites(&count);
+        if (sprites && count > 0 && wide_sml2_world_origin(&world_left, &world_top)) {
+            int h = (lcdc & 0x04) ? 16 : 8;
+            for (int i = count - 1; i >= 0; i--) {
+                const WideSml2Sprite *sp = &sprites[i];
+                int sx = (int)sp->x - world_left;
+                int sy = (int)sp->y - world_top;
+                int row = y - sy;
+                if (row < 0 || row >= h) continue;
+                uint8_t fl = sp->attr;
+                if (fl & 0x40) row = h - 1 - row;
+                uint8_t tile = h == 16 ? (uint8_t)(sp->tile & 0xFEu) : sp->tile;
+                int addr = ((int)tile + (row >> 3)) * 16 + (row & 7) * 2;
+                const uint8_t *tiles = (cgb_render_enabled && (fl & 0x08)) ? vram_cgb1 : vram;
+                uint8_t pal = (fl & 0x10) ? obp1 : obp0;
+                for (int px = 0; px < 8; px++) {
+                    int x = sx + px;
+                    if (x < 0 || x >= W || (x >= L && x < L + GB_W)) continue;
+                    int bit = (fl & 0x20) ? px : 7 - px;
+                    int ci = (((tiles[addr + 1] >> bit) & 1) << 1) |
+                             ((tiles[addr] >> bit) & 1);
+                    if (ci == 0) continue;
+                    if (cgb_render_enabled) {
+                        if ((lcdc & 0x01) && bgci[x] != 0 &&
+                            ((bgattr[x] & 0x80) || (fl & 0x80))) continue;
+                        out[x] = (uint8_t)ci;
+                        rgb[x] = cgb_rgb(cgb_obj_palette, (unsigned)(fl & 7), (unsigned)ci);
+                    } else {
+                        if ((fl & 0x80) && bgci[x] != 0) continue;
+                        out[x] = (uint8_t)((pal >> (ci * 2)) & 3);
+                    }
+                    ppu_layer[y][x] = (fl & 0x10) ? 2 : 1;
+                    ppu_sprtile[y][x] = (uint16_t)(addr >> 4);
+                    ppu_spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
+                                                 ((fl & 0x20) ? 0x40 : 0) |
+                                                 ((fl & 0x40) ? 0x80 : 0));
+                }
+            }
+        }
+    }
+
     if (lcdc & 0x02) {
         int h = (lcdc & 0x04) ? 16 : 8;
         int idx[10], n = 0;
@@ -358,6 +413,9 @@ static void render_line(int y)
             for (int px = 0; px < 8; px++) {
                 int x = sx + px;
                 if (x < 0 || x >= W) continue;
+                /* Wrapped OAM coordinates are not authoritative outside the
+                   native strip; true-world captures above supply those pixels. */
+                if (wide_on && W > GB_W && (x < L || x >= L + GB_W)) continue;
                 int bit = (fl & 0x20) ? px : 7 - px;
                 int ci = (((tiles[addr + 1] >> bit) & 1) << 1) | ((tiles[addr] >> bit) & 1);
                 if (ci == 0) continue;
