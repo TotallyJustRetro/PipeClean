@@ -1241,16 +1241,10 @@ int netplay_lobby_start_game(int game)
     valid = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] != 0 &&
             np_selected_game == game && (game == GAME_SML || game == GAME_SML2) &&
             np_rom_check_state == NETPLAY_ROM_MATCH;
-    if (valid) np_start_request = game;
     np_unlock();
     if (!valid) return 0;
     snprintf(command, sizeof command, "START_GAME\t%d\n", game);
-    if (!np_send_current(command)) {
-        np_lock();
-        if (np_start_request == game) np_start_request = -1;
-        np_unlock();
-        return 0;
-    }
+    if (!np_send_current(command)) return 0;
     return 1;
 }
 
