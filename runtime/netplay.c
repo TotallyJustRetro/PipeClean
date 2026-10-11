@@ -226,6 +226,86 @@ static int np_send_all(NetSocket sock, const char *data, size_t length)
     }
     return 1;
 }
+static int np_send_current(const char *message)
+{
+    NetSocket sock;
+    int ok;
+    if (!np_send_mutex || !np_mutex || !message) return 0;
+    SDL_LockMutex(np_send_mutex);
+    np_lock();
+    sock = np_socket;
+    ok = (np_state == NETPLAY_CONNECTED && sock != NET_INVALID_SOCKET && !np_stop);
+    np_unlock();
+    if (ok) ok = np_send_all(sock, message, strlen(message));
+    SDL_UnlockMutex(np_send_mutex);
+    if (!ok) np_set_status(NETPLAY_ERROR, "Lost the relay connection while sending");
+    return ok;
+}
+
+static void np_clear_input_queue_locked(void)
+{
+    np_input_head = 0;
+    np_input_count = 0;
+    np_input_overflow = 0;
+}
+
+static void np_handle_input_line(const char *line)
+{
+    unsigned long long frame;
+    unsigned buttons, dpad;
+    char extra;
+    if (sscanf(line, "INPUT\t%llu\t%u\t%u%c", &frame, &buttons, &dpad, &extra) != 3 ||
+        buttons > 255 || dpad > 255) return;
+    np_lock();
+    if (np_input_count >= NP_INPUT_CAP) {
+        np_input_overflow = 1;
+    } else {
+        int tail = (np_input_head + np_input_count) % NP_INPUT_CAP;
+        np_inputs[tail].frame = (uint64_t)frame;
+        np_inputs[tail].buttons = (uint8_t)buttons;
+        np_inputs[tail].dpad = (uint8_t)dpad;
+        np_input_count++;
+    }
+    if (np_cond) SDL_CondBroadcast(np_cond);
+    np_unlock();
+}
+
+static void np_handle_game_line(const char *line)
+{
+    int game;
+    unsigned crc;
+    if (sscanf(line, "GAME\t%d\t%x", &game, &crc) != 2) return;
+    np_lock();
+    np_remote_game = game;
+    np_remote_crc = (uint32_t)crc;
+    np_remote_game_seen = 1;
+    if (np_local_game_pending) {
+        np_local_game_mismatch = np_remote_game != np_local_game || np_remote_crc != np_local_crc;
+        np_local_game_verified = !np_local_game_mismatch;
+        if (np_local_game_mismatch)
+            snprintf(np_status, sizeof np_status, "Game mismatch: both players need the same ROM");
+        else
+            snprintf(np_status, sizeof np_status, "Game and ROM verified");
+    }
+    if (np_cond) SDL_CondBroadcast(np_cond);
+    np_unlock();
+}
+
+static void np_handle_game_end(void)
+{
+    np_lock();
+    np_game_end_received = 1;
+    np_local_game_pending = 0;
+    np_local_game_verified = 0;
+    np_local_game_mismatch = 0;
+    np_remote_game_seen = 0;
+    np_local_game = np_remote_game = 0;
+    np_local_crc = np_remote_crc = 0;
+    np_clear_input_queue_locked();
+    if (np_cond) SDL_CondBroadcast(np_cond);
+    np_unlock();
+}
+
 static int np_read_line(NetSocket sock, char *out, size_t cap)
 {
     size_t used = 0;
@@ -352,22 +432,30 @@ static int SDLCALL np_worker(void *unused)
             np_set_peer("");
             if (is_host) np_set_status(NETPLAY_HOSTING, "Player left; room is open again");
             else { np_set_status(NETPLAY_ERROR, "Host ended the session"); break; }
+        } else if (!strncmp(line, "GAME\t", 5)) {
+            np_handle_game_line(line);
+        } else if (!strcmp(line, "GAME_END")) {
+            np_handle_game_end();
+        } else if (!strncmp(line, "INPUT\t", 6)) {
+            np_handle_input_line(line);
         } else if (!strncmp(line, "ERR\t", 4)) {
             np_set_status(NETPLAY_ERROR, line + 4);
             break;
         }
-        /* Reserved for input/state packets in the gameplay-sync phase. */
     }
 
 socket_finished:
+    if (np_send_mutex) SDL_LockMutex(np_send_mutex);
     np_lock();
     if (np_socket == sock) np_socket = NET_INVALID_SOCKET;
     np_unlock();
     net_shutdown_socket(sock);
     net_close_socket(sock);
+    if (np_send_mutex) SDL_UnlockMutex(np_send_mutex);
 finished:
     np_lock();
     np_running = 0;
+    if (np_cond) SDL_CondBroadcast(np_cond);
     if (np_stop) {
         np_state = NETPLAY_OFFLINE;
         snprintf(np_status, sizeof np_status, "Not connected");
@@ -379,6 +467,8 @@ finished:
 void netplay_init(void)
 {
     if (!np_mutex) np_mutex = SDL_CreateMutex();
+    if (!np_send_mutex) np_send_mutex = SDL_CreateMutex();
+    if (!np_cond) np_cond = SDL_CreateCond();
 #ifdef _WIN32
     {
         WSADATA data;
@@ -402,6 +492,9 @@ static int netplay_start(int is_host, const char *endpoint, const char *code, co
     np_stop = 0;
     np_running = 1;
     np_is_host = is_host;
+    np_local_game_pending = np_local_game_verified = np_local_game_mismatch = 0;
+    np_remote_game_seen = np_game_end_received = 0;
+    np_clear_input_queue_locked();
     snprintf(np_endpoint, sizeof np_endpoint, "%s", endpoint ? endpoint : "");
     np_safe_name(np_name, sizeof np_name, name);
     snprintf(np_join_code, sizeof np_join_code, "%s", code ? code : "");
@@ -449,6 +542,10 @@ void netplay_disconnect(void)
     np_state = NETPLAY_OFFLINE;
     snprintf(np_status, sizeof np_status, "Not connected");
     np_code[0] = np_peer[0] = 0;
+    np_local_game_pending = np_local_game_verified = np_local_game_mismatch = 0;
+    np_remote_game_seen = np_game_end_received = 0;
+    np_clear_input_queue_locked();
+    if (np_cond) SDL_CondBroadcast(np_cond);
     np_unlock();
 }
 void netplay_get_info(NetplayInfo *out)
@@ -462,6 +559,7 @@ void netplay_get_info(NetplayInfo *out)
     }
     np_lock();
     out->state = np_state;
+    out->is_host = np_is_host;
     snprintf(out->status, sizeof out->status, "%s", np_status);
     snprintf(out->code, sizeof out->code, "%s", np_code);
     snprintf(out->peer, sizeof out->peer, "%s", np_peer);
@@ -470,6 +568,8 @@ void netplay_get_info(NetplayInfo *out)
 void netplay_shutdown(void)
 {
     netplay_disconnect();
+    if (np_cond) { SDL_DestroyCond(np_cond); np_cond = NULL; }
+    if (np_send_mutex) { SDL_DestroyMutex(np_send_mutex); np_send_mutex = NULL; }
     if (np_mutex) {
         SDL_DestroyMutex(np_mutex);
         np_mutex = NULL;
@@ -477,4 +577,165 @@ void netplay_shutdown(void)
 #ifdef _WIN32
     WSACleanup();
 #endif
+}
+
+
+int netplay_is_connected(void)
+{
+    NetplayInfo info;
+    netplay_get_info(&info);
+    return info.state == NETPLAY_CONNECTED;
+}
+
+int netplay_is_host(void)
+{
+    NetplayInfo info;
+    netplay_get_info(&info);
+    return info.is_host != 0;
+}
+
+int netplay_game_begin(int game_id, uint32_t rom_crc)
+{
+    char message[96];
+    Uint32 started;
+    int result = -1;
+    if (!np_mutex || !np_cond || !netplay_is_connected()) return -1;
+
+    np_lock();
+    if (np_stop || !np_running || np_socket == NET_INVALID_SOCKET) {
+        np_unlock();
+        return -1;
+    }
+    np_local_game = game_id;
+    np_local_crc = rom_crc;
+    np_local_game_pending = 1;
+    np_local_game_verified = 0;
+    np_local_game_mismatch = 0;
+    np_game_end_received = 0;
+    np_clear_input_queue_locked();
+    if (np_remote_game_seen) {
+        np_local_game_mismatch = np_remote_game != np_local_game || np_remote_crc != np_local_crc;
+        np_local_game_verified = !np_local_game_mismatch;
+    }
+    np_unlock();
+
+    snprintf(message, sizeof message, "GAME\t%d\t%08X\n", game_id, (unsigned)rom_crc);
+    if (!np_send_current(message)) {
+        np_lock();
+        np_local_game_pending = 0;
+        np_unlock();
+        return -1;
+    }
+
+    started = SDL_GetTicks();
+    np_lock();
+    while (!np_local_game_verified && !np_local_game_mismatch &&
+           !np_game_end_received && np_state == NETPLAY_CONNECTED && np_running) {
+        Uint32 elapsed = SDL_GetTicks() - started;
+        if (elapsed >= NP_GAME_TIMEOUT_MS) break;
+        if (SDL_CondWaitTimeout(np_cond, np_mutex, NP_GAME_TIMEOUT_MS - elapsed) == SDL_MUTEX_TIMEDOUT)
+            break;
+    }
+    if (np_local_game_verified && !np_local_game_mismatch && !np_game_end_received)
+        result = 0;
+    else {
+        np_local_game_pending = 0;
+        if (np_local_game_mismatch)
+            snprintf(np_status, sizeof np_status, "Game/ROM mismatch. Use identical game files.");
+        else if (!np_game_end_received && np_state == NETPLAY_CONNECTED)
+            snprintf(np_status, sizeof np_status, "Timed out waiting for the other player to start the same game.");
+    }
+    np_unlock();
+    return result;
+}
+
+int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local_dpad,
+                            uint8_t *p1_buttons, uint8_t *p1_dpad,
+                            uint8_t *p2_buttons, uint8_t *p2_dpad)
+{
+    char message[96];
+    Uint32 started;
+    NetInput remote;
+    int got_remote = 0, ok = 0, host;
+    if (!p1_buttons || !p1_dpad || !p2_buttons || !p2_dpad ||
+        !np_mutex || !np_cond) return -1;
+
+    np_lock();
+    host = np_is_host;
+    ok = np_state == NETPLAY_CONNECTED && np_local_game_verified &&
+         np_local_game_pending && !np_game_end_received && !np_stop;
+    np_unlock();
+    if (!ok) return -1;
+
+    snprintf(message, sizeof message, "INPUT\t%llu\t%u\t%u\n",
+             (unsigned long long)frame, (unsigned)local_buttons, (unsigned)local_dpad);
+    if (!np_send_current(message)) return -1;
+
+    started = SDL_GetTicks();
+    np_lock();
+    for (;;) {
+        if (np_game_end_received || np_state != NETPLAY_CONNECTED || np_stop || !np_running)
+            break;
+        if (np_input_overflow) {
+            snprintf(np_status, sizeof np_status, "Online input queue overflowed");
+            break;
+        }
+        while (np_input_count > 0) {
+            NetInput *head = &np_inputs[np_input_head];
+            if (head->frame < frame) {
+                np_input_head = (np_input_head + 1) % NP_INPUT_CAP;
+                np_input_count--;
+                continue;
+            }
+            if (head->frame == frame) {
+                remote = *head;
+                np_input_head = (np_input_head + 1) % NP_INPUT_CAP;
+                np_input_count--;
+                got_remote = 1;
+            }
+            break;
+        }
+        if (got_remote) break;
+        {
+            Uint32 elapsed = SDL_GetTicks() - started;
+            if (elapsed >= NP_FRAME_TIMEOUT_MS) {
+                snprintf(np_status, sizeof np_status, "Online input timed out; check the connection.");
+                break;
+            }
+            if (SDL_CondWaitTimeout(np_cond, np_mutex, NP_FRAME_TIMEOUT_MS - elapsed) == SDL_MUTEX_TIMEDOUT)
+                break;
+        }
+    }
+    if (got_remote && !np_game_end_received && np_state == NETPLAY_CONNECTED) {
+        if (host) {
+            *p1_buttons = local_buttons; *p1_dpad = local_dpad;
+            *p2_buttons = remote.buttons; *p2_dpad = remote.dpad;
+        } else {
+            *p1_buttons = remote.buttons; *p1_dpad = remote.dpad;
+            *p2_buttons = local_buttons; *p2_dpad = local_dpad;
+        }
+        ok = 1;
+    } else {
+        ok = 0;
+    }
+    np_unlock();
+    return ok ? 0 : -1;
+}
+
+void netplay_game_end(void)
+{
+    if (!np_mutex) return;
+    if (netplay_is_connected())
+        (void)np_send_current("GAME_END\n");
+    np_lock();
+    np_local_game_pending = 0;
+    np_local_game_verified = 0;
+    np_local_game_mismatch = 0;
+    np_remote_game_seen = 0;
+    np_game_end_received = 0;
+    np_local_game = np_remote_game = 0;
+    np_local_crc = np_remote_crc = 0;
+    np_clear_input_queue_locked();
+    if (np_cond) SDL_CondBroadcast(np_cond);
+    np_unlock();
 }
