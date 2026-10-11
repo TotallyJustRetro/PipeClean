@@ -52,6 +52,7 @@ static int np_selected_game = -1;
 static int np_start_request = -1;
 static int np_rom_check_state = NETPLAY_ROM_UNCHECKED;
 static int np_rom_check_game = -1;
+static char np_rom_check_status[128] = "ROM has not been checked yet.";
 static int np_local_rom_valid;
 static uint32_t np_local_rom_crc;
 static int np_remote_rom_valid;
@@ -155,7 +156,7 @@ static void np_handle_rom_result(const char *line)
         np_rom_check_state = NETPLAY_ROM_MISMATCH;
         snprintf(np_rom_check_status, sizeof np_rom_check_status,
                  "Game selection changed; check ROMs again.");
-    } else if (!np_local_rom_valid || !np_remote_rom_valid) {
+    } else if (!host_ok || !guest_ok) {
         np_rom_check_state = NETPLAY_ROM_INVALID;
         snprintf(np_rom_check_status, sizeof np_rom_check_status,
                  !np_local_rom_valid ? "Your selected ROM could not be loaded." :
@@ -942,12 +943,19 @@ static int SDLCALL np_worker(void *unused)
             int selected = atoi(line + 11);
             np_lock();
             if (selected == np_selected_game &&
-                (selected == GAME_SML || selected == GAME_SML2)) {
+                (selected == GAME_SML || selected == GAME_SML2) &&
+                np_rom_check_state == NETPLAY_ROM_MATCH) {
                 np_start_request = selected;
                 if (np_cond) SDL_CondBroadcast(np_cond);
             } else {
-                snprintf(np_status, sizeof np_status, "Host selected a game that isn't ready locally");
+                snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                         "Host tried to start before both ROMs were verified.");
             }
+            np_unlock();
+        } else if (!strncmp(line, "START_DENIED\t", 13)) {
+            np_lock();
+            snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                     "Start blocked: %.90s", line + 13);
             np_unlock();
         } else if (!strncmp(line, "CHAT\t", 5)) {
             np_handle_chat_line(line);
@@ -1164,6 +1172,14 @@ int netplay_lobby_set_game(int game)
     if (!np_is_host && np_state != NETPLAY_OFFLINE && np_state != NETPLAY_ERROR) {
         np_unlock();
         return 0;
+    }
+    if (np_selected_game != game) {
+        np_rom_check_state = NETPLAY_ROM_UNCHECKED;
+        np_rom_check_game = game;
+        np_local_rom_valid = np_remote_rom_valid = 0;
+        np_local_rom_crc = np_remote_rom_crc = 0;
+        snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                 "Game changed; checking both ROMs...");
     }
     np_selected_game = game;
     should_send = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] != 0;
