@@ -9,6 +9,7 @@
 #include "ui.h"
 #include "settings.h"
 #include "rom.h"
+#include "cart.h"
 #include "emu.h"
 #include "render.h"
 #include "bgimg.h"
