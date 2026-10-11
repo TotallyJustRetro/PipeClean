@@ -10,6 +10,14 @@ if (-not (Test-Path (Join-Path $SDL "CMakeLists.txt"))) {
 if (-not (Test-Path (Join-Path $Image "CMakeLists.txt"))) {
     git clone --depth 1 --branch release-2.8.12 https://github.com/libsdl-org/SDL_image.git $Image
 }
+$MbedTLS = Join-Path $Deps "mbedtls"
+if (-not (Test-Path (Join-Path $MbedTLS "CMakeLists.txt"))) {
+    git clone --depth 1 --branch mbedtls-3.6.2 --recurse-submodules https://github.com/Mbed-TLS/mbedtls.git $MbedTLS
+}
+$CaBundle = Join-Path (Split-Path $PSScriptRoot -Parent) "assets/cacert.pem"
+if (-not (Test-Path $CaBundle)) {
+    Invoke-WebRequest -Uri "https://curl.se/ca/cacert.pem" -OutFile $CaBundle
+}
 # Reuse SDL's wrapper scripts/JAR, while pinning Gradle for AGP 8.7.
 Copy-Item (Join-Path $SDL "android-project/gradlew") (Join-Path $PSScriptRoot "gradlew") -Force
 Copy-Item (Join-Path $SDL "android-project/gradlew.bat") (Join-Path $PSScriptRoot "gradlew.bat") -Force
