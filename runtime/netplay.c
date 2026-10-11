@@ -20,6 +20,9 @@
 #include <string.h>
 #include "netplay.h"
 #include "netplay_tls.h"
+#include <mbedtls/base64.h>
+#include <mbedtls/entropy.h>
+#include <mbedtls/sha1.h>
 
 #ifdef _WIN32
 typedef SOCKET NetSocket;
@@ -55,6 +58,8 @@ static int np_input_head, np_input_count, np_input_overflow;
 static NetSend np_sends[NP_SEND_CAP];
 static int np_send_head, np_send_count;
 static int np_tls_mode;
+static int np_ws_mode, np_ws_ready;
+static uint32_t np_ws_mask_counter;
 static int np_local_game_pending, np_local_game, np_local_game_verified;
 static int np_local_game_mismatch, np_remote_game_seen, np_remote_game;
 static uint32_t np_local_crc, np_remote_crc;
@@ -101,7 +106,14 @@ static int np_parse_endpoint(const char *endpoint, char *host, size_t host_size,
     size_t len;
     if (!endpoint || !endpoint[0]) return 0;
     colon = strrchr(endpoint, ':');
-    if (!colon || colon == endpoint || !colon[1]) return 0;
+    if (!colon) {
+        len = strlen(endpoint);
+        if (!len || len >= host_size) return 0;
+        memcpy(host, endpoint, len + 1);
+        snprintf(port, port_size, "443");
+        return 1;
+    }
+    if (colon == endpoint || !colon[1]) return 0;
     len = (size_t)(colon - endpoint);
     if (!len || len >= host_size) return 0;
     memcpy(host, endpoint, len);
@@ -296,7 +308,7 @@ static int np_send_all(NetSocket sock, const char *data, size_t length)
     }
     return 1;
 }
-static int np_tls_write_all(NetSocket sock, const char *data, size_t length)
+static int np_tls_write_all_raw(NetSocket sock, const char *data, size_t length)
 {
     size_t sent = 0;
     while (sent < length && !np_stopping()) {
@@ -312,6 +324,152 @@ static int np_tls_write_all(NetSocket sock, const char *data, size_t length)
         }
     }
     return sent == length;
+}
+
+static int np_ws_send_frame(NetSocket sock, unsigned opcode, const unsigned char *payload, size_t length)
+{
+    unsigned char frame[2 + 4 + 125];
+    uint32_t mask;
+    if (length > 125 || (length && !payload)) return 0;
+    frame[0] = (unsigned char)(0x80u | (opcode & 0x0fu));
+    frame[1] = (unsigned char)(0x80u | (unsigned char)length); /* Client frames must be masked. */
+    mask = SDL_GetTicks() ^ (uint32_t)SDL_ThreadID() ^ (++np_ws_mask_counter * 0x9e3779b9u);
+    frame[2] = (unsigned char)(mask >> 24);
+    frame[3] = (unsigned char)(mask >> 16);
+    frame[4] = (unsigned char)(mask >> 8);
+    frame[5] = (unsigned char)mask;
+    for (size_t i = 0; i < length; ++i)
+        frame[6 + i] = payload[i] ^ frame[2 + (i & 3u)];
+    return np_tls_write_all_raw(sock, (const char *)frame, 6 + length);
+}
+
+static int np_tls_write_all(NetSocket sock, const char *data, size_t length)
+{
+    if (np_ws_mode && np_ws_ready)
+        return np_ws_send_frame(sock, 1u, (const unsigned char *)data, length);
+    return np_tls_write_all_raw(sock, data, length);
+}
+
+static int np_tls_read_exact(NetSocket sock, unsigned char *out, size_t length)
+{
+    size_t used = 0;
+    while (used < length && !np_stopping()) {
+        int n = netplay_tls_read(sock, out + used, length - used);
+        if (n > 0) {
+            used += (size_t)n;
+            continue;
+        }
+        if (n < 0) return 0;
+        if (netplay_tls_wait(sock, netplay_tls_wants_write(), 50, np_stopping) < 0 &&
+            !np_stopping()) return 0;
+    }
+    return used == length;
+}
+
+static int np_websocket_handshake(NetSocket sock, const char *host)
+{
+    static const char guid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+    unsigned char nonce[16], digest[20], accept_b64[64];
+    char key[32], expected[64], request[1024], response[2048];
+    size_t key_len = 0, accept_len = 0, used = 0;
+    mbedtls_entropy_context entropy;
+    int ok = 0;
+
+    mbedtls_entropy_init(&entropy);
+    if (mbedtls_entropy_func(&entropy, nonce, sizeof nonce) != 0) {
+        mbedtls_entropy_free(&entropy);
+        return 0;
+    }
+    mbedtls_entropy_free(&entropy);
+    if (mbedtls_base64_encode((unsigned char *)key, sizeof key, &key_len,
+                              nonce, sizeof nonce) != 0 || key_len >= sizeof key)
+        return 0;
+    key[key_len] = 0;
+    {
+        char combined[128];
+        int n = snprintf(combined, sizeof combined, "%s%s", key, guid);
+        if (n < 0 || (size_t)n >= sizeof combined ||
+            mbedtls_sha1_ret((const unsigned char *)combined, (size_t)n, digest) != 0)
+            return 0;
+    }
+    if (mbedtls_base64_encode(accept_b64, sizeof accept_b64, &accept_len,
+                              digest, sizeof digest) != 0 || accept_len >= sizeof expected)
+        return 0;
+    memcpy(expected, accept_b64, accept_len);
+    expected[accept_len] = 0;
+
+    {
+        int n = snprintf(request, sizeof request,
+            "GET /relay HTTP/1.1\r\n"
+            "Host: %s\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key: %s\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n", host, key);
+        if (n < 0 || (size_t)n >= sizeof request ||
+            !np_tls_write_all_raw(sock, request, (size_t)n)) return 0;
+    }
+
+    response[0] = 0;
+    while (used + 1 < sizeof response && !np_stopping()) {
+        unsigned char ch;
+        if (!np_tls_read_exact(sock, &ch, 1)) return 0;
+        response[used++] = (char)ch;
+        response[used] = 0;
+        if (used >= 4 && memcmp(response + used - 4, "\r\n\r\n", 4) == 0)
+            break;
+    }
+    if (used + 1 >= sizeof response || np_stopping()) return 0;
+    if (!strstr(response, "101 Switching Protocols") ||
+        !strstr(response, "Upgrade: websocket")) return 0;
+    {
+        char header[96];
+        snprintf(header, sizeof header, "Sec-WebSocket-Accept: %s", expected);
+        if (!strstr(response, header)) return 0;
+    }
+    ok = 1;
+    return ok;
+}
+
+static int np_ws_read_line(NetSocket sock, char *out, size_t cap)
+{
+    for (;;) {
+        unsigned char header[2], extended[8], mask[4], payload[512];
+        uint64_t length;
+        unsigned opcode, fin, masked;
+        if (!np_tls_read_exact(sock, header, sizeof header)) return 0;
+        fin = header[0] >> 7;
+        opcode = header[0] & 0x0fu;
+        masked = header[1] >> 7;
+        length = header[1] & 0x7fu;
+        if (length == 126) {
+            if (!np_tls_read_exact(sock, extended, 2)) return 0;
+            length = ((uint64_t)extended[0] << 8) | extended[1];
+        } else if (length == 127) {
+            if (!np_tls_read_exact(sock, extended, 8)) return 0;
+            length = 0;
+            for (int i = 0; i < 8; ++i) length = (length << 8) | extended[i];
+        }
+        if (length > sizeof payload || length + 1 > cap || length > 2048) return 0;
+        if (masked && !np_tls_read_exact(sock, mask, sizeof mask)) return 0;
+        if (length && !np_tls_read_exact(sock, payload, (size_t)length)) return 0;
+        if (masked)
+            for (size_t i = 0; i < (size_t)length; ++i) payload[i] ^= mask[i & 3u];
+
+        if (opcode == 8u) return 0; /* close */
+        if (opcode == 9u) { /* respond to websocket ping with a masked pong */
+            if (length > 125 || !np_ws_send_frame(sock, 10u, payload, (size_t)length)) return 0;
+            continue;
+        }
+        if (opcode == 10u) continue; /* pong */
+        if (!fin || opcode != 1u || memchr(payload, 0, (size_t)length)) return 0;
+        memcpy(out, payload, (size_t)length);
+        out[length] = 0;
+        while (length && (out[length - 1] == '\n' || out[length - 1] == '\r'))
+            out[--length] = 0;
+        return 1;
+    }
 }
 
 static int np_write_transport(NetSocket sock, const char *data, size_t length, int use_tls)
@@ -444,6 +602,10 @@ static int np_read_line(NetSocket sock, char *out, size_t cap, int use_tls)
 {
     size_t used = 0;
     if (!out || cap < 2) return 0;
+    if (use_tls && np_ws_mode) {
+        if (!np_tls_flush_outgoing(sock)) return 0;
+        return np_ws_read_line(sock, out, cap);
+    }
     if (use_tls) {
         while (used + 1 < cap && !np_stopping()) {
             char ch;
@@ -534,8 +696,10 @@ static int SDLCALL np_worker(void *unused)
     is_host = np_is_host;
     np_unlock();
 
-    use_tls = strncmp(endpoint, "tls://", 6) == 0;
-    if (use_tls) memmove(endpoint, endpoint + 6, strlen(endpoint + 6) + 1);
+    np_ws_mode = strncmp(endpoint, "wss://", 6) == 0;
+    use_tls = np_ws_mode || strncmp(endpoint, "tls://", 6) == 0;
+    if (use_tls) memmove(endpoint, endpoint + (np_ws_mode ? 6 : 6),
+                         strlen(endpoint + 6) + 1);
     else if (strncmp(endpoint, "tcp://", 6) == 0)
         memmove(endpoint, endpoint + 6, strlen(endpoint + 6) + 1);
 
@@ -575,6 +739,14 @@ static int SDLCALL np_worker(void *unused)
             }
             goto socket_finished;
         }
+    }
+    if (np_ws_mode) {
+        if (!np_websocket_handshake(sock, host)) {
+            if (!np_stopping())
+                np_set_status(NETPLAY_ERROR, "WebSocket handshake failed. Check the Render relay URL.");
+            goto socket_finished;
+        }
+        np_ws_ready = 1;
     }
 
     {
@@ -624,6 +796,7 @@ static int SDLCALL np_worker(void *unused)
 
 socket_finished:
     if (np_send_mutex) SDL_LockMutex(np_send_mutex);
+    np_ws_ready = 0;
     if (use_tls) netplay_tls_close();
     np_lock();
     if (np_socket == sock) np_socket = NET_INVALID_SOCKET;
@@ -676,7 +849,10 @@ static int netplay_start(int is_host, const char *endpoint, const char *code, co
     np_remote_game_seen = np_game_end_received = 0;
     np_clear_input_queue_locked();
     np_send_head = np_send_count = 0;
-    np_tls_mode = endpoint && strncmp(endpoint, "tls://", 6) == 0;
+    np_tls_mode = endpoint &&
+        (strncmp(endpoint, "tls://", 6) == 0 || strncmp(endpoint, "wss://", 6) == 0);
+    np_ws_mode = endpoint && strncmp(endpoint, "wss://", 6) == 0;
+    np_ws_ready = 0;
     snprintf(np_endpoint, sizeof np_endpoint, "%s", endpoint ? endpoint : "");
     np_safe_name(np_name, sizeof np_name, name);
     snprintf(np_join_code, sizeof np_join_code, "%s", code ? code : "");
@@ -726,6 +902,7 @@ void netplay_disconnect(void)
     np_code[0] = np_peer[0] = 0;
     np_send_head = np_send_count = 0;
     np_tls_mode = 0;
+    np_ws_mode = np_ws_ready = 0;
     np_local_game_pending = np_local_game_verified = np_local_game_mismatch = 0;
     np_remote_game_seen = np_game_end_received = 0;
     np_clear_input_queue_locked();
