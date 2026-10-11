@@ -102,6 +102,10 @@ async function main() {
     const match = hosted.match(/^HOSTED\t([A-HJ-NP-Z2-9]{8})$/);
     assert.ok(match, 'host receives an eight-character room code');
 
+    host.socket.write('PING\\n');
+    assert.equal(await waitForLine(host), 'PONG');
+
+
     guest.socket.write('JOIN\t' + match[1] + '\tGuest\n');
     const [joined, peerJoined] = await Promise.all([waitForLine(guest), waitForLine(host)]);
     assert.equal(joined, 'JOINED\t' + match[1] + '\tHost');
