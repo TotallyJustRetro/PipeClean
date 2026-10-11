@@ -2342,6 +2342,18 @@ static int tab_button(float x, float y, float w, float h, int selected, uint32_t
 LauncherResult launcher_frame(float dt)
 {
     LauncherResult res = {-1, 0};
+    NetplayInfo online_frame_info;
+    netplay_get_info(&online_frame_info);
+    if ((online_frame_info.state == NETPLAY_HOSTING ||
+         online_frame_info.state == NETPLAY_CONNECTED) &&
+        online_last_netplay_state != NETPLAY_HOSTING &&
+        online_last_netplay_state != NETPLAY_CONNECTED)
+        tab = TAB_ONLINE;
+    online_last_netplay_state = online_frame_info.state;
+    {
+        int shared_start = netplay_take_start_request();
+        if (shared_start >= 0) res.play = shared_start;
+    }
     launcher_controller_update(dt);
     anim_clock += dt;
     int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? mp_config_game : launcher_current_game();
@@ -2623,17 +2635,20 @@ void launcher_event(const SDL_Event *e)
             return;
         }
     }
-    if (online_name_editing || online_code_editing || online_server_editing) {
+    if (online_name_editing || online_code_editing || online_server_editing || online_chat_editing) {
         int editing_name = online_name_editing;
         int editing_server = online_server_editing;
+        int editing_chat = online_chat_editing;
         char *dst = editing_name ? settings.online_name :
-                    (editing_server ? settings.online_server : online_join_code);
+                    (editing_server ? settings.online_server :
+                     (editing_chat ? online_chat_buffer : online_join_code));
         size_t cap = editing_name ? sizeof settings.online_name :
-                     (editing_server ? sizeof settings.online_server : sizeof online_join_code);
+                     (editing_server ? sizeof settings.online_server :
+                      (editing_chat ? sizeof online_chat_buffer : sizeof online_join_code));
         const char *fallback = editing_name ? "Player" :
                               (editing_server ? PIPECLEAN_DEFAULT_RELAY_ENDPOINT : "");
         if (!dst || cap == 0) {
-            online_name_editing = online_code_editing = online_server_editing = 0;
+            online_name_editing = online_code_editing = online_server_editing = online_chat_editing = 0;
             SDL_StopTextInput();
             return;
         }
@@ -2655,6 +2670,14 @@ void launcher_event(const SDL_Event *e)
                         dst[have] = 0;
                     }
                 }
+            } else if (editing_chat) {
+                size_t have = strlen(dst), add = strlen(e->text.text);
+                int valid = add > 0 && have + add < cap && have + add <= 88;
+                for (size_t i = 0; valid && i < add; i++) {
+                    unsigned char ch = (unsigned char)e->text.text[i];
+                    if (ch < 32 || ch == 127) valid = 0;
+                }
+                if (valid) memcpy(dst + have, e->text.text, add + 1);
             } else {
                 size_t have = strlen(dst);
                 for (const unsigned char *p = (const unsigned char *)e->text.text;
@@ -2674,22 +2697,28 @@ void launcher_event(const SDL_Event *e)
             if (k == SDLK_ESCAPE) {
                 if (editing_server)
                     snprintf(settings.online_server, sizeof settings.online_server, "%s", online_server_before);
-                online_name_editing = online_code_editing = online_server_editing = 0;
+                online_name_editing = online_code_editing = online_server_editing = online_chat_editing = 0;
                 SDL_StopTextInput();
                 if (editing_name && !dst[0]) snprintf(dst, cap, "%s", fallback);
                 return;
             }
             if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
-                online_name_editing = online_code_editing = online_server_editing = 0;
+                if (editing_chat) {
+                    if (dst[0]) {
+                        if (netplay_chat_send(dst)) dst[0] = 0;
+                        else launcher_toast("Couldn't send that chat message.");
+                    }
+                }
+                online_name_editing = online_code_editing = online_server_editing = online_chat_editing = 0;
                 SDL_StopTextInput();
-                if (!dst[0]) snprintf(dst, cap, "%s", fallback);
+                if (!editing_chat && !dst[0]) snprintf(dst, cap, "%s", fallback);
                 if (editing_name || editing_server) settings_save();
                 return;
             }
             if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
                 size_t len = strlen(dst);
                 if (len) {
-                    if (editing_name) {
+                    if (editing_name || editing_chat) {
                         len--;
                         while (len && (((unsigned char)dst[len] & 0xC0u) == 0x80u)) len--;
                     } else len--;
@@ -2704,9 +2733,9 @@ void launcher_event(const SDL_Event *e)
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
             e->type == SDL_MOUSEBUTTONDOWN) {
-            online_name_editing = online_code_editing = online_server_editing = 0;
+            online_name_editing = online_code_editing = online_server_editing = online_chat_editing = 0;
             SDL_StopTextInput();
-            if (!dst[0]) snprintf(dst, cap, "%s", fallback);
+            if (!editing_chat && !dst[0]) snprintf(dst, cap, "%s", fallback);
             if (editing_name || editing_server) settings_save();
         }
         return;
