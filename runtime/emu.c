@@ -157,6 +157,9 @@ typedef struct {
 static int mp_active;
 static int mp_game = GAME_SML;
 static MpSml2Player mp_sml2_players[MAX_MP_PLAYERS];
+/* Full machine snapshot used only while probing possible safe respawn positions. */
+static uint8_t mp_sml2_spawn_probe_state[GB_STATE_BYTES];
+static uint8_t mp_sml2_spawn_waiting[MAX_MP_PLAYERS];
 /* Exact visible OAM pieces captured from the active SML2 character mapping.
  * Kept separately so multiplayer save-state layouts remain backward compatible. */
 static uint8_t mp_sml2_render_oam[MAX_MP_PLAYERS][MP_MAX_OAM_SPRITES * 4];
@@ -848,6 +851,7 @@ int emu_mp_begin(void)
     mp_p1_lives_seen = (uint8_t)mp_bcd_to_int(rd8(0xDA15));
     mp_p2_lives = mp_p1_lives_seen;
     memset(mp_sml2_players, 0, sizeof mp_sml2_players);
+    memset(mp_sml2_spawn_waiting, 0, sizeof mp_sml2_spawn_waiting);
     memset(mp_sml2_input_buttons, 0, sizeof mp_sml2_input_buttons);
     memset(mp_sml2_input_dpad, 0, sizeof mp_sml2_input_dpad);
     mp_sml2_direct_world = 0;
@@ -1763,6 +1767,8 @@ static void mp_sml2_capture_frame(Frame *frame)
                 }
             }
         }
+        frame->mp_player_waiting_spawn[player] = (uint8_t)(
+            p->respawn_requested && !p->spawned && lives > 0);
         frame->mp_player_visible[player] = (uint8_t)(p->spawned && lives > 0 &&
             (!mp_sml2_direct_world || frame->mp_player_sprite_count[player] > 0));
         frame->mp_player_sfx_events[player] = p->sfx_events;
@@ -1777,6 +1783,87 @@ static void mp_sml2_capture_frame(Frame *frame)
         ? mp_sml2_players[mp_current_player].sfx_events : 0;
     memset(frame->p2_projectile_oam, 0, sizeof frame->p2_projectile_oam);
     memset(frame->p2_effect_oam, 0, sizeof frame->p2_effect_oam);
+}
+
+/* Probe a spawn candidate with the cartridge's own movement/collision routine.
+ * Every probe runs against a complete temporary machine snapshot and is rolled
+ * back, so it cannot consume items, alter the shared map, or advance the world. */
+static int mp_sml2_try_safe_spawn(int player)
+{
+    if (player < 1 || player >= MAX_MP_PLAYERS) return 0;
+    /* Wait until Mario is standing on ground; a copied mid-jump/fall pose is
+     * not a reliable reference for finding a clean spawn location. */
+    if (!rd8(0xA214) || rd8(0xA215)) return 0;
+    if (gb_state_save(mp_sml2_spawn_probe_state, GB_STATE_BYTES)) return 0;
+
+    MpSml2Player base;
+    mp_sml2_save_player_state(&base);
+    const uint8_t lives = mp_sml2_players[player].lives;
+    static const int offsets[] = {24, -24, 40, -40, 56, -56, 8, -8};
+    int found = 0;
+    MpSml2Player accepted;
+    const uint16_t base_x = (uint16_t)base.h_c2 | ((uint16_t)base.h_c3 << 8);
+    const uint16_t base_y = (uint16_t)base.h_c0 | ((uint16_t)base.h_c1 << 8);
+
+    for (unsigned i = 0; i < sizeof offsets / sizeof offsets[0]; i++) {
+        if (gb_state_load(mp_sml2_spawn_probe_state, GB_STATE_BYTES)) break;
+        MpSml2Player candidate = base;
+        mp_sml2_offset_player(&candidate, offsets[i]);
+        candidate.lives = lives;
+        candidate.ram[0x2C] = lives;
+        mp_sml2_load_player(&candidate);
+        wr8(0xA227, rd8(0xFFC2)); wr8(0xA228, rd8(0xFFC3));
+        wr8(0xA229, rd8(0xFFC0)); wr8(0xA22A, rd8(0xFFC1));
+        wr8(0xFF80, 0); wr8(0xFF81, 0);
+        gb_set_input(0, 0);
+        cpu.a = 0;
+        cpu.f = 0x80;
+        int ok = mp_sml2_run_original_subroutine(0x0F71, 30000, 1);
+        if (ok) mp_sml2_save_player_state(&candidate);
+
+        uint16_t after_x = (uint16_t)candidate.h_c2 |
+                           ((uint16_t)candidate.h_c3 << 8);
+        uint16_t after_y = (uint16_t)candidate.h_c0 |
+                           ((uint16_t)candidate.h_c1 << 8);
+        int x_error = (int16_t)(after_x - (uint16_t)(base_x + offsets[i]));
+        int y_error = (int16_t)(after_y - base_y);
+        if (x_error < 0) x_error = -x_error;
+        if (y_error < 0) y_error = -y_error;
+
+        /* Reject wall corrections, large position snaps, airborne/pit starts,
+         * and candidate side-contact states unlike Mario's known-good pose. */
+        if (ok && x_error <= 4 && y_error <= 8 &&
+            candidate.ram[0x14] && !candidate.ram[0x15] &&
+            candidate.ram[0x8A] == base.ram[0x8A] &&
+            candidate.ram[0x3B] > 0 && candidate.ram[0x3B] < 152) {
+            accepted = candidate;
+            found = 1;
+            break;
+        }
+    }
+
+    /* Always restore authoritative Mario/world state exactly as it was before
+     * probing. The accepted candidate lives only in the private character struct. */
+    if (gb_state_load(mp_sml2_spawn_probe_state, GB_STATE_BYTES)) return 0;
+    if (!found) {
+        if (!mp_sml2_spawn_waiting[player]) {
+            dev_diag_event("LUIGI RESPAWN WAITING FOR CLEAN AREA");
+            mp_sml2_spawn_waiting[player] = 1;
+        }
+        return 0;
+    }
+
+    if (mp_sml2_spawn_waiting[player]) {
+        dev_diag_event("LUIGI RESPAWN SAFE AREA FOUND");
+        mp_sml2_spawn_waiting[player] = 0;
+    }
+    mp_sml2_players[player] = accepted;
+    mp_sml2_players[player].lives = lives;
+    mp_sml2_players[player].ram[0x2C] = lives;
+    mp_sml2_players[player].spawned = 1;
+    mp_sml2_players[player].respawn_requested = 0;
+    mp_sml2_players[player].sfx_events |= P2_SFX_EVENT_RESPAWN;
+    return 1;
 }
 
 static void mp_sml2_spawn_player(int player)
@@ -2025,13 +2112,12 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         MpSml2Player *p = &mp_sml2_players[player];
         p->sfx_events = 0;
         if (p->respawn_requested) {
-            uint8_t lives = p->lives;
-            mp_sml2_spawn_player(player);
-            p->lives = lives;
-            p->ram[0x2C] = lives;
-            p->sfx_events |= P2_SFX_EVENT_RESPAWN;
+            /* Keep Luigi hidden and the request pending until a stock-ROM
+             * collision probe finds a clear, grounded position. */
+            (void)mp_sml2_try_safe_spawn(player);
+            p = &mp_sml2_players[player];
         }
-        if (!p->spawned || mp_sml2_bcd_to_int(p->lives) == 0) {
+        if (!p->spawned || p->respawn_requested || mp_sml2_bcd_to_int(p->lives) == 0) {
             memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
             mp_sml2_render_oam_count[player] = 0;
             continue;
@@ -2093,6 +2179,22 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             }
             if ((buttons & 0x02u) && p->ram[0x16] == 3)
                 p->sfx_events |= P2_SFX_EVENT_FIREBALL;
+        }
+
+        /* A character that falls beyond the actual viewport can get trapped
+         * in clone physics instead of reaching the cartridge's death flow. Hide
+         * it immediately and queue a safe respawn with recovery invulnerability. */
+        if (p->spawned && (p->ram[0x3B] == 0 || p->ram[0x3B] >= 160)) {
+            p->spawned = 0;
+            p->respawn_requested = (uint8_t)(mp_sml2_bcd_to_int(p->lives) > 0);
+            p->invulnerability_frames = 90;
+            memset(mp_sml2_render_oam[player], 0,
+                   sizeof mp_sml2_render_oam[player]);
+            mp_sml2_render_oam_count[player] = 0;
+            if (p->respawn_requested && !mp_sml2_spawn_waiting[player]) {
+                dev_diag_event("LUIGI HIDDEN AFTER OUT-OF-BOUNDS MOVEMENT; SAFE RESPAWN QUEUED");
+                mp_sml2_spawn_waiting[player] = 1;
+            }
         }
 
         p->previous_a = (uint8_t)((buttons & 0x01u) != 0);

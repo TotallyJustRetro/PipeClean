@@ -36,6 +36,7 @@ typedef struct {
     uint8_t mp_player_lives[MAX_MP_PLAYERS];
     uint8_t mp_player_game_state[MAX_MP_PLAYERS];
     uint8_t mp_player_visible[MAX_MP_PLAYERS];
+    uint8_t mp_player_waiting_spawn[MAX_MP_PLAYERS]; /* waiting for a safe SML2 respawn location */
     uint8_t mp_player_blink_hidden[MAX_MP_PLAYERS];
     uint8_t mp_player_oam[MAX_MP_PLAYERS][MP_MAX_OAM_SPRITES * 4]; /* player 2..4 sprite pieces */
     uint8_t mp_player_sprite_count[MAX_MP_PLAYERS]; /* valid OAM entries per player */

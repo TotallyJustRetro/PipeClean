@@ -739,6 +739,14 @@ static int play_multiplayer(int g)
                     } else {
                         emu_mp_frame_refresh(f);
                         have = 1;
+                        if (g == GAME_SML2) {
+                            for (int player = 1; player < player_count; player++) {
+                                if (f->mp_player_waiting_spawn[player]) {
+                                    game_notice("Waiting for clean area to spawn...");
+                                    break;
+                                }
+                            }
+                        }
                         emu_rewind_capture();
 
                         if (g == GAME_SML2 || f->game_state == 0) {
