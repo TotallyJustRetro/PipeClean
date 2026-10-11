@@ -2346,6 +2346,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         const uint8_t pressed = (uint8_t)(held & (uint8_t)~p->keys_held);
         const uint8_t shared_coins_low_before = rd8(0xA262);
         const uint8_t shared_coins_high_before = rd8(0xA263);
+        const uint8_t shared_coin_contact_before = rd8(0xA20D);
 
         mp_sml2_load_player(p);
         /* The original main loop copies HRAM world coordinates into A227/A229
@@ -2440,11 +2441,14 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
         mp_sml2_load_player(&p1_restore);
-        /* Coins and the HUD counter are world state; keep Luaigi's successful
-         * pickup visible after Mario's character-only RAM is restored. */
+        /* Coins and the HUD counter are world state; preserve Luigi's
+         * successful pickup after Mario's character-only RAM is restored.
+         * A20D is temporary tile-contact state, so restore Mario's prior value
+         * rather than leaking Luigi's contact marker into his next movement. */
         wr8(0xA262, shared_coins_low_after);
         wr8(0xA263, shared_coins_high_after);
         wr8(0xA28D, shared_counter_after);
+        wr8(0xA20D, shared_coin_contact_before);
         if (p2_collected_coin && shared_sfx_command == 0)
             wr8(0xA460, 7);
         cpu = p1_cpu;
