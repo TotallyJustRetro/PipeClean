@@ -19,78 +19,56 @@ The Online page's server address supports these forms:
 - `127.0.0.1:27800` — plain TCP, for a relay on the same computer.
 - `192.168.x.x:27800` (or another private LAN address) — plain TCP on a trusted
   home network, with the server explicitly bound to the LAN.
-- `tls://relay-name.example:443` — TLS-encrypted Internet relay. The client
-  validates the server certificate chain and hostname before sending its name,
-  invite code, or gameplay messages. Use a hostname covered by a valid public
-  certificate; raw public IP addresses are not accepted in plain-TCP mode.
+- `tls://relay-name.example:443` — legacy TLS-wrapped TCP for a dedicated TCP relay.
+- `wss://your-service.onrender.com` — secure WebSocket connection for the Render-hosted relay. The client validates the TLS certificate and hostname, upgrades to WebSocket at `/relay`, and then exchanges the existing line protocol inside WebSocket text frames.
 
-The relay protocol itself remains plain TCP. For Internet play, terminate TLS
-at a trusted edge proxy and forward traffic to the relay over the provider's
-private network. Never expose port 27800 directly to the public Internet.
+For public Render hosting, use `wss://` rather than `tls://`. Render Web Services accept HTTP/WebSocket traffic, not arbitrary inbound raw TCP. The public bridge listens on Render's `PORT` and forwards to the existing TCP relay on loopback port 27800, which must not be exposed separately.
 
-## Deploy the official traversal relay from GitHub (Oracle Cloud)
+## Deploy the traversal relay on Render (Free)
 
-The repository includes a manually triggered workflow at
-`.github/workflows/deploy-relay-oracle.yml`. It uses an Oracle Cloud VM and
-GitHub Actions to install/update the relay; you do not need to install the OCI
-CLI, Node.js, Nginx, or deployment tooling on your own computer. The workflow
-must be merged into the repository's default branch before it can be launched
-from **Actions → Deploy PipeClean traversal relay to Oracle Cloud → Run workflow**.
-When running it, select the branch you want the workflow to configure.
+The repository now includes a Render-compatible WebSocket bridge in
+`server/render-server.js`. The bridge starts the existing TCP relay as a
+loopback-only child process and forwards WebSocket messages to it. Render
+installs the `ws` dependency using `server/package.json`.
 
-### One-time Oracle Cloud setup
+### Render dashboard settings
 
-1. Create an Oracle Cloud account and choose your home region carefully. Oracle
-   generally asks for phone verification and a credit card; according to Oracle,
-   the card is not charged unless you upgrade the account. Do **not** upgrade to
-   a paid account for this setup.
-2. In the OCI Console, create a VM using an **Always Free-eligible** shape in
-   your home region. Use Ubuntu Server 24.04 (Arm/aarch64 works with the Node
-   relay). Keep total Ampere A1 allocation at or below **2 OCPUs and 12 GB RAM**
-   so it stays within the Always Free compute allowance. If available, a small
-   configuration such as 1 OCPU and 6 GB RAM is sufficient to begin testing.
-3. Create the VM in a public subnet and assign it a public IPv4 address. During
-   VM creation, choose **Generate a key pair for me**, download the private key,
-   and keep it private. Paste its complete contents into the GitHub Actions
-   secret named `OCI_SSH_PRIVATE_KEY`.
-4. In **Settings → Secrets and variables → Actions**, add the following:
-   - Secret `OCI_RELAY_HOST`: the VM's public IPv4 address.
-   - Secret `OCI_SSH_PRIVATE_KEY`: the downloaded private SSH key.
-   - Variable `OCI_RELAY_USER`: `ubuntu` for the standard Ubuntu image.
-   - Variable `PIPECLEAN_RELAY_EMAIL`: an email address for TLS certificate
-     issuance and renewal.
-   - Optional variable `PIPECLEAN_RELAY_HOSTNAME`: your own DNS hostname if
-     you have one and have pointed its A record at the VM. Leave it unset to
-     derive a hostname from the public IP using sslip.io.
-5. In the VM's subnet Security List or Network Security Group, allow inbound
-   TCP **22** for SSH and TCP **80** and **443** for the relay's certificate
-   validation and TLS connections. Restrict SSH source addresses where practical.
-   Do **not** open TCP port 27800 publicly; the relay stays bound to loopback.
-6. Open **Actions → Deploy PipeClean traversal relay to Oracle Cloud → Run
-   workflow**. Select your branch and start the workflow.
+1. Create a **Web Service** from the `TotallyJustRetro/PipeClean` GitHub repository.
+2. Choose branch `feature/online-android-foundation` while this experimental work remains in PR #8.
+3. Set **Root Directory** to `server`.
+4. Use build command `npm install --omit=dev`.
+5. Use start command `npm start`.
+6. Select the **Free** instance. Do not choose a paid compute type.
+7. Add a health check path of `/healthz` if the dashboard offers that setting.
+8. Deploy only after the branch contains the WebSocket client and bridge updates.
 
-The workflow uploads the relay source over SSH, installs Node.js/Nginx/Certbot,
-configures an unprivileged systemd service, obtains a public TLS certificate,
-and enables certificate renewal. Nginx terminates TLS on port 443 and forwards
-traffic plus a PROXY v2 header to the relay on loopback port 27800. It commits
-the resulting `tls://HOSTNAME:443` endpoint as the default in
-`runtime/settings.h` and triggers regression and Android builds.
+Do not set `PORT` manually; Render supplies it. The bridge starts the internal
+relay on loopback port 27800 (or the optional
+`PIPECLEAN_INTERNAL_RELAY_PORT` override for tests). The only public service
+endpoint is the Render HTTPS/WebSocket URL.
 
-### Free-tier limitations
+### Configure PipeClean to use the deployed service
 
-Oracle's qualifying Always Free resources have no scheduled expiry, but they
-are not unlimited and availability is not guaranteed. The documented compute
-allowance is up to 2 OCPUs and 12 GB RAM for Ampere A1, with 10 TB/month of
-outbound data transfer. Oracle can reclaim Always Free compute instances that
-meet its low-utilization criteria for seven days; a quiet relay may therefore
-not be guaranteed to remain available indefinitely. Free capacity can also be
-temporarily unavailable in some regions. Review OCI's current Always Free
-rules before relying on this as a permanent public service.
+After Render reports the service URL, for example
+`https://your-service.onrender.com`, the secure relay endpoint is
+`wss://your-service.onrender.com`. The app uses port 443 by default when a
+WSS URL omits a port. We can set that URL as the default in
+`runtime/settings.h` and trigger the Windows/Android builds after deployment
+succeeds.
 
-For users, the goal is still simple: download PipeClean, enter an invite code,
-and play. Players do not need Oracle accounts or additional networking software.
-The hosting owner does need an Oracle account and a one-time VM setup; the public
-relay is not live until these steps complete and the workflow succeeds.
+### Free-tier behavior and limits
+
+Render's Free web services may spin down after a period without traffic and
+take time to wake up on the next request. Free services also have monthly
+instance-hour and bandwidth limits; exceeding allowances can suspend service
+until the quota resets. This is a no-card/free-hosting target, not unlimited or
+guaranteed always-on hosting. Expect the first connection after idle to take
+longer while Render starts the service.
+
+For players, the intended flow remains: download PipeClean, host a session,
+share the invite code, and connect from Windows or Android. Players do not need
+Render accounts or networking tools. The account owner must authorize the one-
+time Render setup, and real Windows-to-Android gameplay still needs testing.
 
 ## Run a local or trusted-LAN relay
 
