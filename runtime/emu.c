@@ -1399,7 +1399,7 @@ static int mp_sml2_capture_best_mapping_oam(int player, uint8_t preferred,
     return 0;
 }
 
-static void mp_sml2_save_player(MpSml2Player *p, int player)
+static void mp_sml2_save_player_state(MpSml2Player *p)
 {
     if (!p) return;
     for (unsigned a = 0xA200; a <= 0xA2DE; a++)
@@ -1411,14 +1411,19 @@ static void mp_sml2_save_player(MpSml2Player *p, int player)
     p->h_c6 = rd8(0xFFC6); p->h_c7 = rd8(0xFFC7);
     p->lives = rd8(0xA22C);
     p->spawned = 1;
+}
+
+static void mp_sml2_save_player(MpSml2Player *p, int player)
+{
+    if (!p) return;
+    mp_sml2_save_player_state(p);
     uint8_t staged_oam[0xA0];
     /* The ROM composes the frame's sprites in SRAM at $A100 before OAM DMA.
-     * Read that current-frame list before using the PPU's latched OAM array,
-     * which can lag behind the character's just-updated mapping state. */
+     * Keep the old capture logic only for the legacy cloned-world fallback. */
     for (int i = 0; i < (int)sizeof staged_oam; i++)
         staged_oam[i] = rd8((uint16_t)(0xA100 + i));
     mp_sml2_capture_oam_from(staged_oam, p->oam);
-    if (player > 0 && player < MAX_MP_PLAYERS) {
+    if (player > 0 && player < MAX_MP_PLAYERS && !mp_sml2_direct_world) {
         /* OAM tile IDs belong to the cloned PPU state. Copy their graphics
          * before the caller reloads Player 1's state, otherwise those IDs
          * are rendered using a different character's/pose's VRAM contents. */
