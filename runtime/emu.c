@@ -1785,6 +1785,9 @@ static void mp_sml2_capture_frame(Frame *frame)
     memset(frame->p2_effect_oam, 0, sizeof frame->p2_effect_oam);
 }
 
+static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
+                                           int keep_result_registers);
+
 /* Probe a spawn candidate with the cartridge's own movement/collision routine.
  * Every probe runs against a complete temporary machine snapshot and is rolled
  * back, so it cannot consume items, alter the shared map, or advance the world. */
