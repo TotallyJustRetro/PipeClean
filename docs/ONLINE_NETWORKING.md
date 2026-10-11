@@ -17,8 +17,18 @@ Requires Node.js 18 or newer. From the repository root, run:
 
     node server/relay.js
 
-The relay listens on TCP port 27800 by default. Override the listen address and
-port with PIPECLEAN_RELAY_BIND and PIPECLEAN_RELAY_PORT environment variables.
+The relay listens on TCP port 27800 by default and binds to **127.0.0.1 only**.
+That is deliberately safe-by-default: only clients running on the same computer
+can connect. To make it reachable from another device on a trusted home LAN,
+explicitly bind to LAN interfaces:
+
+    PIPECLEAN_RELAY_BIND=0.0.0.0 PIPECLEAN_RELAY_PORT=27800 node server/relay.js
+
+On Windows PowerShell, set the variables first with `$env:PIPECLEAN_RELAY_BIND = "0.0.0.0"`
+and `$env:PIPECLEAN_RELAY_PORT = "27800"`, then run `node server/relay.js`.
+Use the relay computer's LAN IPv4 address in both apps. Allow TCP port 27800 only
+on the private network in the host firewall. Never configure router port
+forwarding for this prototype.
 
 ## Connect and play
 
@@ -43,12 +53,16 @@ session. Use identical ROM revisions and identical ROM-hack/patch results.
 
 ## Security warning
 
-The relay currently uses **plain TCP with no TLS, account authentication, or
-session authentication**. The invite code is only a room locator, not a security
-credential. Use this prototype on a trusted local network only. Do not expose
-it directly to the public internet yet. A production-ready public relay needs
-encrypted transport, authentication, abuse/rate limiting, room/session
-validation, and better resilience to high latency and packet loss.
+The relay currently uses **plain TCP with no TLS or account authentication**.
+It now binds to loopback by default, limits connections and invite attempts,
+expires unattended rooms, and only forwards recognized gameplay protocol
+messages with bounded sizes and message rates. Those measures reduce accidental
+exposure and basic abuse, but they do **not** encrypt traffic or make invite
+codes private. On a LAN, other devices on that network may be able to observe
+traffic depending on the network. Do not expose this prototype directly to the
+public internet. Before public online play, PipeClean still needs a TLS-capable
+native transport on both Windows and Android, proper room/session credentials,
+production hosting and monitoring, and two-device gameplay validation.
 
 ## Relay integration test
 
