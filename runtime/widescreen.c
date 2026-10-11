@@ -177,9 +177,27 @@ static uint8_t sml2_mapped_rom_byte(unsigned address)
     return cart_hi[address - 0x4000u];
 }
 
+static int sml2_mapped_bank(void)
+{
+    if (!rom || !cart_hi || (uintptr_t)cart_hi < (uintptr_t)rom) return -1;
+    uintptr_t offset = (uintptr_t)cart_hi - (uintptr_t)rom;
+    if ((offset & 0x3FFFu) != 0) return -1;
+    return (int)(offset >> 14);
+}
+
+static int sml2_is_actor_bank(int bank)
+{
+    return bank == 3 || bank == 35 || bank == 40 || bank == 58;
+}
+
+static int sml2_is_emitter_bank(int bank)
+{
+    return bank == 1 || bank == 0x2C || bank == 0x2D;
+}
+
 static void sml2_capture_actor(uint8_t sentinel)
 {
-    if (!rom || cart_hi != rom + 0xC000 || sentinel == 0x80u) return;
+    if (!rom || !sml2_is_actor_bank(sml2_mapped_bank()) || sentinel == 0x80u) return;
     int ax = (rd8(0xFFD0u) << 8) | rd8(0xFFD1u);
     int ay = (rd8(0xFFD3u) << 8) | rd8(0xFFD4u);
     unsigned idx = rd8(0xFFDBu);
@@ -269,10 +287,11 @@ static void sml2_capture_emitter(unsigned sx)
 uint8_t wide_sml2_read_tap(uint16_t address, uint8_t value)
 {
     if (!sml2_compositor_installed || !rom || !cart_hi) return value;
-    if (address == 0xFFE2u && cart_hi == rom + 0xC000 &&
+    int bank = sml2_mapped_bank();
+    if (address == 0xFFE2u && sml2_is_actor_bank(bank) &&
         (cpu.pc == 0x4019u || cpu.pc == 0x401Bu)) {
         sml2_capture_actor(value);
-    } else if (address == 0xFFC5u && cart_hi == rom + 0x4000) {
+    } else if (address == 0xFFC5u && sml2_is_emitter_bank(bank)) {
         static const uint16_t tap_pcs[] = {0x52BAu, 0x5E5Du, 0x5D8Bu, 0x5E3Fu};
         for (unsigned i = 0; i < sizeof tap_pcs / sizeof tap_pcs[0]; i++) {
             if (cpu.pc == tap_pcs[i] || cpu.pc == (uint16_t)(tap_pcs[i] - 2u)) {
