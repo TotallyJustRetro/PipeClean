@@ -113,12 +113,12 @@ async function main() {
     /* A TCP data event may include more than 2 KiB of complete, individually valid lines. */
     const firstFrame = 10000000000000000000n;
     const burst = Array.from({ length: 60 }, (_, i) =>
-      `INPUT\\t${firstFrame + BigInt(i)}\\t255\\t255\\t255\\n`).join('');
+      `INPUT\t${firstFrame + BigInt(i)}\t255\t255\t255\n`).join('');
     assert.ok(Buffer.byteLength(burst) > 2048, 'burst exceeds the old aggregate-buffer limit');
     guest.socket.write(burst);
     const forwardedBurst = await Promise.all(Array.from({ length: 60 }, () => waitForLine(host)));
-    assert.match(forwardedBurst[0], /^INPUT\\t10000000000000000000\\t255\\t255\\t255$/);
-    assert.match(forwardedBurst[59], /^INPUT\\t10000000000000000059\\t255\\t255\\t255$/);
+    assert.match(forwardedBurst[0], /^INPUT\t10000000000000000000\t255\t255\t255$/);
+    assert.match(forwardedBurst[59], /^INPUT\t10000000000000000059\t255\t255\t255$/);
 
 
     guest.socket.write('UNSUPPORTED\tcommand\n');
