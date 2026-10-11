@@ -180,6 +180,7 @@ static int mp_sml2_tether_active;
  * fallback until they expose the verified player-update callsite. */
 static int mp_sml2_direct_world;
 static int mp_sml2_inline_active;
+static int mp_sml2_inline_ran;
 static uint8_t mp_sml2_input_buttons[MAX_MP_PLAYERS];
 static uint8_t mp_sml2_input_dpad[MAX_MP_PLAYERS];
 static void mp_sml2_instruction_hook(uint16_t pc);
@@ -1860,6 +1861,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         return;
 
     mp_sml2_inline_frame = (unsigned)frame_count;
+    mp_sml2_inline_ran = 1;
     for (int player = 1; player < mp_player_count; player++) {
         mp_sml2_render_oam_count[player] = 0;
         mp_sml2_render_tiles_valid[player] = 0;
