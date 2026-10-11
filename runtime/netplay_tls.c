@@ -18,6 +18,7 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/ssl.h>
+#include <psa/crypto.h>
 #include <mbedtls/error.h>
 #include <mbedtls/x509_crt.h>
 #include <mbedtls/net_sockets.h>
@@ -232,6 +233,17 @@ int netplay_tls_open(NetplayTlsSocket sock, const char *hostname,
     if (!hostname || !hostname[0]) {
         tls_set_error("missing TLS hostname");
         return -1;
+    }
+
+    /* Mbed TLS 3.x TLS crypto operations can use PSA, which must be initialized
+       before certificate parsing or a TLS handshake. This is idempotent. */
+    {
+        psa_status_t psa_rc = psa_crypto_init();
+        if (psa_rc != PSA_SUCCESS) {
+            snprintf(tls_error_text, sizeof tls_error_text,
+                     "PSA crypto initialization failed (%d)", (int)psa_rc);
+            return -1;
+        }
     }
 
     mbedtls_ssl_init(&tls_ssl);
