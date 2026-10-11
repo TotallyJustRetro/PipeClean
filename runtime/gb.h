@@ -43,6 +43,8 @@ void gb_set_cpu_fault_hook(GbCpuFaultHook hook);
 /* Optional interpreter instruction hook, called before executing the instruction at PC. */
 typedef void (*GbInstructionHook)(uint16_t pc);
 void gb_set_instruction_hook(GbInstructionHook hook);
+/* Temporarily execute a helper without advancing the machine's peripherals. */
+void gb_set_timing_suppressed(int suppressed);
 void cpu_halt(void);
 void cpu_service_irq(void);
 void cpu_lockup(uint8_t op, uint16_t pc) __attribute__((noreturn));
