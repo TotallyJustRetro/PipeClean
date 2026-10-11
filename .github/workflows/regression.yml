@@ -277,7 +277,7 @@ jobs:
         run: |
           mkdir -p dist/PipeClean-Windows-x64/assets
           cp build-windows/PipeClean.exe dist/PipeClean-Windows-x64/PipeClean.exe
-          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp dist/PipeClean-Windows-x64/assets/
+          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Windows-x64/assets/
           {
             ldd build-windows/PipeClean.exe
             ldd /ucrt64/bin/SDL2.dll
@@ -286,6 +286,7 @@ jobs:
           done
           test -s dist/PipeClean-Windows-x64/assets/pipeclean-icon.svg
           test -s dist/PipeClean-Windows-x64/assets/pipeclean-logo.svg
+          test -s dist/PipeClean-Windows-x64/assets/cacert.pem
           test -s assets/pipeclean-logo.webp
           test -s dist/PipeClean-Windows-x64/assets/pipeclean-logo.webp
 
