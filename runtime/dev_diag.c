@@ -114,9 +114,12 @@ static void log_memory_snapshot(const char *reason)
     int have_sml2 = emu_mp_test_snapshot(&state) == 0;
     uint8_t player_ram[0xE0];
     uint8_t world_ram[0x1800];
+    uint8_t work_ram[0x2000];
     int have_ram = have_sml2 &&
         emu_mp_test_read_ram(0xA200, player_ram, sizeof player_ram) == 0 &&
         emu_mp_test_read_ram(0xA800, world_ram, sizeof world_ram) == 0;
+    int have_wram = have_sml2 &&
+        emu_mp_test_read_ram(0xC000, work_ram, sizeof work_ram) == 0;
 
     fprintf(diag.log, "{\"type\":\"incident_snapshot\",\"frame\":%llu,\"reason\":",
             (unsigned long long)diag.frame_count);
@@ -155,6 +158,11 @@ static void log_memory_snapshot(const char *reason)
         fputs("\",\"A800_BFFF\":\"", diag.log);
         write_hex_bytes(diag.log, world_ram, sizeof world_ram);
         fputc('"', diag.log);
+        if (have_wram) {
+            fputs(",\"C000_DFFF\":\"", diag.log);
+            write_hex_bytes(diag.log, work_ram, sizeof work_ram);
+            fputc('"', diag.log);
+        }
         fputc('}', diag.log);
     } else {
         fputs(",\"ram_hex_available\":false", diag.log);
@@ -613,8 +621,11 @@ static void log_frame(const DiagSample *s)
             log_hex_field("actor_ram_AD00_AEFF", m->actor_ram, sizeof m->actor_ram);
         if (s->frame % 30u == 0) {
             uint8_t world_ram[0x1800];
+            uint8_t work_ram[0x2000];
             if (emu_mp_test_read_ram(0xA800, world_ram, sizeof world_ram) == 0)
                 log_hex_field("world_ram_A800_BFFF", world_ram, sizeof world_ram);
+            if (emu_mp_test_read_ram(0xC000, work_ram, sizeof work_ram) == 0)
+                log_hex_field("work_ram_C000_DFFF", work_ram, sizeof work_ram);
         }
         if (diag.current_frame) {
             log_hex_field("p1_oam_bytes", diag.current_frame->mario_oam,
