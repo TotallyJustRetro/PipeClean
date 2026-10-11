@@ -45,6 +45,8 @@ typedef void (*GbInstructionHook)(uint16_t pc);
 void gb_set_instruction_hook(GbInstructionHook hook);
 /* Temporarily execute a helper without advancing the machine's peripherals. */
 void gb_set_timing_suppressed(int suppressed);
+/* Suppress global music commands during clone-only SML2 ROM calls. */
+int gb_set_shared_music_command_suppressed(int suppressed);
 /* Read directly by the generated NEXT() macro to avoid extra calls per opcode. */
 extern int gb_timing_suppressed;
 void cpu_halt(void);
