@@ -5,9 +5,9 @@ project(PipeClean C)
 # Android: open android/ in Android Studio after android/setup-android.ps1.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # Secure Internet relays use mbedTLS and a current Mozilla-derived CA bundle.
-if(NOT EXISTS "\${CMAKE_SOURCE_DIR}/assets/cacert.pem")
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/assets/cacert.pem")
   file(DOWNLOAD "https://curl.se/ca/cacert.pem"
-       "\${CMAKE_SOURCE_DIR}/assets/cacert.pem"
+       "${CMAKE_SOURCE_DIR}/assets/cacert.pem"
        STATUS PIPECLEAN_CA_DOWNLOAD_STATUS TLS_VERIFY ON)
   list(GET PIPECLEAN_CA_DOWNLOAD_STATUS 0 PIPECLEAN_CA_DOWNLOAD_RESULT)
   if(NOT PIPECLEAN_CA_DOWNLOAD_RESULT EQUAL 0)
