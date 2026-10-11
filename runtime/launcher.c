@@ -1949,7 +1949,7 @@ static void tab_online(float x, float y)
 
     card(x, y, 808, 512, "ONLINE PLAY");
     ui_text_fit(F_REG, 12, x + 18, y + 42, 772, C_DIM,
-                "Experimental LAN-only relay. Connections are not encrypted; don't use over the public internet.");
+                "LAN addresses use plain TCP. For Internet play, use tls://hostname:443 with a valid TLS certificate.");
 
     ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
@@ -2026,7 +2026,7 @@ static void tab_online(float x, float y)
     ui_rrect(x + 390, y + 70, 400, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
-                 "Both players connect to the same reachable relay. Host first, then share the invite code.", 2);
+                 "Use host:port for a trusted LAN, or tls://hostname:443 for an encrypted Internet relay. Host first, then share the invite code.", 2);
 
     ui_text(F_REG, 10, x + 408, y + 151, C_MUTED, "Relay address (host:port)");
     int server_over = 0;
@@ -2034,7 +2034,7 @@ static void tab_online(float x, float y)
     ui_rrect(x + 408, y + 164, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
     const char *server_text = settings.online_server[0] ? settings.online_server :
-                              (online_server_editing ? "Type host:port…" : "127.0.0.1:27800");
+                              (online_server_editing ? "Type host:port or tls://host:443…" : "127.0.0.1:27800");
     ui_text_fit(F_REG, 12, x + 420, y + 172, 336,
                 (online_server_editing && !settings.online_server[0]) ? C_DIM : C_TEXT,
                 server_text);
