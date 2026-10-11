@@ -6,7 +6,7 @@ PipeClean now has SDL multi-touch input, a saved setting to disable the touch ov
 
 - Android Studio with Android SDK 35 and NDK 28.2.13676358
 - Git and PowerShell (Windows) or a POSIX shell (Linux/macOS)
-- A JDK compatible with Android Gradle Plugin 8.7.3
+- JDK 17 (required by Android Gradle Plugin 8.7.3)
 
 ## Prepare dependencies
 
@@ -18,7 +18,7 @@ From the repository root, run one of:
 
 The scripts fetch SDL2 release-2.32.10 and SDL2_image release-2.8.12. Source checkouts live in ignored android/deps/ rather than PipeClean's source history. The project compiles SDL's Android Activity glue and creates libmain.so with CMake.
 
-Open the android/ folder in Android Studio, let Gradle sync, and build/run the app configuration. This project currently has no checked-in Gradle wrapper; Android Studio supplies compatible Gradle tooling.
+The setup script also copies SDL's Gradle wrapper scripts/JAR and updates its distribution to Gradle 8.9. After setup, run cd android and then ./gradlew assembleDebug (Windows: .\\gradlew.bat assembleDebug), or open the android/ folder in Android Studio and build/run the app configuration.
 
 The native build creates a synthetic build-only ROM because PipeClean's generator expects ROM-shaped input at compile time. The generated stub is not playable and is not packaged as game content. At runtime, select your own legally obtained ROM through the Android document picker.
 
