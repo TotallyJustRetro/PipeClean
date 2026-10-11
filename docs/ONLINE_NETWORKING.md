@@ -2,7 +2,7 @@
 
 PipeClean now has a first experimental online co-op path for **Super Mario Land**
 and **Super Mario Land 2: 6 Golden Coins**. The native client connects to a
-small TCP relay, pairs two players with a six-character invite code, verifies
+small TCP relay, pairs two players with a eight-character invite code, verifies
 that both players selected the same game and ROM checksum, then exchanges
 frame-numbered controller inputs so the existing shared-screen co-op simulation
 can run on both clients.
@@ -37,7 +37,7 @@ forwarding for this prototype.
    Use 127.0.0.1:27800 only when the relay is running on that same computer.
    For another PC or Android device on your home network, use the relay PC's LAN
    IPv4 address, for example 192.168.1.20:27800.
-3. On one client, press **Host Session** and share the six-character invite code.
+3. On one client, press **Host Session** and share the eight-character invite code.
 4. On the second client, enter that code and press **Join**.
 5. Once the status says the other player is connected, both players select the
    exact same Super Mario Land or Super Mario Land 2 ROM from their Game tab and
