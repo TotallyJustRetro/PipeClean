@@ -219,8 +219,8 @@ wss.on('connection', (websocket, request) => {
   tcp.on('data', (chunk) => {
     relayBuffer += chunk.toString('utf8');
     let newline;
-    while ((newline = relayBuffer.indexOf('\\n')) !== -1) {
-      const line = relayBuffer.slice(0, newline).replace(/\\r$/, '');
+    while ((newline = relayBuffer.indexOf('\n')) !== -1) {
+      const line = relayBuffer.slice(0, newline).replace(/\r$/, '');
       relayBuffer = relayBuffer.slice(newline + 1);
       const bytes = Buffer.byteLength(line, 'utf8');
       if (bytes > MAX_MESSAGE_BYTES) {
