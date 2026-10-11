@@ -1929,6 +1929,27 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
 
     while (budget && cpu.pc != sentinel) {
         budget--;
+
+        /* The secondary player's replay freezes PPU timing for the current
+         * frame. SML2's coin-tile handler ($1D75) busy-waits on STAT twice
+         * before writing the tilemap. Those loops can never finish while
+         * timing is suppressed, so bypass only the waits, not the tile/counter
+         * updates that follow them. The addresses are in fixed ROM bank 0. */
+        if (mp_sml2_inline_active) {
+            switch (cpu.pc) {
+            case 0x1DC1: /* coin tile: first STAT wait */
+            case 0x1DC7: /* coin tile: second STAT wait */
+                cpu.pc = 0x1DCD;
+                continue;
+            case 0x1DEA: /* non-coin tile replacement: first STAT wait */
+            case 0x1DF0: /* non-coin tile replacement: second STAT wait */
+                cpu.pc = 0x1DF6;
+                continue;
+            default:
+                break;
+            }
+        }
+
         if (mp_sml2_skip_secondary_call(cpu.pc)) {
             uint8_t lo = rd8(cpu.sp);
             uint8_t hi = rd8((uint16_t)(cpu.sp + 1u));
