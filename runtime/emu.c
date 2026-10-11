@@ -2146,7 +2146,6 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         const uint8_t old_ground = p->ram[0x14];
         const uint8_t old_air = p->ram[0x15];
         const uint8_t old_power = p->ram[0x16];
-        const uint8_t old_screen_y = p->ram[0x3B];
         const uint8_t old_lives = p->lives;
         const int old_lives_value = mp_sml2_bcd_to_int(old_lives);
 
