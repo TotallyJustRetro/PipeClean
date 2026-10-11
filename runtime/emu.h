@@ -8,6 +8,7 @@
 #define P2_SFX_EVENT_POWER_DOWN (1u << 3)
 #define P2_SFX_EVENT_DIE        (1u << 4)
 #define P2_SFX_EVENT_RESPAWN    (1u << 5)
+#define P2_SFX_EVENT_COIN        (1u << 6)
 #define MP_MAX_OAM_SPRITES 40 /* Game Boy OAM contains 40 four-byte entries. */
 
 typedef struct {
