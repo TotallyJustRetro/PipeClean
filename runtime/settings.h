@@ -4,7 +4,7 @@
 
 /* Deployment workflow replaces this with the project's public TLS relay. */
 #ifndef PIPECLEAN_DEFAULT_RELAY_ENDPOINT
-#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "127.0.0.1:27800"
+#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "wss://pipeclean.onrender.com"
 #endif
 
 typedef struct {
