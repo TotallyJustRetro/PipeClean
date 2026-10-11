@@ -1967,6 +1967,7 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
      * are shared physical audio registers. Do not let a character-only call
      * power down or reconfigure Mario's channels. */
     int saved_apu_write_suppression = apu_set_write_suppressed(1);
+    int saved_music_command_suppression = gb_set_shared_music_command_suppressed(1);
     gb_set_timing_suppressed(1);
 
     while (budget && cpu.pc != sentinel) {
@@ -2018,6 +2019,7 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
     CPU result = cpu;
     gb_set_timing_suppressed(0);
     (void)apu_set_write_suppressed(saved_apu_write_suppression);
+    (void)gb_set_shared_music_command_suppressed(saved_music_command_suppression);
     mp_sml2_inline_active = 0;
     cpu = saved;
     if (ok && keep_result_registers) {
@@ -2129,6 +2131,7 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
      * must never escape into Mario's one shared level audio. */
     uint8_t saved_sound_state[MP_SML2_SOUND_RAM_SIZE];
     mp_sml2_sound_ram_save(saved_sound_state);
+    uint8_t saved_sound_disabled = rd8(0xA2CE);
 
     for (int i = 0; i < (int)sizeof saved_oam; i++)
         wr8((uint16_t)(0xA100 + i), 0);
@@ -2177,6 +2180,7 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
     wr8(0xFFBB, saved_obj_mode);
     wr8(0xFF9B, saved_game_mode);
     mp_sml2_sound_ram_restore(saved_sound_state);
+    wr8(0xA2CE, saved_sound_disabled);
     wr8(0xA50D, saved_fast_music);
     wr8(0xA266, saved_sprite_clear);
     wr8(0xA267, saved_sprite_set);
@@ -2202,6 +2206,7 @@ static void mp_sml2_direct_collision_update(void)
     const uint8_t shared_fast_music = rd8(0xA50D);
     uint8_t shared_sound_state[MP_SML2_SOUND_RAM_SIZE];
     mp_sml2_sound_ram_save(shared_sound_state);
+    uint8_t shared_sound_disabled = rd8(0xA2CE);
     /* The original game only calls the enemy-contact resolver while it is in
      * ordinary play. Keep this exactly aligned with the P1 conditional call. */
     if (shared_pipe_transition >= 0x10) return;
@@ -2242,6 +2247,7 @@ static void mp_sml2_direct_collision_update(void)
             wr8(0xA469, shared_current_song);
             wr8(0xA50D, shared_fast_music);
             mp_sml2_sound_ram_restore(shared_sound_state);
+            wr8(0xA2CE, shared_sound_disabled);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -2295,6 +2301,7 @@ static void mp_sml2_direct_collision_update(void)
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
         mp_sml2_sound_ram_restore(shared_sound_state);
+        wr8(0xA2CE, shared_sound_disabled);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
@@ -2344,6 +2351,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
     const uint8_t shared_fast_music = rd8(0xA50D);
     uint8_t shared_sound_state[MP_SML2_SOUND_RAM_SIZE];
     mp_sml2_sound_ram_save(shared_sound_state);
+    uint8_t shared_sound_disabled = rd8(0xA2CE);
     MpSml2Player p1_restore;
     mp_sml2_save_player_state(&p1_restore);
     mp_sml2_players[0] = p1_restore;
@@ -2402,6 +2410,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
                 wr8(0xA469, shared_current_song);
                 wr8(0xA50D, shared_fast_music);
                 mp_sml2_sound_ram_restore(shared_sound_state);
+                wr8(0xA2CE, shared_sound_disabled);
                 mp_sml2_load_player(&p1_restore);
                 cpu = p1_cpu;
                 longjmp(stop_jmp, 4);
@@ -2441,6 +2450,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA469, shared_current_song);
             wr8(0xA50D, shared_fast_music);
             mp_sml2_sound_ram_restore(shared_sound_state);
+            wr8(0xA2CE, shared_sound_disabled);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             mp_sml2_apply_native_sfx(shared_sfx_command);
@@ -2480,6 +2490,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA20E, shared_level_transition);
             mp_sml2_player_scratch_restore(movement_scratch_saved);
             mp_sml2_sound_ram_restore(shared_sound_state);
+            wr8(0xA2CE, shared_sound_disabled);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -2503,6 +2514,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA469, shared_current_song);
             wr8(0xA50D, shared_fast_music);
             mp_sml2_sound_ram_restore(shared_sound_state);
+            wr8(0xA2CE, shared_sound_disabled);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -2585,6 +2597,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
         mp_sml2_sound_ram_restore(shared_sound_state);
+        wr8(0xA2CE, shared_sound_disabled);
         mp_sml2_load_player(&p1_restore);
         /* Coins and the HUD counter are world state; preserve Luigi's
          * successful pickup after Mario's character-only RAM is restored.
