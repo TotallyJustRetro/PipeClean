@@ -44,6 +44,13 @@ static GbInstructionHook cpu_instruction_hook;
 void gb_set_instruction_hook(GbInstructionHook hook) { cpu_instruction_hook = hook; }
 int gb_timing_suppressed;
 void gb_set_timing_suppressed(int suppressed) { gb_timing_suppressed = suppressed != 0; }
+static int shared_music_command_suppressed;
+int gb_set_shared_music_command_suppressed(int suppressed)
+{
+    int previous = shared_music_command_suppressed;
+    shared_music_command_suppressed = suppressed != 0;
+    return previous;
+}
 
 /* ------------------------------------------------------------------ */
 static uint8_t joyp_read(void)
@@ -199,6 +206,10 @@ static void watch_check(uint16_t a, uint8_t v)
 
 void wr8(uint16_t a, uint8_t v)
 {
+    /* One SML2 music sequencer is shared by all co-op characters. A clone-only
+     * ROM routine may request a track change (notably on death); ignore that
+     * command before it reaches the live cartridge audio mailbox. */
+    if (shared_music_command_suppressed && a == 0xA468) return;
     if (UNLIKELY(watch_n)) watch_check(a, v);
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
