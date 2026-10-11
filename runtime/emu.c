@@ -186,7 +186,6 @@ static uint8_t mp_sml2_input_dpad[MAX_MP_PLAYERS];
 static void mp_sml2_instruction_hook(uint16_t pc);
 static int mp_sml2_direct_signature(void);
 static unsigned mp_sml2_inline_frame;
-static unsigned mp_sml2_inline_runs;
 static unsigned mp_sml2_stable_frames;
 static uint8_t mp_sml2_stable_level;
 static uint8_t mp_sml2_stable_bank;
