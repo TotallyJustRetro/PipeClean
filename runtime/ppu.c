@@ -308,13 +308,18 @@ static void render_line(int y)
                 ppu_bguv[y][X] = 0;
                 continue;
             }
+            int attr_map = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+            unsigned attr_index = (unsigned)attr_map +
+                (unsigned)(((world_y >> 3) & 31) * 32) +
+                (unsigned)((world_x >> 3) & 31);
+            uint8_t world_attr = cgb_render_enabled ? vram_cgb1[attr_index] : 0;
             int attr = 0, tile_id = 0;
-            int ci = tile_pixel_data(tile, 0, world_x, world_y, &attr, &tile_id);
+            int ci = tile_pixel_data(tile, world_attr, world_x, world_y, &attr, &tile_id);
             bgci[X] = (uint8_t)ci;
             bgattr[X] = (uint8_t)attr;
             out[X] = cgb_render_enabled ? (uint8_t)ci : (uint8_t)((bgp >> (ci * 2)) & 3);
             if (cgb_render_enabled)
-                rgb[X] = cgb_rgb(cgb_bg_palette, 0, (unsigned)ci);
+                rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr & 7), (unsigned)ci);
             ppu_bgtile[y][X] = (uint16_t)tile_id;
             ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
         }
