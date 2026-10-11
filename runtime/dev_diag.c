@@ -66,7 +66,7 @@ typedef struct {
     int movement_stall[MAX_MP_PLAYERS];
     int movement_warned[MAX_MP_PLAYERS];
     int sprite_warned[MAX_MP_PLAYERS];
-    int last_level, last_bank;
+    int last_level, last_bank, last_mode;
     int last_lives[MAX_MP_PLAYERS];
     int last_p2_powerup, last_p2_grounded, last_p2_in_air, last_p2_spawned;
     uint8_t last_buttons[MAX_MP_PLAYERS];
@@ -351,6 +351,7 @@ void dev_diag_begin(int game, int player_count, SDL_Window *game_window)
     diag.player_count = player_count;
     diag.last_level = -1;
     diag.last_bank = -1;
+    diag.last_mode = -1;
     for (int i = 0; i < MAX_MP_PLAYERS; i++) diag.last_lives[i] = -1;
     diag.last_p2_powerup = diag.last_p2_grounded = -1;
     diag.last_p2_in_air = diag.last_p2_spawned = -1;
@@ -474,6 +475,13 @@ static void update_events(const DiagSample *s)
         }
         diag.last_level = m->level;
         diag.last_bank = m->level_bank;
+        if (diag.last_mode >= 0 && diag.last_mode != m->game_mode) {
+            char text[96];
+            snprintf(text, sizeof text, "GAME MODE %02X -> %02X",
+                     diag.last_mode, m->game_mode);
+            diag_event_log(text);
+        }
+        diag.last_mode = m->game_mode;
 
         if (diag.last_lives[0] >= 0 && diag.last_lives[0] != m->p1_lives) {
             char text[120];
@@ -508,8 +516,16 @@ static void update_events(const DiagSample *s)
         }
         if (diag.last_p2_spawned >= 0 && diag.last_p2_spawned != m->p2_spawned)
             diag_event_log(m->p2_spawned ? "P2 SPAWN STATE 0 -> 1" : "P2 SPAWN STATE 1 -> 0");
-        if (diag.has_sample && diag.last_p2_grounded != 0 && m->p2_in_air &&
-            !(s->buttons[1] & 0x03u)) {
+        /* Spawn, respawn, mode, and level transitions can legitimately
+         * reposition a character or copy an airborne pose. Only flag a
+         * possible hit when Luigi existed in both adjacent gameplay samples. */
+        const int same_p2_play_context = diag.has_sample &&
+            diag.sample.sml2.p2_spawned && m->p2_spawned &&
+            diag.sample.sml2.game_mode == m->game_mode &&
+            diag.sample.sml2.level == m->level &&
+            diag.sample.sml2.level_bank == m->level_bank;
+        if (same_p2_play_context && diag.last_p2_grounded != 0 &&
+            m->p2_in_air && !(s->buttons[1] & 0x03u)) {
             char text[120];
             snprintf(text, sizeof text,
                      "P2 AIRBORNE WITHOUT A/B INPUT (POSSIBLE HIT, EDGE, OR STATE BUG)");
@@ -518,7 +534,8 @@ static void update_events(const DiagSample *s)
         if (diag.has_sample) {
             int dx = (int)m->p2_world_x - diag.sample.sml2.p2_world_x;
             int dy = (int)m->p2_world_y - diag.sample.sml2.p2_world_y;
-            if (dx > 12 || dx < -12 || dy > 16 || dy < -16) {
+            if (same_p2_play_context &&
+                (dx > 12 || dx < -12 || dy > 16 || dy < -16)) {
                 char text[120];
                 snprintf(text, sizeof text, "P2 POSITION SNAP DX=%d DY=%d", dx, dy);
                 diag_event_log(text);
