@@ -21,6 +21,11 @@ const MAX_CONNECTIONS_PER_IP_PER_MINUTE = 24;
 const MAX_JOINS_PER_IP_PER_MINUTE = 10;
 const MAX_MESSAGES_PER_SECOND = 240;
 const WAITING_ROOM_TTL_MS = 15 * 60 * 1000;
+/* Waiting rooms are advertised as valid for 15 minutes. Keep idle relay
+   sockets alive for at least that long too; a 2-minute socket timeout used to
+   disconnect hosts long before their invite codes expired. */
+const SOCKET_IDLE_TIMEOUT_MS = Math.max(120_000, WAITING_ROOM_TTL_MS);
+const ROOM_SWEEP_INTERVAL_MS = Math.min(30_000, Math.max(1_000, Math.floor(WAITING_ROOM_TTL_MS / 4)));
 const rooms = new Map();
 const connectAttempts = new Map();
 const joinAttempts = new Map();
@@ -172,7 +177,7 @@ const server = net.createServer((socket) => {
   clientCount += 1;
   socket.setNoDelay(true);
   socket.setKeepAlive(true, 10_000);
-  socket.setTimeout(120_000, () => socket.destroy());
+  socket.setTimeout(SOCKET_IDLE_TIMEOUT_MS, () => socket.destroy());
   const client = {
     socket, ip, phase: 'new', name: 'Player', room: null, peer: null,
     buffer: '', closed: false, rateStarted: Date.now(), rateCount: 0
@@ -234,7 +239,7 @@ const roomExpiry = setInterval(() => {
       else table.delete(key);
     }
   }
-}, 30_000);
+}, ROOM_SWEEP_INTERVAL_MS);
 roomExpiry.unref();
 server.listen(PORT, HOST, () => {
   const address = server.address();
