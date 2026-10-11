@@ -255,6 +255,11 @@ static void render_line(int y)
         if (wide_sml2_prepare_frame)
             wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
     }
+    int sml2_margin_mode = 0;
+    if (wide_on && ppu_w > GB_W && wide_sml2_world_origin) {
+        int origin_x, origin_y;
+        sml2_margin_mode = wide_sml2_world_origin(&origin_x, &origin_y);
+    }
     uint8_t *out = ppu_shade[y];
     uint32_t *rgb = ppu_rgb[y];
     memset(ppu_layer[y], 0, W);
@@ -415,7 +420,7 @@ static void render_line(int y)
                 if (x < 0 || x >= W) continue;
                 /* Wrapped OAM coordinates are not authoritative outside the
                    native strip; true-world captures above supply those pixels. */
-                if (wide_on && W > GB_W && (x < L || x >= L + GB_W)) continue;
+                if (sml2_margin_mode && (x < L || x >= L + GB_W)) continue;
                 int bit = (fl & 0x20) ? px : 7 - px;
                 int ci = (((tiles[addr + 1] >> bit) & 1) << 1) | ((tiles[addr] >> bit) & 1);
                 if (ci == 0) continue;
