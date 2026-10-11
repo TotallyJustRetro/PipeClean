@@ -33,6 +33,8 @@ void ui_begin(int pw, int ph, float dt);
 void ui_end(void);
 /* mouse in window units -> dp; ww/wh = window size in window units */
 void ui_set_mouse(int wx, int wy, int ww, int wh);
+/* SDL normalized touch coordinates (0..1) mapped to the UI design space. */
+void ui_touch_to_dp(float nx, float ny, float *x, float *y);
 void ui_mouse_button(int down);                 /* left button */
 void ui_hint(const char *s);                    /* shown in the footer while hovering */
 const char *ui_hint_text(void);
