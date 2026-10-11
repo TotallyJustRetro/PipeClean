@@ -2241,6 +2241,72 @@ void launcher_event(const SDL_Event *e)
             return;
         }
     }
+    if (online_name_editing || online_code_editing) {
+        int editing_name = online_name_editing;
+        char *dst = editing_name ? settings.online_name : online_join_code;
+        size_t cap = editing_name ? sizeof settings.online_name : sizeof online_join_code;
+        const char *fallback = "Player";
+        if (!dst || cap == 0) {
+            online_name_editing = online_code_editing = 0;
+            SDL_StopTextInput();
+            return;
+        }
+        if (e->type == SDL_TEXTINPUT) {
+            if (editing_name) {
+                size_t have = strlen(dst), add = strlen(e->text.text);
+                if (have + add < cap && have + add <= 24 &&
+                    (unsigned char)e->text.text[0] >= 32)
+                    memcpy(dst + have, e->text.text, add + 1);
+            } else {
+                size_t have = strlen(dst);
+                for (const unsigned char *p = (const unsigned char *)e->text.text;
+                     *p && have + 1 < cap; ++p) {
+                    unsigned char ch = *p;
+                    if (ch >= 'a' && ch <= 'z') ch = (unsigned char)(ch - 'a' + 'A');
+                    if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-') {
+                        dst[have++] = (char)ch;
+                        dst[have] = 0;
+                    }
+                }
+            }
+            return;
+        }
+        if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+            SDL_Keycode k = e->key.keysym.sym;
+            if (k == SDLK_ESCAPE || k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
+                online_name_editing = online_code_editing = 0;
+                SDL_StopTextInput();
+                if (editing_name && !dst[0]) snprintf(dst, cap, "%s", fallback);
+                if (editing_name) settings_save();
+                return;
+            }
+            if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
+                size_t len = strlen(dst);
+                if (len) {
+                    if (editing_name) {
+                        len--;
+                        while (len && (((unsigned char)dst[len] & 0xC0u) == 0x80u)) len--;
+                    } else len--;
+                    dst[len] = 0;
+                }
+                return;
+            }
+            if ((e->key.keysym.mod & KMOD_CTRL) && k == SDLK_a) {
+                dst[0] = 0;
+                return;
+            }
+        }
+        if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
+            e->type == SDL_MOUSEBUTTONDOWN) {
+            online_name_editing = online_code_editing = 0;
+            SDL_StopTextInput();
+            if (editing_name) {
+                if (!dst[0]) snprintf(dst, cap, "%s", fallback);
+                settings_save();
+            }
+        }
+        return;
+    }
     if (multiplayer_name_editing) {
         GameCfg *mc = &settings.g[mp_config_game];
         char *name = mp_name_ptr(mc, multiplayer_name_editing);
