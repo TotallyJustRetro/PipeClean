@@ -710,6 +710,12 @@ static int play_multiplayer(int g)
             if (!paused) {
                 for (int player = 0; player < player_count; player++)
                     pad_poll_player(g, player, &buttons[player], &dpad[player]);
+                /* SML2's shared-world mode advances secondary characters from
+                 * inside the original Player 1 frame, so inputs must be ready
+                 * before the authoritative game update starts. */
+                if (g == GAME_SML2)
+                    for (int player = 1; player < player_count; player++)
+                        emu_mp_set_player_input(player, buttons[player], dpad[player]);
 
                 int n0 = emu_mp_step(0, buttons[0], dpad[0], f, a0, 4096);
                 if (n0 < 0) {
