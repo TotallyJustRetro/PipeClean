@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -366,6 +367,20 @@ static NetSocket np_connect(const char *host, const char *port, int use_tls,
         (void)fcntl(sock, F_SETFL, original_flags);
 #endif
         if (connected) {
+            /* Gameplay sends tiny input messages every frame. Disable Nagle's
+             * algorithm so TCP does not wait to coalesce these latency-sensitive
+             * writes with later traffic. The relay already enables this on its
+             * side; enable it on the client socket too. */
+            {
+                int no_delay = 1;
+#ifdef _WIN32
+                (void)setsockopt(sock, IPPROTO_TCP, TCP_NODELAY,
+                                 (const char *)&no_delay, (int)sizeof no_delay);
+#else
+                (void)setsockopt(sock, IPPROTO_TCP, TCP_NODELAY,
+                                 &no_delay, (socklen_t)sizeof no_delay);
+#endif
+            }
             result = sock;
             break;
         }
