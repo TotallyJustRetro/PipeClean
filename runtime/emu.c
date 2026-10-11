@@ -2251,6 +2251,10 @@ static void mp_sml2_instruction_hook(uint16_t pc)
                 dev_diag_request_screenshot("Luigi death animation started");
                 mp_sml2_death_logged[player] = 1;
             }
+            /* The hook is entered while Player 1's RAM is live. Load Luigi's
+             * private state before running the stock death routine; otherwise
+             * the routine animates Mario and can alter the shared music state. */
+            mp_sml2_load_player(p);
             int death_finished = 0;
             if (!mp_sml2_capture_direct_death_oam(player, p, &death_finished)) {
                 wr8(0xA221, shared_pipe_transition);
@@ -2264,6 +2268,11 @@ static void mp_sml2_instruction_hook(uint16_t pc)
                 cpu = p1_cpu;
                 longjmp(stop_jmp, 4);
             }
+            /* The stock death routine advances the character's HRAM position.
+             * Keep the SRAM world-coordinate copy in sync before saving it,
+             * so the next frame cannot snap Luigi back to Mario's coordinates. */
+            wr8(0xA227, rd8(0xFFC2)); wr8(0xA228, rd8(0xFFC3));
+            wr8(0xA229, rd8(0xFFC0)); wr8(0xA22A, rd8(0xFFC1));
             mp_sml2_save_player_state(p);
             if (death_finished) {
                 int remaining_lives = mp_sml2_bcd_to_int(p->lives);
