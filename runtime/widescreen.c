@@ -46,6 +46,124 @@ static int sml2_scan_edge[2] = {-1, -1};
 static int sml2_scan_pick[2];
 static int sml2_scan_frame[2] = {-1, -1};
 
+/* SML2's decompressed 16x16-block level is live in cart RAM and WRAM.
+ * Compose only the outer margins from it; the native 160px centre remains
+ * the real PPU framebuffer. Validate the native tilemap before drawing. */
+static int sml2_compositor_installed;
+static int sml2_compositor_frame_ok;
+static int sml2_compositor_left, sml2_compositor_right;
+static int sml2_compositor_world_x0, sml2_compositor_world_y0;
+static int sml2_read16(uint16_t a);
+
+#define SML2_MAP_BASE        0xB000u
+#define SML2_BLOCKDEF_BASE   0xA600u
+#define SML2_MAP_WIDTH_PX    4096
+#define SML2_MAP_HEIGHT_PX   768
+#define SML2_MAP_COLS        256
+#define SML2_MAP_MAX_BLOCK   0x7Fu
+#define SML2_CAMERA_X        0xFFCAu
+#define SML2_CAMERA_Y        0xFFC8u
+#define SML2_CAMERA_CENTRE_X 80
+#define SML2_CAMERA_CENTRE_Y 72
+#define SML2_MODE_ADDR       0xFF9Bu
+#define SML2_BONUS_ADDR      0xA28Bu
+#define SML2_MODE_PLAY       0x04u
+#define SML2_MODE_PAUSE      0x08u
+#define SML2_MODE_DEATH      0x09u
+#define SML2_HUD_WY          0x88
+#define SML2_HUD_WX          7
+
+/* Resolve an absolute world pixel to the tile index assigned by the live
+ * decompressed block map. Each 16x16 block contains four 8x8 tile indices. */
+int wide_sml2_tile_at(int world_x, int world_y, uint8_t *tile)
+{
+    if (!sml2_compositor_installed || !tile ||
+        world_x < 0 || world_x >= SML2_MAP_WIDTH_PX ||
+        world_y < 0 || world_y >= SML2_MAP_HEIGHT_PX)
+        return 0;
+
+    unsigned block_x = (unsigned)world_x >> 4;
+    unsigned block_y = (unsigned)world_y >> 4;
+    unsigned map_address = SML2_MAP_BASE + block_y * SML2_MAP_COLS + block_x;
+    unsigned block = rd8((uint16_t)map_address);
+    if (block > SML2_MAP_MAX_BLOCK) return 0;
+
+    unsigned quadrant = ((((unsigned)world_y >> 3) & 1u) << 1) |
+                         (((unsigned)world_x >> 3) & 1u);
+    *tile = rd8((uint16_t)(SML2_BLOCKDEF_BASE + block * 4u + quadrant));
+    return 1;
+}
+
+/* Prepare a per-frame world transform, then compare the decoded block map
+ * against the real PPU tilemap. Unsupported scenes fail closed. */
+void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
+                             int lcdc, int wx, int wy)
+{
+    sml2_compositor_frame_ok = 0;
+    sml2_compositor_left = left;
+    sml2_compositor_right = right;
+    if (!sml2_compositor_installed || left + right <= 0 || left < 0 || right < 0)
+        return;
+
+    unsigned mode = rd8(SML2_MODE_ADDR);
+    if (mode != SML2_MODE_PLAY && mode != SML2_MODE_PAUSE && mode != SML2_MODE_DEATH)
+        return;
+    if (rd8(SML2_BONUS_ADDR) & 0xF0u) return;
+    if (lcdc != 0xE3 || wx != SML2_HUD_WX || wy != SML2_HUD_WY)
+        return;
+
+    int cam_x = sml2_read16(SML2_CAMERA_X);
+    int cam_y = sml2_read16(SML2_CAMERA_Y);
+    int screen_left = cam_x - SML2_CAMERA_CENTRE_X;
+    /* Align to the live scroll registers, including the game's vertical shake. */
+    screen_left += (int8_t)(uint8_t)(scx - (screen_left & 0xFF));
+    int world_top = cam_y - SML2_CAMERA_CENTRE_Y;
+    world_top += (int8_t)(uint8_t)(scy - (world_top & 0xFF));
+    sml2_compositor_world_x0 = screen_left - left;
+    sml2_compositor_world_y0 = world_top;
+
+    int hits = 0, samples = 0;
+    int first_x = (8 - (scx & 7)) & 7;
+    int first_y = (8 - (scy & 7)) & 7;
+    int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    for (int sy = first_y; sy < 136; sy += 8) {
+        for (int sx = first_x; sx < 160; sx += 8) {
+            uint8_t decoded;
+            if (!wide_sml2_tile_at(screen_left + sx, world_top + sy, &decoded))
+                return;
+            unsigned map_index = (unsigned)map_off +
+                (unsigned)(((sy + scy) >> 3) & 31) * 32u +
+                (unsigned)(((sx + scx) >> 3) & 31);
+            if (decoded == vram[map_index]) hits++;
+            samples++;
+        }
+    }
+    /* Some blocks are stamped directly into VRAM by the ROM; tolerate those
+       known exceptions while rejecting unrelated RAM or another scene. */
+    if (!samples || hits * 100 < samples * 95) return;
+    sml2_compositor_frame_ok = 1;
+}
+
+/* Return 1 for a valid world tile, -1 for a margin pixel outside the level,
+ * and 0 when this frame/pixel should use the ordinary PPU output. */
+int wide_sml2_margin_tile(int screen_x, int screen_y, uint8_t *tile,
+                         int *world_x, int *world_y)
+{
+    if (!sml2_compositor_frame_ok || !tile || !world_x || !world_y ||
+        screen_y < 0 || screen_y >= 136 ||
+        screen_x < 0 ||
+        screen_x >= sml2_compositor_left + 160 + sml2_compositor_right ||
+        (screen_x >= sml2_compositor_left &&
+         screen_x < sml2_compositor_left + 160))
+        return 0;
+    int x = sml2_compositor_world_x0 + screen_x;
+    int y = sml2_compositor_world_y0 + screen_y;
+    *world_x = x;
+    *world_y = y;
+    if (!wide_sml2_tile_at(x, y, tile)) return -1;
+    return 1;
+}
+
 static int sml2_read16(uint16_t a)
 {
     return (int)rd8(a) | ((int)rd8((uint16_t)(a + 1)) << 8);
@@ -168,18 +286,21 @@ int wide_intercept_sml2(uint8_t op)
 
 void wide_state_reset(void)
 {
-    /* These are runtime scanner latches, not emulated RAM. A state load can jump
-     * to an unrelated room/frame, so stale bounds from the previous timeline
-     * must never survive the load. Keep the installed widescreen dimensions. */
+    /* These are runtime scanner/compositor latches, not emulated RAM. A state
+     * load can jump to another room, so never reuse a stale frame transform. */
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
+    sml2_compositor_frame_ok = 0;
 }
 
 int wide_install(int game, int l, int r)
 {
     sml2_right_extra = 0;
     sml2_left_extra = 0;
+    sml2_compositor_installed = 0;
+    sml2_compositor_frame_ok = 0;
+    sml2_compositor_left = sml2_compositor_right = 0;
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
@@ -193,6 +314,7 @@ int wide_install(int game, int l, int r)
         if (r > 0x9F || rom[0x801C] != 0x19) return 0;
         sml2_right_extra = r;
         sml2_left_extra = l;
+        sml2_compositor_installed = 1;
         return 1;
     }
 

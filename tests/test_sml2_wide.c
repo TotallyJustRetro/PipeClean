@@ -11,12 +11,21 @@ uint8_t *rom;
 const uint8_t *cart_lo, *cart_hi;
 uint64_t total_cycles;
 int frame_count;
+uint8_t vram[0x2000];
+static uint8_t test_level_map[0x3000];
+static uint8_t test_block_defs[0x200];
 
 uint8_t rd8(uint16_t a)
 {
-    /* Camera X is the SML2 16-bit little-endian value at $FFCA. */
+    /* Camera X = 640, camera Y = 72 (native view begins at world Y=0). */
     if (a == 0xFFCA) return 0x80;
     if (a == 0xFFCB) return 0x02;
+    if (a == 0xFFC8) return 0x48;
+    if (a == 0xFFC9) return 0;
+    if (a == 0xFF9B) return 0x04; /* SML2 scrolling gameplay */
+    if (a == 0xA28B) return 0;    /* not a bonus/minigame room */
+    if (a >= 0xB000 && a < 0xE000) return test_level_map[a - 0xB000];
+    if (a >= 0xA600 && a < 0xA800) return test_block_defs[a - 0xA600];
     return 0;
 }
 
@@ -39,6 +48,22 @@ int main(void)
     wide_dims(GAME_SML2, 100, &l, &r);
     if (l != 49 || r != 33) return 3;
     if (!wide_install(GAME_SML2, l, r)) return 4;
+
+    /* Block-map decoding selects the right 8x8 quadrant of a live 16x16 block. */
+    test_level_map[1] = 3;
+    test_block_defs[3 * 4 + 2] = 0x42;
+    uint8_t resolved_tile = 0;
+    if (!wide_sml2_tile_at(17, 9, &resolved_tile) || resolved_tile != 0x42) return 30;
+    if (wide_sml2_tile_at(-1, 0, &resolved_tile) ||
+        wide_sml2_tile_at(4096, 0, &resolved_tile) ||
+        wide_sml2_tile_at(0, 768, &resolved_tile)) return 31;
+
+    /* Matching centre tiles unlock margin rendering; the centre itself is excluded. */
+    wide_sml2_prepare_frame(l, r, 0x30, 0x00, 0xE3, 0x07, 0x88);
+    int world_x = -1, world_y = -1;
+    if (!wide_sml2_margin_tile(0, 0, &resolved_tile, &world_x, &world_y) ||
+        world_x != 511 || world_y != 0) return 32;
+    if (wide_sml2_margin_tile(l, 0, &resolved_tile, &world_x, &world_y)) return 33;
 
     cpu.pc = 0x401C;
     cpu.h = 1;

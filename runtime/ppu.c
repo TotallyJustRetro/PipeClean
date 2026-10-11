@@ -3,6 +3,7 @@
  * so per-line raster effects (SCX/SCY/palette changes in an HBlank/LYC
  * handler) work. */
 #include "gb.h"
+#include "widescreen.h"
 
 uint8_t vram[0x2000], oam[0xA0];
 static uint8_t vram_cgb1[0x2000];
@@ -106,12 +107,11 @@ void ppu_cgb_obj_palette_copy(uint32_t out[32])
             out[pal * 4 + ci] = cgb_rgb(cgb_obj_palette, pal, ci);
 }
 
-/* Resolve one BG/window pixel, including CGB tile attributes. */
-static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *tile_out)
+/* Resolve a pixel from a tile index and attribute. Coordinates are pixel
+ * coordinates in the source tile/world, not the 256x256 VRAM map ring. */
+static int tile_pixel_data(uint8_t tile, uint8_t attr, int map_x, int map_y,
+                           int *attr_out, int *tile_out)
 {
-    unsigned map_index = (unsigned)map_off + (unsigned)((map_y >> 3) & 31) * 32u + (unsigned)((map_x >> 3) & 31);
-    uint8_t tile = vram[map_index];
-    uint8_t attr = cgb_render_enabled ? vram_cgb1[map_index] : 0;
     int row = map_y & 7, col = map_x & 7;
     if (attr & 0x40) row = 7 - row;
     if (attr & 0x20) col = 7 - col;
@@ -123,6 +123,16 @@ static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *til
     if (attr_out) *attr_out = attr;
     if (tile_out) *tile_out = addr >> 4;
     return ci;
+}
+
+/* Resolve one BG/window pixel from the native 256x256 tilemap ring. */
+static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *tile_out)
+{
+    unsigned map_index = (unsigned)map_off + (unsigned)((map_y >> 3) & 31) * 32u +
+                         (unsigned)((map_x >> 3) & 31);
+    uint8_t tile = vram[map_index];
+    uint8_t attr = cgb_render_enabled ? vram_cgb1[map_index] : 0;
+    return tile_pixel_data(tile, attr, map_x, map_y, attr_out, tile_out);
 }
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
@@ -227,6 +237,8 @@ static void render_line(int y)
 {
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
+    if (y == 0 && ppu_w > GB_W)
+        wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy);
     uint8_t *out = ppu_shade[y];
     uint32_t *rgb = ppu_rgb[y];
     memset(ppu_layer[y], 0, W);
@@ -254,6 +266,37 @@ static void render_line(int y)
     } else {
         memset(out, 0, W);
         memset(rgb, 0, W * sizeof rgb[0]);
+    }
+
+    /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
+       only the margins from the live 16x16 block map, leaving the original
+       160 columns untouched. Sprites and the native window keep their PPU path. */
+    if (wide_on && W > GB_W && y < wy) {
+        for (int X = 0; X < W; X++) {
+            if (X >= L && X < L + GB_W) continue;
+            uint8_t tile = 0;
+            int world_x = 0, world_y = 0;
+            int margin = wide_sml2_margin_tile(X, y, &tile, &world_x, &world_y);
+            if (margin == 0) continue;
+            if (margin < 0) {
+                bgci[X] = 0;
+                bgattr[X] = 0;
+                out[X] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
+                if (cgb_render_enabled) rgb[X] = cgb_rgb(cgb_bg_palette, 0, 0);
+                ppu_bgtile[y][X] = 0xFFFF;
+                ppu_bguv[y][X] = 0;
+                continue;
+            }
+            int attr = 0, tile_id = 0;
+            int ci = tile_pixel_data(tile, 0, world_x, world_y, &attr, &tile_id);
+            bgci[X] = (uint8_t)ci;
+            bgattr[X] = (uint8_t)attr;
+            out[X] = cgb_render_enabled ? (uint8_t)ci : (uint8_t)((bgp >> (ci * 2)) & 3);
+            if (cgb_render_enabled)
+                rgb[X] = cgb_rgb(cgb_bg_palette, 0, (unsigned)ci);
+            ppu_bgtile[y][X] = (uint16_t)tile_id;
+            ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+        }
     }
 
     if ((lcdc & 0x20) && (cgb_render_enabled || (lcdc & 0x01)) && y >= wy && wx <= 166) {

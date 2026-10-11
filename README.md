@@ -62,7 +62,7 @@ You'll need:
 
 The original Game Boy display is **160 pixels wide**.
 
-PipeClean expands the presentation while also considering game simulation. For SML2, the runtime intercepts the specific object-activation calculation responsible for the original right-side boundary and extends it for the wider view.
+For Super Mario Land 2, PipeClean keeps those 160 native pixels intact and rebuilds the extra background margins from the live decompressed level block map, rather than repeating the PPU's 256-pixel scroll ring. The compositor validates that the decoded level matches the native tilemap before drawing margins, and stays off on unsupported menus or minigame scenes. The runtime also extends enemy activation/culling bounds and ramps the widened spawn-scanner edge in 8-pixel steps so spawn-list entries are not skipped.
 
 The hook is tightly guarded and does not modify the commercial ROM file.
 
