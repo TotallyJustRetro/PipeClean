@@ -111,6 +111,26 @@ async function main() {
     assert.equal(joined, 'JOINED\t' + match[1] + '\tHost');
     assert.equal(peerJoined, 'PEER_JOINED\tGuest');
 
+    /* Host-owned game selection is echoed to both players. */
+    host.socket.write('SELECT_GAME\t2\n');
+    const [hostSelection, guestSelection] = await Promise.all([
+      waitForLine(host), waitForLine(guest)
+    ]);
+    assert.equal(hostSelection, 'SELECT_GAME\t2');
+    assert.equal(guestSelection, 'SELECT_GAME\t2');
+
+    /* Chat is relayed to both players with the sender's room identity. */
+    guest.socket.write('CHAT\thello from Android!\n');
+    const [hostChat, guestChat] = await Promise.all([
+      waitForLine(host), waitForLine(guest)
+    ]);
+    assert.equal(hostChat, 'CHAT\tGuest\thello from Android!');
+    assert.equal(guestChat, 'CHAT\tGuest\thello from Android!');
+
+    /* Only the host can initiate the shared game start. */
+    host.socket.write('START_GAME\t2\n');
+    assert.equal(await waitForLine(guest), 'START_GAME\t2');
+
     guest.socket.write('INPUT\t1\t5\t2\t1\n');
     assert.equal(await waitForLine(host), 'INPUT\t1\t5\t2\t1');
 
@@ -125,8 +145,9 @@ async function main() {
     assert.match(forwardedBurst[59], /^INPUT\t10000000000000000059\t255\t255\t255$/);
 
 
-    guest.socket.write('UNSUPPORTED\tcommand\n');
-    assert.equal(await waitForLine(guest), 'ERR\tUnsupported or malformed gameplay message');
+    /* Guests cannot change the host-selected game. */
+    guest.socket.write('SELECT_GAME\t1\n');
+    assert.equal(await waitForLine(guest), 'ERR\tOnly the host can choose the game');
     assert.equal(await waitForLine(host), 'PEER_LEFT');
     host.socket.end();
     process.stdout.write('PipeClean relay integration: PASS\n');
