@@ -1953,6 +1953,31 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
     return ok;
 }
 
+/* Some supported SML2 builds can leave Luigi's tile-contact marker on a coin
+ * even though the normal character-only movement pass did not consume it.
+ * Reuse the cartridge's own coin handler as a guarded fallback. The caller
+ * invokes this only when the shared coin counter did not change during
+ * movement, so a normal pickup cannot be counted twice. */
+static int mp_sml2_recover_coin_pickup(void)
+{
+    if ((rd8(0xA20D) & 0xFEu) != 0x48u) return 0;
+
+    const uint8_t coins_low_before = rd8(0xA262);
+    const uint8_t coins_high_before = rd8(0xA263);
+    if (!mp_sml2_run_original_subroutine(0x1D75, 8000, 0))
+        return 0;
+
+    const int collected = rd8(0xA262) != coins_low_before ||
+                          rd8(0xA263) != coins_high_before;
+    if (collected) {
+        /* The stock handler removed the tile. Invalidate Luigi's cached tile
+         * contact too, so a stale $48 marker cannot award the same coin again. */
+        wr8(0xA20D, 0xFF);
+        dev_diag_event("LUIGI COIN PICKUP RECOVERED BY STOCK ROM HANDLER");
+    }
+    return collected;
+}
+
 static int mp_sml2_capture_direct_oam(int player, MpSml2Player *p)
 {
     if (player < 1 || player >= MAX_MP_PLAYERS || !p) return 0;
@@ -2177,6 +2202,15 @@ static void mp_sml2_direct_collision_update(void)
         wr8(0xA469, shared_current_song);
         wr8(0xA50D, shared_fast_music);
         mp_sml2_load_player(&p1_restore);
+        /* These are shared world counters, so do not let a later character
+         * restore discard a pickup or the shared HUD-counter update. */
+        wr8(0xA262, shared_coins_low_after);
+        wr8(0xA263, shared_coins_high_after);
+        wr8(0xA28D, shared_counter_after);
+        /* Coin sounds pass through the cartridge's normal sound command. The
+         * character-isolation restore above would otherwise drop Luigi's cue. */
+        if (p2_collected_coin && shared_sfx_command == 0)
+            wr8(0xA460, 7);
         cpu = p1_cpu;
     }
 }
@@ -2319,6 +2353,8 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         const uint8_t buttons = mp_sml2_input_buttons[player];
         const uint8_t held = (uint8_t)((buttons & 0x0Fu) | ((dpad & 0x0Fu) << 4));
         const uint8_t pressed = (uint8_t)(held & (uint8_t)~p->keys_held);
+        const uint8_t shared_coins_low_before = rd8(0xA262);
+        const uint8_t shared_coins_high_before = rd8(0xA263);
 
         mp_sml2_load_player(p);
         /* The original main loop copies HRAM world coordinates into A227/A229
@@ -2340,6 +2376,21 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
         }
+
+        int p2_collected_coin =
+            rd8(0xA262) != shared_coins_low_before ||
+            rd8(0xA263) != shared_coins_high_before;
+        if (!p2_collected_coin)
+            p2_collected_coin = mp_sml2_recover_coin_pickup();
+
+        /* Coins and the A28D HUD counter belong to the one shared SML2 world,
+         * not to either character's private RAM snapshot. Keep the authoritative
+         * values explicitly while we restore Mario's character state below. */
+        const uint8_t shared_coins_low_after = rd8(0xA262);
+        const uint8_t shared_coins_high_after = rd8(0xA263);
+        const uint8_t shared_counter_after = rd8(0xA28D);
+        if (p2_collected_coin)
+            dev_diag_event("LUIGI SHARED COIN COUNTER UPDATED");
 
         mp_sml2_save_player_state(p);
         const uint8_t new_lives = p->lives;
