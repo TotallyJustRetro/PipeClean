@@ -64,6 +64,16 @@ public internet. Before public online play, PipeClean still needs a TLS-capable
 native transport on both Windows and Android, proper room/session credentials,
 production hosting and monitoring, and two-device gameplay validation.
 
+## Launcher display options
+
+The global **Display** tab controls launcher UI size (75–125%) on desktop and
+Android. The launcher switches to a compact two-row header navigation at small
+effective UI scales, replacing the permanent desktop sidebar so the game and
+settings pages have more usable width. Desktop users can also select Compact,
+Balanced, or Large launcher windows and toggle launcher fullscreen. Android
+leaves window sizing and fullscreen to the OS; per-game display settings remain
+available under each game's own Display page.
+
 ## Relay integration test
 
 The regression workflow starts the relay on a temporary local port and checks
