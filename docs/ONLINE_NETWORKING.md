@@ -8,9 +8,13 @@ must use the exact same game and ROM checksum.
 This is still an early lockstep implementation. A full two-device gameplay test
 has not been completed, so treat online gameplay as experimental.
 
-## Relay connection modes
+## Connection mode selector
 
-The Online page's Relay Address supports these forms:
+The Online page now has a saved dropdown with **Direct Connection** and **Traversal Server**. **Traversal Server** is the currently supported mode and uses the relay address and invite-code flow documented below. **Direct Connection** is surfaced in the UI but is not yet implemented; selecting it displays an explanation and Host/Join will not attempt a misleading relay connection. Direct mode requires a peer listener/connection handshake and handling for addresses behind NAT, which are separate networking work.
+
+## Traversal relay address
+
+The Online page's server address supports these forms:
 
 - `127.0.0.1:27800` — plain TCP, for a relay on the same computer.
 - `192.168.x.x:27800` (or another private LAN address) — plain TCP on a trusted
