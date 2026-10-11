@@ -1888,8 +1888,6 @@ static void mp_sml2_direct_collision_update(void)
             continue;
         }
 
-        const uint8_t old_ground = p->ram[0x14];
-        const uint8_t old_air = p->ram[0x15];
         const uint8_t old_power = p->ram[0x16];
         const uint8_t old_lives = p->lives;
         const int old_lives_value = mp_sml2_bcd_to_int(old_lives);
@@ -1922,8 +1920,6 @@ static void mp_sml2_direct_collision_update(void)
                 p->respawn_requested = (uint8_t)(new_lives_value > 0);
                 if (new_lives_value == 0) p->spawned = 0;
             }
-            if ((!old_ground || old_air) && p->ram[0x14] && !p->ram[0x15])
-                p->sfx_events |= P2_SFX_EVENT_JUMP;
         }
 
         /* The resolver changes shared enemy slots, but its temporary player
