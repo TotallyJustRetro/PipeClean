@@ -14,7 +14,7 @@ From the repository root, run one of:
 
     .\android\setup-android.ps1
 
-    ./android/setup-android.sh
+    bash ./android/setup-android.sh
 
 The scripts fetch SDL2 release-2.32.10 and SDL2_image release-2.8.12. Source checkouts live in ignored android/deps/ rather than PipeClean's source history. The project compiles SDL's Android Activity glue and creates libmain.so with CMake.
 
