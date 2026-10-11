@@ -1,82 +1,129 @@
 # PipeClean online co-op (experimental)
 
-PipeClean now has a first experimental online co-op path for **Super Mario Land**
-and **Super Mario Land 2: 6 Golden Coins**. The native client connects to a
-small TCP relay, pairs two players with a eight-character invite code, verifies
-that both players selected the same game and ROM checksum, then exchanges
-frame-numbered controller inputs so the existing shared-screen co-op simulation
-can run on both clients.
+PipeClean has an experimental relay-based co-op path for **Super Mario Land** and
+**Super Mario Land 2: 6 Golden Coins**. The relay pairs two players using an
+eight-character invite code and forwards frame-numbered inputs. Both clients
+must use the exact same game and ROM checksum.
 
-This is an early lockstep implementation: it intentionally waits when the other
-client is behind or disconnected. Online co-op has not yet been verified in a
-full two-device gameplay test, and should be treated as experimental.
+This is still an early lockstep implementation. A full two-device gameplay test
+has not been completed, so treat online gameplay as experimental.
 
-## Start the relay
+## Relay connection modes
+
+The Online page's Relay Address supports these forms:
+
+- `127.0.0.1:27800` — plain TCP, for a relay on the same computer.
+- `192.168.x.x:27800` (or another private LAN address) — plain TCP on a trusted
+  home network, with the server explicitly bound to the LAN.
+- `tls://relay-name.example:443` — TLS-encrypted Internet relay. The client
+  validates the server certificate chain and hostname before sending its name,
+  invite code, or gameplay messages. Use a hostname covered by a valid public
+  certificate; raw public IP addresses are not accepted in plain-TCP mode.
+
+The relay protocol itself remains plain TCP. For Internet play, terminate TLS
+at a trusted edge proxy and forward traffic to the relay over the provider's
+private network. Never expose port 27800 directly to the public Internet.
+
+## Deploy a secure Internet relay with Fly.io
+
+The repository includes `fly.toml` and `server/Dockerfile`. The Fly TLS
+handler terminates client TLS at port 443 and forwards the decrypted relay
+protocol to port 27800 inside Fly's private network. See the
+[Fly TLS handler documentation](https://fly.io/docs/networking/services/).
+
+1. Install the Fly CLI and sign in with `fly auth login`.
+2. Choose a globally unique app name, then edit `app = "pipeclean-relay-change-this"`
+   in `fly.toml` to that name.
+3. From the repository root, create the app with `fly apps create YOUR-APP-NAME`.
+4. Deploy with `fly deploy`.
+5. Confirm the app is running with `fly status` and inspect any errors with
+   `fly logs`.
+6. In **both** PipeClean clients, set Relay Address to
+   `tls://YOUR-APP-NAME.fly.dev:443`. Host on one client, share the invite
+   code, then join on the second client.
+
+The default `*.fly.dev` hostname uses Fly-managed TLS certificates. The
+container listens on `0.0.0.0:27800` inside Fly; the public service is TLS
+on port 443. Leave the internal port private. Do not add public port 27800,
+and do not configure router port forwarding.
+
+For a different hosting provider, configure an external TLS-terminating proxy
+with a publicly trusted certificate, then forward TCP to the relay process on
+port 27800 over a trusted private connection. Connect using
+`tls://the-certificate-hostname:443`; the hostname must match the certificate.
+
+## Run a local or trusted-LAN relay
 
 Requires Node.js 18 or newer. From the repository root, run:
 
-    node server/relay.js
+```sh
+node server/relay.js
+```
 
-The relay listens on TCP port 27800 by default and binds to **127.0.0.1 only**.
-That is deliberately safe-by-default: only clients running on the same computer
-can connect. To make it reachable from another device on a trusted home LAN,
-explicitly bind to LAN interfaces:
+It listens on TCP `127.0.0.1:27800` by default, so only clients on the same
+computer can connect.
 
-    PIPECLEAN_RELAY_BIND=0.0.0.0 PIPECLEAN_RELAY_PORT=27800 node server/relay.js
+For a trusted LAN session, explicitly set the bind address. POSIX shell:
 
-On Windows PowerShell, set the variables first with `$env:PIPECLEAN_RELAY_BIND = "0.0.0.0"`
-and `$env:PIPECLEAN_RELAY_PORT = "27800"`, then run `node server/relay.js`.
-Use the relay computer's LAN IPv4 address in both apps. Allow TCP port 27800 only
-on the private network in the host firewall. Never configure router port
-forwarding for this prototype.
+```sh
+PIPECLEAN_RELAY_BIND=0.0.0.0 PIPECLEAN_RELAY_PORT=27800 node server/relay.js
+```
+
+Windows PowerShell:
+
+```powershell
+$env:PIPECLEAN_RELAY_BIND = "0.0.0.0"
+$env:PIPECLEAN_RELAY_PORT = "27800"
+node server/relay.js
+```
+
+Use the relay computer's private LAN IPv4 address in both apps and allow TCP
+port 27800 only on the private network in the host firewall. Plain TCP is not
+encrypted; do not use it over untrusted networks or the public Internet.
 
 ## Connect and play
 
-1. Start the relay on a computer both clients can reach.
-2. In both PipeClean apps, open **Online** and set the same relay address.
-   Use 127.0.0.1:27800 only when the relay is running on that same computer.
-   For another PC or Android device on your home network, use the relay PC's LAN
-   IPv4 address, for example 192.168.1.20:27800.
-3. On one client, press **Host Session** and share the eight-character invite code.
-4. On the second client, enter that code and press **Join**.
-5. Once the status says the other player is connected, both players select the
-   exact same Super Mario Land or Super Mario Land 2 ROM from their Game tab and
-   start it. The relay/game handshake checks both the game ID and ROM CRC.
+1. Start or deploy a relay reachable by both clients.
+2. Enter the same Relay Address on both clients.
+3. Press **Host Session** on one client and share the eight-character code.
+4. Enter the code on the other client and press **Join**.
+5. Both players select the exact same Super Mario Land or Super Mario Land 2
+   ROM and start it. The game handshake checks both the game ID and ROM CRC.
 6. The host controls Mario (Player 1); the joining client controls Luigi
-   (Player 2). Both clients advance using the exchanged frame-numbered inputs.
-   Disconnecting or leaving the game ends the online game session.
+   (Player 2). Both clients advance using exchanged frame-numbered inputs.
 
-The current online path deliberately disables pause, turbo, rewind, and local
-save-state loading while playing, because these can desynchronize the clients.
-The online path avoids loading/writing the local battery save during that
-session. Use identical ROM revisions and identical ROM-hack/patch results.
+The online path intentionally disables pause, turbo, rewind, and local save-state
+loading during play because these can desynchronize clients. It avoids local
+battery-save loading/writing during the online session. Use identical ROM
+revisions and identical ROM-hack/patch results.
 
-## Security warning
+## Security and current limits
 
-The native client now refuses public relay IP addresses while this transport is unencrypted, and the relay itself binds to loopback by default. To play on a trusted LAN, explicitly expose it only to that LAN as described above. The relay currently uses **plain TCP with no TLS or account authentication**.
-It now binds to loopback by default, limits connections and invite attempts,
-expires unattended rooms, and only forwards recognized gameplay protocol
-messages with bounded sizes and message rates. Those measures reduce accidental
-exposure and basic abuse, but they do **not** encrypt traffic or make invite
-codes private. On a LAN, other devices on that network may be able to observe
-traffic depending on the network. Do not expose this prototype directly to the
-public internet. Before public online play, PipeClean still needs a TLS-capable
-native transport on both Windows and Android, proper room/session credentials,
-production hosting and monitoring, and two-device gameplay validation.
+- Plain TCP is restricted to loopback/private network destinations.
+- `tls://` uses mbedTLS certificate-chain and hostname verification.
+- The relay creates unpredictable eight-character invite codes, limits
+  connections/join attempts/message rates, expires unattended rooms, bounds
+  messages, and allows only recognized protocol messages after pairing.
+- TLS encrypts traffic in transit but this version has no account login,
+  platform-level abuse monitoring, or matchmaking. Invite codes function as
+  bearer credentials.
+- Internet relay deployment and the TLS client build must pass CI, and
+  Windows-to-Android gameplay still requires a real two-device test.
+
+## Relay integration test
+
+The regression workflow tests room creation, joining, input forwarding, malformed
+messages, and disconnect handling:
+
+```sh
+node --check server/relay.js
+node tests/test_relay.js
+```
 
 ## Launcher display options
 
 The global **Display** tab controls launcher UI size (75–125%) on desktop and
-Android. The launcher switches to a compact two-row header navigation at small
-effective UI scales, replacing the permanent desktop sidebar so the game and
-settings pages have more usable width. Desktop users can also select Compact,
-Balanced, or Large launcher windows and toggle launcher fullscreen. Android
-leaves window sizing and fullscreen to the OS; per-game display settings remain
-available under each game's own Display page.
-
-## Relay integration test
-
-The regression workflow starts the relay on a temporary local port and checks
-room creation, joining, input-packet forwarding, and peer-disconnect notices:
-
-    node tests/test_relay.js
+Android. Smaller effective layouts switch to a compact two-row header
+navigation. Desktop users can select Compact, Balanced, or Large launcher
+windows and toggle launcher fullscreen. Android leaves window sizing and
+fullscreen to the OS.
