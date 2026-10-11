@@ -5,6 +5,14 @@
 #include "gb.h"
 #include "widescreen.h"
 
+/* ppu.c is also compiled alone by the CGB renderer unit test. Keep the
+ * compositor an optional link-time feature for that target. */
+#if defined(__GNUC__) || defined(__clang__)
+extern void wide_sml2_prepare_frame(int, int, int, int, int, int, int,
+                                    const uint8_t *) __attribute__((weak));
+extern int wide_sml2_margin_tile(int, int, uint8_t *, int *, int *) __attribute__((weak));
+#endif
+
 uint8_t vram[0x2000], oam[0xA0];
 static uint8_t vram_cgb1[0x2000];
 static uint8_t vram_bank;
@@ -237,7 +245,7 @@ static void render_line(int y)
 {
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
-    if (y == 0 && ppu_w > GB_W)
+    if (y == 0 && ppu_w > GB_W && wide_sml2_prepare_frame)
         wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
     uint8_t *out = ppu_shade[y];
     uint32_t *rgb = ppu_rgb[y];
@@ -271,7 +279,7 @@ static void render_line(int y)
     /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
        only the margins from the live 16x16 block map, leaving the original
        160 columns untouched. Sprites and the native window keep their PPU path. */
-    if (wide_on && W > GB_W && y < wy) {
+    if (wide_on && W > GB_W && y < wy && wide_sml2_margin_tile) {
         for (int X = 0; X < W; X++) {
             if (X >= L && X < L + GB_W) continue;
             uint8_t tile = 0;
