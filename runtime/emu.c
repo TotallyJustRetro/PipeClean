@@ -183,6 +183,21 @@ static int mp_sml2_inline_active;
 static int mp_sml2_inline_ran;
 static uint8_t mp_sml2_input_buttons[MAX_MP_PLAYERS];
 static uint8_t mp_sml2_input_dpad[MAX_MP_PLAYERS];
+#define MP_SML2_PLAYER_SCRATCH_COUNT 12
+static const uint16_t mp_sml2_player_scratch_addr[MP_SML2_PLAYER_SCRATCH_COUNT] = {
+    0xA244, 0xA245, 0xA246, 0xA247,
+    0xA2A9, 0xA2AA, 0xA2AB, 0xA2AC, 0xA2AD, 0xA2AE, 0xA2AF, 0xA2D4
+};
+static void mp_sml2_player_scratch_save(uint8_t out[MP_SML2_PLAYER_SCRATCH_COUNT])
+{
+    for (unsigned i = 0; i < MP_SML2_PLAYER_SCRATCH_COUNT; i++)
+        out[i] = rd8(mp_sml2_player_scratch_addr[i]);
+}
+static void mp_sml2_player_scratch_restore(const uint8_t in[MP_SML2_PLAYER_SCRATCH_COUNT])
+{
+    for (unsigned i = 0; i < MP_SML2_PLAYER_SCRATCH_COUNT; i++)
+        wr8(mp_sml2_player_scratch_addr[i], in[i]);
+}
 static void mp_sml2_instruction_hook(uint16_t pc);
 static int mp_sml2_direct_signature(void);
 static unsigned mp_sml2_inline_frame;
@@ -1878,6 +1893,8 @@ static void mp_sml2_direct_collision_update(void)
     if (shared_pipe_transition >= 0x10) return;
 
     CPU p1_cpu = cpu;
+    uint8_t scratch_saved[MP_SML2_PLAYER_SCRATCH_COUNT];
+    mp_sml2_player_scratch_save(scratch_saved);
     MpSml2Player p1_restore;
     mp_sml2_save_player_state(&p1_restore);
     mp_sml2_players[0] = p1_restore;
@@ -1898,6 +1915,7 @@ static void mp_sml2_direct_collision_update(void)
             !mp_sml2_capture_direct_oam(player, p)) {
             wr8(0xA221, shared_pipe_transition);
             wr8(0xA20E, shared_level_transition);
+            mp_sml2_player_scratch_restore(scratch_saved);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -1928,8 +1946,7 @@ static void mp_sml2_direct_collision_update(void)
          * result and put Mario's live character state back before continuing. */
         wr8(0xA221, shared_pipe_transition);
         wr8(0xA20E, shared_level_transition);
-        for (unsigned i = 0; i < sizeof scratch_addr / sizeof scratch_addr[0]; i++)
-            wr8(scratch_addr[i], scratch_saved[i]);
+        mp_sml2_player_scratch_restore(scratch_saved);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
@@ -1968,16 +1985,10 @@ static void mp_sml2_instruction_hook(uint16_t pc)
     CPU p1_cpu = cpu;
     const uint8_t shared_pipe_transition = rd8(0xA221);
     const uint8_t shared_level_transition = rd8(0xA20E);
-    /* Enemy-contact routines use these RAM bytes as scratch to describe the
-     * last actor tested. Preserve P1's scratch output while keeping actor-pool
-     * mutations from Luigi's collision pass. */
-    static const uint16_t scratch_addr[] = {
-        0xA244, 0xA245, 0xA246, 0xA247,
-        0xA2A9, 0xA2AA, 0xA2AB, 0xA2AC, 0xA2AD, 0xA2AE, 0xA2AF, 0xA2D4
-    };
-    uint8_t scratch_saved[sizeof scratch_addr / sizeof scratch_addr[0]];
-    for (unsigned i = 0; i < sizeof scratch_addr / sizeof scratch_addr[0]; i++)
-        scratch_saved[i] = rd8(scratch_addr[i]);
+    /* Keep transient collision scratch from Luigi's character-only move
+     * from leaking into the original Player 1 main loop. */
+    uint8_t movement_scratch_saved[MP_SML2_PLAYER_SCRATCH_COUNT];
+    mp_sml2_player_scratch_save(movement_scratch_saved);
     MpSml2Player p1_restore;
     mp_sml2_save_player_state(&p1_restore);
     mp_sml2_players[0] = p1_restore;
@@ -2025,6 +2036,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         if (!mp_sml2_run_original_subroutine(0x0F71, 30000, 1) ||
             !mp_sml2_capture_direct_oam(player, p)) {
             cpu = p1_cpu;
+            mp_sml2_player_scratch_restore(movement_scratch_saved);
             mp_sml2_load_player(&p1_restore);
             longjmp(stop_jmp, 4);
         }
@@ -2064,6 +2076,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
          * can collide with pipe tiles, but cannot launch a second transition. */
         wr8(0xA221, shared_pipe_transition);
         wr8(0xA20E, shared_level_transition);
+        mp_sml2_player_scratch_restore(movement_scratch_saved);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
