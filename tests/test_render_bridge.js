@@ -92,6 +92,21 @@ async function main() {
     assert.equal(joined.data, 'JOINED\t' + match[1] + '\tTest Host');
     assert.equal(peerJoined.data, 'PEER_JOINED\tTest Guest');
 
+    /* Render counts incoming WebSocket control frames as activity on Free services. */
+    const pong = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        host.off('pong', onPong);
+        reject(new Error('Timed out waiting for WebSocket keepalive pong'));
+      }, 3000);
+      function onPong(payload) {
+        clearTimeout(timeout);
+        resolve(payload);
+      }
+      host.once('pong', onPong);
+    });
+    host.ping(Buffer.from('pipeclean-keepalive'));
+    assert.equal((await pong).toString(), 'pipeclean-keepalive');
+
     guest.send('INPUT\t1\t5\t2\t1\n');
     assert.equal((await waitForMessage(host)).data, 'INPUT\t1\t5\t2\t1');
 
