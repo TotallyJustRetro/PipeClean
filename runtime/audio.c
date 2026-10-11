@@ -244,7 +244,8 @@ static void synth_p2_sfx(Clip *c, int which)
         return;
     }
 
-    int duration_ms = which == P2_SFX_FIREBALL ? 190 :
+    int duration_ms = which == P2_SFX_COIN ? 165 :
+                      which == P2_SFX_FIREBALL ? 190 :
                       which == P2_SFX_POWER_UP ? 430 :
                       which == P2_SFX_POWER_DOWN ? 360 :
                       which == P2_SFX_RESPAWN ? 285 : 690;
@@ -254,6 +255,11 @@ static void synth_p2_sfx(Clip *c, int which)
     /* Original PipeClean chiptune cues. These short motifs are newly composed;
      * they don't sample or reproduce the game's built-in sound data. */
     switch (which) {
+    case P2_SFX_COIN:
+        /* Original short pickup chirp; this is synthesized, not sampled from a ROM. */
+        add_note(c, 0, 0.050, 94, W_PULSE25, 0.22f, 0.0f, 0.001, 0.010);
+        add_note(c, (long)(rate * 0.045), 0.075, 106, W_TRI, 0.20f, 0.0f, 0.001, 0.020);
+        break;
     case P2_SFX_FIREBALL:
         add_note(c, 0, 0.055, 88, W_PULSE25, 0.24f, 0.0f, 0.001, 0.015);
         add_note(c, (long)(rate * 0.030), 0.075, 79, W_PULSE50, 0.19f, 0.0f, 0.001, 0.025);
