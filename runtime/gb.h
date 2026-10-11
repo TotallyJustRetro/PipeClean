@@ -45,6 +45,8 @@ typedef void (*GbInstructionHook)(uint16_t pc);
 void gb_set_instruction_hook(GbInstructionHook hook);
 /* Temporarily execute a helper without advancing the machine's peripherals. */
 void gb_set_timing_suppressed(int suppressed);
+/* Read directly by the generated NEXT() macro to avoid extra calls per opcode. */
+extern int gb_timing_suppressed;
 void cpu_halt(void);
 void cpu_service_irq(void);
 void cpu_lockup(uint8_t op, uint16_t pc) __attribute__((noreturn));
