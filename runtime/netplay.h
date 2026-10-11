@@ -17,6 +17,11 @@ typedef struct {
     char peer[32];
 } NetplayInfo;
 
+typedef struct {
+    char name[32];
+    char text[96];
+} NetplayChatMessage;
+
 /* Relay address may be host:port, tls://host:port, or wss://hostname (port defaults to 443). */
 void netplay_init(void);
 void netplay_shutdown(void);
@@ -26,6 +31,14 @@ void netplay_disconnect(void);
 void netplay_get_info(NetplayInfo *out);
 int netplay_is_connected(void);
 int netplay_is_host(void);
+
+/* Lobby API. Online-selectable games currently use GAME_SML and GAME_SML2. */
+int netplay_lobby_set_game(int game);
+int netplay_lobby_get_game(void);
+int netplay_lobby_start_game(int game);
+int netplay_take_start_request(void);
+int netplay_chat_send(const char *text);
+int netplay_chat_snapshot(NetplayChatMessage *out, int capacity);
 
 /* Lockstep API for SML/SML2 local co-op simulations on two clients. */
 enum { NETPLAY_ACTION_RESPAWN_P2 = 1u << 0 };
