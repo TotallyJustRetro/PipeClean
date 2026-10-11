@@ -40,6 +40,9 @@ void hw_tick(int tcycles);              /* advance timer/PPU/APU/serial */
 void gb_stop(void);                     /* CGB speed switch, if prepared through KEY1 */
 typedef void (*GbCpuFaultHook)(uint8_t opcode, uint16_t pc);
 void gb_set_cpu_fault_hook(GbCpuFaultHook hook);
+/* Optional interpreter instruction hook, called before executing the instruction at PC. */
+typedef void (*GbInstructionHook)(uint16_t pc);
+void gb_set_instruction_hook(GbInstructionHook hook);
 void cpu_halt(void);
 void cpu_service_irq(void);
 void cpu_lockup(uint8_t op, uint16_t pc) __attribute__((noreturn));
