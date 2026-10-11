@@ -236,7 +236,7 @@ const server = net.createServer((socket) => {
       if (!chunk.length) return;
     }
     client.buffer += chunk.toString('utf8');
-    if (client.buffer.length > MAX_BUFFER) { socket.destroy(); return; }
+    /* Parse complete lines before bounding the remaining partial line; a single TCP chunk can contain many valid messages. */
     let newline;
     while ((newline = client.buffer.indexOf('\n')) !== -1) {
       let line = client.buffer.slice(0, newline).replace(/\r$/, '');
