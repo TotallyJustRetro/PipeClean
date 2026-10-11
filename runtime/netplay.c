@@ -317,6 +317,8 @@ static void np_handle_game_end(void)
     np_local_game = np_remote_game = 0;
     np_local_crc = np_remote_crc = 0;
     np_clear_input_queue_locked();
+    if (np_state == NETPLAY_CONNECTED)
+        snprintf(np_status, sizeof np_status, "Peer returned to the online lobby");
     if (np_cond) SDL_CondBroadcast(np_cond);
     np_unlock();
 }
@@ -751,6 +753,8 @@ void netplay_game_end(void)
     np_local_game = np_remote_game = 0;
     np_local_crc = np_remote_crc = 0;
     np_clear_input_queue_locked();
+    if (np_state == NETPLAY_CONNECTED)
+        snprintf(np_status, sizeof np_status, "Connected; ready to start a game");
     if (np_cond) SDL_CondBroadcast(np_cond);
     np_unlock();
 }

@@ -75,8 +75,8 @@ async function main() {
     assert.equal(joined, 'JOINED\t' + match[1] + '\tHost');
     assert.equal(peerJoined, 'PEER_JOINED\tGuest');
 
-    guest.socket.write('INPUT\t1\t5\t2\n');
-    assert.equal(await waitForLine(host), 'INPUT\t1\t5\t2');
+    guest.socket.write('INPUT\t1\t5\t2\t1\n');
+    assert.equal(await waitForLine(host), 'INPUT\t1\t5\t2\t1');
 
     guest.socket.end();
     assert.equal(await waitForLine(host), 'PEER_LEFT');
