@@ -1125,18 +1125,17 @@ static void mp_draw_color_editor(GameCfg *c, float x, float y)
 
     float dx = ui_mouse.x - wx, dy = ui_mouse.y - wy;
     float dist = sqrtf(dx * dx + dy * dy);
-    int wheel_changed = 0;
     if (ui_mouse.down && dist <= wr) {
         float hue = atan2f(-dy, dx) / 6.28318530718f;
         if (hue < 0.0f) hue += 1.0f;
         float sat = dist / wr, val;
         float old_h, old_s;
         mp_rgb_to_hsv(rgb, &old_h, &old_s, &val);
+        (void)old_h; (void)old_s;
         if (val < 0.20f) val = 0.20f;
         *rgb_store = (int)mp_hsv_to_rgb(hue, sat, val);
         *custom_store = 1;
         rgb = (uint32_t)*rgb_store;
-        wheel_changed = 1;
     }
 
     ui_text(F_BOLD, 13, x + 190, y + 320, C_TEXT, player_labels[mp_color_selected]);
@@ -1162,7 +1161,6 @@ static void mp_draw_color_editor(GameCfg *c, float x, float y)
     }
     ui_text_wrap(F_REG, 11, x + 190, y + 414, 580, C_DIM,
                  "Drag on the wheel to pick a hue and saturation; use brightness for darker shades.", 2);
-    if (wheel_changed || bright_changed) settings_save();
 }
 
 static int *mp_respawn_key_ptr(GameCfg *c, int player_slot)
@@ -1395,7 +1393,6 @@ static void mp_name_field(GameCfg *c, int player_number, float x, float y, float
     int over = 0;
     int clicked = clickable(x, y, w, 32, &over);
     int active = multiplayer_name_editing == player_number;
-    int ci = mp_color_index(c, player_number);
     ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
              (over ? C_BTN_H : C_BTN));
     const char *current = name[0] ? name : (active ? "Type a name…" : "Click to rename");
@@ -1584,7 +1581,7 @@ static void tab_mp_controllers(float x, float y)
             snprintf(player_title, sizeof player_title, "P%d  %.18s", player,
                      name && name[0] ? name : mp_default_name(player));
             ui_text_fit(F_BOLD, 12, bx + 8, y + 169, cw - 16,
-                        HEX(luigi_colors[ci].swatch), player_title);
+                        HEX(mp_effective_player_rgb(c, player)), player_title);
 
             for (int event = 0; event < N_P2_SFX; event++) {
                 char *path = mp_sfx_path_ptr(c, player, event);
