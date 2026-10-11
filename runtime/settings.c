@@ -192,6 +192,17 @@ const char *settings_dir(void)
     static char dir[1024];
     if (dir[0]) return dir;
 #ifdef USE_SDL
+#ifdef __ANDROID__
+    /* Android's packaged application directory is not writable; keep settings
+       and save files in SDL's app-private persistent preference directory. */
+    char *p = SDL_GetPrefPath("TotallyJustRetro", "PipeClean");
+    if (p) {
+        snprintf(dir, sizeof dir, "%s", p);
+        SDL_free(p);
+        (void)mkdir_u(dir);
+        return dir;
+    }
+#endif
     char *b = SDL_GetBasePath();
     if (b) { snprintf(dir, sizeof dir, "%s", b); SDL_free(b); return dir; }
 #endif
