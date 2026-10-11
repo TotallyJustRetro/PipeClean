@@ -17,7 +17,9 @@
 #include "ui.h"
 #include "settings.h"
 #include "rom.h"
+#include "cart.h"
 #include "emu.h"
+#include "netplay.h"
 #include "render.h"
 #include "bgimg.h"
 #include "texpack.h"
@@ -690,7 +692,8 @@ static int play_multiplayer(int g)
 {
     ds_menu_close();
     GameCfg *c = &settings.g[g];
-    int player_count = c->multiplayer_players;
+    int online = netplay_is_connected();
+    int player_count = online ? 2 : c->multiplayer_players;
     if (player_count < 2) player_count = c->multiplayer_players = 2;
     if (player_count > MAX_MP_PLAYERS) player_count = c->multiplayer_players = MAX_MP_PLAYERS;
 
@@ -699,7 +702,7 @@ static int play_multiplayer(int g)
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);
     snprintf(sp, sizeof sp, "%ssaves/%s.sav", settings_dir(), save_id);
-    emu_set_save_path(sp);
+    emu_set_save_path(online ? "" : sp);
 
     bg_load(c->bg_path);
     texpack_load(c->tex_on ? c->tex_path : "");
@@ -709,13 +712,19 @@ static int play_multiplayer(int g)
     set_game_window(g);
 
     int requested_load = launcher_take_load_state(g);
+    if (online) requested_load = -1;
     char suspended[1200];
     suspend_path(g, suspended, sizeof suspended);
-    int has_suspend = state_file_exists(suspended);
+    int has_suspend = !online && state_file_exists(suspended);
     render_set_mp_game(g);
     audio_mp_set_game(g);
     audio_menu_apply();
-    if (emu_mp_begin()) {
+    int saved_player_count = c->multiplayer_players;
+    if (online) c->multiplayer_players = 2;
+    int mp_begin_result = emu_mp_begin();
+    if (online) c->multiplayer_players = saved_player_count;
+    if (mp_begin_result) {
+        if (online) netplay_game_end();
         launcher_toast("Couldn't start multiplayer.");
         return 0;
     }
@@ -741,6 +750,7 @@ static int play_multiplayer(int g)
         for (int i = 0; i < MAX_MP_PLAYERS - 1; i++) free(player_frames[i]);
         audio_game_end();
         emu_mp_end();
+        if (online) netplay_game_end();
         tex_collect_save();
         pad_set_context(g, 0);
         launcher_toast("Not enough memory for multiplayer.");
@@ -751,6 +761,8 @@ static int play_multiplayer(int g)
     int rewind_held = 0;
     uint8_t buttons[MAX_MP_PLAYERS] = {0, 0, 0, 0};
     uint8_t dpad[MAX_MP_PLAYERS] = {0, 0, 0, 0};
+    uint8_t online_actions = 0;
+    uint64_t online_frame = 0;
     Uint64 last = SDL_GetPerformanceCounter();
     dev_diag_begin(g, player_count, win);
 
@@ -766,14 +778,15 @@ static int play_multiplayer(int g)
             }
             touch_handle_event(&e);
             pad_event(&e);
-            int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
+            int ds_consumed = online ? 0 : ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
 
             if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 for (int player = 1; player < player_count; player++) {
                     int key = mp_respawn_key(c, player);
                     if (key && e.key.keysym.sym == key) {
-                        emu_mp_request_respawn(player);
+                        if (online) online_actions |= NETPLAY_ACTION_RESPAWN_P2;
+                        else emu_mp_request_respawn(player);
                         {
                             char diagnostic[96];
                             snprintf(diagnostic, sizeof diagnostic, "%s RESPAWN REQUESTED", mp_player_name(g, player));
@@ -787,10 +800,11 @@ static int play_multiplayer(int g)
             }
             for (int player = 1; player < player_count; player++) {
                 int binding = mp_respawn_pad(c, player);
-                int device = c->pad_device[player];
+                int device = c->pad_device[online ? 0 : player];
                 if (binding >= 0 && device >= 0 && device < pad_count() &&
                     pad_capture(device, &e) == binding) {
-                    emu_mp_request_respawn(player);
+                    if (online) online_actions |= NETPLAY_ACTION_RESPAWN_P2;
+                    else emu_mp_request_respawn(player);
                     {
                         char diagnostic[96];
                         snprintf(diagnostic, sizeof diagnostic, "%s RESPAWN REQUESTED", mp_player_name(g, player));
@@ -802,7 +816,7 @@ static int play_multiplayer(int g)
                 }
             }
 
-            int action = app_handle_action_event(g, &e, &paused, &quit);
+            int action = online ? 0 : app_handle_action_event(g, &e, &paused, &quit);
             if (e.type == SDL_QUIT) quit = 2;
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 switch (e.key.keysym.sym) {
@@ -811,17 +825,19 @@ static int play_multiplayer(int g)
                     SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                     break;
                 case SDLK_p:
-                    paused = !paused;
-                    dev_diag_event(paused ? "GAME PAUSED" : "GAME RESUMED");
+                    if (!online) {
+                        paused = !paused;
+                        dev_diag_event(paused ? "GAME PAUSED" : "GAME RESUMED");
+                    } else game_notice("Pause is disabled during online co-op.");
                     break;
-                case SDLK_TAB: emu_set_turbo(1); break;
+                case SDLK_TAB: if (!online) emu_set_turbo(1); break;
                 case SDLK_F10:
                     dev_diag_request_screenshot("manual F10");
                     game_notice("Diagnostic screenshot queued in the logs folder.");
                     break;
                 case SDLK_F12: shot = 1; break;
                 }
-            } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
+            } else if (!online && e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
                 emu_set_turbo(0);
             } else if (e.type == SDL_CONTROLLERBUTTONDOWN &&
                        e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE &&
@@ -832,13 +848,15 @@ static int play_multiplayer(int g)
 
         if (load_state_request_app[g]) {
             load_state_request_app[g] = 0;
-            game_state_load(g, paused);
-            f->seq = UINT64_MAX;
-            have = 0;
+            if (!online) {
+                game_state_load(g, paused);
+                f->seq = UINT64_MAX;
+                have = 0;
+            }
         }
 
-        int ds_rewinding = ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND;
-        int now_rewind = app_rewind_held(g) && !paused;
+        int ds_rewinding = !online && ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND;
+        int now_rewind = !online && app_rewind_held(g) && !paused;
         if (ds_rewinding) {
             emu_rewind_step();
             emu_mp_frame_refresh(f);
@@ -861,8 +879,26 @@ static int play_multiplayer(int g)
             }
             if (!paused) {
                 touch_apply_inputs(g, paused);
-                for (int player = 0; player < player_count; player++)
-                    pad_poll_player(g, player, &buttons[player], &dpad[player]);
+                if (online) {
+                    /* Host owns Mario/P1; joining client owns Luigi/P2 on both replicas. */
+                    pad_poll_player(g, 0, &buttons[0], &dpad[0]);
+                    uint8_t p1b = 0, p1d = 0, p1a = 0, p2b = 0, p2d = 0, p2a = 0;
+                    if (netplay_exchange_inputs(online_frame, buttons[0], dpad[0], online_actions,
+                                                &p1b, &p1d, &p1a, &p2b, &p2d, &p2a) != 0) {
+                        quit = 1;
+                        game_notice("Online session ended or input timed out.");
+                    } else {
+                        buttons[0] = p1b; dpad[0] = p1d;
+                        buttons[1] = p2b; dpad[1] = p2d;
+                        online_actions = 0;
+                        online_frame++;
+                        if (p2a & NETPLAY_ACTION_RESPAWN_P2) emu_mp_request_respawn(1);
+                    }
+                } else {
+                    for (int player = 0; player < player_count; player++)
+                        pad_poll_player(g, player, &buttons[player], &dpad[player]);
+                }
+                if (!quit) {
                 /* SML2's shared-world mode advances secondary characters from
                  * inside the original Player 1 frame, so inputs must be ready
                  * before the authoritative game update starts. */
@@ -916,6 +952,7 @@ static int play_multiplayer(int g)
                         if (n0 > 0) audio_game_push(a0, n0);
                         if (audio_ok()) audio_game_wait(audio_game_target());
                     }
+                }
                 }
             }
         }
@@ -981,6 +1018,7 @@ static int play_multiplayer(int g)
     }
 
     touch_reset_game(g);
+    if (online) netplay_game_end();
     dev_diag_end(quit == 2 ? "main window closed" : "multiplayer exited");
     emu_set_turbo(0);
     audio_game_end();
@@ -1104,13 +1142,28 @@ static int play(int g)
 {
     ds_menu_close();
     if (g < 0 || g >= N_GAMES) return 0;
+    int online = netplay_is_connected();
+    if (online && g != GAME_SML && g != GAME_SML2) {
+        launcher_toast("Online co-op currently supports Super Mario Land and Super Mario Land 2.");
+        return 0;
+    }
     if (games[g].external_player) return play_external_game(g);
     char err[256];
     GameCfg *c = &settings.g[g];
     load_state_request_app[g] = 0;
     if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
+    if (online) {
+        const CartInfo *ci = cart_info();
+        if (!ci || netplay_game_begin(g, ci->crc) != 0) {
+            NetplayInfo info;
+            netplay_get_info(&info);
+            launcher_toast(info.status[0] ? info.status : "Both players must start the same game ROM.");
+            netplay_game_end();
+            return 0;
+        }
+    }
     audio_menu_music(0);
-    if ((g == GAME_SML || g == GAME_SML2) && c->multiplayer) return play_multiplayer(g);
+    if ((g == GAME_SML || g == GAME_SML2) && (c->multiplayer || online)) return play_multiplayer(g);
     char sp[1200], save_id[128];
     launcher_game_file_id(g, save_id, sizeof save_id);
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
