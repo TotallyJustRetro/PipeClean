@@ -119,6 +119,15 @@ async function main() {
     assert.equal(hostSelection, 'SELECT_GAME\t2');
     assert.equal(guestSelection, 'SELECT_GAME\t2');
 
+    /* Both peers must submit the same local ROM checksum before the host can start. */
+    host.socket.write('ROM_CHECK\t2\t1234ABCD\n');
+    guest.socket.write('ROM_CHECK\t2\t1234ABCD\n');
+    const [hostRomMatch, guestRomMatch] = await Promise.all([
+      waitForLine(host), waitForLine(guest)
+    ]);
+    assert.equal(hostRomMatch, 'ROM_RESULT\t2\t1\t1234ABCD\t1\t1234ABCD');
+    assert.equal(guestRomMatch, 'ROM_RESULT\t2\t1\t1234ABCD\t1\t1234ABCD');
+
     /* Chat is relayed to both players with the sender's room identity. */
     guest.socket.write('CHAT\thello from Android!\n');
     const [hostChat, guestChat] = await Promise.all([
@@ -129,7 +138,21 @@ async function main() {
 
     /* Only the host can initiate the shared game start. */
     host.socket.write('START_GAME\t2\n');
-    assert.equal(await waitForLine(guest), 'START_GAME\t2');
+    const [hostStarted, guestStarted] = await Promise.all([
+      waitForLine(host), waitForLine(guest)
+    ]);
+    assert.equal(hostStarted, 'START_GAME\t2');
+    assert.equal(guestStarted, 'START_GAME\t2');
+
+    /* A mismatching guest CRC must block the next start for both peers. */
+    guest.socket.write('ROM_CHECK\t2\tDEADBEEF\n');
+    const [hostRomMismatch, guestRomMismatch] = await Promise.all([
+      waitForLine(host), waitForLine(guest)
+    ]);
+    assert.equal(hostRomMismatch, 'ROM_RESULT\t2\t1\t1234ABCD\t1\tDEADBEEF');
+    assert.equal(guestRomMismatch, 'ROM_RESULT\t2\t1\t1234ABCD\t1\tDEADBEEF');
+    host.socket.write('START_GAME\t2\n');
+    assert.equal(await waitForLine(host), 'START_DENIED\tboth players must pass the ROM check');
 
     guest.socket.write('INPUT\t1\t5\t2\t1\n');
     assert.equal(await waitForLine(host), 'INPUT\t1\t5\t2\t1');
