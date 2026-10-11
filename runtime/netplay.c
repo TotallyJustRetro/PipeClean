@@ -1359,6 +1359,9 @@ int netplay_game_begin(int game_id, uint32_t rom_crc)
             snprintf(np_status, sizeof np_status, "Timed out waiting for the other player to start the same game.");
     }
     np_unlock();
+    if (result == 0)
+        fprintf(stderr, "[netplay] input delay: %u frames (~%u ms at 60 FPS)\n",
+                NP_INPUT_DELAY_FRAMES, (NP_INPUT_DELAY_FRAMES * 1000u + 30u) / 60u);
     return result;
 }
 
@@ -1402,14 +1405,17 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
     np_lock();
     memset(&remote, 0, sizeof remote);
     remote.frame = frame;
-    /* The first delay-window frames are neutral on both replicas. This seeds
-       the pipeline instead of blocking while no frame-N input can exist yet. */
-    if (frame < NP_INPUT_DELAY_FRAMES) got_remote = 1;
-    while (!got_remote) {
+    for (;;) {
         if (np_game_end_received || np_state != NETPLAY_CONNECTED || np_stop || !np_running)
             break;
         if (np_input_overflow) {
             snprintf(np_status, sizeof np_status, "Online input queue overflowed");
+            break;
+        }
+        /* The first delay-window frames are neutral on both replicas. This
+           seeds the pipeline instead of blocking before frame-N input exists. */
+        if (frame < NP_INPUT_DELAY_FRAMES) {
+            got_remote = 1;
             break;
         }
         while (np_input_count > 0) {
