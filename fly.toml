@@ -9,6 +9,7 @@ primary_region = "iad"
 [env]
   PIPECLEAN_RELAY_BIND = "0.0.0.0"
   PIPECLEAN_RELAY_PORT = "27800"
+  PIPECLEAN_RELAY_PROXY_PROTOCOL = "1"
 
 [[services]]
   protocol = "tcp"
@@ -20,6 +21,7 @@ primary_region = "iad"
   [[services.ports]]
     port = 443
     handlers = ["tls"]
+    proxy_proto_options = { version = "v2" }
 
   [[services.tcp_checks]]
     grace_period = "5s"
