@@ -354,8 +354,7 @@ void settings_load(void)
 
     /* Migrate the prior local-only default to the deployed traversal endpoint.
        If the user explicitly configured another address, leave it untouched. */
-    if (settings.online_connection_mode == 1 &&
-        strcmp(settings.online_server, "127.0.0.1:27800") == 0 &&
+    if (strcmp(settings.online_server, "127.0.0.1:27800") == 0 &&
         strcmp(PIPECLEAN_DEFAULT_RELAY_ENDPOINT, "127.0.0.1:27800") != 0) {
         snprintf(settings.online_server, sizeof settings.online_server, "%s",
                  PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
