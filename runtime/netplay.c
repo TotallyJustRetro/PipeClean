@@ -11,6 +11,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 #endif
 #include <SDL.h>
 #include <stdio.h>
@@ -90,24 +91,121 @@ static int np_parse_endpoint(const char *endpoint, char *host, size_t host_size,
     return 1;
 }
 
+static void np_close_published_socket(NetSocket sock)
+{
+    np_lock();
+    if (np_socket == sock) np_socket = NET_INVALID_SOCKET;
+    np_unlock();
+    net_close_socket(sock);
+}
+
 static NetSocket np_connect(const char *host, const char *port)
 {
     struct addrinfo hints, *list = NULL, *it;
-    NetSocket sock = NET_INVALID_SOCKET;
+    NetSocket result = NET_INVALID_SOCKET;
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
     if (getaddrinfo(host, port, &hints, &list) != 0) return NET_INVALID_SOCKET;
-    for (it = list; it; it = it->ai_next) {
-        sock = (NetSocket)socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+
+    for (it = list; it && !np_stopping(); it = it->ai_next) {
+        NetSocket sock = (NetSocket)socket(it->ai_family, it->ai_socktype, it->ai_protocol);
+        int connected = 0, pending = 0;
+#ifdef _WIN32
+        u_long nonblocking = 1;
         if (sock == NET_INVALID_SOCKET) continue;
-        if (connect(sock, it->ai_addr, (int)it->ai_addrlen) == 0) break;
-        net_close_socket(sock);
-        sock = NET_INVALID_SOCKET;
+        if (ioctlsocket(sock, FIONBIO, &nonblocking) != 0) {
+            net_close_socket(sock);
+            continue;
+        }
+#else
+        int original_flags;
+        if (sock == NET_INVALID_SOCKET) continue;
+        original_flags = fcntl(sock, F_GETFL, 0);
+        if (original_flags < 0 || fcntl(sock, F_SETFL, original_flags | O_NONBLOCK) < 0) {
+            net_close_socket(sock);
+            continue;
+        }
+#endif
+        np_lock();
+        if (np_stop) {
+            np_unlock();
+            net_close_socket(sock);
+            break;
+        }
+        /* Publish before connect so Disconnect can interrupt the attempt. */
+        np_socket = sock;
+        np_unlock();
+
+        if (connect(sock, it->ai_addr, (int)it->ai_addrlen) == 0) {
+            connected = 1;
+        } else {
+#ifdef _WIN32
+            int err = WSAGetLastError();
+            pending = err == WSAEWOULDBLOCK || err == WSAEINPROGRESS;
+#else
+            pending = errno == EINPROGRESS || errno == EWOULDBLOCK || errno == EAGAIN;
+#endif
+        }
+
+        if (pending) {
+            Uint32 started = SDL_GetTicks();
+            while (!np_stopping() && (Uint32)(SDL_GetTicks() - started) < 7000u) {
+                fd_set write_set, error_set;
+                struct timeval timeout;
+                int ready;
+                FD_ZERO(&write_set);
+                FD_ZERO(&error_set);
+                FD_SET(sock, &write_set);
+                FD_SET(sock, &error_set);
+                timeout.tv_sec = 0;
+                timeout.tv_usec = 100000;
+#ifdef _WIN32
+                ready = select(0, NULL, &write_set, &error_set, &timeout);
+#else
+                ready = select(sock + 1, NULL, &write_set, &error_set, &timeout);
+#endif
+                if (ready < 0) {
+#ifndef _WIN32
+                    if (errno == EINTR) continue;
+#endif
+                    break;
+                }
+                if (ready == 0) continue;
+                {
+                    int socket_error = 0;
+#ifdef _WIN32
+                    int error_len = (int)sizeof socket_error;
+                    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&socket_error, &error_len) == 0 &&
+                        socket_error == 0) connected = 1;
+#else
+                    socklen_t error_len = (socklen_t)sizeof socket_error;
+                    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &socket_error, &error_len) == 0 &&
+                        socket_error == 0) connected = 1;
+#endif
+                }
+                break;
+            }
+        }
+        if (np_stopping()) connected = 0;
+
+        /* Restore the socket's ordinary blocking mode for line reads. */
+#ifdef _WIN32
+        nonblocking = 0;
+        (void)ioctlsocket(sock, FIONBIO, &nonblocking);
+#else
+        (void)fcntl(sock, F_SETFL, original_flags);
+#endif
+        if (connected) {
+            result = sock;
+            break;
+        }
+        np_close_published_socket(sock);
     }
+
     freeaddrinfo(list);
-    return sock;
+    return result;
 }
 static int np_send_all(NetSocket sock, const char *data, size_t length)
 {
@@ -116,7 +214,11 @@ static int np_send_all(NetSocket sock, const char *data, size_t length)
 #ifdef _WIN32
         int n = send(sock, data + sent, (int)(length - sent), 0);
 #else
+#ifdef MSG_NOSIGNAL
+        ssize_t n = send(sock, data + sent, length - sent, MSG_NOSIGNAL);
+#else
         ssize_t n = send(sock, data + sent, length - sent, 0);
+#endif
 #endif
         if (n <= 0) return 0;
         sent += (size_t)n;
@@ -208,6 +310,7 @@ static int SDLCALL np_worker(void *unused)
     }
     np_lock();
     if (np_stop) {
+        if (np_socket == sock) np_socket = NET_INVALID_SOCKET;
         np_unlock();
         net_close_socket(sock);
         goto finished;
@@ -256,11 +359,11 @@ static int SDLCALL np_worker(void *unused)
     }
 
 socket_finished:
-    net_shutdown_socket(sock);
-    net_close_socket(sock);
     np_lock();
     if (np_socket == sock) np_socket = NET_INVALID_SOCKET;
     np_unlock();
+    net_shutdown_socket(sock);
+    net_close_socket(sock);
 finished:
     np_lock();
     np_running = 0;

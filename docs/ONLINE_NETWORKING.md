@@ -37,3 +37,11 @@ added in the gameplay-sync phase.
 The prototype protocol is plain TCP without TLS or authentication. Use it only
 on a trusted LAN for now. Do not expose it to the public internet until encrypted
 transport, authentication/rate limits, and session validation are added.
+
+
+## Relay integration test
+
+The regression workflow runs the relay in a temporary local port and verifies room
+creation, joining, packet forwarding, and peer-disconnect notifications:
+
+    node tests/test_relay.js

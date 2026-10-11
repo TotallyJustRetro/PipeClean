@@ -56,6 +56,9 @@ jobs:
       - name: Validate relay server syntax
         run: node --check server/relay.js
 
+      - name: Test relay room creation and message forwarding
+        run: node tests/test_relay.js
+
       - name: Validate Python tools
         run: |
           python3 -m py_compile \

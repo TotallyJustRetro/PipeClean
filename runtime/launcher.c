@@ -2012,9 +2012,11 @@ static void tab_online(float x, float y)
     int server_clicked = clickable(x + 408, y + 164, 360, 30, &server_over);
     ui_rrect(x + 408, y + 164, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
+    const char *server_text = settings.online_server[0] ? settings.online_server :
+                              (online_server_editing ? "Type host:port…" : "127.0.0.1:27800");
     ui_text_fit(F_REG, 12, x + 420, y + 172, 336,
-                online_server_editing ? C_TEXT : C_DIM,
-                settings.online_server[0] ? settings.online_server : "127.0.0.1:27800");
+                (online_server_editing && !settings.online_server[0]) ? C_DIM : C_TEXT,
+                server_text);
     if (server_clicked) {
         online_name_editing = online_code_editing = 0;
         snprintf(online_server_before, sizeof online_server_before, "%s", settings.online_server);

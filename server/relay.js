@@ -126,6 +126,8 @@ server.on('error', (err) => {
   process.exitCode = 1;
 });
 server.listen(PORT, HOST, () => {
-  process.stdout.write('PipeClean relay listening on ' + HOST + ':' + PORT + '\n');
+  const address = server.address();
+  const boundPort = address && typeof address === 'object' ? address.port : PORT;
+  process.stdout.write('PipeClean relay listening on ' + HOST + ':' + boundPort + '\n');
   process.stdout.write('Prototype relay: trusted networks only; no TLS or authentication.\n');
 });
