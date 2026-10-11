@@ -1073,6 +1073,30 @@ static uint32_t mp_effective_player_rgb(const GameCfg *c, int player_number)
     return luigi_colors[mp_color_index(c, player_number)].swatch;
 }
 
+static void mp_reset_player_name(GameCfg *c, int player_number)
+{
+    char *name = mp_name_ptr(c, player_number);
+    if (name) snprintf(name, 32, "%s", mp_default_name(player_number));
+}
+
+static void mp_reset_player_color(GameCfg *c, int player_number)
+{
+    if (!c) return;
+    if (player_number == 2) {
+        c->p2_color = LUIGI_GREEN;
+        c->p2_rgb = 0x2CA83D;
+        c->p2_custom = 0;
+    } else if (player_number == 3) {
+        c->p3_color = LUIGI_BLUE;
+        c->p3_rgb = 0x2676D9;
+        c->p3_custom = 0;
+    } else if (player_number == 4) {
+        c->p4_color = LUIGI_YELLOW;
+        c->p4_rgb = 0xD8B51A;
+        c->p4_custom = 0;
+    }
+}
+
 static void mp_rgb_to_hsv(uint32_t rgb, float *h, float *s, float *v)
 {
     float r = ((rgb >> 16) & 255u) / 255.0f;
@@ -1161,8 +1185,13 @@ static void mp_draw_color_editor(GameCfg *c, float x, float y)
         *custom_store = 1;
         rgb = (uint32_t)*rgb_store;
     }
-    ui_text_wrap(F_REG, 11, x + 190, y + 414, 580, C_DIM,
+    ui_text_wrap(F_REG, 11, x + 190, y + 414, 410, C_DIM,
                  "Drag on the wheel to pick a hue and saturation; use brightness for darker shades.", 2);
+    if (ui_button(x + 620, y + 344, 148, 36, "Reset color", B_NORMAL, 1)) {
+        mp_reset_player_color(c, player);
+        settings_save();
+        launcher_toast("Character color reset to default.");
+    }
 }
 
 static int *mp_respawn_key_ptr(GameCfg *c, int player_slot)
@@ -1462,7 +1491,16 @@ static void tab_multiplayer(float x, float y)
         char row_label[24];
         snprintf(row_label, sizeof row_label, "Player %d", p);
         ui_text(F_BOLD, 12, x + 18, ry + 8, C_MUTED, row_label);
-        mp_name_field(c, p, x + 100, ry, 350);
+        mp_name_field(c, p, x + 100, ry, 260);
+        if (ui_button(x + 370, ry + 1, 72, 30, "Reset", B_GHOST, 1)) {
+            mp_reset_player_name(c, p);
+            if (multiplayer_name_editing == p) {
+                multiplayer_name_editing = 0;
+                SDL_StopTextInput();
+            }
+            settings_save();
+            launcher_toast("Player name reset to default.");
+        }
         const char *role = p == 2 ? "Luigi" : (p == 3 ? "Blue • Bunzo" : "Yellow • Florbo");
         ui_text_fit(F_REG, 11, x + 464, ry + 8, 300, C_DIM, role);
     }
@@ -1890,6 +1928,13 @@ static void tab_online(float x, float y)
     ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
     ui_text(F_REG, 11, x + 34, y + 112, C_MUTED, "Display name");
+    if (ui_button(x + 280, y + 106, 76, 22, "Reset", B_GHOST, 1)) {
+        online_name_editing = 0;
+        SDL_StopTextInput();
+        snprintf(settings.online_name, sizeof settings.online_name, "Player");
+        settings_save();
+        launcher_toast("Online display name reset.");
+    }
     int name_over = 0;
     int name_clicked = clickable(x + 34, y + 132, 322, 36, &name_over);
     ui_rrect(x + 34, y + 132, 322, 36, 8,
@@ -1941,6 +1986,11 @@ static void tab_online(float x, float y)
     if (brightness_changed) {
         settings.online_color = (int)mp_hsv_to_rgb(hue, sat, brightness / 100.0f);
         rgb = (uint32_t)settings.online_color;
+    }
+    if (ui_button(x + 204, y + 354, 138, 30, "Reset color", B_NORMAL, 1)) {
+        settings.online_color = 0x2CA83D;
+        settings_save();
+        launcher_toast("Online profile color reset.");
     }
     if (ui_toggle(x + 34, y + 440, &settings.touch_controls)) settings_save();
     ui_text(F_REG, 11, x + 90, y + 443, C_TEXT, "On-screen touch controls");
