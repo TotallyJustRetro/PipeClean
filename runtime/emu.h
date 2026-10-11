@@ -82,6 +82,11 @@ typedef struct {
     uint8_t p2_mapping_preferred, p2_mapping_selected, p2_mapping_bank;
     uint8_t p2_mapping_source, p2_mapping_inferred, p2_mapping_complete;
     uint8_t p2_respawn_requested, p2_previous_a, p2_keys_held, p2_keys_pressed;
+    /* Raw gameplay telemetry for current SML2 co-op diagnostics. These are
+     * observations only; address meaning is intentionally not assumed. */
+    uint8_t p1_ram[0xE0];       /* A200-A2DF: original player state */
+    uint8_t p2_ram[0xE0];       /* private secondary-player state */
+    uint8_t actor_ram[0x200];   /* AD00-AEFF: live actor/enemy/object pool */
 } EmuMpTestSnapshot;
 
 /* Local co-op for SML1 and SML2. Player indices are 0=host, 1=Player 2,
