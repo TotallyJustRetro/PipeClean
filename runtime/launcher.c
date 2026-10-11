@@ -62,6 +62,7 @@ static int multiplayer_name_editing;
 static int multiplayer_count_menu = -1;
 static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
 static int mp_config_game = GAME_SML;
+static int mp_color_selected; /* 0=P2, 1=P3, 2=P4 in the wheel editor */
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -1041,6 +1042,129 @@ static int mp_color_index(const GameCfg *c, int player_number)
     return color;
 }
 
+static int *mp_rgb_ptr(GameCfg *c, int player_number)
+{
+    if (!c) return NULL;
+    if (player_number == 2) return &c->p2_rgb;
+    if (player_number == 3) return &c->p3_rgb;
+    if (player_number == 4) return &c->p4_rgb;
+    return NULL;
+}
+
+static int *mp_custom_ptr(GameCfg *c, int player_number)
+{
+    if (!c) return NULL;
+    if (player_number == 2) return &c->p2_custom;
+    if (player_number == 3) return &c->p3_custom;
+    if (player_number == 4) return &c->p4_custom;
+    return NULL;
+}
+
+static uint32_t mp_effective_player_rgb(const GameCfg *c, int player_number)
+{
+    if (!c) return 0x2CA83Du;
+    int custom = player_number == 2 ? c->p2_custom :
+                 (player_number == 3 ? c->p3_custom : c->p4_custom);
+    int rgb = player_number == 2 ? c->p2_rgb :
+              (player_number == 3 ? c->p3_rgb : c->p4_rgb);
+    if (custom) return (uint32_t)rgb & 0xFFFFFFu;
+    return luigi_colors[mp_color_index(c, player_number)].swatch;
+}
+
+static void mp_rgb_to_hsv(uint32_t rgb, float *h, float *s, float *v)
+{
+    float r = ((rgb >> 16) & 255u) / 255.0f;
+    float g = ((rgb >> 8) & 255u) / 255.0f;
+    float b = (rgb & 255u) / 255.0f;
+    float hi = fmaxf(r, fmaxf(g, b)), lo = fminf(r, fminf(g, b)), d = hi - lo;
+    *v = hi;
+    *s = hi > 0.0001f ? d / hi : 0.0f;
+    *h = 0.0f;
+    if (d > 0.0001f) {
+        if (hi == r) *h = fmodf((g - b) / d, 6.0f) / 6.0f;
+        else if (hi == g) *h = ((b - r) / d + 2.0f) / 6.0f;
+        else *h = ((r - g) / d + 4.0f) / 6.0f;
+        if (*h < 0.0f) *h += 1.0f;
+    }
+}
+
+static uint32_t mp_hsv_to_rgb(float h, float s, float v)
+{
+    float c = v * s, hp = h * 6.0f;
+    float z = c * (1.0f - fabsf(fmodf(hp, 2.0f) - 1.0f));
+    float r = 0, g = 0, b = 0;
+    if (hp < 1) { r = c; g = z; }
+    else if (hp < 2) { r = z; g = c; }
+    else if (hp < 3) { g = c; b = z; }
+    else if (hp < 4) { g = z; b = c; }
+    else if (hp < 5) { r = z; b = c; }
+    else { r = c; b = z; }
+    float m = v - c;
+    unsigned ri = (unsigned)lrintf((r + m) * 255.0f);
+    unsigned gi = (unsigned)lrintf((g + m) * 255.0f);
+    unsigned bi = (unsigned)lrintf((b + m) * 255.0f);
+    return ((ri & 255u) << 16) | ((gi & 255u) << 8) | (bi & 255u);
+}
+
+static void mp_draw_color_editor(GameCfg *c, float x, float y)
+{
+    static const char *player_labels[3] = {"Player 2", "Player 3", "Player 4"};
+    if (mp_color_selected < 0 || mp_color_selected > 2) mp_color_selected = 0;
+    ui_rect(x + 18, y + 270, 772, 1, C_LINE);
+    label(x + 18, y + 281, "Character color");
+    ui_seg(x + 150, y + 276, 390, 32, player_labels, 3, &mp_color_selected);
+
+    int player = mp_color_selected + 2;
+    int *rgb_store = mp_rgb_ptr(c, player);
+    int *custom_store = mp_custom_ptr(c, player);
+    if (!rgb_store || !custom_store) return;
+    uint32_t rgb = mp_effective_player_rgb(c, player);
+    const float wx = x + 90.0f, wy = y + 365.0f, wr = 62.0f;
+    ui_color_wheel(wx, wy, wr, rgb);
+    ui_text_c(F_REG, 10, wx, wy + wr + 3, C_DIM, "Hue + saturation");
+
+    float dx = ui_mouse.x - wx, dy = ui_mouse.y - wy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    int wheel_changed = 0;
+    if (ui_mouse.down && dist <= wr) {
+        float hue = atan2f(-dy, dx) / 6.28318530718f;
+        if (hue < 0.0f) hue += 1.0f;
+        float sat = dist / wr, val;
+        float old_h, old_s;
+        mp_rgb_to_hsv(rgb, &old_h, &old_s, &val);
+        if (val < 0.20f) val = 0.20f;
+        *rgb_store = (int)mp_hsv_to_rgb(hue, sat, val);
+        *custom_store = 1;
+        rgb = (uint32_t)*rgb_store;
+        wheel_changed = 1;
+    }
+
+    ui_text(F_BOLD, 13, x + 190, y + 320, C_TEXT, player_labels[mp_color_selected]);
+    ui_rrect(x + 190, y + 345, 70, 36, 8, HEX(rgb));
+    ui_stroke(x + 190, y + 345, 70, 36, 8, 1, RGBA(255,255,255,120));
+    char hex[32];
+    snprintf(hex, sizeof hex, "#%06X", (unsigned)(rgb & 0xFFFFFFu));
+    ui_text(F_BOLD, 15, x + 276, y + 354, C_TEXT, hex);
+    ui_text(F_REG, 11, x + 190, y + 388, C_MUTED, "Brightness");
+    float hue, sat, val;
+    mp_rgb_to_hsv(rgb, &hue, &sat, &val);
+    int brightness = (int)lrintf(val * 100.0f);
+    if (brightness < 20) brightness = 20;
+    if (brightness > 100) brightness = 100;
+    int bright_changed = ui_slider(x + 268, y + 386, 260, &brightness, 20, 100);
+    char pct[16];
+    snprintf(pct, sizeof pct, "%d%%", brightness);
+    ui_text_r(F_REG, 12, x + 568, y + 388, C_TEXT, pct);
+    if (bright_changed) {
+        *rgb_store = (int)mp_hsv_to_rgb(hue, sat, brightness / 100.0f);
+        *custom_store = 1;
+        rgb = (uint32_t)*rgb_store;
+    }
+    ui_text_wrap(F_REG, 11, x + 190, y + 414, 580, C_DIM,
+                 "Drag on the wheel to pick a hue and saturation; use brightness for darker shades.", 2);
+    if (wheel_changed || bright_changed) settings_save();
+}
+
 static int *mp_respawn_key_ptr(GameCfg *c, int player_slot)
 {
     if (!c) return NULL;
@@ -1276,7 +1400,7 @@ static void mp_name_field(GameCfg *c, int player_number, float x, float y, float
              (over ? C_BTN_H : C_BTN));
     const char *current = name[0] ? name : (active ? "Type a name…" : "Click to rename");
     ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, name[0] ? C_TEXT : C_DIM, current);
-    ui_rrect(x + w - 25, y + 6, 14, 20, 5, HEX(luigi_colors[ci].swatch));
+    ui_rrect(x + w - 25, y + 6, 14, 20, 5, HEX(mp_effective_player_rgb(c, player_number)));
     if (active) ui_hint("Type the name. Enter/Escape finishes; Backspace deletes.");
     else if (over) {
         char hint[100];
@@ -1368,27 +1492,10 @@ static void tab_multiplayer(float x, float y)
         }
     }
 
-    ui_rect(x + 18, y + 270, 772, 1, C_LINE);
-    label(x + 18, y + 281, "Player 2 color");
-    ui_text_fit(F_REG, 11, x + 148, y + 282, 630, C_DIM,
-                "P3 Bunzo starts blue; P4 Florbo starts yellow. Rename them above.");
-    for (int i = 0; i < N_LUIGI_COLORS; i++) {
-        float bx = x + 18 + i * 128.0f, by = y + 304;
-        int hov = 0;
-        int clicked = clickable(bx, by, 120, 38, &hov);
-        int selected = c->p2_color == i;
-        ui_rrect(bx, by, 120, 38, 8, selected ? RGBA(255,255,255,18) : (hov ? C_BTN_H : C_BTN));
-        ui_rrect(bx + 5, by + 5, 18, 28, 6, HEX(luigi_colors[i].swatch));
-        if (selected) ui_stroke(bx, by, 120, 38, 8, 2, HEX(luigi_colors[i].swatch));
-        ui_text_fit(F_BOLD, 12, bx + 29, by + 11, 86, selected ? HEX(0xFFFFFF) : C_TEXT, luigi_colors[i].name);
-        if (clicked) c->p2_color = i;
-    }
-    ui_rect(x + 18, y + 356, 772, 1, C_LINE);
-    ui_text_wrap(F_REG, 12, x + 18, y + 370, 772, C_DIM,
-                 "Use Multiplayer Controllers for independent controller assignments and respawn bindings.",
-                 3);
-    ui_text_fit(F_REG, 11, x + 18, y + 446, 770, C_DIM,
-                "Defaults: Luigi (green), Bunzo (blue), and Florbo (yellow).");
+    mp_draw_color_editor(c, x, y);
+    ui_rect(x + 18, y + 442, 772, 1, C_LINE);
+    ui_text_wrap(F_REG, 11, x + 18, y + 451, 772, C_DIM,
+                 "Use Multiplayer Controllers for independent controller assignments and respawn bindings. These color settings apply to local co-op and can also be used by online player profiles.", 2);
 }
  
 /* ------------------------------------------------------------------ game tab: DualSense */
@@ -1432,7 +1539,7 @@ static void tab_mp_controllers(float x, float y)
                          name && name[0] ? name : mp_default_name(player + 1));
             }
             uint32_t player_color = player == 0 ? C_TEXT :
-                HEX(luigi_colors[mp_color_index(c, player + 1)].swatch);
+                HEX(mp_effective_player_rgb(c, player + 1));
             ui_text_fit(F_BOLD, 12, bx, y + 138, 183, player_color, title);
             ui_text_c(F_BOLD, 9, bx + 70, y + 157, C_MUTED, "KEY");
             ui_text_c(F_BOLD, 9, bx + 145, y + 157, C_MUTED, "PAD");
