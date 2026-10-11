@@ -53,11 +53,18 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Iruntime tests/test_cgb_ppu.c runtime/ppu.c -o test_cgb_ppu
           ./test_cgb_ppu
 
-      - name: Validate relay server syntax
-        run: node --check server/relay.js
+      - name: Validate relay and Render bridge syntax
+        run: |
+          node --check server/relay.js
+          node --check server/render-server.js
 
-      - name: Test relay room creation and message forwarding
+      - name: Test TCP relay room creation and message forwarding
         run: node tests/test_relay.js
+
+      - name: Test Render WebSocket relay bridge
+        run: |
+          npm install --prefix server --no-audit --no-fund
+          node tests/test_render_bridge.js
 
       - name: Validate Python tools
         run: |
