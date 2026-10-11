@@ -105,6 +105,10 @@ int  ppu_lcd_is_on(void);
 
 /* ---- APU ---- */
 void apu_reset(void);
+/* Save/restore only emulated APU hardware state, leaving PCM output history intact. */
+size_t apu_hw_state_size(void);
+int apu_hw_state_save(void *dst, size_t n);
+int apu_hw_state_load(const void *src, size_t n);
 void apu_tick(int n);
 uint8_t apu_read(uint16_t addr);
 void apu_write(uint16_t addr, uint8_t v);
