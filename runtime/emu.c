@@ -2145,7 +2145,11 @@ static void mp_sml2_direct_collision_update(void)
 
     for (int player = 1; player < mp_player_count; player++) {
         MpSml2Player *p = &mp_sml2_players[player];
-        if (!p->spawned || mp_sml2_bcd_to_int(p->lives) == 0) {
+        /* A character with zero lives must still be allowed to finish the
+         * death animation that consumed its last life. Outside that animation,
+         * zero lives prevents movement/render/respawn work. */
+        if (!p->spawned ||
+            (mp_sml2_bcd_to_int(p->lives) == 0 && p->ram[0x24] != 0xFF)) {
             mp_sml2_render_oam_count[player] = 0;
             continue;
         }
@@ -2293,9 +2297,20 @@ static void mp_sml2_instruction_hook(uint16_t pc)
          * ROM switch the one shared game into its death/game-over modes. */
         if (p->ram[0x24] == 0xFF) {
             if (!mp_sml2_death_logged[player]) {
-                dev_diag_event("LUIGI DEATH ANIMATION STARTED; STOCK FALL STATE ACTIVE");
-                dev_diag_request_screenshot("Luigi death animation started");
+                /* Charge the life when the death state is first observed rather
+                 * than waiting for an off-screen Y-coordinate sentinel. That
+                 * sentinel varies with game timing, but this one-shot guard
+                 * makes the life loss reliable and prevents double-decrements. */
+                int remaining_lives = mp_sml2_bcd_to_int(p->lives);
+                if (remaining_lives > 0) remaining_lives--;
+                p->lives = (uint8_t)(((remaining_lives / 10) << 4) |
+                                     (remaining_lives % 10));
+                p->ram[0x2C] = p->lives;
                 mp_sml2_death_logged[player] = 1;
+                dev_diag_event(remaining_lives > 0
+                    ? "LUIGI DEATH STARTED; ONE LIFE LOST"
+                    : "LUIGI DEATH STARTED; NO LIVES REMAIN");
+                dev_diag_request_screenshot("Luigi death animation started");
             }
             /* The hook is entered while Player 1's RAM is live. Load Luigi's
              * private state before running the stock death routine; otherwise
@@ -2321,10 +2336,10 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA229, rd8(0xFFC0)); wr8(0xA22A, rd8(0xFFC1));
             mp_sml2_save_player_state(p);
             if (death_finished) {
+                /* The life was already charged at death entry. Do not deduct it
+                 * again here; simply finish the animation and decide whether
+                 * a safe respawn is still permitted. */
                 int remaining_lives = mp_sml2_bcd_to_int(p->lives);
-                if (remaining_lives > 0) remaining_lives--;
-                p->lives = (uint8_t)(((remaining_lives / 10) << 4) |
-                                     (remaining_lives % 10));
                 p->ram[0x2C] = p->lives;
                 p->ram[0x24] = 0;
                 mp_sml2_death_logged[player] = 0;
@@ -2335,8 +2350,8 @@ static void mp_sml2_instruction_hook(uint16_t pc)
                        sizeof mp_sml2_render_oam[player]);
                 mp_sml2_render_oam_count[player] = 0;
                 dev_diag_event(remaining_lives > 0
-                    ? "LUIGI STOCK DEATH ANIMATION COMPLETE; ONE LIFE LOST"
-                    : "LUIGI STOCK DEATH ANIMATION COMPLETE; NO LIVES REMAIN");
+                    ? "LUIGI DEATH ANIMATION COMPLETE; RESPAWN PENDING"
+                    : "LUIGI DEATH ANIMATION COMPLETE; NO LIVES REMAIN");
                 dev_diag_request_screenshot("Luigi death animation completed");
             }
 
