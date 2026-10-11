@@ -34,7 +34,7 @@ const relay = spawn(process.execPath, [path.join(__dirname, 'relay.js')], {
     ...process.env,
     PIPECLEAN_RELAY_BIND: '127.0.0.1',
     PIPECLEAN_RELAY_PORT: String(RELAY_PORT),
-    PIPECLEAN_RELAY_PROXY_PROTOCOL: '0'
+    PIPECLEAN_RELAY_PROXY_PROTOCOL: '1'
   },
   stdio: ['ignore', 'pipe', 'inherit']
 });
@@ -91,11 +91,81 @@ function closeSocket(ws, code, reason) {
   }
 }
 
-wss.on('connection', (websocket) => {
+function clientAddress(request) {
+  /* Render sits behind its managed edge. Prefer the single-IP Cloudflare
+     client header when present; otherwise use the first valid XFF item. */
+  const cfAddress = request.headers['cf-connecting-ip'];
+  if (typeof cfAddress === 'string' && net.isIP(cfAddress.trim()))
+    return cfAddress.trim();
+  const forwarded = request.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    for (const item of forwarded.split(',')) {
+      const candidate = item.trim();
+      if (net.isIP(candidate)) return candidate;
+    }
+  }
+  const remote = String(request.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  return net.isIP(remote) ? remote : '127.0.0.1';
+}
+
+function ipv6Bytes(address) {
+  let value = address.toLowerCase().split('%')[0];
+  const halves = value.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - left.length - right.length;
+  if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1))
+    return null;
+  const groups = left.concat(Array(Math.max(0, missing)).fill('0'), right);
+  if (groups.length !== 8 || groups.some((part) => !/^[0-9a-f]{1,4}$/.test(part)))
+    return null;
+  const output = Buffer.alloc(16);
+  groups.forEach((part, index) => output.writeUInt16BE(parseInt(part, 16), index * 2));
+  return output;
+}
+
+function makeProxyV2Header(address, relayPort) {
+  const signature = Buffer.from([13, 10, 13, 10, 0, 13, 10, 81, 85, 73, 84, 10]);
+  const versionCommand = 0x21;
+  const family = net.isIP(address);
+  if (family === 4) {
+    const source = Buffer.from(address.split('.').map(Number));
+    const addresses = Buffer.alloc(12);
+    source.copy(addresses, 0);
+    Buffer.from([127, 0, 0, 1]).copy(addresses, 4);
+    addresses.writeUInt16BE(0, 8);
+    addresses.writeUInt16BE(relayPort, 10);
+    const header = Buffer.alloc(16);
+    signature.copy(header);
+    header[12] = versionCommand;
+    header[13] = 0x11; // TCP over IPv4
+    header.writeUInt16BE(addresses.length, 14);
+    return Buffer.concat([header, addresses]);
+  }
+  const source = family === 6 ? ipv6Bytes(address) : null;
+  if (source) {
+    const addresses = Buffer.alloc(36);
+    source.copy(addresses, 0);
+    ipv6Bytes('::1').copy(addresses, 16);
+    addresses.writeUInt16BE(0, 32);
+    addresses.writeUInt16BE(relayPort, 34);
+    const header = Buffer.alloc(16);
+    signature.copy(header);
+    header[12] = versionCommand;
+    header[13] = 0x21; // TCP over IPv6
+    header.writeUInt16BE(addresses.length, 14);
+    return Buffer.concat([header, addresses]);
+  }
+  return makeProxyV2Header('127.0.0.1', relayPort);
+}
+
+wss.on('connection', (websocket, request) => {
   if (!relayReady || stopping) {
     closeSocket(websocket, 1013, 'Relay is starting');
     return;
   }
+  const originalAddress = clientAddress(request);
   const tcp = net.createConnection({ host: '127.0.0.1', port: RELAY_PORT });
   let tcpConnected = false;
   let relayBuffer = '';
@@ -104,10 +174,10 @@ wss.on('connection', (websocket) => {
 
   tcp.setNoDelay(true);
   tcp.on('connect', () => {
+    /* The internal relay requires PROXY v2 so rate limits can use client IPs. */
+    tcp.write(makeProxyV2Header(originalAddress, RELAY_PORT));
     tcpConnected = true;
-    for (const message of queuedMessages) {
-      if (!tcp.write(message)) break;
-    }
+    for (const message of queuedMessages) tcp.write(message);
     queuedMessages.length = 0;
     queuedBytes = 0;
   });
