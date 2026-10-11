@@ -169,6 +169,8 @@ static uint8_t mp_sml2_render_oam_count[MAX_MP_PLAYERS];
 static uint8_t mp_sml2_render_tiles[MAX_MP_PLAYERS][0x1000];
 static uint8_t mp_sml2_render_tiles_cgb1[MAX_MP_PLAYERS][0x1000];
 static uint8_t mp_sml2_render_tiles_valid[MAX_MP_PLAYERS];
+/* Diagnostic episode guard: one death-entry event per player until respawn. */
+static uint8_t mp_sml2_death_logged[MAX_MP_PLAYERS];
 /* Per-session sprite-map telemetry; excluded from save-state layouts. */
 static uint8_t mp_sml2_debug_mapping_preferred[MAX_MP_PLAYERS];
 static uint8_t mp_sml2_debug_mapping_selected[MAX_MP_PLAYERS];
@@ -861,6 +863,7 @@ int emu_mp_begin(void)
     memset(mp_sml2_render_oam, 0, sizeof mp_sml2_render_oam);
     memset(mp_sml2_render_oam_count, 0, sizeof mp_sml2_render_oam_count);
     memset(mp_sml2_render_tiles_valid, 0, sizeof mp_sml2_render_tiles_valid);
+    memset(mp_sml2_death_logged, 0, sizeof mp_sml2_death_logged);
     memset(mp_sml2_debug_mapping_preferred, 0xFF, sizeof mp_sml2_debug_mapping_preferred);
     memset(mp_sml2_debug_mapping_selected, 0xFF, sizeof mp_sml2_debug_mapping_selected);
     memset(mp_sml2_debug_mapping_bank, 0xFF, sizeof mp_sml2_debug_mapping_bank);
@@ -2016,7 +2019,10 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
     uint8_t saved_sfx_scratch = rd8(0xA460);
     uint8_t saved_bank_latch = rd8(0xA24E);
     uint8_t saved_game_mode = rd8(0xFF9B);
+    uint8_t saved_sfx_command = rd8(0xA460);
     uint8_t saved_music_command = rd8(0xA468);
+    uint8_t saved_current_song = rd8(0xA469);
+    uint8_t saved_fast_music = rd8(0xA50D);
     uint8_t saved_sprite_clear = rd8(0xA266);
     uint8_t saved_sprite_set = rd8(0xA267);
 
@@ -2029,7 +2035,11 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
      * falling pose. It may set mode 9 and queue a music command at completion;
      * neither effect may take over the shared game for Player 1. */
     int ok = mp_sml2_run_original_subroutine(0x315C, 8000, 0);
-    int death_finished = rd8(0xFF9B) != saved_game_mode;
+    /* The stock routine completes only when its own sprite renderer puts the
+     * character in screen row $B0. A shared game-mode change is not a reliable
+     * completion signal for a cloned player and caused instant respawns. */
+    const uint8_t death_screen_y = rd8(0xA23B);
+    int death_finished = (death_screen_y & 0xF0u) == 0xB0u;
 
     unsigned bytes = rd8(0xFF8D);
     if (bytes > sizeof saved_oam) bytes = sizeof saved_oam;
@@ -2050,7 +2060,10 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
     wr8(0xFFBB, saved_obj_mode);
     wr8(0xA460, saved_sfx_scratch);
     wr8(0xFF9B, saved_game_mode);
+    wr8(0xA460, saved_sfx_command);
     wr8(0xA468, saved_music_command);
+    wr8(0xA469, saved_current_song);
+    wr8(0xA50D, saved_fast_music);
     wr8(0xA266, saved_sprite_clear);
     wr8(0xA267, saved_sprite_set);
     wr8(0x2100, saved_bank_latch);
@@ -2069,6 +2082,10 @@ static void mp_sml2_direct_collision_update(void)
 
     const uint8_t shared_pipe_transition = rd8(0xA221);
     const uint8_t shared_level_transition = rd8(0xA20E);
+    const uint8_t shared_sfx_command = rd8(0xA460);
+    const uint8_t shared_music_command = rd8(0xA468);
+    const uint8_t shared_current_song = rd8(0xA469);
+    const uint8_t shared_fast_music = rd8(0xA50D);
     /* The original game only calls the enemy-contact resolver while it is in
      * ordinary play. Keep this exactly aligned with the P1 conditional call. */
     if (shared_pipe_transition >= 0x10) return;
@@ -2104,6 +2121,10 @@ static void mp_sml2_direct_collision_update(void)
             wr8(0xA221, shared_pipe_transition);
             wr8(0xA20E, shared_level_transition);
             mp_sml2_player_scratch_restore(scratch_saved);
+            wr8(0xA460, shared_sfx_command);
+            wr8(0xA468, shared_music_command);
+            wr8(0xA469, shared_current_song);
+            wr8(0xA50D, shared_fast_music);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             longjmp(stop_jmp, 4);
@@ -2151,6 +2172,10 @@ static void mp_sml2_direct_collision_update(void)
         wr8(0xA221, shared_pipe_transition);
         wr8(0xA20E, shared_level_transition);
         mp_sml2_player_scratch_restore(scratch_saved);
+        wr8(0xA460, shared_sfx_command);
+        wr8(0xA468, shared_music_command);
+        wr8(0xA469, shared_current_song);
+        wr8(0xA50D, shared_fast_music);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
@@ -2193,6 +2218,10 @@ static void mp_sml2_instruction_hook(uint16_t pc)
      * from leaking into the original Player 1 main loop. */
     uint8_t movement_scratch_saved[MP_SML2_PLAYER_SCRATCH_COUNT];
     mp_sml2_player_scratch_save(movement_scratch_saved);
+    const uint8_t shared_sfx_command = rd8(0xA460);
+    const uint8_t shared_music_command = rd8(0xA468);
+    const uint8_t shared_current_song = rd8(0xA469);
+    const uint8_t shared_fast_music = rd8(0xA50D);
     MpSml2Player p1_restore;
     mp_sml2_save_player_state(&p1_restore);
     mp_sml2_players[0] = p1_restore;
@@ -2217,11 +2246,20 @@ static void mp_sml2_instruction_hook(uint16_t pc)
          * secondary characters must run it themselves, without letting the
          * ROM switch the one shared game into its death/game-over modes. */
         if (p->ram[0x24] == 0xFF) {
+            if (!mp_sml2_death_logged[player]) {
+                dev_diag_event("LUIGI DEATH ANIMATION STARTED; STOCK FALL STATE ACTIVE");
+                dev_diag_request_screenshot("Luigi death animation started");
+                mp_sml2_death_logged[player] = 1;
+            }
             int death_finished = 0;
             if (!mp_sml2_capture_direct_death_oam(player, p, &death_finished)) {
                 wr8(0xA221, shared_pipe_transition);
                 wr8(0xA20E, shared_level_transition);
                 mp_sml2_player_scratch_restore(movement_scratch_saved);
+                wr8(0xA460, shared_sfx_command);
+                wr8(0xA468, shared_music_command);
+                wr8(0xA469, shared_current_song);
+                wr8(0xA50D, shared_fast_music);
                 mp_sml2_load_player(&p1_restore);
                 cpu = p1_cpu;
                 longjmp(stop_jmp, 4);
@@ -2234,6 +2272,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
                                      (remaining_lives % 10));
                 p->ram[0x2C] = p->lives;
                 p->ram[0x24] = 0;
+                mp_sml2_death_logged[player] = 0;
                 p->spawned = 0;
                 p->respawn_requested = (uint8_t)(remaining_lives > 0);
                 p->sfx_events |= P2_SFX_EVENT_DIE;
@@ -2249,11 +2288,16 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA221, shared_pipe_transition);
             wr8(0xA20E, shared_level_transition);
             mp_sml2_player_scratch_restore(movement_scratch_saved);
+            wr8(0xA460, shared_sfx_command);
+            wr8(0xA468, shared_music_command);
+            wr8(0xA469, shared_current_song);
+            wr8(0xA50D, shared_fast_music);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
             continue;
         }
 
+        mp_sml2_death_logged[player] = 0;
         const uint8_t old_a = p->previous_a;
         const uint8_t old_ground = p->ram[0x14];
         const uint8_t old_air = p->ram[0x15];
@@ -2340,6 +2384,10 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         wr8(0xA221, shared_pipe_transition);
         wr8(0xA20E, shared_level_transition);
         mp_sml2_player_scratch_restore(movement_scratch_saved);
+        wr8(0xA460, shared_sfx_command);
+        wr8(0xA468, shared_music_command);
+        wr8(0xA469, shared_current_song);
+        wr8(0xA50D, shared_fast_music);
         mp_sml2_load_player(&p1_restore);
         cpu = p1_cpu;
     }
