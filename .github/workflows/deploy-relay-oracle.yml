@@ -1,0 +1,187 @@
+name: Deploy PipeClean traversal relay to Oracle Cloud
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/deploy-relay-oracle.yml"
+      - "server/deploy/oracle-bootstrap.sh"
+      - "server/relay.js"
+      - "tests/test_relay.js"
+      - "docs/ONLINE_NETWORKING.md"
+      - "runtime/settings.h"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: pipeclean-oracle-relay-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Validate scripts and relay tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n server/deploy/oracle-bootstrap.sh
+          node --check server/relay.js
+          node tests/test_relay.js
+          grep -q 'proxy_protocol on;' server/deploy/oracle-bootstrap.sh
+          grep -q 'ssl_certificate ' server/deploy/oracle-bootstrap.sh
+          grep -q 'PIPECLEAN_RELAY_PROXY_PROTOCOL=1' server/deploy/oracle-bootstrap.sh
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      OCI_HOST: ${{ secrets.OCI_RELAY_HOST }}
+      OCI_USER: ${{ vars.OCI_RELAY_USER }}
+      OCI_SSH_PRIVATE_KEY: ${{ secrets.OCI_SSH_PRIVATE_KEY }}
+      RELAY_EMAIL: ${{ vars.PIPECLEAN_RELAY_EMAIL }}
+      RELAY_HOST_OVERRIDE: ${{ vars.PIPECLEAN_RELAY_HOSTNAME }}
+    steps:
+      - name: Check out selected PipeClean revision
+        uses: actions/checkout@v4
+
+      - name: Validate hosting configuration
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$OCI_HOST" ]] || { echo "::error::Add the VM public IP as the OCI_RELAY_HOST Actions secret."; exit 1; }
+          [[ -n "$OCI_SSH_PRIVATE_KEY" ]] || { echo "::error::Add the VM SSH private key as OCI_SSH_PRIVATE_KEY."; exit 1; }
+          [[ -n "$RELAY_EMAIL" ]] || { echo "::error::Add PIPECLEAN_RELAY_EMAIL as a repository Actions variable."; exit 1; }
+          OCI_USER="${OCI_USER:-ubuntu}"
+          if [[ ! "$OCI_USER" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+            echo "::error::OCI_RELAY_USER must be a valid Linux username."
+            exit 1
+          fi
+          if [[ -n "$RELAY_HOST_OVERRIDE" ]]; then
+            RELAY_HOSTNAME="$RELAY_HOST_OVERRIDE"
+          else
+            RELAY_HOSTNAME="$(python3 - "$OCI_HOST" <<'PY'
+          import ipaddress
+          import sys
+          address = ipaddress.ip_address(sys.argv[1])
+          if address.version != 4:
+              raise SystemExit("Set PIPECLEAN_RELAY_HOSTNAME for IPv6 or custom-domain deployments.")
+          print(str(address).replace(".", "-") + ".sslip.io")
+          PY
+          )"
+          fi
+          if [[ ! "$RELAY_HOSTNAME" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$ ]]; then
+            echo "::error::Relay hostname contains unsupported characters."
+            exit 1
+          fi
+          if [[ ! "$RELAY_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
+            echo "::error::PIPECLEAN_RELAY_EMAIL must be a valid email address."
+            exit 1
+          fi
+          echo "oci_host=$OCI_HOST" >> "$GITHUB_OUTPUT"
+          echo "oci_user=$OCI_USER" >> "$GITHUB_OUTPUT"
+          echo "relay_hostname=$RELAY_HOSTNAME" >> "$GITHUB_OUTPUT"
+          echo "relay_endpoint=tls://$RELAY_HOSTNAME:443" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare SSH credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > "$HOME/.ssh/oci_deploy_key"
+          chmod 600 "$HOME/.ssh/oci_deploy_key"
+          ssh-keyscan -T 10 -H "$OCI_HOST" >> "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Upload relay and bootstrap installer
+        env:
+          OCI_HOST: ${{ steps.config.outputs.oci_host }}
+          OCI_USER: ${{ steps.config.outputs.oci_user }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -i "$HOME/.ssh/oci_deploy_key" \
+            -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            server/relay.js "$OCI_USER@$OCI_HOST:/tmp/pipeclean-relay.js"
+          scp -i "$HOME/.ssh/oci_deploy_key" \
+            -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            server/deploy/oracle-bootstrap.sh "$OCI_USER@$OCI_HOST:/tmp/pipeclean-oracle-bootstrap.sh"
+
+      - name: Install and verify the TLS relay
+        env:
+          OCI_HOST: ${{ steps.config.outputs.oci_host }}
+          OCI_USER: ${{ steps.config.outputs.oci_user }}
+          RELAY_HOSTNAME: ${{ steps.config.outputs.relay_hostname }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/oci_deploy_key" \
+            -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            "$OCI_USER@$OCI_HOST" \
+            "sudo bash /tmp/pipeclean-oracle-bootstrap.sh '$RELAY_HOSTNAME' '$RELAY_EMAIL'"
+
+      - name: Configure deployed relay as the default
+        env:
+          RELAY_HOSTNAME: ${{ steps.config.outputs.relay_hostname }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RELAY_HOSTNAME" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          endpoint = f"tls://{sys.argv[1]}:443"
+          path = Path("runtime/settings.h")
+          source = path.read_text(encoding="utf-8")
+          pattern = re.compile(r"(?m)^#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT .+$")
+          updated, count = pattern.subn(
+              lambda _match: f'#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "{endpoint}"',
+              source,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not configure the default relay endpoint in runtime/settings.h")
+          path.write_text(updated, encoding="utf-8")
+          PY
+          git add runtime/settings.h
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Configure Oracle Cloud PipeClean traversal endpoint"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          else
+            echo "The Oracle relay endpoint is already configured as the default."
+          fi
+
+      - name: Trigger regression and Android builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run regression.yml --ref "$GITHUB_REF_NAME"
+          gh workflow run android-build.yml --ref "$GITHUB_REF_NAME"
+
+      - name: Publish deployment summary
+        env:
+          RELAY_ENDPOINT: ${{ steps.config.outputs.relay_endpoint }}
+        shell: bash
+        run: |
+          {
+            echo "### PipeClean traversal relay deployed to Oracle Cloud"
+            echo
+            echo "Relay address: \`$RELAY_ENDPOINT\`"
+            echo
+            echo "TLS certificate verification is enabled. The relay listens publicly only through TLS on port 443; port 27800 remains local to the VM."
+            echo
+            echo "This uses Oracle Always Free eligible resources, not unlimited resources. OCI has a 10 TB/month outbound-transfer allowance, and Always Free instances can be reclaimed if they meet Oracle's idle criteria."
+            echo "Endpoint config was committed to branch: $GITHUB_REF_NAME"
+          } >> "$GITHUB_STEP_SUMMARY"
