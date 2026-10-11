@@ -14,7 +14,7 @@ if [[ ! "$RELAY_HOST" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$ ]]; the
   echo "Invalid relay hostname." >&2
   exit 2
 fi
-if [[ ! "$ACME_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
+if [[ ! "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]]; then
   echo "A valid contact email is required for certificate renewal." >&2
   exit 2
 fi
