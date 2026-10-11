@@ -2319,7 +2319,17 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
             }
         } else {
             mp_sml2_initialized = 0;
-            for (int i = 1; i < MAX_MP_PLAYERS; i++) mp_sml2_players[i].spawned = 0;
+            /* A pipe/door transition can temporarily make the gameplay
+             * candidate false while the cartridge remains in level mode 4.
+             * Suspend secondary movement, but do not mark Luigi as despawned:
+             * that produced a fake "respawning" state with no life loss.
+             * On a real non-gameplay mode (death, map, title, etc.), clear the
+             * spawned flag as before; the next stable gameplay entry will
+             * initialize the secondary player beside Mario. */
+            if (rd8(0xFF9B) != 4) {
+                for (int i = 1; i < MAX_MP_PLAYERS; i++)
+                    mp_sml2_players[i].spawned = 0;
+            }
         }
         mp_sml2_capture_frame(frame);
         return n;
