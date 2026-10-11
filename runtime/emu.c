@@ -1779,7 +1779,8 @@ static int mp_sml2_skip_secondary_call(uint16_t pc)
     /* These routines are owned by the shared world and must run once, not once
      * for Mario plus once for every extra player. Pipe entry/exit is likewise
      * a scene transition and remains Player 1's responsibility. */
-    return pc == 0x1189 || pc == 0x331C || pc == 0x324F;
+    return pc == 0x1189 || pc == 0x307D ||
+           pc == 0x331C || pc == 0x324F;
 }
 
 static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
