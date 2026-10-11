@@ -26,6 +26,9 @@ const WAITING_ROOM_TTL_MS = 15 * 60 * 1000;
    invite instead of silently dropping its host at the same instant. */
 const SOCKET_IDLE_TIMEOUT_MS = Math.max(120_000, WAITING_ROOM_TTL_MS + 60_000);
 const ROOM_SWEEP_INTERVAL_MS = Math.min(30_000, Math.max(1_000, Math.floor(WAITING_ROOM_TTL_MS / 4)));
+const USE_PROXY_PROTOCOL = process.env.PIPECLEAN_RELAY_PROXY_PROTOCOL === '1';
+const PROXY_V2_SIGNATURE = Buffer.from([13, 10, 13, 10, 0, 13, 10, 81, 85, 73, 84, 10]);
+const MAX_PROXY_HEADER_BYTES = 512;
 const rooms = new Map();
 const connectAttempts = new Map();
 const joinAttempts = new Map();
@@ -55,6 +58,31 @@ function safeName(value) {
     .replace(/[\u0000-\u001f\u007f\t]/g, '')
     .slice(0, 24) || 'Player';
 }
+function parseProxyV2Header(buffer) {
+  if (buffer.length < 16) return { pending: true };
+  if (!buffer.subarray(0, 12).equals(PROXY_V2_SIGNATURE)) return { error: true };
+  /* Only accept a version-2 PROXY command with a TCP/IPv4 or TCP/IPv6 source. */
+  if (buffer[12] !== 0x21) return { error: true };
+  const familyProtocol = buffer[13];
+  const addressLength = buffer.readUInt16BE(14);
+  const headerLength = 16 + addressLength;
+  if (headerLength > MAX_PROXY_HEADER_BYTES) return { error: true };
+  if (buffer.length < headerLength) return { pending: true };
+
+  if (familyProtocol === 0x11) {
+    if (addressLength < 12) return { error: true };
+    const sourceIp = Array.from(buffer.subarray(16, 20)).join('.');
+    return { sourceIp, headerLength };
+  }
+  if (familyProtocol === 0x21) {
+    if (addressLength < 36) return { error: true };
+    /* Binary-form IPv6 key stays stable without requiring textual compression. */
+    const sourceIp = 'proxy6:' + buffer.subarray(16, 32).toString('hex');
+    return { sourceIp, headerLength };
+  }
+  return { error: true };
+}
+
 function reply(client, line) {
   if (client && !client.closed && !client.socket.destroyed) {
     if (!client.socket.write(line + '\n')) client.socket.pause();
@@ -168,21 +196,45 @@ function processLine(client, line) {
 }
 
 const server = net.createServer((socket) => {
-  const ip = (socket.remoteAddress || 'unknown').replace(/^::ffff:/, '');
+  const transportIp = (socket.remoteAddress || 'unknown').replace(/^::ffff:/, '');
   if (clientCount >= MAX_CONNECTIONS ||
-      !allowAttempt(connectAttempts, ip, MAX_CONNECTIONS_PER_IP_PER_MINUTE)) {
+      (!USE_PROXY_PROTOCOL &&
+       !allowAttempt(connectAttempts, transportIp, MAX_CONNECTIONS_PER_IP_PER_MINUTE))) {
     socket.destroy();
     return;
   }
   clientCount += 1;
   socket.setNoDelay(true);
   socket.setKeepAlive(true, 10_000);
-  socket.setTimeout(SOCKET_IDLE_TIMEOUT_MS, () => socket.destroy());
+  /* A proxy-prefixed connection must send its header promptly. */
+  socket.setTimeout(USE_PROXY_PROTOCOL ? 10_000 : SOCKET_IDLE_TIMEOUT_MS, () => socket.destroy());
   const client = {
-    socket, ip, phase: 'new', name: 'Player', room: null, peer: null,
-    buffer: '', closed: false, rateStarted: Date.now(), rateCount: 0
+    socket, ip: transportIp, phase: 'new', name: 'Player', room: null, peer: null,
+    buffer: '', closed: false, rateStarted: Date.now(), rateCount: 0,
+    proxyResolved: !USE_PROXY_PROTOCOL, proxyBuffer: Buffer.alloc(0)
   };
-  socket.on('data', (chunk) => {
+  socket.on('data', (rawChunk) => {
+    let chunk = rawChunk;
+    if (!client.proxyResolved) {
+      const combined = Buffer.concat([client.proxyBuffer, rawChunk]);
+      if (combined.length > MAX_PROXY_HEADER_BYTES + 16) { socket.destroy(); return; }
+      const parsed = parseProxyV2Header(combined);
+      if (parsed.error) { socket.destroy(); return; }
+      if (parsed.pending) {
+        client.proxyBuffer = combined;
+        return;
+      }
+      client.ip = parsed.sourceIp;
+      client.proxyResolved = true;
+      client.proxyBuffer = Buffer.alloc(0);
+      if (!allowAttempt(connectAttempts, client.ip, MAX_CONNECTIONS_PER_IP_PER_MINUTE)) {
+        socket.destroy();
+        return;
+      }
+      socket.setTimeout(SOCKET_IDLE_TIMEOUT_MS, () => socket.destroy());
+      chunk = combined.subarray(parsed.headerLength);
+      if (!chunk.length) return;
+    }
     client.buffer += chunk.toString('utf8');
     if (client.buffer.length > MAX_BUFFER) { socket.destroy(); return; }
     let newline;
