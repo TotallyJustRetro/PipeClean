@@ -1967,7 +1967,7 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
      * are shared physical audio registers. Do not let a character-only call
      * power down or reconfigure Mario's channels. */
     int saved_apu_write_suppression = apu_set_write_suppressed(1);
-    int saved_music_command_suppression = gb_set_shared_music_command_suppressed(1);
+    int saved_music_command_suppression = gb_set_sml2_clone_global_writes_suppressed(1);
     gb_set_timing_suppressed(1);
 
     while (budget && cpu.pc != sentinel) {
@@ -2019,7 +2019,7 @@ static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
     CPU result = cpu;
     gb_set_timing_suppressed(0);
     (void)apu_set_write_suppressed(saved_apu_write_suppression);
-    (void)gb_set_shared_music_command_suppressed(saved_music_command_suppression);
+    (void)gb_set_sml2_clone_global_writes_suppressed(saved_music_command_suppression);
     mp_sml2_inline_active = 0;
     cpu = saved;
     if (ok && keep_result_registers) {
