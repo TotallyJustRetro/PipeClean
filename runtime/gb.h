@@ -40,6 +40,15 @@ void hw_tick(int tcycles);              /* advance timer/PPU/APU/serial */
 void gb_stop(void);                     /* CGB speed switch, if prepared through KEY1 */
 typedef void (*GbCpuFaultHook)(uint8_t opcode, uint16_t pc);
 void gb_set_cpu_fault_hook(GbCpuFaultHook hook);
+/* Optional interpreter instruction hook, called before executing the instruction at PC. */
+typedef void (*GbInstructionHook)(uint16_t pc);
+void gb_set_instruction_hook(GbInstructionHook hook);
+/* Temporarily execute a helper without advancing the machine's peripherals. */
+void gb_set_timing_suppressed(int suppressed);
+/* Suppress shared music/game-mode flags during clone-only SML2 ROM calls. */
+int gb_set_sml2_clone_global_writes_suppressed(int suppressed);
+/* Read directly by the generated NEXT() macro to avoid extra calls per opcode. */
+extern int gb_timing_suppressed;
 void cpu_halt(void);
 void cpu_service_irq(void);
 void cpu_lockup(uint8_t op, uint16_t pc) __attribute__((noreturn));
@@ -80,6 +89,8 @@ void ppu_write(uint8_t reg, uint8_t v);
 uint8_t ppu_vram_read(uint16_t address);
 void ppu_vram_write(uint16_t address, uint8_t value);
 uint8_t ppu_vram_bank_read(void);
+void ppu_vram_bank1_copy(uint8_t out[0x1800]);
+void ppu_cgb_obj_palette_copy(uint32_t out[32]);
 void ppu_set_cgb_mode(int enabled);
 int ppu_cgb_mode_enabled(void);
 extern uint32_t ppu_rgb[GB_H][GB_WMAX];
@@ -96,6 +107,12 @@ int  ppu_lcd_is_on(void);
 
 /* ---- APU ---- */
 void apu_reset(void);
+/* Save/restore only emulated APU hardware state, leaving PCM output history intact. */
+size_t apu_hw_state_size(void);
+int apu_hw_state_save(void *dst, size_t n);
+int apu_hw_state_load(const void *src, size_t n);
+/* Secondary-player ROM simulations must not write shared APU registers. Returns prior setting. */
+int apu_set_write_suppressed(int suppressed);
 void apu_tick(int n);
 uint8_t apu_read(uint16_t addr);
 void apu_write(uint16_t addr, uint8_t v);

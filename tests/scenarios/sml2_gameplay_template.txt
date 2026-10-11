@@ -1,0 +1,14 @@
+# Editable real-ROM SML2 co-op test template.
+# Run with tools/mp_test.py, a local SML2 ROM, and a frame limit.
+# Events apply from their frame onward until the next event.
+# Masks: A=01 B=02 Select=04 Start=08, Right=10 Left=20 Up=40 Down=80.
+# Adjust timing to match the title/menu flow of your ROM/save.
+0 00 00
+120 08 00
+121 00 00
+180 11 10
+210 10 00
+240 00 11
+270 00 10
+300 11 11
+330 00 00

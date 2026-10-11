@@ -34,6 +34,11 @@ void wide_dims(int game, int pct, int *l, int *r)
 }
 
 static int expect(int addr, const uint8_t *b, int n) { return memcmp(&rom[addr], b, (size_t)n) == 0; }
+static int expect_fill(int addr, uint8_t value, int n)
+{
+    for (int i = 0; i < n; i++) if (rom[addr + i] != value) return 0;
+    return 1;
+}
 
 static int sml2_right_extra;
 static int sml2_left_extra;
@@ -192,9 +197,12 @@ int wide_install(int game, int l, int r)
     }
 
     if (game == GAME_SML) {
+        /* Clean SML and the DX-patched image share these code offsets. The clean ROM's
+         * unused trampoline area is 0xFF-filled, while the DX IPS patch zeroes it.
+         * Accept either known-unused fill pattern, but never overwrite a mixed/used region. */
         static const uint8_t o1[] = {0xFA, 0xAB, 0xC0}, o2[] = {0xC6, 0xD0}, o3[] = {0xF0, 0xC3, 0xFE, 0xE0, 0x38, 0x0A};
-        static const uint8_t zero[26] = {0};
-        if (!expect(0x24A5, o1, 3) || !expect(0x24BF, o2, 2) || !expect(0x2584, o3, 6) || !expect(0x3FE4, zero, 26)) return 0;
+        if (!expect(0x249C, o1, 3) || !expect(0x24B6, o2, 2) || !expect(0x257B, o3, 6) ||
+            (!expect_fill(0x3FE4, 0x00, 26) && !expect_fill(0x3FE4, 0xFF, 26))) return 0;
         int k = sml_k(r);
         int T = k >= 2 ? 0xC0 + 16 * k + 12 + 1 : 0xE0;
         int U = l > 8 ? 256 - (l - 8) : 0x100;
@@ -202,8 +210,8 @@ int wide_install(int game, int l, int r)
         if (k > 0) {
             const uint8_t t1[] = {0xFA, 0xAB, 0xC0, 0xC6, (uint8_t)k, 0xC9};      /* LD A,(C0AB); ADD A,k; RET */
             memcpy(&rom[0x3FE4], t1, sizeof t1);
-            rom[0x24A5] = 0xCD; rom[0x24A6] = 0xE4; rom[0x24A7] = 0x3F;           /* CALL 3FE4 */
-            rom[0x24C0] = (uint8_t)(0xD0 + 16 * k);                               /* spawn X + 16k */
+            rom[0x249C] = 0xCD; rom[0x249D] = 0xE4; rom[0x249E] = 0x3F;           /* CALL 3FE4 */
+            rom[0x24B7] = (uint8_t)(0xD0 + 16 * k);                               /* spawn X + 16k */
         }
         if (l > 8 || k >= 2) {
             const uint8_t t2[] = {0xF0, 0xC3, 0xFE, (uint8_t)T, 0xD8, 0xFE, (uint8_t)(U & 0xFF), 0x3F, 0xC9};
@@ -211,7 +219,7 @@ int wide_install(int game, int l, int r)
                 const uint8_t t2b[] = {0xF0, 0xC3, 0xFE, (uint8_t)T, 0xC9};
                 memcpy(&rom[0x3FEA], t2b, sizeof t2b);
             } else memcpy(&rom[0x3FEA], t2, sizeof t2);
-            rom[0x2584] = 0xCD; rom[0x2585] = 0xEA; rom[0x2586] = 0x3F; rom[0x2587] = 0x00;   /* CALL 3FEA; NOP */
+            rom[0x257B] = 0xCD; rom[0x257C] = 0xEA; rom[0x257D] = 0x3F; rom[0x257E] = 0x00;   /* CALL 3FEA; NOP */
         }
         return 1;
     }

@@ -2,6 +2,7 @@
 #include "gb.h"
 #include "cart.h"
 #include "patch.h"
+#include "util.h"
 
 uint8_t *rom;
 uint8_t *cart_ram;
@@ -16,6 +17,27 @@ static int ram_dirty;
 static uint32_t ram_crc_saved;
 
 const CartInfo *cart_info(void) { return &info; }
+
+int cart_export_rom(const char *path)
+{
+    if (!path || !path[0] || !rom || info.size < 0x150 || info.size > rom_len)
+        return -1;
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    size_t wrote = fwrite(rom, 1, info.size, f);
+    int failed = wrote != info.size || ferror(f);
+    if (fclose(f) != 0) failed = 1;
+    return failed ? -1 : 0;
+}
+
+uint8_t cart_rom_read_bank(int bank, uint16_t address)
+{
+    if (!rom || bank < 0 || bank >= info.rom_banks ||
+        address < 0x4000 || address >= 0x8000)
+        return 0xFF;
+    size_t offset = (size_t)bank * 0x4000u + (size_t)(address - 0x4000u);
+    return offset < rom_len ? rom[offset] : 0xFF;
+}
 
 static size_t ram_size_from_code(int c)
 {

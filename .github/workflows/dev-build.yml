@@ -1,0 +1,98 @@
+name: PipeClean Dev Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeclean-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-dev-build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up MSYS2 UCRT64 with SDL2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-SDL2_image
+            mingw-w64-ucrt-x86_64-cmake
+
+      - name: Verify Windows toolchain
+        shell: msys2 {0}
+        run: |
+          gcc --version
+          cmake --version
+          pkg-config --modversion sdl2
+
+      - name: Generate synthetic SML2-shaped ROM
+        shell: pwsh
+        run: |
+          $rom = New-Object byte[] (512 * 1024)
+          $title = [Text.Encoding]::ASCII.GetBytes("MARIOLAND2")
+          [Array]::Copy($title, 0, $rom, 0x134, $title.Length)
+          $rom[0x147] = 0x01
+          $rom[0x148] = 0x04
+          $rom[0x149] = 0x00
+          $rom[0x801C] = 0x19
+          New-Item -ItemType Directory -Force ci | Out-Null
+          [IO.File]::WriteAllBytes("$PWD\ci\sml2_smoke.gb", $rom)
+
+      - name: Configure PipeClean Dev
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build-dev -DROM="$PWD/ci/sml2_smoke.gb" -DCMAKE_BUILD_TYPE=Release -DPIPECLEAN_DEV_BUILD=ON
+
+      - name: Build developer runtime
+        shell: msys2 {0}
+        run: |
+          cmake --build build-dev --target PipeClean --parallel 2
+
+      - name: Smoke-test developer runtime
+        shell: msys2 {0}
+        run: |
+          ./build-dev/PipeClean.exe --headless --frames 2 --no-crc-check --wide 100 ci/sml2_smoke.gb
+
+      - name: Stage Dev runtime and required DLLs
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist/PipeClean-Dev-Windows-x64/assets
+          cp build-dev/PipeClean.exe dist/PipeClean-Dev-Windows-x64/PipeClean.exe
+          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp dist/PipeClean-Dev-Windows-x64/assets/
+          {
+            ldd build-dev/PipeClean.exe
+            ldd /ucrt64/bin/SDL2.dll
+          } | awk '/=> \/ucrt64\// {print $3}' | sort -u | while read -r dll; do
+            cp "$dll" dist/PipeClean-Dev-Windows-x64/
+          done
+          test -s dist/PipeClean-Dev-Windows-x64/assets/pipeclean-icon.svg
+          test -s dist/PipeClean-Dev-Windows-x64/assets/pipeclean-logo.svg
+          test -s dist/PipeClean-Dev-Windows-x64/assets/pipeclean-logo.webp
+
+      - name: Package PipeClean Dev artifact
+        shell: pwsh
+        run: |
+          Copy-Item README.md, INSTALL.md, LEGAL.md, THIRD_PARTY.md dist\PipeClean-Dev-Windows-x64\
+          Compress-Archive -Path dist\PipeClean-Dev-Windows-x64 -DestinationPath PipeClean-Dev-Windows-x64.zip -Force
+
+      - name: Upload Dev build
+        uses: actions/upload-artifact@v7
+        with:
+          name: PipeClean-Dev-Windows-x64
+          path: PipeClean-Dev-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30

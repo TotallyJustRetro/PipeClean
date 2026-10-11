@@ -20,6 +20,14 @@ static uint8_t regs[0x30];        /* raw register shadow, index = addr - 0xFF10 
 static uint8_t wave_ram[16];
 static int power, fs_cycles, fs_step;
 static uint8_t nr50, nr51;
+static int apu_writes_suppressed;
+
+int apu_set_write_suppressed(int suppressed)
+{
+    int previous = apu_writes_suppressed;
+    apu_writes_suppressed = suppressed != 0;
+    return previous;
+}
 
 static const uint8_t duty_tab[4][8] = {
     {0, 0, 0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0, 0, 1},
@@ -286,6 +294,10 @@ uint8_t apu_read(uint16_t a)
 
 void apu_write(uint16_t a, uint8_t v)
 {
+    /* Character-only multiplayer replays do not own the cartridge's single
+     * hardware APU. Ignore their register writes; accepted SFX are reissued
+     * through the stock sound command after Player 1's state is restored. */
+    if (apu_writes_suppressed) return;
     if (a >= 0xFF30) { wave_ram[a - 0xFF30] = v; return; }
     if (a == 0xFF26) {
         int on = (v & 0x80) != 0;
@@ -339,6 +351,48 @@ void apu_write(uint16_t a, uint8_t v)
     case 0xFF25: nr51 = v; break;
     }
 }
+typedef struct {
+    Chan ch[4];
+    uint8_t regs[0x30], wave_ram[16];
+    int power, fs_cycles, fs_step;
+    uint8_t nr50, nr51;
+} APUHardwareState;
+
+/* Multiplayer clones may need to execute cartridge routines that accidentally
+ * touch the shared APU. Snapshot only the emulated hardware registers/channels;
+ * do not rewind or flush the PCM output ring consumed by the audio device. */
+size_t apu_hw_state_size(void) { return sizeof(APUHardwareState); }
+
+int apu_hw_state_save(void *dst, size_t n)
+{
+    if (!dst || n < sizeof(APUHardwareState)) return -1;
+    APUHardwareState *s = (APUHardwareState *)dst;
+    memcpy(s->ch, ch, sizeof ch);
+    memcpy(s->regs, regs, sizeof regs);
+    memcpy(s->wave_ram, wave_ram, sizeof wave_ram);
+    s->power = power;
+    s->fs_cycles = fs_cycles;
+    s->fs_step = fs_step;
+    s->nr50 = nr50;
+    s->nr51 = nr51;
+    return 0;
+}
+
+int apu_hw_state_load(const void *src, size_t n)
+{
+    if (!src || n < sizeof(APUHardwareState)) return -1;
+    const APUHardwareState *s = (const APUHardwareState *)src;
+    memcpy(ch, s->ch, sizeof ch);
+    memcpy(regs, s->regs, sizeof regs);
+    memcpy(wave_ram, s->wave_ram, sizeof wave_ram);
+    power = s->power;
+    fs_cycles = s->fs_cycles;
+    fs_step = s->fs_step;
+    nr50 = s->nr50;
+    nr51 = s->nr51;
+    return 0;
+}
+
 typedef struct {
     Chan ch[4];
     uint8_t regs[0x30], wave_ram[16];

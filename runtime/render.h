@@ -3,6 +3,7 @@
 #include "emu.h"
 
 void render_init(SDL_Renderer *r);
+void render_set_mp_game(int game);
 void render_shutdown(void);
 void render_reset(void);                                   /* invalidate temporal/rendered frame history */
 /* Build the picture for `game` from a frame. live != 0 applies temporal effects (ghosting). */
@@ -10,6 +11,11 @@ void render_build(const Frame *f, int game, int live);
 void render_overlay_sml1_mario(Frame *f, int dx, int dy);
 void render_overlay_sml1_mario_oam(Frame *f, const uint8_t oam[16], int dx, int dy);
 void render_overlay_sml1_luigi_oam(Frame *f, const uint8_t oam[16], int dx, int dy);
+void render_overlay_sml1_mp_oam(Frame *f, const uint8_t *oam, int dx, int dy, int player);
+void render_overlay_sml1_projectile_oam(Frame *f, const uint8_t oam[12], int dx, int dy);
+void render_overlay_sml1_effect_oam(Frame *f, const uint8_t oam[52], int dx, int dy);
+uint32_t render_sml1_luigi_color(void);
+uint32_t render_sml1_mp_player_color(int player);
 /* Where the picture goes in a W x H area for the chosen window shape and scaling. */
 void render_fit(int W, int H, int aspect, int scaling, SDL_Rect *out);
 /* Draw the picture (with the screen filters) into r. */

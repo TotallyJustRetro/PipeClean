@@ -9,7 +9,7 @@
 typedef struct { SDL_GameController *gc; SDL_Joystick *joy; int mapped; } Pad;
 static Pad pads[MAXPADS];
 static int n_pads;
-static SDL_JoystickID assigned_instance[N_GAMES][2];
+static SDL_JoystickID assigned_instance[N_GAMES][MAX_MP_PLAYERS];
 static int sync_initialized;
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
 static int pad_instance_device(SDL_JoystickID which);
@@ -88,7 +88,7 @@ static int unique_unclaimed_identity(const char *identity, const int claimed[MAX
 static void remember_assigned_instances(void)
 {
     for (int g = 0; g < N_GAMES; g++) {
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             int device = settings.g[g].pad_device[player];
             SDL_JoystickID instance = device_instance(device);
             if (instance >= 0) assigned_instance[g][player] = instance;
@@ -114,7 +114,7 @@ void pad_init(void)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
     for (int g = 0; g < N_GAMES; g++)
-        for (int player = 0; player < 2; player++)
+        for (int player = 0; player < MAX_MP_PLAYERS; player++)
             assigned_instance[g][player] = (SDL_JoystickID)-1;
     sync_initialized = 0;
     rescan();
@@ -170,11 +170,11 @@ void pad_sync_assignments(void)
 {
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &settings.g[g];
-        int chosen[2] = {-1, -1};
+        int chosen[MAX_MP_PLAYERS] = {-1, -1, -1, -1};
         int claimed[MAXPADS] = {0, 0, 0, 0};
 
         /* First preserve the actual live joystick instance for each player. */
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             SDL_JoystickID instance = assigned_instance[g][player];
             int device = pad_find_instance(instance);
             if (instance >= 0 && device >= 0 && !claimed[device]) {
@@ -186,7 +186,7 @@ void pad_sync_assignments(void)
         }
 
         /* Serial/path identities reconnect safely even if SDL changes slot order. */
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             if (chosen[player] >= 0 || !identity_is_strong(c->pad_guid[player])) continue;
             int device = unique_unclaimed_identity(c->pad_guid[player], claimed);
             if (device >= 0) {
@@ -198,12 +198,12 @@ void pad_sync_assignments(void)
 
         /* On first launch, resolve duplicated legacy GUIDs only when safe. */
         if (!sync_initialized) {
-            for (int player = 0; player < 2; player++) {
+            for (int player = 0; player < MAX_MP_PLAYERS; player++) {
                 if (chosen[player] >= 0) continue;
                 char guid[33];
                 if (!identity_weak_guid(c->pad_guid[player], guid)) continue;
                 int owners = 0, owner_other = -1;
-                for (int other = 0; other < 2; other++) {
+                for (int other = 0; other < MAX_MP_PLAYERS; other++) {
                     char other_guid[33];
                     if (identity_weak_guid(c->pad_guid[other], other_guid) && !strcmp(guid, other_guid)) {
                         owners++;
@@ -213,7 +213,7 @@ void pad_sync_assignments(void)
                 if (owners <= 1) continue;
                 int total = weak_guid_candidate_count(guid, NULL);
                 if (total >= owners) {
-                    for (int other = 0; other < 2; other++) {
+                    for (int other = 0; other < MAX_MP_PLAYERS; other++) {
                         char other_guid[33];
                         if (chosen[other] >= 0 || !identity_weak_guid(c->pad_guid[other], other_guid) || strcmp(guid, other_guid)) continue;
                         int hint = c->pad_device[other];
@@ -241,7 +241,7 @@ void pad_sync_assignments(void)
 
         /* Migrate older configs that never stored a device identity. */
         if (!sync_initialized) {
-            for (int player = 0; player < 2; player++) {
+            for (int player = 0; player < MAX_MP_PLAYERS; player++) {
                 if (chosen[player] >= 0 || c->pad_guid[player][0]) continue;
                 int hint = c->pad_device[player];
                 if (hint >= 0 && hint < n_pads && !claimed[hint]) {
@@ -254,12 +254,12 @@ void pad_sync_assignments(void)
 
         /* Weak GUID matching is safe only if ownership is unambiguous or every
            other player with that GUID is already attached to their live instance. */
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             if (chosen[player] >= 0) continue;
             char guid[33];
             if (!identity_weak_guid(c->pad_guid[player], guid)) continue;
             int other_owners = 0, all_other_owners_live = 1;
-            for (int other = 0; other < 2; other++) {
+            for (int other = 0; other < MAX_MP_PLAYERS; other++) {
                 char other_guid[33];
                 if (other == player || !identity_weak_guid(c->pad_guid[other], other_guid) || strcmp(guid, other_guid)) continue;
                 other_owners++;
@@ -280,7 +280,7 @@ void pad_sync_assignments(void)
             }
         }
 
-        for (int player = 0; player < 2; player++) {
+        for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             c->pad_device[player] = chosen[player];
             if (chosen[player] < 0) {
                 assigned_instance[g][player] = (SDL_JoystickID)-1;
@@ -301,12 +301,12 @@ void pad_sync_assignments(void)
 
 int pad_assign_device(int game, int player, int device)
 {
-    if (game < 0 || game >= N_GAMES || player < 0 || player > 1) return 0;
+    if (game < 0 || game >= N_GAMES || player < 0 || player >= MAX_MP_PLAYERS) return 0;
     if (device < -1 || device >= n_pads) return 0;
     GameCfg *c = &settings.g[game];
     if (device >= 0) {
-        int other = 1 - player;
-        if (c->pad_device[other] == device) return 0;
+        for (int other = 0; other < MAX_MP_PLAYERS; other++)
+            if (other != player && c->pad_device[other] == device) return 0;
         char identity[512];
         if (!pad_device_identity(device, identity, sizeof identity)) return 0;
         c->pad_device[player] = device;
@@ -388,7 +388,7 @@ static void pad_poll_one(int game, const GameCfg *c, int player, uint8_t *b, uin
 {
     const Uint8 *ks = SDL_GetKeyboardState(NULL);
     uint8_t bits[N_BTN] = {0};
-    if (player < 0 || player > 1) player = 0;
+    if (player < 0 || player >= MAX_MP_PLAYERS) player = 0;
 
     /* The GBC Wario Land II profile may have been created after the user's
      * controller was assigned to the GB release. If its per-game assignment
@@ -411,18 +411,7 @@ static void pad_poll_one(int game, const GameCfg *c, int player, uint8_t *b, uin
         if (c->pad[i][player] >= 0 && pad_down(device, c->pad[i][player])) bits[i] = 1;
     }
 
-    /*
-     * SML1 multiplayer always keeps a guaranteed Player 2 keyboard fallback.
-     * This also repairs older INI files that predate the second-player bindings.
-     */
-    if (player == 1 && c->multiplayer) {
-        if (ks[SDL_SCANCODE_J]) bits[BTN_A] = 1;
-        if (ks[SDL_SCANCODE_K]) bits[BTN_B] = 1;
-        if (ks[SDL_SCANCODE_D]) bits[BTN_RIGHT] = 1;
-        if (ks[SDL_SCANCODE_A]) bits[BTN_LEFT] = 1;
-        if (ks[SDL_SCANCODE_W]) bits[BTN_UP] = 1;
-        if (ks[SDL_SCANCODE_S]) bits[BTN_DOWN] = 1;
-    }
+    /* All keyboard input comes from the configurable per-player bindings. */
     float dz = settings.pad_deadzone / 100.0f * 32767.0f;
     if (device >= 0 && device < n_pads) {
         int ax = pads[device].mapped ? SDL_GameControllerGetAxis(pads[device].gc, SDL_CONTROLLER_AXIS_LEFTX) :
@@ -468,6 +457,71 @@ void pad_poll(int game, uint8_t *b, uint8_t *d)
         return;
     }
     pad_poll_player(game, 0, b, d);
+}
+
+/* Convert the left stick into cursor velocity while suppressing stick drift. */
+static float launcher_axis_value(Sint16 raw)
+{
+    float v = raw < 0 ? (float)raw / 32768.0f : (float)raw / 32767.0f;
+    float a = fabsf(v);
+    if (a <= 0.20f) return 0.0f;
+    return (v < 0.0f ? -1.0f : 1.0f) * ((a - 0.20f) / 0.80f);
+}
+
+void pad_poll_launcher(float *x_axis, float *y_axis, int *confirm, int *back)
+{
+    if (x_axis) *x_axis = 0.0f;
+    if (y_axis) *y_axis = 0.0f;
+    if (confirm) *confirm = 0;
+    if (back) *back = 0;
+
+    float best_x = 0.0f, best_y = 0.0f;
+    int any_confirm = 0, any_back = 0;
+
+    /* Any connected controller can use the launcher before being assigned
+       to a game's Player 1 slot. */
+    for (int i = 0; i < n_pads; i++) {
+        Pad *p = &pads[i];
+        float ax = 0.0f, ay = 0.0f;
+        int a = 0, b = 0;
+        int left = 0, right = 0, up = 0, down = 0;
+
+        if (p->mapped) {
+            ax = launcher_axis_value(SDL_GameControllerGetAxis(p->gc, SDL_CONTROLLER_AXIS_LEFTX));
+            ay = launcher_axis_value(SDL_GameControllerGetAxis(p->gc, SDL_CONTROLLER_AXIS_LEFTY));
+            a = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_A) != 0;
+            b = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_B) != 0;
+            left  = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_LEFT) != 0;
+            right = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) != 0;
+            up    = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_UP) != 0;
+            down  = SDL_GameControllerGetButton(p->gc, SDL_CONTROLLER_BUTTON_DPAD_DOWN) != 0;
+        } else {
+            SDL_Joystick *j = p->joy;
+            if (SDL_JoystickNumAxes(j) > 0) ax = launcher_axis_value(SDL_JoystickGetAxis(j, 0));
+            if (SDL_JoystickNumAxes(j) > 1) ay = launcher_axis_value(SDL_JoystickGetAxis(j, 1));
+            a = SDL_JoystickNumButtons(j) > 0 && SDL_JoystickGetButton(j, 0) != 0;
+            b = SDL_JoystickNumButtons(j) > 1 && SDL_JoystickGetButton(j, 1) != 0;
+            if (SDL_JoystickNumHats(j) > 0) {
+                Uint8 hat = SDL_JoystickGetHat(j, 0);
+                left = (hat & SDL_HAT_LEFT) != 0;
+                right = (hat & SDL_HAT_RIGHT) != 0;
+                up = (hat & SDL_HAT_UP) != 0;
+                down = (hat & SDL_HAT_DOWN) != 0;
+            }
+        }
+
+        if (left != right) ax = left ? -1.0f : 1.0f;
+        if (up != down) ay = up ? -1.0f : 1.0f;
+        if (fabsf(ax) > fabsf(best_x)) best_x = ax;
+        if (fabsf(ay) > fabsf(best_y)) best_y = ay;
+        any_confirm |= a;
+        any_back |= b;
+    }
+
+    if (x_axis) *x_axis = best_x;
+    if (y_axis) *y_axis = best_y;
+    if (confirm) *confirm = any_confirm;
+    if (back) *back = any_back;
 }
 
 

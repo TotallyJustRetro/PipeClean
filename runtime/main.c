@@ -1,6 +1,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include <stdarg.h>
+#include <ctype.h>
 #include "gb.h"
 #include "widescreen.h"
 #include "rom.h"
@@ -26,6 +27,8 @@ static void usage(const char *a0)
         "  --interp          run everything in the interpreter instead of the recompiled code\n"
         "  --fuzz SEED       press random buttons (deterministic)\n"
         "  --script FILE     lines of '<frame> <hexmask>': A=1 B=2 Sel=4 Start=8 R=10 L=20 U=40 D=80\n"
+        "  --mp-script FILE  SML2 co-op inputs: '<frame> <P1-mask> <P2-mask>' (hex masks)\n"
+        "  --mp-report FILE write per-frame multiplayer diagnostics as JSONL\n"
         "  --hash            print frame-hash chain + CPU state at exit\n"
         "  --hash-log FILE   per-frame hashes\n"
         "  --dump-ppm FILE   write final frame\n"
@@ -67,10 +70,196 @@ static void dump_ppm(const char *path)
     fclose(f);
 }
 
+typedef struct {
+    int frame;
+    uint8_t p1_mask, p2_mask;
+} MpTestEvent;
+
+#define MP_TEST_MAX_EVENTS 4096
+
+static int load_mp_test_script(const char *path, MpTestEvent events[MP_TEST_MAX_EVENTS],
+                               int *count_out)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) { perror(path); return -1; }
+
+    char line[512];
+    int line_no = 0, count = 0, previous_frame = -1;
+    while (fgets(line, sizeof line, f)) {
+        line_no++;
+        char *comment = strchr(line, '#');
+        if (comment) *comment = '\0';
+        char *p = line;
+        while (isspace((unsigned char)*p)) p++;
+        if (!*p) continue;
+
+        int frame;
+        unsigned p1, p2;
+        char extra;
+        int fields = sscanf(p, "%d %x %x %c", &frame, &p1, &p2, &extra);
+        if (fields != 3 || frame < 0 || frame < previous_frame ||
+            p1 > 0xFFu || p2 > 0xFFu || count >= MP_TEST_MAX_EVENTS) {
+            fprintf(stderr, "%s:%d: expected ordered '<frame> <P1-mask> <P2-mask>' hex values\n",
+                    path, line_no);
+            fclose(f);
+            return -1;
+        }
+        events[count++] = (MpTestEvent){ frame, (uint8_t)p1, (uint8_t)p2 };
+        previous_frame = frame;
+    }
+
+    if (ferror(f)) {
+        fprintf(stderr, "Error reading multiplayer script: %s\n", path);
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+    *count_out = count;
+    return 0;
+}
+
+static uint32_t mp_test_frame_hash(const Frame *frame)
+{
+    uint32_t hash = 2166136261u;
+    for (int y = 0; y < GB_H; y++) {
+        for (int x = 0; x < GB_WMAX; x++) {
+            hash ^= frame->shade[y][x];
+            hash *= 16777619u;
+            hash ^= frame->layer[y][x];
+            hash *= 16777619u;
+        }
+    }
+    return hash;
+}
+
+static int run_mp_test(const char *script_path, const char *report_path, int frames)
+{
+    MpTestEvent events[MP_TEST_MAX_EVENTS];
+    int event_count = 0;
+    if (load_mp_test_script(script_path, events, &event_count)) return 1;
+    if (frames <= 0) {
+        fprintf(stderr, "--mp-script requires --frames N with N greater than zero\n");
+        return 1;
+    }
+    if (emu_dev.script) {
+        fprintf(stderr, "--script and --mp-script cannot be used together\n");
+        return 1;
+    }
+    if (rom_loaded_game() != GAME_SML2) {
+        fprintf(stderr, "--mp-script currently requires a recognized Super Mario Land 2 ROM\n");
+        return 1;
+    }
+
+    FILE *report = !strcmp(report_path, "-") ? stdout : fopen(report_path, "w");
+    if (!report) { perror(report_path); return 1; }
+    Frame *frame = (Frame *)calloc(1, sizeof *frame);
+    if (!frame) {
+        fprintf(stderr, "Could not allocate multiplayer test frame\n");
+        if (report != stdout) fclose(report);
+        return 1;
+    }
+
+    /* Test mode always drives exactly two players, independent of saved UI settings. */
+    settings.g[GAME_SML2].multiplayer_players = 2;
+    emu_dev.max_frames = -1; /* The harness owns the logical frame limit. */
+    if (emu_mp_begin()) {
+        fprintf(stderr, "Could not initialize SML2 multiplayer test mode\n");
+        free(frame);
+        if (report != stdout) fclose(report);
+        return 1;
+    }
+
+    int event_index = 0;
+    uint8_t p1_mask = 0, p2_mask = 0;
+    int result = 0;
+    for (int logical_frame = 0; logical_frame < frames; logical_frame++) {
+        while (event_index < event_count &&
+               events[event_index].frame <= logical_frame) {
+            p1_mask = events[event_index].p1_mask;
+            p2_mask = events[event_index].p2_mask;
+            event_index++;
+        }
+
+        int rc = emu_mp_step(0, p1_mask & 0x0Fu, p1_mask >> 4,
+                             frame, NULL, 0);
+        if (rc < 0) {
+            fprintf(stderr, "Player 1 failed at scripted frame %d\n", logical_frame);
+            result = 1;
+            break;
+        }
+        rc = emu_mp_step(1, p2_mask & 0x0Fu, p2_mask >> 4,
+                         frame, NULL, 0);
+        if (rc < 0) {
+            fprintf(stderr, "Player 2 failed at scripted frame %d\n", logical_frame);
+            result = 1;
+            break;
+        }
+
+        emu_mp_frame_refresh(frame);
+        EmuMpTestSnapshot snap;
+        if (emu_mp_test_snapshot(&snap)) {
+            fprintf(stderr, "Could not read multiplayer diagnostics at frame %d\n",
+                    logical_frame);
+            result = 1;
+            break;
+        }
+
+        if (fprintf(report,
+            "{\"schema\":1,\"frame\":%d,\"p1_input\":%u,\"p2_input\":%u,"
+            "\"game_mode\":%u,\"level\":%u,\"level_bank\":%u,"
+            "\"camera_x\":%u,\"camera_y\":%u,"
+            "\"p1_world_x\":%u,\"p1_world_y\":%u,"
+            "\"p1_screen_x\":%u,\"p1_screen_y\":%u,"
+            "\"p1_grounded\":%u,\"p1_in_air\":%u,\"p1_lives\":%u,"
+            "\"p2_spawned\":%u,\"p2_world_x\":%u,\"p2_world_y\":%u,"
+            "\"p2_screen_x\":%u,\"p2_screen_y\":%u,"
+            "\"p2_grounded\":%u,\"p2_in_air\":%u,\"p2_lives\":%u,"
+            "\"p2_sprite_count\":%u,\"coins_low\":%u,\"coins_high\":%u,"
+            "\"mp_initialized\":%u,\"stable_frames\":%u,\"tile_patch_count\":%u,"
+            "\"bg_map_hash\":\"%08X\",\"level_ram_hash\":\"%08X\","
+            "\"actor_region_hash\":\"%08X\",\"render_hash\":\"%08X\"}\n",
+            logical_frame, (unsigned)p1_mask, (unsigned)p2_mask,
+            (unsigned)snap.game_mode, (unsigned)snap.level, (unsigned)snap.level_bank,
+            (unsigned)snap.camera_x, (unsigned)snap.camera_y,
+            (unsigned)snap.p1_world_x, (unsigned)snap.p1_world_y,
+            (unsigned)snap.p1_screen_x, (unsigned)snap.p1_screen_y,
+            (unsigned)snap.p1_grounded, (unsigned)snap.p1_in_air,
+            (unsigned)snap.p1_lives, (unsigned)snap.p2_spawned,
+            (unsigned)snap.p2_world_x, (unsigned)snap.p2_world_y,
+            (unsigned)snap.p2_screen_x, (unsigned)snap.p2_screen_y,
+            (unsigned)snap.p2_grounded, (unsigned)snap.p2_in_air,
+            (unsigned)snap.p2_lives, (unsigned)frame->mp_player_sprite_count[1],
+            (unsigned)snap.coins_low, (unsigned)snap.coins_high,
+            (unsigned)snap.multiplayer_initialized, (unsigned)snap.stable_gameplay_frames,
+            (unsigned)snap.tile_patch_count, (unsigned)snap.bg_map_hash,
+            (unsigned)snap.level_ram_hash, (unsigned)snap.actor_region_hash,
+            (unsigned)mp_test_frame_hash(frame)) < 0) {
+            fprintf(stderr, "Could not write multiplayer report: %s\n", report_path);
+            result = 1;
+            break;
+        }
+        if ((logical_frame & 31) == 31 && fflush(report) != 0) {
+            fprintf(stderr, "Could not flush multiplayer report: %s\n", report_path);
+            result = 1;
+            break;
+        }
+    }
+
+    if (fflush(report) != 0) result = 1;
+    emu_mp_end();
+    free(frame);
+    if (report != stdout && fclose(report) != 0) result = 1;
+    if (!result)
+        fprintf(stderr, "Multiplayer test complete: %d logical frames; report: %s\n",
+                frames, report_path);
+    return result;
+}
+
 static int widepct;
 int main(int argc, char **argv)
 {
     const char *path = NULL, *hack = NULL, *ppm = NULL, *misses = NULL, *ramdump = NULL, *tiles_arg = NULL;
+    const char *mp_script = NULL, *mp_report_path = NULL;
     int wlo = -1, whi = 0;
     int headless = 0, interp = 0, ser = 0, crc_check = 1, status = 0, dev = 0;
     settings_load();
@@ -83,6 +272,8 @@ int main(int argc, char **argv)
         else if (!strcmp(a, "--hack") && i + 1 < argc) hack = argv[++i];
         else if (!strcmp(a, "--fuzz") && i + 1 < argc) { emu_dev.fuzz = 1; emu_dev.seed = (uint32_t)atoi(argv[++i]); headless = 1; }
         else if (!strcmp(a, "--script") && i + 1 < argc) { emu_dev.script = argv[++i]; headless = 1; }
+        else if (!strcmp(a, "--mp-script") && i + 1 < argc) { mp_script = argv[++i]; headless = 1; }
+        else if (!strcmp(a, "--mp-report") && i + 1 < argc) { mp_report_path = argv[++i]; headless = 1; }
         else if (!strcmp(a, "--hash")) { emu_dev.hash = 1; headless = 1; }
         else if (!strcmp(a, "--hash-log") && i + 1 < argc) { emu_dev.hash_log = argv[++i]; headless = 1; }
         else if (!strcmp(a, "--dump-ppm") && i + 1 < argc) { ppm = argv[++i]; headless = 1; }
@@ -130,8 +321,21 @@ int main(int argc, char **argv)
         else
             fprintf(stderr, "widescreen not available\n");
     }
+    if (mp_script) {
+        if (!mp_report_path) {
+            fprintf(stderr, "--mp-script requires --mp-report FILE\n");
+            return 1;
+        }
+        if (emu_dev_init()) return 1;
+        int mp_frames = emu_dev.max_frames;
+        int mp_result = run_mp_test(mp_script, mp_report_path, mp_frames);
+        emu_dev_close();
+        fflush(stdout);
+        return mp_result;
+    }
+
     if (emu_dev_init()) return 1;
-    if (scan_mode) gb_watch_range(0xC000, 0xFFFE, dev_scan_cb);
+    if (scan_mode) gb_watch_range(0xC000, 0xFFFE, dev_watch_cb);
     if (wlo >= 0) { extern void dev_watch_cb(uint16_t, uint8_t, uint8_t); gb_watch_range((uint16_t)wlo, (uint16_t)whi, dev_watch_cb); }
     gb_reset();
     emu_run_blocking(interp);

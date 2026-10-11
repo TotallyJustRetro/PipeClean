@@ -40,6 +40,18 @@ void gb_serial_hook(void (*fn)(uint8_t)) { serial_cb = fn; }
 static GbCpuFaultHook cpu_fault_hook;
 void gb_set_cpu_fault_hook(GbCpuFaultHook hook) { cpu_fault_hook = hook; }
 
+static GbInstructionHook cpu_instruction_hook;
+void gb_set_instruction_hook(GbInstructionHook hook) { cpu_instruction_hook = hook; }
+int gb_timing_suppressed;
+void gb_set_timing_suppressed(int suppressed) { gb_timing_suppressed = suppressed != 0; }
+static int sml2_clone_global_writes_suppressed;
+int gb_set_sml2_clone_global_writes_suppressed(int suppressed)
+{
+    int previous = sml2_clone_global_writes_suppressed;
+    sml2_clone_global_writes_suppressed = suppressed != 0;
+    return previous;
+}
+
 /* ------------------------------------------------------------------ */
 static uint8_t joyp_read(void)
 {
@@ -194,6 +206,11 @@ static void watch_check(uint16_t a, uint8_t v)
 
 void wr8(uint16_t a, uint8_t v)
 {
+    /* These flags belong to the one shared SML2 world. A cloned character's
+     * death/collision routine must not change Mario's music command, sound
+     * disable flag, or game mode. */
+    if (sml2_clone_global_writes_suppressed &&
+        (a == 0xA468 || a == 0xA2CE || a == 0xFF9B)) return;
     if (UNLIKELY(watch_n)) watch_check(a, v);
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
@@ -248,6 +265,7 @@ static void timer_tick(int n)
 
 void hw_tick(int n)
 {
+    if (gb_timing_suppressed) return;
     total_cycles += (uint64_t)n;
     /* Timer/CPU clocks double in CGB double-speed mode; LCD and APU stay at
      * the normal base clock. CPU instruction timing remains expressed in CPU
@@ -304,14 +322,23 @@ void cpu_lockup(uint8_t op, uint16_t pc)
 
 void cpu_step_checked(void)
 {
+    /* The callback may emulate a helper routine, but must return with the
+     * same PC so the interrupted guest instruction still executes normally. */
+    if (cpu_instruction_hook) cpu_instruction_hook(cpu.pc);
     uint16_t pc_before = cpu.pc;
     uint8_t opcode = rd8(cpu.pc);
     cpu_step();
     (void)pc_before;
     (void)opcode;
-    if (gb_mp_vblank_watch && cpu.pc == gb_mp_vblank_return_pc)
-        gb_mp_vblank_done();
-    if (cpu_irq_check()) cpu_service_irq();
+    if (!gb_timing_suppressed) {
+        if (gb_mp_vblank_watch && cpu.pc == gb_mp_vblank_return_pc)
+            gb_mp_vblank_done();
+        if (cpu_irq_check()) cpu_service_irq();
+    } else {
+        /* These extra character routines are not a second slice of hardware
+         * time, so they cannot dispatch a timer/VBlank interrupt either. */
+        cpu.ei_pending = 0;
+    }
 }
 
 void run_interpreter(void)
@@ -423,6 +450,7 @@ void gb_dump_misses(const char *path)
 /* ------------------------------------------------------------------ */
 void gb_reset(void)
 {
+    gb_timing_suppressed = 0;
     memset(&cpu, 0, sizeof cpu);
     cart_reset();
     /* Model the CPU state left by the boot ROM before entry at 0100.
