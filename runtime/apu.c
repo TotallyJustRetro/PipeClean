@@ -344,6 +344,48 @@ typedef struct {
     uint8_t regs[0x30], wave_ram[16];
     int power, fs_cycles, fs_step;
     uint8_t nr50, nr51;
+} APUHardwareState;
+
+/* Multiplayer clones may need to execute cartridge routines that accidentally
+ * touch the shared APU. Snapshot only the emulated hardware registers/channels;
+ * do not rewind or flush the PCM output ring consumed by the audio device. */
+size_t apu_hw_state_size(void) { return sizeof(APUHardwareState); }
+
+int apu_hw_state_save(void *dst, size_t n)
+{
+    if (!dst || n < sizeof(APUHardwareState)) return -1;
+    APUHardwareState *s = (APUHardwareState *)dst;
+    memcpy(s->ch, ch, sizeof ch);
+    memcpy(s->regs, regs, sizeof regs);
+    memcpy(s->wave_ram, wave_ram, sizeof wave_ram);
+    s->power = power;
+    s->fs_cycles = fs_cycles;
+    s->fs_step = fs_step;
+    s->nr50 = nr50;
+    s->nr51 = nr51;
+    return 0;
+}
+
+int apu_hw_state_load(const void *src, size_t n)
+{
+    if (!src || n < sizeof(APUHardwareState)) return -1;
+    const APUHardwareState *s = (const APUHardwareState *)src;
+    memcpy(ch, s->ch, sizeof ch);
+    memcpy(regs, s->regs, sizeof regs);
+    memcpy(wave_ram, s->wave_ram, sizeof wave_ram);
+    power = s->power;
+    fs_cycles = s->fs_cycles;
+    fs_step = s->fs_step;
+    nr50 = s->nr50;
+    nr51 = s->nr51;
+    return 0;
+}
+
+typedef struct {
+    Chan ch[4];
+    uint8_t regs[0x30], wave_ram[16];
+    int power, fs_cycles, fs_step;
+    uint8_t nr50, nr51;
     int16_t ring[RING * 2];
     int ring_r, ring_w;
     double period_steps, step_t;
