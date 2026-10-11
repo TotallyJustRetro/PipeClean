@@ -183,6 +183,7 @@ void settings_defaults(Settings *s)
     s->ui_sfx = 1; s->ui_sfx_vol = 70;
     snprintf(s->online_name, sizeof s->online_name, "Player");
     snprintf(s->online_server, sizeof s->online_server, "127.0.0.1:27800");
+    s->online_connection_mode = 1; /* traversal server by default */
     s->online_color = 0x2CA83D;
     s->touch_controls = 1;
     s->launcher_ui_scale = 100;
@@ -238,7 +239,7 @@ static int field_table(Field *t, int cap)
     I("launcher_ui_scale", s->launcher_ui_scale, 75, 125);
     I("launcher_window_size", s->launcher_window_size, 0, 2);
     I("launcher_fullscreen", s->launcher_fullscreen, 0, 1);
-    S("online_name", s->online_name); S("online_server", s->online_server); I("online_color", s->online_color, 0, 0xFFFFFF);
+    S("online_name", s->online_name); S("online_server", s->online_server); I("online_connection_mode", s->online_connection_mode, 0, 1); I("online_color", s->online_color, 0, 0xFFFFFF);
     I("touch_controls", s->touch_controls, 0, 1);
     FilterCfg *f = &s->flt;
     I("f_grid", f->lcd_grid, 0, 100); I("f_ghost", f->ghost, 0, 100); I("f_scan", f->scanlines, 0, 100);
