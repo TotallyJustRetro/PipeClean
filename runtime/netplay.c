@@ -460,7 +460,7 @@ static int np_ws_read_line(NetSocket sock, char *out, size_t cap)
         unsigned char header[2], extended[8], mask[4], payload[512];
         uint64_t length;
         unsigned opcode, fin, masked;
-        int header_read = np_tls_read_exact_timeout(sock, header, sizeof header, 30_000u);
+        int header_read = np_tls_read_exact_timeout(sock, header, sizeof header, 30000u);
         if (header_read == 2) {
             unsigned char ping[4];
             if (!np_ws_rng_ready ||
