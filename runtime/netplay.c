@@ -50,6 +50,12 @@ static char np_code[16], np_peer[32];
 static char np_endpoint[160], np_name[32], np_join_code[16];
 static int np_selected_game = -1;
 static int np_start_request = -1;
+static int np_rom_check_state = NETPLAY_ROM_UNCHECKED;
+static int np_rom_check_game = -1;
+static int np_local_rom_valid;
+static uint32_t np_local_rom_crc;
+static int np_remote_rom_valid;
+static uint32_t np_remote_rom_crc;
 #define NP_CHAT_CAP 8
 static NetplayChatMessage np_chat[NP_CHAT_CAP];
 static int np_chat_head, np_chat_count;
@@ -129,6 +135,41 @@ static void np_handle_chat_line(const char *line)
     snprintf(clean_text, sizeof clean_text, "%s", tab + 1);
     np_lock();
     np_chat_add_locked(clean_name, clean_text);
+    if (np_cond) SDL_CondBroadcast(np_cond);
+    np_unlock();
+}
+
+static void np_handle_rom_result(const char *line)
+{
+    int game, host_ok, guest_ok;
+    unsigned host_crc, guest_crc;
+    char extra;
+    if (sscanf(line, "ROM_RESULT\t%d\t%d\t%x\t%d\t%x%c",
+               &game, &host_ok, &host_crc, &guest_ok, &guest_crc, &extra) != 5)
+        return;
+    np_lock();
+    np_rom_check_game = game;
+    np_remote_rom_valid = np_is_host ? guest_ok : host_ok;
+    np_remote_rom_crc = np_is_host ? guest_crc : host_crc;
+    if (game != np_selected_game) {
+        np_rom_check_state = NETPLAY_ROM_MISMATCH;
+        snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                 "Game selection changed; check ROMs again.");
+    } else if (!np_local_rom_valid || !np_remote_rom_valid) {
+        np_rom_check_state = NETPLAY_ROM_INVALID;
+        snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                 !np_local_rom_valid ? "Your selected ROM could not be loaded." :
+                 "The other player could not load the selected ROM.");
+    } else if (np_local_rom_crc != np_remote_rom_crc ||
+               host_crc != guest_crc) {
+        np_rom_check_state = NETPLAY_ROM_MISMATCH;
+        snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                 "ROM mismatch: both players must use the same ROM.");
+    } else {
+        np_rom_check_state = NETPLAY_ROM_MATCH;
+        snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                 "ROM verified: both players have the same game.");
+    }
     if (np_cond) SDL_CondBroadcast(np_cond);
     np_unlock();
 }
@@ -873,12 +914,27 @@ static int SDLCALL np_worker(void *unused)
             }
         } else if (!strcmp(line, "PEER_LEFT")) {
             np_set_peer("");
+            np_lock();
+            np_local_rom_valid = np_remote_rom_valid = 0;
+            np_local_rom_crc = np_remote_rom_crc = 0;
+            np_rom_check_state = NETPLAY_ROM_UNCHECKED;
+            np_rom_check_game = np_selected_game;
+            snprintf(np_rom_check_status, sizeof np_rom_check_status, "Waiting for a player.");
+            np_unlock();
             if (is_host) np_set_status(NETPLAY_HOSTING, "Player left; room is open again");
             else { np_set_status(NETPLAY_ERROR, "Host ended the session"); break; }
         } else if (!strncmp(line, "SELECT_GAME\t", 12)) {
             int selected = atoi(line + 12);
             if (selected == GAME_SML || selected == GAME_SML2) {
                 np_lock();
+                if (np_selected_game != selected) {
+                    np_local_rom_valid = np_remote_rom_valid = 0;
+                    np_local_rom_crc = np_remote_rom_crc = 0;
+                    np_rom_check_state = NETPLAY_ROM_UNCHECKED;
+                    np_rom_check_game = selected;
+                    snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                             "Checking both players' ROMs...");
+                }
                 np_selected_game = selected;
                 np_unlock();
             }
@@ -895,6 +951,8 @@ static int SDLCALL np_worker(void *unused)
             np_unlock();
         } else if (!strncmp(line, "CHAT\t", 5)) {
             np_handle_chat_line(line);
+        } else if (!strncmp(line, "ROM_RESULT\t", 11)) {
+            np_handle_rom_result(line);
         } else if (!strncmp(line, "GAME\t", 5)) {
             np_handle_game_line(line);
         } else if (!strcmp(line, "GAME_END")) {
@@ -984,6 +1042,11 @@ static int netplay_start(int is_host, const char *endpoint, const char *code, co
     }
     np_start_request = -1;
     np_chat_head = np_chat_count = 0;
+    np_rom_check_state = NETPLAY_ROM_UNCHECKED;
+    np_rom_check_game = np_selected_game;
+    np_local_rom_valid = np_remote_rom_valid = 0;
+    np_local_rom_crc = np_remote_rom_crc = 0;
+    snprintf(np_rom_check_status, sizeof np_rom_check_status, "Waiting for a player.");
     snprintf(np_status, sizeof np_status, "Connecting to relay...");
     np_unlock();
     created = SDL_CreateThread(np_worker, "PipeCleanNetplay", NULL);
@@ -1028,6 +1091,11 @@ void netplay_disconnect(void)
     np_code[0] = np_peer[0] = 0;
     np_selected_game = -1;
     np_start_request = -1;
+    np_rom_check_state = NETPLAY_ROM_UNCHECKED;
+    np_rom_check_game = -1;
+    np_local_rom_valid = np_remote_rom_valid = 0;
+    np_local_rom_crc = np_remote_rom_crc = 0;
+    np_rom_check_status[0] = 0;
     np_chat_head = np_chat_count = 0;
     np_send_head = np_send_count = 0;
     np_tls_mode = 0;
@@ -1053,6 +1121,9 @@ void netplay_get_info(NetplayInfo *out)
     snprintf(out->status, sizeof out->status, "%s", np_status);
     snprintf(out->code, sizeof out->code, "%s", np_code);
     snprintf(out->peer, sizeof out->peer, "%s", np_peer);
+    out->rom_check_state = np_rom_check_state;
+    out->rom_check_game = np_rom_check_game;
+    snprintf(out->rom_check_status, sizeof out->rom_check_status, "%s", np_rom_check_status);
     np_unlock();
 }
 void netplay_shutdown(void)
@@ -1111,13 +1182,49 @@ int netplay_lobby_get_game(void)
     return game;
 }
 
+int netplay_lobby_report_rom(int game, uint32_t rom_crc, int valid)
+{
+    char command[48];
+    int ok_to_send;
+    if (game != GAME_SML && game != GAME_SML2) return 0;
+    np_lock();
+    ok_to_send = np_state == NETPLAY_CONNECTED && np_peer[0] != 0 &&
+                  np_selected_game == game && !np_stop;
+    if (ok_to_send) {
+        np_rom_check_state = NETPLAY_ROM_WAITING;
+        np_rom_check_game = game;
+        np_local_rom_valid = valid != 0;
+        np_local_rom_crc = valid ? rom_crc : 0;
+        np_remote_rom_valid = 0;
+        np_remote_rom_crc = 0;
+        snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                 "Waiting for the other player's ROM check...");
+    }
+    np_unlock();
+    if (!ok_to_send) return 0;
+    if (valid)
+        snprintf(command, sizeof command, "ROM_CHECK\t%d\t%08X\n", game, (unsigned)rom_crc);
+    else
+        snprintf(command, sizeof command, "ROM_INVALID\t%d\t1\n", game);
+    if (!np_send_current(command)) {
+        np_lock();
+        np_rom_check_state = NETPLAY_ROM_INVALID;
+        snprintf(np_rom_check_status, sizeof np_rom_check_status,
+                 "Couldn't send the ROM check to the relay.");
+        np_unlock();
+        return 0;
+    }
+    return 1;
+}
+
 int netplay_lobby_start_game(int game)
 {
     char command[32];
     int valid;
     np_lock();
     valid = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] != 0 &&
-            np_selected_game == game && (game == GAME_SML || game == GAME_SML2);
+            np_selected_game == game && (game == GAME_SML || game == GAME_SML2) &&
+            np_rom_check_state == NETPLAY_ROM_MATCH;
     if (valid) np_start_request = game;
     np_unlock();
     if (!valid) return 0;
