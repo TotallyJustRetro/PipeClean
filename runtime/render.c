@@ -15,14 +15,32 @@ static int gacc_valid;
 static uint32_t avg_rgb;
 static FilterCfg cur_f; /* filters used for the current picture */
 
+static LuigiColor custom_mp_colors[MAX_MP_PLAYERS - 1];
+
 static const LuigiColor *active_mp_player_color(int player)
 {
     const GameCfg *c = &settings.g[mp_color_game];
     int index = player == 1 ? c->p2_color :
                 (player == 2 ? c->p3_color : c->p4_color);
+    int custom = player == 1 ? c->p2_custom :
+                 (player == 2 ? c->p3_custom : c->p4_custom);
+    int rgb = player == 1 ? c->p2_rgb :
+              (player == 2 ? c->p3_rgb : c->p4_rgb);
     if (index < 0 || index >= N_LUIGI_COLORS)
         index = player == 1 ? LUIGI_GREEN : (player == 2 ? LUIGI_BLUE : LUIGI_YELLOW);
-    return &luigi_colors[index];
+    if (!custom) return &luigi_colors[index];
+
+    /* Build a shaded sprite palette from the user's wheel-picked RGB value. */
+    if (player < 1 || player >= MAX_MP_PLAYERS) player = 1;
+    uint32_t base = (uint32_t)rgb & 0xFFFFFFu;
+    unsigned r = (base >> 16) & 255u, g = (base >> 8) & 255u, b = base & 255u;
+    uint32_t light = ((((r + (255u - r) * 52u / 100u) & 255u) << 16) |
+                      (((g + (255u - g) * 52u / 100u) & 255u) << 8) |
+                       (b + (255u - b) * 52u / 100u));
+    uint32_t dark = ((r * 46u / 100u) << 16) |
+                    ((g * 46u / 100u) << 8) | (b * 46u / 100u);
+    custom_mp_colors[player - 1] = (LuigiColor){"Custom", base, light, base, dark};
+    return &custom_mp_colors[player - 1];
 }
 
 static uint32_t luigi_overlay_pixel(int ci, int player)
