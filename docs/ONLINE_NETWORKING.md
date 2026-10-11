@@ -28,47 +28,69 @@ The relay protocol itself remains plain TCP. For Internet play, terminate TLS
 at a trusted edge proxy and forward traffic to the relay over the provider's
 private network. Never expose port 27800 directly to the public Internet.
 
-## Deploy the official traversal relay from GitHub
+## Deploy the official traversal relay from GitHub (Oracle Cloud)
 
-The repository includes a manually triggered GitHub Actions workflow at
-`.github/workflows/deploy-relay.yml`. Once the workflow is merged into the
-repository's default branch, a maintainer can deploy the relay without installing
-the Fly CLI locally.
+The repository includes a manually triggered workflow at
+`.github/workflows/deploy-relay-oracle.yml`. It uses an Oracle Cloud VM and
+GitHub Actions to install/update the relay; you do not need to install the OCI
+CLI, Node.js, Nginx, or deployment tooling on your own computer. The workflow
+must be merged into the repository's default branch before it can be launched
+from **Actions → Deploy PipeClean traversal relay to Oracle Cloud → Run workflow**.
+When running it, select the branch you want the workflow to configure.
 
-One-time hosting setup:
+### One-time Oracle Cloud setup
 
-1. Create or use a Fly.io account and choose the organization that will own the
-   relay. Hosting is external infrastructure, but players will not need Fly
-   accounts, terminal commands, or additional software.
-2. Create an organization-scoped Fly API token and save it in the repository
-   under **Settings → Secrets and variables → Actions** as
-   `FLY_API_TOKEN`. The token is required because the workflow creates the Fly
-   application on first deployment. Treat it like a password.
-3. Open **Actions → Deploy PipeClean traversal relay → Run workflow**. Enter a
-   globally unique application name and the Fly organization slug.
+1. Create an Oracle Cloud account and choose your home region carefully. Oracle
+   generally asks for phone verification and a credit card; according to Oracle,
+   the card is not charged unless you upgrade the account. Do **not** upgrade to
+   a paid account for this setup.
+2. In the OCI Console, create a VM using an **Always Free-eligible** shape in
+   your home region. Use Ubuntu Server 24.04 (Arm/aarch64 works with the Node
+   relay). Keep total Ampere A1 allocation at or below **2 OCPUs and 12 GB RAM**
+   so it stays within the Always Free compute allowance. If available, a small
+   configuration such as 1 OCPU and 6 GB RAM is sufficient to begin testing.
+3. Create the VM in a public subnet and assign it a public IPv4 address. During
+   VM creation, choose **Generate a key pair for me**, download the private key,
+   and keep it private. Paste its complete contents into the GitHub Actions
+   secret named `OCI_SSH_PRIVATE_KEY`.
+4. In **Settings → Secrets and variables → Actions**, add the following:
+   - Secret `OCI_RELAY_HOST`: the VM's public IPv4 address.
+   - Secret `OCI_SSH_PRIVATE_KEY`: the downloaded private SSH key.
+   - Variable `OCI_RELAY_USER`: `ubuntu` for the standard Ubuntu image.
+   - Variable `PIPECLEAN_RELAY_EMAIL`: an email address for TLS certificate
+     issuance and renewal.
+   - Optional variable `PIPECLEAN_RELAY_HOSTNAME`: your own DNS hostname if
+     you have one and have pointed its A record at the VM. Leave it unset to
+     derive a hostname from the public IP using sslip.io.
+5. In the VM's subnet Security List or Network Security Group, allow inbound
+   TCP **22** for SSH and TCP **80** and **443** for the relay's certificate
+   validation and TLS connections. Restrict SSH source addresses where practical.
+   Do **not** open TCP port 27800 publicly; the relay stays bound to loopback.
+6. Open **Actions → Deploy PipeClean traversal relay to Oracle Cloud → Run
+   workflow**. Select your branch and start the workflow.
 
-The workflow creates (or reuses) the app, deploys the Docker relay, checks its
-status, writes the resulting `tls://APP_NAME.fly.dev:443` endpoint into
-`runtime/settings.h`, commits that endpoint and the app name to the selected
-branch, and triggers regression and Android builds. New installs then use that
-TLS endpoint by default; existing settings still using the previous
-`127.0.0.1:27800` default are migrated. User-configured relay addresses are
-preserved.
+The workflow uploads the relay source over SSH, installs Node.js/Nginx/Certbot,
+configures an unprivileged systemd service, obtains a public TLS certificate,
+and enables certificate renewal. Nginx terminates TLS on port 443 and forwards
+traffic plus a PROXY v2 header to the relay on loopback port 27800. It commits
+the resulting `tls://HOSTNAME:443` endpoint as the default in
+`runtime/settings.h` and triggers regression and Android builds.
 
-The Fly TLS handler terminates client TLS on port 443 and forwards the relay
-protocol to port 27800 inside Fly's private network. The public listener adds a
-PROXY protocol v2 header; the relay validates it and uses the original client
-address for per-IP rate limits, rather than treating all players as the edge
-proxy. This option must only be enabled behind a trusted proxy that inserts
-the header. The configuration keeps port 27800 private, enables a TCP health
-check, and keeps one machine running because room codes are stored in process
-memory. Never expose port 27800 directly to the public Internet.
+### Free-tier limitations
 
-You can also deploy manually with the Fly CLI if preferred: set the `app` value
-in `fly.toml` to your unique app name, create the app in your Fly organization,
-then run `fly deploy`. After deployment, both clients must use
-`tls://APP_NAME.fly.dev:443` until the resulting endpoint is compiled into the
-default setting.
+Oracle's qualifying Always Free resources have no scheduled expiry, but they
+are not unlimited and availability is not guaranteed. The documented compute
+allowance is up to 2 OCPUs and 12 GB RAM for Ampere A1, with 10 TB/month of
+outbound data transfer. Oracle can reclaim Always Free compute instances that
+meet its low-utilization criteria for seven days; a quiet relay may therefore
+not be guaranteed to remain available indefinitely. Free capacity can also be
+temporarily unavailable in some regions. Review OCI's current Always Free
+rules before relying on this as a permanent public service.
+
+For users, the goal is still simple: download PipeClean, enter an invite code,
+and play. Players do not need Oracle accounts or additional networking software.
+The hosting owner does need an Oracle account and a one-time VM setup; the public
+relay is not live until these steps complete and the workflow succeeds.
 
 ## Run a local or trusted-LAN relay
 
@@ -119,16 +141,19 @@ revisions and identical ROM-hack/patch results.
 
 - Plain TCP is restricted to loopback/private network destinations.
 - `tls://` uses mbedTLS certificate-chain and hostname verification.
-- Hosted Fly deployments use a TLS edge and PROXY protocol v2. The relay only
-  trusts that header when `PIPECLEAN_RELAY_PROXY_PROTOCOL=1` is explicitly set;
-  the host port remains private.
+- Oracle deployments terminate TLS with Nginx and forward PROXY protocol v2 to
+  the local relay. The Node relay binds to `127.0.0.1:27800`; only ports 80
+  and 443 need public ingress (plus SSH for deployment).
 - The relay creates unpredictable eight-character invite codes, rate-limits
   using original peer addresses when available, expires unattended rooms after
   15 minutes, keeps idle sockets open long enough for that expiry to take effect,
   bounds messages, and allows only recognized protocol messages after pairing.
-- TLS encrypts traffic in transit but this version has no account login,
+- TLS encrypts traffic in transit, but this version has no account login,
   platform-level abuse monitoring, or matchmaking. Invite codes function as
   bearer credentials.
+- Oracle Always Free resources still have capacity, compute, bandwidth, and
+  idle-reclamation limitations. The service is not a guarantee of uninterrupted
+  public availability or unlimited traffic.
 - Internet relay deployment and the TLS client build must pass CI, and
   Windows-to-Android gameplay still requires a real two-device test.
 
