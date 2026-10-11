@@ -886,13 +886,22 @@ static int mp_sml2_bcd_to_int(uint8_t b)
     return ((b >> 4) & 0x0F) * 10 + (b & 0x0F);
 }
 
+void emu_mp_set_player_input(int player, uint8_t buttons, uint8_t dpad)
+{
+    if (!mp_ready || mp_game != GAME_SML2 ||
+        player < 1 || player >= mp_player_count || player >= MAX_MP_PLAYERS)
+        return;
+    mp_sml2_input_buttons[player] = buttons;
+    mp_sml2_input_dpad[player] = dpad;
+}
+
 static int mp_sml2_private_addr(unsigned address)
 {
     /* Character movement/animation addresses identified from the SML2
      * disassembly. Do not copy adjacent enemy, level or timer RAM. */
     switch (address) {
     case 0xA200: case 0xA201: case 0xA202:
-    case 0xA20C: case 0xA20D: case 0xA20E:
+    case 0xA20C: case 0xA20D:
     case 0xA214: case 0xA215: case 0xA216: case 0xA217:
     case 0xA218: case 0xA219: case 0xA220: case 0xA222:
     case 0xA223: case 0xA224:
