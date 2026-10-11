@@ -338,8 +338,10 @@ static int sml2_scan_value(int side)
     int cam = sml2_read16(0xFFCA);
     int vanilla = side == 0 ? cam + 112 : cam - 112;
     int target = side == 0 ? vanilla + sml2_right_extra : vanilla - sml2_left_extra;
+    /* The decompressed SML2 world is at most 256 blocks (4096 pixels) wide.
+       Never let the widened scanner walk beyond the level's coordinate space. */
     if (target < 0) target = 0;
-    if (target > 0xFFFF) target = 0xFFFF;
+    if (target > SML2_MAP_WIDTH_PX) target = SML2_MAP_WIDTH_PX;
 
     int prev = sml2_scan_edge[side];
     if (prev < 0 || abs(prev - vanilla) > 128) prev = vanilla;
