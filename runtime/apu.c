@@ -20,6 +20,14 @@ static uint8_t regs[0x30];        /* raw register shadow, index = addr - 0xFF10 
 static uint8_t wave_ram[16];
 static int power, fs_cycles, fs_step;
 static uint8_t nr50, nr51;
+static int apu_writes_suppressed;
+
+int apu_set_write_suppressed(int suppressed)
+{
+    int previous = apu_writes_suppressed;
+    apu_writes_suppressed = suppressed != 0;
+    return previous;
+}
 
 static const uint8_t duty_tab[4][8] = {
     {0, 0, 0, 0, 0, 0, 0, 1}, {1, 0, 0, 0, 0, 0, 0, 1},
@@ -286,6 +294,10 @@ uint8_t apu_read(uint16_t a)
 
 void apu_write(uint16_t a, uint8_t v)
 {
+    /* Character-only multiplayer replays do not own the cartridge's single
+     * hardware APU. Ignore their register writes; accepted SFX are reissued
+     * through the stock sound command after Player 1's state is restored. */
+    if (apu_writes_suppressed) return;
     if (a >= 0xFF30) { wave_ram[a - 0xFF30] = v; return; }
     if (a == 0xFF26) {
         int on = (v & 0x80) != 0;
