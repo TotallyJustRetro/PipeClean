@@ -140,6 +140,12 @@ function processLine(client, line) {
     rejectClient(client, 'Message too large');
     return;
   }
+  /* Application heartbeat: keeps hosted WebSocket relays active while idle. */
+  if (line === 'PING') {
+    reply(client, 'PONG');
+    return;
+  }
+
   if (client.phase === 'new') {
     const parts = line.split('\t');
     if (parts[0] === 'HOST' && parts.length <= 2) {
