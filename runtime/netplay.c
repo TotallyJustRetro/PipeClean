@@ -129,13 +129,13 @@ static int np_is_allowed_relay_address(const struct addrinfo *entry)
 {
     if (!entry || !entry->ai_addr) return 0;
     if (entry->ai_family == AF_INET &&
-        entry->ai_addrlen >= (socklen_t)sizeof(struct sockaddr_in)) {
+        entry->ai_addrlen >= (size_t)sizeof(struct sockaddr_in)) {
         const struct sockaddr_in *addr = (const struct sockaddr_in *)entry->ai_addr;
         return np_ipv4_is_private(ntohl(addr->sin_addr.s_addr));
     }
 #ifdef AF_INET6
     if (entry->ai_family == AF_INET6 &&
-        entry->ai_addrlen >= (socklen_t)sizeof(struct sockaddr_in6)) {
+        entry->ai_addrlen >= (size_t)sizeof(struct sockaddr_in6)) {
         const struct sockaddr_in6 *addr = (const struct sockaddr_in6 *)entry->ai_addr;
         const unsigned char *b = addr->sin6_addr.s6_addr;
         int loopback = 1, mapped = 1;
