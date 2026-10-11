@@ -2014,7 +2014,13 @@ static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
         int status = setjmp(stop_jmp);
         if (status == 0) run_core(0);
         mp_active = 0;
-        if (status == 4) { mp_frame_out = NULL; mp_audio_out = NULL; return -1; }
+        if (status == 4) {
+            gb_set_timing_suppressed(0);
+            mp_sml2_inline_active = 0;
+            mp_sml2_inline_ran = 0;
+            mp_frame_out = NULL; mp_audio_out = NULL;
+            return -1;
+        }
         if (!mp_sml2_direct_world) {
             memcpy(mp_sml2_vram_after, &vram[0x1800], sizeof mp_sml2_vram_after);
             int level_unchanged = level_before == rd8(0xA269) &&
@@ -2850,9 +2856,11 @@ void emu_mp_end(void)
 {
     if (mp_ready && save_path[0]) cart_write_save(save_path);
     gb_set_instruction_hook(NULL);
+    gb_set_timing_suppressed(0);
     mp_active = 0;
     mp_sml2_direct_world = 0;
     mp_sml2_inline_active = 0;
+    mp_sml2_inline_ran = 0;
     mp_game = GAME_SML;
     mp_sml2_initialized = 0;
     mp_sml2_tile_patches_clear();
