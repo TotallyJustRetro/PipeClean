@@ -1991,13 +1991,13 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     ui_rrect(x + 30, y + 176, 320, 48, 9,
              connected ? RGBA(66, 126, 92, 32) : RGBA(237, 180, 81, 18));
     ui_text(F_BOLD, 12, x + 44, y + 185, C_TEXT,
-            connected ? guest_name : (np.is_host ? "Waiting for player…" : "Joining room…"));
+            connected ? guest_name : (np->is_host ? "Waiting for player…" : "Joining room…"));
     ui_text(F_REG, 10, x + 44, y + 203, connected ? C_OK : C_MUTED,
-            connected ? (np.is_host ? "PLAYER 2" : "YOU") : "NOT CONNECTED");
+            connected ? (np->is_host ? "PLAYER 2" : "YOU") : "NOT CONNECTED");
     ui_rect(x + 34, y + 238, 312, 1, C_LINE);
     ui_text(F_BOLD, 12, x + 34, y + 250, C_TEXT, "GAME FOR THIS SESSION");
-    if (np.is_host) {
-        int enabled = np.state == NETPLAY_HOSTING || connected;
+    if (np->is_host) {
+        int enabled = np->state == NETPLAY_HOSTING || connected;
         if (ui_button(x + 34, y + 270, 148, 34,
                       "Super Mario Land", selected_game == GAME_SML ? B_PRIMARY : B_GHOST,
                       enabled)) {
@@ -2055,8 +2055,8 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     }
 
     ui_text_fit(F_REG, 11, x + 24, y + 426, 540, C_DIM,
-                np.status[0] ? np.status : "Connected to the PipeClean relay.");
-    if (np.is_host) {
+                np->status[0] ? np->status : "Connected to the PipeClean relay.");
+    if (np->is_host) {
         int can_play = connected && (selected_game == GAME_SML || selected_game == GAME_SML2);
         if (ui_button(x + 592, y + 428, 180, 44, "Play for Everyone",
                       B_PRIMARY, can_play)) {
