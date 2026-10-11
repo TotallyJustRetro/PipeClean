@@ -53,6 +53,11 @@ static int sml2_compositor_installed;
 static int sml2_compositor_frame_ok;
 static int sml2_compositor_left, sml2_compositor_right;
 static int sml2_compositor_world_x0, sml2_compositor_world_y0;
+#define SML2_CAPTURED_SPRITE_CAP 1024
+#define SML2_MAX_PIECES 64
+static WideSml2Sprite sml2_actor_build[SML2_CAPTURED_SPRITE_CAP];
+static WideSml2Sprite sml2_actor_frame[SML2_CAPTURED_SPRITE_CAP];
+static int sml2_actor_build_count, sml2_actor_frame_count;
 static int sml2_read16(uint16_t a);
 
 #define SML2_MAP_BASE        0xB000u
@@ -164,6 +169,74 @@ int wide_sml2_margin_tile(int screen_x, int screen_y, uint8_t *tile,
     if (!wide_sml2_tile_at(x, y, tile)) return -1;
     return 1;
 }
+
+
+static uint8_t sml2_mapped_rom_byte(unsigned address)
+{
+    if (address < 0x4000u || address >= 0x8000u || !cart_hi) return 0xFF;
+    return cart_hi[address - 0x4000u];
+}
+
+static void sml2_capture_actor(uint8_t sentinel)
+{
+    if (!rom || cart_hi != rom + 0xC000 || sentinel == 0x80u) return;
+    int ax = (rd8(0xFFD0u) << 8) | rd8(0xFFD1u);
+    int ay = (rd8(0xFFD3u) << 8) | rd8(0xFFD4u);
+    unsigned idx = rd8(0xFFDBu);
+    uint8_t flip = (uint8_t)(rd8(0xFFDCu) ^ rd8(0xFFDDu) ^ rd8(0xFFDEu));
+    unsigned table = rd8(0xAF06u) ? 0x4F11u : 0x40B1u;
+    unsigned entry = table + idx * 2u;
+    unsigned de = (unsigned)sml2_mapped_rom_byte(entry) |
+                  ((unsigned)sml2_mapped_rom_byte(entry + 1u) << 8);
+    if (de < 0x4000u || de >= 0x8000u) return;
+    for (int n = 0; n < SML2_MAX_PIECES && de + 3u < 0x8000u; n++, de += 4u) {
+        uint8_t yraw = sml2_mapped_rom_byte(de);
+        if (yraw == 0x80u) break;
+        uint8_t xraw = sml2_mapped_rom_byte(de + 1u);
+        int yoff = (flip & 0x40u) ? (int8_t)(uint8_t)((~yraw & 0xFFu) - 7u) : (int8_t)yraw;
+        int xoff = (flip & 0x20u) ? (int8_t)(uint8_t)((~xraw & 0xFFu) - 7u) : (int8_t)xraw;
+        if (sml2_actor_build_count >= SML2_CAPTURED_SPRITE_CAP) break;
+        WideSml2Sprite *sp = &sml2_actor_build[sml2_actor_build_count++];
+        sp->x = (int16_t)(ax + xoff);
+        sp->y = (int16_t)(ay + yoff);
+        sp->tile = sml2_mapped_rom_byte(de + 2u);
+        sp->attr = (uint8_t)(sml2_mapped_rom_byte(de + 3u) ^ flip);
+    }
+}
+
+uint8_t wide_sml2_read_tap(uint16_t address, uint8_t value)
+{
+    if (!sml2_compositor_installed || !rom || !cart_hi) return value;
+    if (address == 0xFFE2u && cart_hi == rom + 0xC000 &&
+        (cpu.pc == 0x4019u || cpu.pc == 0x401Bu))
+        sml2_capture_actor(value);
+    return value;
+}
+
+void wide_sml2_snapshot_actors(void)
+{
+    sml2_actor_frame_count = sml2_actor_build_count;
+    if (sml2_actor_frame_count)
+        memcpy(sml2_actor_frame, sml2_actor_build,
+               (size_t)sml2_actor_frame_count * sizeof sml2_actor_frame[0]);
+    sml2_actor_build_count = 0;
+}
+
+const WideSml2Sprite *wide_sml2_actor_sprites(int *count)
+{
+    if (count) *count = sml2_compositor_frame_ok ? sml2_actor_frame_count : 0;
+    return sml2_compositor_frame_ok && sml2_actor_frame_count
+        ? sml2_actor_frame : NULL;
+}
+
+int wide_sml2_world_origin(int *world_x, int *world_y)
+{
+    if (!sml2_compositor_frame_ok || !world_x || !world_y) return 0;
+    *world_x = sml2_compositor_world_x0;
+    *world_y = sml2_compositor_world_y0;
+    return 1;
+}
+
 
 static int sml2_read16(uint16_t a)
 {
@@ -293,6 +366,7 @@ void wide_state_reset(void)
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
     sml2_compositor_frame_ok = 0;
+    sml2_actor_build_count = sml2_actor_frame_count = 0;
 }
 
 int wide_install(int game, int l, int r)
@@ -302,6 +376,7 @@ int wide_install(int game, int l, int r)
     sml2_compositor_installed = 0;
     sml2_compositor_frame_ok = 0;
     sml2_compositor_left = sml2_compositor_right = 0;
+    sml2_actor_build_count = sml2_actor_frame_count = 0;
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
