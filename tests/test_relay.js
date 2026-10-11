@@ -83,7 +83,8 @@ async function main() {
     guest.socket.write('INPUT\t1\t5\t2\t1\n');
     assert.equal(await waitForLine(host), 'INPUT\t1\t5\t2\t1');
 
-    guest.socket.end();
+    guest.socket.write('UNSUPPORTED\\tcommand\\n');
+    assert.equal(await waitForLine(guest), 'ERR\\tUnsupported or malformed gameplay message');
     assert.equal(await waitForLine(host), 'PEER_LEFT');
     host.socket.end();
     process.stdout.write('PipeClean relay integration: PASS\n');
