@@ -105,7 +105,45 @@ jobs:
           path = Path("runtime/settings.h")
           source = path.read_text(encoding="utf-8")
           updated, count = re.subn(
-              r'(?m)^#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "[^"]+",
+              r'(?m)^#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "[^"]+"              f'#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "{endpoint}"',
+              source,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not configure the default relay endpoint in runtime/settings.h")
+          path.write_text(updated, encoding="utf-8")
+          PY
+          git add fly.toml runtime/settings.h
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Configure default PipeClean traversal server"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          else
+            echo "The deployed relay is already configured as the default."
+          fi
+
+      - name: Trigger builds and regression tests for the configured endpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run regression.yml --ref "$GITHUB_REF_NAME"
+          gh workflow run android-build.yml --ref "$GITHUB_REF_NAME"
+
+      - name: Publish relay address
+        shell: bash
+        run: |
+          {
+            echo "### PipeClean traversal relay deployed"
+            echo
+            echo 'Relay address: `tls://${{ inputs.app_name }}.fly.dev:443`'
+            echo
+            echo "The deployed TLS relay is now the compiled default for fresh installs. Existing settings saved as the old localhost default are migrated to this endpoint."
+            echo "The endpoint commit was pushed to branch: $GITHUB_REF_NAME"
+          } >> "$GITHUB_STEP_SUMMARY"
+,
               f'#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "{endpoint}"',
               source,
               count=1,
