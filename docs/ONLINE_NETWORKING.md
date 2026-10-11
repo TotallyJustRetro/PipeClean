@@ -28,33 +28,44 @@ The relay protocol itself remains plain TCP. For Internet play, terminate TLS
 at a trusted edge proxy and forward traffic to the relay over the provider's
 private network. Never expose port 27800 directly to the public Internet.
 
-## Deploy a secure Internet relay with Fly.io
+## Deploy the official traversal relay from GitHub
 
-The repository includes `fly.toml` and `server/Dockerfile`. The Fly TLS
-handler terminates client TLS at port 443 and forwards the decrypted relay
-protocol to port 27800 inside Fly's private network. See the
-[Fly TLS handler documentation](https://fly.io/docs/networking/services/).
+The repository includes a manually triggered GitHub Actions workflow at
+`.github/workflows/deploy-relay.yml`. Once the workflow is merged into the
+repository's default branch, a maintainer can deploy the relay without installing
+the Fly CLI locally.
 
-1. Install the Fly CLI and sign in with `fly auth login`.
-2. Choose a globally unique app name, then edit `app = "pipeclean-relay-change-this"`
-   in `fly.toml` to that name.
-3. From the repository root, create the app with `fly apps create YOUR-APP-NAME`.
-4. Deploy with `fly deploy`.
-5. Confirm the app is running with `fly status` and inspect any errors with
-   `fly logs`.
-6. In **both** PipeClean clients, set Relay Address to
-   `tls://YOUR-APP-NAME.fly.dev:443`. Host on one client, share the invite
-   code, then join on the second client.
+One-time hosting setup:
 
-The default `*.fly.dev` hostname uses Fly-managed TLS certificates. The
-container listens on `0.0.0.0:27800` inside Fly; the public service is TLS
-on port 443. Leave the internal port private. Do not add public port 27800,
-and do not configure router port forwarding.
+1. Create or use a Fly.io account and choose the organization that will own the
+   relay. Hosting is external infrastructure, but players will not need Fly
+   accounts, terminal commands, or additional software.
+2. Create an organization-scoped Fly API token and save it in the repository
+   under **Settings → Secrets and variables → Actions** as
+   `FLY_API_TOKEN`. The token is required because the workflow creates the Fly
+   application on first deployment. Treat it like a password.
+3. Open **Actions → Deploy PipeClean traversal relay → Run workflow**. Enter a
+   globally unique application name and the Fly organization slug.
 
-For a different hosting provider, configure an external TLS-terminating proxy
-with a publicly trusted certificate, then forward TCP to the relay process on
-port 27800 over a trusted private connection. Connect using
-`tls://the-certificate-hostname:443`; the hostname must match the certificate.
+The workflow creates (or reuses) the app, deploys the Docker relay, checks its
+status, writes the resulting `tls://APP_NAME.fly.dev:443` endpoint into
+`runtime/settings.h`, commits that endpoint and the app name to the selected
+branch, and triggers regression and Android builds. New installs then use that
+TLS endpoint by default; existing settings still using the previous
+`127.0.0.1:27800` default are migrated. User-configured relay addresses are
+preserved.
+
+The Fly TLS handler terminates client TLS on port 443 and forwards the relay
+protocol to port 27800 inside Fly's private network. The configuration keeps
+port 27800 private, enables a TCP health check, and keeps one machine running
+because room codes are stored in process memory. Never expose port 27800
+directly to the public Internet.
+
+You can also deploy manually with the Fly CLI if preferred: set the `app` value
+in `fly.toml` to your unique app name, create the app in your Fly organization,
+then run `fly deploy`. After deployment, both clients must use
+`tls://APP_NAME.fly.dev:443` until the resulting endpoint is compiled into the
+default setting.
 
 ## Run a local or trusted-LAN relay
 
