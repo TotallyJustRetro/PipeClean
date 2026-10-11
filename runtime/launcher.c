@@ -1298,6 +1298,7 @@ static void mp_game_target_button(float x, float y, float w, float h)
     if (ui_button(x, y, w, h, text, B_NORMAL, 1)) {
         mp_config_game = mp_config_game == GAME_SML ? GAME_SML2 : GAME_SML;
         multiplayer_count_menu = -1;
+        mp_controller_view = 0;
         audio_mp_set_game(mp_config_game);
         settings_save();
     }
@@ -1384,7 +1385,7 @@ static void tab_multiplayer(float x, float y)
     }
     ui_rect(x + 18, y + 356, 772, 1, C_LINE);
     ui_text_wrap(F_REG, 12, x + 18, y + 370, 772, C_DIM,
-                 "Use Multiplayer Controllers for independent controller assignments, respawn bindings, and six customizable sound events per character.",
+                 "Use Multiplayer Controllers for independent controller assignments and respawn bindings.",
                  3);
     ui_text_fit(F_REG, 11, x + 18, y + 446, 770, C_DIM,
                 "Defaults: Luigi (green), Bunzo (blue), and Florbo (yellow).");
@@ -1394,6 +1395,9 @@ static void tab_multiplayer(float x, float y)
 static void tab_mp_controllers(float x, float y)
 {
     GameCfg *c = &settings.g[mp_config_game];
+    /* SML2 has genuine per-character sound output now; its old custom
+     * overlay is obsolete. SML1 keeps the fallback bank for its clone path. */
+    if (mp_config_game == GAME_SML2) mp_controller_view = 0;
     card(x, y, 808, 512, mp_config_game == GAME_SML ?
          "SML1 MULTIPLAYER CONTROLLERS" : "SML2 MULTIPLAYER CONTROLLERS");
     mp_game_target_button(x + 592, y + 7, 196, 28);
@@ -1408,7 +1412,8 @@ static void tab_mp_controllers(float x, float y)
 
     if (ui_button(x + 18, y + 100, 180, 30, "Control bindings",
                   mp_controller_view == 0 ? B_PRIMARY : B_NORMAL, 1)) mp_controller_view = 0;
-    if (ui_button(x + 206, y + 100, 180, 30, "Character sounds",
+    if (mp_config_game == GAME_SML &&
+        ui_button(x + 206, y + 100, 180, 30, "Character sounds",
                   mp_controller_view == 1 ? B_PRIMARY : B_NORMAL, 1)) mp_controller_view = 1;
 
     if (mp_controller_view == 0) {

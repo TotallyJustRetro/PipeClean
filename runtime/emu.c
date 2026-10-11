@@ -936,7 +936,9 @@ static int mp_sml2_private_addr(unsigned address)
     case 0xA24D: /* private vertical-physics cooldown used by collision reactions */
     case 0xA25A: case 0xA25C: case 0xA268: case 0xA26B: case 0xA26C:
     case 0xA26D: case 0xA271: case 0xA272: case 0xA279: case 0xA27A:
-    case 0xA27C: case 0xA283: case 0xA284: case 0xA285:
+    case 0xA27B: /* preserve each character's previous tile-contact state */
+    case 0xA27C: case 0xA283: case 0xA284: case 0xA285: case 0xA286:
+    case 0xA28A: /* side-collision state drives grounded/wall contact */
     case 0xA291: case 0xA2A0: case 0xA2B2: case 0xA2B3: case 0xA2DE:
         return 1;
     default:
@@ -1616,6 +1618,14 @@ static uint16_t mp_sml2_saved_world_x(const MpSml2Player *p)
     return (uint16_t)p->ram[0x27] | ((uint16_t)p->ram[0x28] << 8);
 }
 
+static int mp_sml2_tether_eligible(const MpSml2Player *p)
+{
+    /* Only visible, living followers may limit the shared-screen camera.
+     * A falling/off-screen character must never block P1's level progress. */
+    return p && p->spawned && mp_sml2_bcd_to_int(p->lives) > 0 &&
+           p->ram[0x3B] > 0 && p->ram[0x3B] < 160;
+}
+
 static void mp_sml2_constrain_horizontal_input(int player, uint8_t *dpad)
 {
     int active = dpad && player >= 0 && player < mp_player_count &&
@@ -1635,7 +1645,7 @@ static void mp_sml2_constrain_horizontal_input(int player, uint8_t *dpad)
         int tether = 0;
         for (int i = 1; i < mp_player_count; i++) {
             const MpSml2Player *follower = &mp_sml2_players[i];
-            if (!follower->spawned) continue;
+            if (!mp_sml2_tether_eligible(follower)) continue;
             int gap = (int)leader_x - (int)mp_sml2_saved_world_x(follower);
             if (gap > MP_SML2_COOP_MAX_BEHIND) {
                 tether = 1;
@@ -1656,7 +1666,7 @@ static void mp_sml2_constrain_horizontal_input(int player, uint8_t *dpad)
     }
 
     const MpSml2Player *follower = &mp_sml2_players[player];
-    if (!follower->spawned) return;
+    if (!mp_sml2_tether_eligible(follower)) return;
     int gap = (int)leader_x - (int)mp_sml2_saved_world_x(follower);
     if (gap > MP_SML2_COOP_MAX_BEHIND)
         *dpad &= (uint8_t)~MP_SML2_DPAD_LEFT;
