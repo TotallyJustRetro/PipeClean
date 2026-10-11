@@ -93,13 +93,12 @@ function closeSocket(ws, code, reason) {
 }
 
 function clientAddress(request) {
-  /* Proxies append the source they observe. Use the rightmost valid address
-     so a client-supplied X-Forwarded-For prefix cannot bypass rate limits. */
+  /* Render documents the first X-Forwarded-For address as the real client IP.
+     Use it for relay rate limiting instead of Render's internal proxy address. */
   const forwarded = request.headers['x-forwarded-for'];
   if (typeof forwarded === 'string') {
-    const entries = forwarded.split(',');
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const candidate = entries[i].trim().replace(/^::ffff:/, '');
+    for (const item of forwarded.split(',')) {
+      const candidate = item.trim().replace(/^::ffff:/, '');
       if (net.isIP(candidate)) return candidate;
     }
   }
