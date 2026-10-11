@@ -2040,6 +2040,22 @@ static void mp_sml2_direct_collision_update(void)
         }
 
         mp_sml2_save_player_state(p);
+
+        /* In direct-world mode Luigi executes the cartridge movement routine
+         * inline, but not the full main-loop death dispatcher. Capture the
+         * first grounded-to-air transition that was not caused by Luigi's jump
+         * input so the next dev log contains the exact RAM/visual state around
+         * a likely enemy-hit, forced knockback, or missing death transition. */
+        if (old_ground && !old_air && p->ram[0x15] &&
+            !(buttons & 0x01u)) {
+            dev_diag_event("LUIGI UNCOMMANDED AIRBORNE TRANSITION; STATE SNAPSHOT REQUESTED");
+            dev_diag_request_screenshot("Luigi uncommanded airborne transition");
+        }
+        if (old_power > p->ram[0x16]) {
+            dev_diag_event("LUIGI POWER DOWN DURING INLINE MOVEMENT");
+            dev_diag_request_screenshot("Luigi power-down transition");
+        }
+
         const uint8_t new_lives = p->lives;
         const int new_lives_value = mp_sml2_bcd_to_int(new_lives);
         const int valid_lives = ((new_lives >> 4) & 0x0Fu) <= 9 &&
@@ -2130,6 +2146,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         const uint8_t old_ground = p->ram[0x14];
         const uint8_t old_air = p->ram[0x15];
         const uint8_t old_power = p->ram[0x16];
+        const uint8_t old_screen_y = p->ram[0x3B];
         const uint8_t old_lives = p->lives;
         const int old_lives_value = mp_sml2_bcd_to_int(old_lives);
 
