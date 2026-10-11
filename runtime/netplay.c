@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "netplay.h"
+#include "netplay_tls.h"
 
 #ifdef _WIN32
 typedef SOCKET NetSocket;
@@ -44,11 +45,16 @@ static char np_code[16], np_peer[32];
 static char np_endpoint[160], np_name[32], np_join_code[16];
 
 #define NP_INPUT_CAP 256
+#define NP_SEND_CAP 128
 #define NP_GAME_TIMEOUT_MS 30000u
 #define NP_FRAME_TIMEOUT_MS 15000u
 typedef struct { uint64_t frame; uint8_t buttons, dpad, actions; } NetInput;
+typedef struct { char data[128]; size_t length; } NetSend;
 static NetInput np_inputs[NP_INPUT_CAP];
 static int np_input_head, np_input_count, np_input_overflow;
+static NetSend np_sends[NP_SEND_CAP];
+static int np_send_head, np_send_count;
+static int np_tls_mode;
 static int np_local_game_pending, np_local_game, np_local_game_verified;
 static int np_local_game_mismatch, np_remote_game_seen, np_remote_game;
 static uint32_t np_local_crc, np_remote_crc;
@@ -154,7 +160,8 @@ static int np_is_allowed_relay_address(const struct addrinfo *entry)
     return 0;
 }
 
-static NetSocket np_connect(const char *host, const char *port, int *blocked_public_target)
+static NetSocket np_connect(const char *host, const char *port, int use_tls,
+                             int *blocked_public_target)
 {
     struct addrinfo hints, *list = NULL, *it;
     NetSocket result = NET_INVALID_SOCKET;
@@ -167,7 +174,7 @@ static NetSocket np_connect(const char *host, const char *port, int *blocked_pub
     if (getaddrinfo(host, port, &hints, &list) != 0) return NET_INVALID_SOCKET;
 
     for (it = list; it && !np_stopping(); it = it->ai_next) {
-        if (!np_is_allowed_relay_address(it)) {
+        if (!use_tls && !np_is_allowed_relay_address(it)) {
             have_public_target = 1;
             continue;
         }
@@ -289,17 +296,78 @@ static int np_send_all(NetSocket sock, const char *data, size_t length)
     }
     return 1;
 }
+static int np_tls_write_all(NetSocket sock, const char *data, size_t length)
+{
+    size_t sent = 0;
+    while (sent < length && !np_stopping()) {
+        int n = netplay_tls_write(sock, data + sent, length - sent);
+        if (n > 0) {
+            sent += (size_t)n;
+            continue;
+        }
+        if (n < 0) return 0;
+        {
+            int waited = netplay_tls_wait(sock, netplay_tls_wants_write(), 50, np_stopping);
+            if (waited < 0 && !np_stopping()) return 0;
+        }
+    }
+    return sent == length;
+}
+
+static int np_write_transport(NetSocket sock, const char *data, size_t length, int use_tls)
+{
+    return use_tls ? np_tls_write_all(sock, data, length) : np_send_all(sock, data, length);
+}
+
+static int np_tls_flush_outgoing(NetSocket sock)
+{
+    for (;;) {
+        char message[128];
+        size_t length;
+        np_lock();
+        if (np_send_count <= 0) {
+            np_unlock();
+            return 1;
+        }
+        length = np_sends[np_send_head].length;
+        memcpy(message, np_sends[np_send_head].data, length);
+        np_send_head = (np_send_head + 1) % NP_SEND_CAP;
+        np_send_count--;
+        np_unlock();
+        if (!np_tls_write_all(sock, message, length)) return 0;
+    }
+}
+
 static int np_send_current(const char *message)
 {
     NetSocket sock;
-    int ok;
+    int ok, use_tls;
+    size_t length;
     if (!np_send_mutex || !np_mutex || !message) return 0;
+    length = strlen(message);
     SDL_LockMutex(np_send_mutex);
     np_lock();
     sock = np_socket;
+    use_tls = np_tls_mode;
     ok = (np_state == NETPLAY_CONNECTED && sock != NET_INVALID_SOCKET && !np_stop);
+    if (ok && use_tls) {
+        if (length >= sizeof np_sends[0].data || np_send_count >= NP_SEND_CAP) {
+            np_state = NETPLAY_ERROR;
+            snprintf(np_status, sizeof np_status, "Secure network send queue overflowed");
+            ok = 0;
+        } else {
+            int tail = (np_send_head + np_send_count) % NP_SEND_CAP;
+            memcpy(np_sends[tail].data, message, length);
+            np_sends[tail].length = length;
+            np_send_count++;
+            if (np_cond) SDL_CondBroadcast(np_cond);
+        }
+        np_unlock();
+        SDL_UnlockMutex(np_send_mutex);
+        return ok;
+    }
     np_unlock();
-    if (ok) ok = np_send_all(sock, message, strlen(message));
+    if (ok) ok = np_send_all(sock, message, length);
     SDL_UnlockMutex(np_send_mutex);
     if (!ok) np_set_status(NETPLAY_ERROR, "Lost the relay connection while sending");
     return ok;
@@ -372,10 +440,30 @@ static void np_handle_game_end(void)
     np_unlock();
 }
 
-static int np_read_line(NetSocket sock, char *out, size_t cap)
+static int np_read_line(NetSocket sock, char *out, size_t cap, int use_tls)
 {
     size_t used = 0;
     if (!out || cap < 2) return 0;
+    if (use_tls) {
+        while (used + 1 < cap && !np_stopping()) {
+            char ch;
+            int n;
+            if (!np_tls_flush_outgoing(sock)) return 0;
+            n = netplay_tls_read(sock, &ch, 1);
+            if (n > 0) {
+                if (ch == '\n') { out[used] = 0; return 1; }
+                if (ch != '\r') out[used++] = ch;
+                continue;
+            }
+            if (n < 0) return 0;
+            {
+                int waited = netplay_tls_wait(sock, netplay_tls_wants_write(), 10, np_stopping);
+                if (waited < 0 && !np_stopping()) return 0;
+            }
+        }
+        out[used] = 0;
+        return 0;
+    }
     while (used + 1 < cap) {
         char ch;
 #ifdef _WIN32
@@ -437,7 +525,7 @@ static int SDLCALL np_worker(void *unused)
 {
     char endpoint[160], name[32], join_code[16], host[128], port[8], line[512];
     NetSocket sock;
-    int is_host;
+    int is_host, use_tls;
     (void)unused;
     np_lock();
     snprintf(endpoint, sizeof endpoint, "%s", np_endpoint);
@@ -446,17 +534,23 @@ static int SDLCALL np_worker(void *unused)
     is_host = np_is_host;
     np_unlock();
 
+    use_tls = strncmp(endpoint, "tls://", 6) == 0;
+    if (use_tls) memmove(endpoint, endpoint + 6, strlen(endpoint + 6) + 1);
+    else if (strncmp(endpoint, "tcp://", 6) == 0)
+        memmove(endpoint, endpoint + 6, strlen(endpoint + 6) + 1);
+
     if (!np_parse_endpoint(endpoint, host, sizeof host, port, sizeof port)) {
         np_set_status(NETPLAY_ERROR, "Relay address must be host:port");
         goto finished;
     }
     {
         int blocked_public_target = 0;
-        sock = np_connect(host, port, &blocked_public_target);
+        sock = np_connect(host, port, use_tls, &blocked_public_target);
         if (sock == NET_INVALID_SOCKET) {
             np_set_status(NETPLAY_ERROR, blocked_public_target
                 ? "Unencrypted relay blocked: use localhost or a private LAN address."
-                : "Couldn't connect. Check relay address and port.");
+                : (use_tls ? "Couldn't connect to secure relay. Check hostname and port."
+                           : "Couldn't connect. Check relay address and port."));
             goto finished;
         }
     }
@@ -470,18 +564,31 @@ static int SDLCALL np_worker(void *unused)
     np_socket = sock;
     np_unlock();
 
+    if (use_tls) {
+        int tls_result = netplay_tls_open(sock, host, np_stopping);
+        if (tls_result != 1) {
+            if (!np_stopping()) {
+                np_set_status(NETPLAY_ERROR,
+                    tls_result == -2 ? "TLS CA bundle missing or invalid; reinstall or rebuild PipeClean."
+                  : tls_result == -3 ? "TLS certificate rejected. Check the relay hostname and certificate."
+                                     : "Secure relay TLS handshake failed.");
+            }
+            goto socket_finished;
+        }
+    }
+
     {
         char safe_name[32], command[160];
         np_safe_name(safe_name, sizeof safe_name, name);
-        if (is_host) snprintf(command, sizeof command, "HOST\t%s\n", safe_name);
-        else snprintf(command, sizeof command, "JOIN\t%s\t%s\n", join_code, safe_name);
-        if (!np_send_all(sock, command, strlen(command))) {
+        if (is_host) snprintf(command, sizeof command, "HOST\\t%s\\n", safe_name);
+        else snprintf(command, sizeof command, "JOIN\\t%s\\t%s\\n", join_code, safe_name);
+        if (!np_write_transport(sock, command, strlen(command), use_tls)) {
             np_set_status(NETPLAY_ERROR, "Couldn't send session request to relay");
             goto socket_finished;
         }
     }
     {
-        int read_ok = np_read_line(sock, line, sizeof line);
+        int read_ok = np_read_line(sock, line, sizeof line, use_tls);
         if (read_ok <= 0) {
             if (!np_stopping()) np_set_status(NETPLAY_ERROR, "Relay closed before accepting the session");
             goto socket_finished;
@@ -491,7 +598,7 @@ static int SDLCALL np_worker(void *unused)
     }
 
     while (!np_stopping()) {
-        int read_ok = np_read_line(sock, line, sizeof line);
+        int read_ok = np_read_line(sock, line, sizeof line, use_tls);
         if (read_ok <= 0) {
             if (!np_stopping()) np_set_status(NETPLAY_ERROR, "Connection to relay was lost");
             break;
@@ -517,8 +624,10 @@ static int SDLCALL np_worker(void *unused)
 
 socket_finished:
     if (np_send_mutex) SDL_LockMutex(np_send_mutex);
+    if (use_tls) netplay_tls_close();
     np_lock();
     if (np_socket == sock) np_socket = NET_INVALID_SOCKET;
+    np_send_head = np_send_count = 0;
     np_unlock();
     net_shutdown_socket(sock);
     net_close_socket(sock);
@@ -566,6 +675,8 @@ static int netplay_start(int is_host, const char *endpoint, const char *code, co
     np_local_game_pending = np_local_game_verified = np_local_game_mismatch = 0;
     np_remote_game_seen = np_game_end_received = 0;
     np_clear_input_queue_locked();
+    np_send_head = np_send_count = 0;
+    np_tls_mode = endpoint && strncmp(endpoint, "tls://", 6) == 0;
     snprintf(np_endpoint, sizeof np_endpoint, "%s", endpoint ? endpoint : "");
     np_safe_name(np_name, sizeof np_name, name);
     snprintf(np_join_code, sizeof np_join_code, "%s", code ? code : "");
@@ -613,6 +724,8 @@ void netplay_disconnect(void)
     np_state = NETPLAY_OFFLINE;
     snprintf(np_status, sizeof np_status, "Not connected");
     np_code[0] = np_peer[0] = 0;
+    np_send_head = np_send_count = 0;
+    np_tls_mode = 0;
     np_local_game_pending = np_local_game_verified = np_local_game_mismatch = 0;
     np_remote_game_seen = np_game_end_received = 0;
     np_clear_input_queue_locked();
