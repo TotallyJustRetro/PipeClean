@@ -1949,7 +1949,7 @@ static void tab_online(float x, float y)
 
     card(x, y, 808, 512, "ONLINE PLAY");
     ui_text_fit(F_REG, 12, x + 18, y + 42, 772, C_DIM,
-                "Connect desktop and Android clients through a PipeClean relay.");
+                "Experimental LAN-only relay. Connections are not encrypted; don't use over the public internet.");
 
     ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
