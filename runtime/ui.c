@@ -16,6 +16,7 @@ static SDL_Renderer *ren;
 static SDL_Texture *color_wheel_tex;
 static float ox, oy;
 static int PW, PH;
+static int ui_scale_preference = 100;
 static stbtt_fontinfo finfo[2];
 static int fonts_ok;
 static char hint_cur[200], hint_next[200];
@@ -238,6 +239,13 @@ void ui_color_wheel(float cx, float cy, float radius, uint32_t selected_rgb)
 }
 
 /* ------------------------------------------------------------ setup */
+void ui_set_scale_preference(int percent)
+{
+    if (percent < 75) percent = 75;
+    if (percent > 125) percent = 125;
+    ui_scale_preference = percent;
+}
+
 void ui_init(SDL_Renderer *r)
 {
     ren = r;
@@ -266,7 +274,7 @@ void ui_begin(int pw, int ph, float dt)
 {
     PW = pw; PH = ph; ui_dt = dt > 0.1f ? 0.1f : dt;
     float sx = (float)pw / UI_W, sy = (float)ph / UI_H;
-    ui_scale = sx < sy ? sx : sy;
+    ui_scale = (sx < sy ? sx : sy) * (float)ui_scale_preference / 100.0f;
     if (ui_scale < 0.35f) ui_scale = 0.35f;
     ox = (pw - UI_W * ui_scale) * 0.5f;
     oy = (ph - UI_H * ui_scale) * 0.5f;
