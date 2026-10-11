@@ -2359,8 +2359,7 @@ static void mp_sml2_instruction_hook(uint16_t pc)
         /* Match the original call site: XOR A immediately before CALL 0F71. */
         cpu.a = 0;
         cpu.f = 0x80;
-        if (!mp_sml2_run_original_subroutine(0x0F71, 30000, 1) ||
-            !mp_sml2_capture_direct_oam(player, p)) {
+        if (!mp_sml2_run_original_subroutine(0x0F71, 30000, 1)) {
             wr8(0xA221, shared_pipe_transition);
             wr8(0xA20E, shared_level_transition);
             mp_sml2_player_scratch_restore(movement_scratch_saved);
@@ -2369,11 +2368,27 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             longjmp(stop_jmp, 4);
         }
 
+        /* Resolve any missed coin while the movement routine's collision
+         * tile and map coordinates are still live; sprite rendering can reuse
+         * those temporary RAM locations. */
         int p2_collected_coin =
             rd8(0xA262) != shared_coins_low_before ||
             rd8(0xA263) != shared_coins_high_before;
         if (!p2_collected_coin)
             p2_collected_coin = mp_sml2_recover_coin_pickup();
+
+        if (!mp_sml2_capture_direct_oam(player, p)) {
+            wr8(0xA221, shared_pipe_transition);
+            wr8(0xA20E, shared_level_transition);
+            mp_sml2_player_scratch_restore(movement_scratch_saved);
+            wr8(0xA460, shared_sfx_command);
+            wr8(0xA468, shared_music_command);
+            wr8(0xA469, shared_current_song);
+            wr8(0xA50D, shared_fast_music);
+            mp_sml2_load_player(&p1_restore);
+            cpu = p1_cpu;
+            longjmp(stop_jmp, 4);
+        }
 
         /* Coins and the A28D HUD counter belong to the one shared SML2 world,
          * not to either character's private RAM snapshot. Keep the authoritative
