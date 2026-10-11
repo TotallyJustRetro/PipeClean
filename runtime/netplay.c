@@ -462,10 +462,12 @@ static int np_ws_read_line(NetSocket sock, char *out, size_t cap)
         unsigned opcode, fin, masked;
         int header_read = np_tls_read_exact_timeout(sock, header, sizeof header, 30000u);
         if (header_read == 2) {
+            static const unsigned char application_ping[] = "PING\\n";
             unsigned char ping[4];
             if (!np_ws_rng_ready ||
                 mbedtls_ctr_drbg_random(&np_ws_drbg, ping, sizeof ping) != 0 ||
-                !np_ws_send_frame(sock, 9u, ping, sizeof ping))
+                !np_ws_send_frame(sock, 9u, ping, sizeof ping) ||
+                !np_ws_send_frame(sock, 1u, application_ping, sizeof application_ping - 1))
                 return 0;
             continue;
         }
