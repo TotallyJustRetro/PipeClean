@@ -389,7 +389,7 @@ static int np_websocket_handshake(NetSocket sock, const char *host)
         char combined[128];
         int n = snprintf(combined, sizeof combined, "%s%s", key, guid);
         if (n < 0 || (size_t)n >= sizeof combined ||
-            mbedtls_sha1_ret((const unsigned char *)combined, (size_t)n, digest) != 0)
+            mbedtls_sha1((const unsigned char *)combined, (size_t)n, digest) != 0)
             return 0;
     }
     if (mbedtls_base64_encode(accept_b64, sizeof accept_b64, &accept_len,
