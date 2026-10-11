@@ -185,6 +185,9 @@ void settings_defaults(Settings *s)
     snprintf(s->online_server, sizeof s->online_server, "127.0.0.1:27800");
     s->online_color = 0x2CA83D;
     s->touch_controls = 1;
+    s->launcher_ui_scale = 100;
+    s->launcher_window_size = 1;
+    s->launcher_fullscreen = 0;
     for (int i = 0; i < N_GAMES; i++) game_cfg_defaults(&s->g[i], i);
 }
 
@@ -232,6 +235,9 @@ static int field_table(Field *t, int cap)
     static char names[N_UI_SFX][24];
     for (int i = 0; i < N_UI_SFX; i++) { snprintf(names[i], sizeof names[i], "ui_sfx_path%d", i); S(names[i], s->ui_sfx_path[i]); }
     I("last_tab", s->last_tab, 0, 20); I("show_stats", s->show_stats, 0, 1);
+    I("launcher_ui_scale", s->launcher_ui_scale, 75, 125);
+    I("launcher_window_size", s->launcher_window_size, 0, 2);
+    I("launcher_fullscreen", s->launcher_fullscreen, 0, 1);
     S("online_name", s->online_name); S("online_server", s->online_server); I("online_color", s->online_color, 0, 0xFFFFFF);
     I("touch_controls", s->touch_controls, 0, 1);
     FilterCfg *f = &s->flt;
@@ -343,7 +349,7 @@ void settings_load(void)
         if (c->romhack_selected < -1 || c->romhack_selected >= c->romhack_count)
             c->romhack_selected = -1;
     }
-    if (settings.last_tab > N_GAMES + 3) settings.last_tab = 0;
+    if (settings.last_tab > N_GAMES + 5) settings.last_tab = 0;
 }
 
 void settings_save(void)
