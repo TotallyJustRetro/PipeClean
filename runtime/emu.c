@@ -3067,6 +3067,17 @@ int emu_mp_test_snapshot(EmuMpTestSnapshot *out)
         out->p2_keys_pressed = p->keys_pressed;
     }
 
+    /* Preserve raw player and actor bytes in each diagnostic sample. This
+     * lets a later log reader correlate motion, collisions, damage, items,
+     * death-state transitions, and shared-world changes without guessing RAM
+     * semantics in the emulator. */
+    for (unsigned i = 0; i < sizeof out->p1_ram; i++)
+        out->p1_ram[i] = rd8((uint16_t)(0xA200u + i));
+    if (mp_player_count > 1)
+        memcpy(out->p2_ram, mp_sml2_players[1].ram, sizeof out->p2_ram);
+    for (unsigned i = 0; i < sizeof out->actor_ram; i++)
+        out->actor_ram[i] = rd8((uint16_t)(0xAD00u + i));
+
     uint32_t bg_hash = 2166136261u;
     for (unsigned i = 0; i < 0x400; i++) {
         bg_hash ^= vram[0x1800 + i];
