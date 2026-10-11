@@ -65,6 +65,7 @@ static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
 static int mp_config_game = GAME_SML;
 static int mp_color_selected; /* 0=P2, 1=P3, 2=P4 in the wheel editor */
 static int online_name_editing, online_code_editing, online_server_editing;
+static int online_mode_menu;
 static char online_join_code[9];
 static char online_server_before[160];
 static int launcher_controller_cursor_active;
@@ -1949,7 +1950,9 @@ static void tab_online(float x, float y)
 
     card(x, y, 808, 512, "ONLINE PLAY");
     ui_text_fit(F_REG, 12, x + 18, y + 42, 772, C_DIM,
-                "LAN addresses use plain TCP. For Internet play, use tls://hostname:443 with a valid TLS certificate.");
+                settings.online_connection_mode == 0
+                    ? "Direct peer-to-peer mode is not implemented in this build. Choose Traversal Server to play online."
+                    : "Host a room through the traversal relay, then share its invite code with the other player.");
 
     ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
@@ -2026,16 +2029,54 @@ static void tab_online(float x, float y)
     ui_rrect(x + 390, y + 70, 400, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
-                 "Use host:port for a trusted LAN, or tls://hostname:443 for an encrypted Internet relay. Host first, then share the invite code.", 2);
+                 settings.online_connection_mode == 0
+                    ? "Direct mode will connect to another player's reachable address. That peer-to-peer transport still needs implementation."
+                    : "Use tls://hostname:443 for encrypted Internet play. Host first, then share the invite code.", 2);
 
-    ui_text_fit(F_REG, 10, x + 408, y + 151, 360, C_MUTED, "Relay address (host:port or tls://host:443)");
-    int server_over = 0;
-    int server_clicked = clickable(x + 408, y + 164, 360, 30, &server_over);
+    ui_text_fit(F_REG, 10, x + 408, y + 151, 360, C_MUTED, "Connection mode");
+    int mode_over = 0;
+    int mode_clicked = clickable(x + 408, y + 164, 360, 30, &mode_over);
     ui_rrect(x + 408, y + 164, 360, 30, 7,
+             online_mode_menu ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (mode_over ? C_BTN_H : C_BTN));
+    ui_text_fit(F_REG, 12, x + 420, y + 172, 320, C_TEXT,
+                settings.online_connection_mode == 0 ? "Direct Connection" : "Traversal Server");
+    ui_tri(x + 748, y + 174, x + 758, y + 174, x + 753, y + 181, C_MUTED);
+    if (mode_clicked) online_mode_menu = !online_mode_menu;
+    if (online_mode_menu) {
+        ui_shadow(x + 408, y + 98, 360, 66, 10, 6, RGBA(0, 0, 0, 100));
+        ui_rrect(x + 408, y + 98, 360, 66, 8, C_BG2);
+        for (int mode = 0; mode < 2; mode++) {
+            float my = y + 100 + mode * 32;
+            int over = 0;
+            int pick = clickable(x + 412, my, 352, 30, &over);
+            int selected = settings.online_connection_mode == mode;
+            ui_rrect(x + 412, my, 352, 30, 6,
+                     selected ? HEX(ui_accent) : (over ? C_BTN_H : C_BG2));
+            ui_text_fit(F_REG, 12, x + 424, my + 8, 324,
+                        selected ? HEX(0xFFFFFF) : C_TEXT,
+                        mode == 0 ? "Direct Connection" : "Traversal Server");
+            if (pick) {
+                settings.online_connection_mode = mode;
+                settings_save();
+                online_mode_menu = 0;
+                online_server_editing = 0;
+                online_name_editing = online_code_editing = 0;
+                SDL_StopTextInput();
+            }
+        }
+    }
+
+    ui_text_fit(F_REG, 10, x + 408, y + 202, 360, C_MUTED,
+                settings.online_connection_mode == 0
+                    ? "Peer address (not active until direct mode is implemented)"
+                    : "Traversal server (host:port or tls://host:443)");
+    int server_over = 0;
+    int server_clicked = clickable(x + 408, y + 215, 360, 30, &server_over);
+    ui_rrect(x + 408, y + 215, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
     const char *server_text = settings.online_server[0] ? settings.online_server :
                               (online_server_editing ? "Type host:port or tls://host:443…" : "127.0.0.1:27800");
-    ui_text_fit(F_REG, 12, x + 420, y + 172, 336,
+    ui_text_fit(F_REG, 12, x + 420, y + 223, 336,
                 (online_server_editing && !settings.online_server[0]) ? C_DIM : C_TEXT,
                 server_text);
     if (server_clicked) {
@@ -2045,51 +2086,55 @@ static void tab_online(float x, float y)
         online_server_editing = 1;
         SDL_StartTextInput();
     }
-    if (ui_button(x + 408, y + 204, 360, 38, "Host Session", B_PRIMARY, can_start)) {
-        if (netplay_host(settings.online_server, settings.online_name) == 0)
-            launcher_toast("Connecting to relay to create a session…");
+    if (ui_button(x + 408, y + 254, 360, 38, "Host Session", B_PRIMARY, can_start)) {
+        if (settings.online_connection_mode == 0)
+            launcher_toast("Direct peer-to-peer networking is not implemented yet. Select Traversal Server.");
+        else if (netplay_host(settings.online_server, settings.online_name) == 0)
+            launcher_toast("Connecting to traversal server to create a session…");
         else
             launcher_toast("Disconnect from the current session first.");
     }
-    ui_rect(x + 408, y + 252, 364, 1, C_LINE);
-    ui_text(F_BOLD, 14, x + 408, y + 263, C_TEXT, "JOIN A SESSION");
+    ui_rect(x + 408, y + 302, 364, 1, C_LINE);
+    ui_text(F_BOLD, 14, x + 408, y + 309, C_TEXT, "JOIN A SESSION");
     int code_over = 0;
-    int code_clicked = clickable(x + 408, y + 289, 228, 36, &code_over);
-    ui_rrect(x + 408, y + 289, 228, 36, 8,
+    int code_clicked = clickable(x + 408, y + 333, 228, 36, &code_over);
+    ui_rrect(x + 408, y + 333, 228, 36, 8,
              online_code_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (code_over ? C_BTN_H : C_BTN));
-    ui_text_fit(F_BOLD, 14, x + 420, y + 298, 204, online_join_code[0] ? C_TEXT : C_DIM,
+    ui_text_fit(F_BOLD, 14, x + 420, y + 342, 204, online_join_code[0] ? C_TEXT : C_DIM,
                 online_join_code[0] ? online_join_code : "Enter invite code");
     if (code_clicked) {
         online_name_editing = online_server_editing = 0;
         online_code_editing = 1;
         SDL_StartTextInput();
     }
-    if (ui_button(x + 644, y + 289, 124, 36, "Join", B_NORMAL, can_start)) {
-        if (!online_join_code[0]) launcher_toast("Enter the invite code first.");
+    if (ui_button(x + 644, y + 333, 124, 36, "Join", B_NORMAL, can_start)) {
+        if (settings.online_connection_mode == 0)
+            launcher_toast("Direct peer-to-peer networking is not implemented yet. Select Traversal Server.");
+        else if (!online_join_code[0]) launcher_toast("Enter the invite code first.");
         else if (netplay_join(settings.online_server, online_join_code, settings.online_name) == 0)
-            launcher_toast("Connecting to the session…");
+            launcher_toast("Connecting to the traversal session…");
         else
             launcher_toast("Disconnect from the current session first.");
     }
 
-    ui_rrect(x + 408, y + 340, 360, 136, 9,
+    ui_rrect(x + 408, y + 381, 360, 105, 9,
              np.state == NETPLAY_ERROR ? RGBA(206,75,74,25) :
              (np.state == NETPLAY_OFFLINE ? RGBA(237,180,81,18) : RGBA(54,160,112,20)));
-    ui_text(F_BOLD, 10, x + 422, y + 352, C_MUTED, "NETWORK STATUS");
+    ui_text(F_BOLD, 10, x + 422, y + 390, C_MUTED, "NETWORK STATUS");
     uint32_t status_color = np.state == NETPLAY_ERROR ? C_WARN :
                             (np.state == NETPLAY_OFFLINE ? C_DIM : C_TEXT);
-    ui_text_fit(F_REG, 12, x + 422, y + 371, 330, status_color,
+    ui_text_fit(F_REG, 12, x + 422, y + 408, 330, status_color,
                 np.status[0] ? np.status : "Not connected");
-    ui_text(F_REG, 10, x + 422, y + 396, C_MUTED, "INVITE CODE");
-    ui_text(F_BOLD, 16, x + 422, y + 411, C_TEXT, np.code[0] ? np.code : "—");
-    if (np.code[0] && ui_button(x + 598, y + 432, 74, 28, "Copy", B_GHOST, 1)) {
+    ui_text(F_REG, 10, x + 422, y + 430, C_MUTED, "INVITE CODE");
+    ui_text(F_BOLD, 16, x + 422, y + 444, C_TEXT, np.code[0] ? np.code : "—");
+    if (np.code[0] && ui_button(x + 598, y + 450, 74, 28, "Copy", B_GHOST, 1)) {
         if (SDL_SetClipboardText(np.code) == 0) launcher_toast("Invite code copied.");
         else launcher_toast("Couldn't copy the invite code.");
     }
     if (np.state != NETPLAY_OFFLINE &&
-        ui_button(x + 680, y + 432, 76, 28, "Disconnect", B_NORMAL, 1)) {
+        ui_button(x + 680, y + 450, 76, 28, "Disconnect", B_NORMAL, 1)) {
         netplay_disconnect();
-        launcher_toast("Disconnected from the relay.");
+        launcher_toast("Disconnected from the online session.");
     }
 }
 
