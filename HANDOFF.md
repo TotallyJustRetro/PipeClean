@@ -141,6 +141,7 @@ Focused SML2 widescreen regression test. Locate and extend the corresponding SML
 ## Known limitations
 
 - SML2 gameplay/pop-in verification requires testing with the user's legally obtained ROM in a working SDL2 environment.
+- SML2 co-op safe-respawn probing is implemented, but must be verified in live gameplay; the probe deliberately waits for Player 1 to be grounded and rejects uncertain spawn candidates.
 - Updated SML DX widescreen compatibility is currently unresolved.
 - Wario Land II GBC physical/controller input behavior has not been confirmed fixed by the user.
 - Windows-specific audio/device behavior and physical DualSense hardware have not been exhaustively validated here.
