@@ -63,12 +63,15 @@ static NetplayChatMessage np_chat[NP_CHAT_CAP];
 static int np_chat_head, np_chat_count;
 
 #define NP_INPUT_CAP 256
+/* Buffer remote input ahead of simulation to absorb relay latency. */
+#define NP_INPUT_DELAY_FRAMES 12u
 #define NP_SEND_CAP 128
 #define NP_GAME_TIMEOUT_MS 30000u
 #define NP_FRAME_TIMEOUT_MS 15000u
 typedef struct { uint64_t frame; uint8_t buttons, dpad, actions; } NetInput;
 typedef struct { char data[128]; size_t length; } NetSend;
 static NetInput np_inputs[NP_INPUT_CAP];
+static NetInput np_local_inputs[NP_INPUT_CAP];
 static int np_input_head, np_input_count, np_input_overflow;
 static NetSend np_sends[NP_SEND_CAP];
 static int np_send_head, np_send_count;
@@ -670,6 +673,7 @@ static void np_clear_input_queue_locked(void)
     np_input_head = 0;
     np_input_count = 0;
     np_input_overflow = 0;
+    memset(np_local_inputs, 0, sizeof np_local_inputs);
 }
 
 static void np_handle_input_line(const char *line)
@@ -1364,25 +1368,44 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
 {
     char message[96];
     Uint32 started, wait_ms = 0;
-    NetInput remote;
+    uint64_t send_frame;
+    NetInput remote, delayed_local;
     int got_remote = 0, ok = 0, host;
     if (!p1_buttons || !p1_dpad || !p1_actions || !p2_buttons || !p2_dpad || !p2_actions ||
         !np_mutex || !np_cond) return -1;
+    if (frame > UINT64_MAX - NP_INPUT_DELAY_FRAMES) return -1;
 
+    send_frame = frame + NP_INPUT_DELAY_FRAMES;
     np_lock();
     host = np_is_host;
     ok = np_state == NETPLAY_CONNECTED && np_local_game_verified &&
          np_local_game_pending && !np_game_end_received && !np_stop;
+    if (ok) {
+        NetInput *slot = &np_local_inputs[send_frame % NP_INPUT_CAP];
+        slot->frame = send_frame;
+        slot->buttons = local_buttons;
+        slot->dpad = local_dpad;
+        slot->actions = local_actions;
+    }
     np_unlock();
     if (!ok) return -1;
 
+    /* Send this physical input early, labelled for the simulation frame that
+       will consume it after the fixed delay. Both players delay their own
+       inputs too, so both replicas apply the same input pair to every frame. */
     snprintf(message, sizeof message, "INPUT\t%llu\t%u\t%u\t%u\n",
-             (unsigned long long)frame, (unsigned)local_buttons, (unsigned)local_dpad, (unsigned)local_actions);
+             (unsigned long long)send_frame, (unsigned)local_buttons,
+             (unsigned)local_dpad, (unsigned)local_actions);
     if (!np_send_current(message)) return -1;
 
     started = SDL_GetTicks();
     np_lock();
-    for (;;) {
+    memset(&remote, 0, sizeof remote);
+    remote.frame = frame;
+    /* The first delay-window frames are neutral on both replicas. This seeds
+       the pipeline instead of blocking while no frame-N input can exist yet. */
+    if (frame < NP_INPUT_DELAY_FRAMES) got_remote = 1;
+    while (!got_remote) {
         if (np_game_end_received || np_state != NETPLAY_CONNECTED || np_stop || !np_running)
             break;
         if (np_input_overflow) {
@@ -1415,14 +1438,27 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
                 break;
         }
     }
+
     if (got_remote && !np_game_end_received && np_state == NETPLAY_CONNECTED) {
+        memset(&delayed_local, 0, sizeof delayed_local);
+        delayed_local.frame = frame;
+        if (frame >= NP_INPUT_DELAY_FRAMES) {
+            delayed_local = np_local_inputs[frame % NP_INPUT_CAP];
+            if (delayed_local.frame != frame) {
+                snprintf(np_status, sizeof np_status,
+                         "Online local input buffer lost frame synchronization.");
+                np_unlock();
+                return -1;
+            }
+        }
+
         wait_ms = SDL_GetTicks() - started;
         np_wait_window_total_ms += wait_ms;
         if (wait_ms > np_wait_window_max_ms) np_wait_window_max_ms = wait_ms;
         if (wait_ms >= 8u) np_wait_window_slow++;
         np_wait_window_samples++;
-        /* Emit a compact one-line measurement every 120 successful frames,
-         * rather than logging every input packet and perturbing frame timing. */
+        /* Includes buffered zero-wait frames, so the average shows how much
+           wall-clock time the synchronization actually adds per game frame. */
         if (np_wait_window_samples >= 120u) {
             fprintf(stderr, "[netplay] input wait over %u frames: avg=%u ms max=%u ms slow(>=8ms)=%u\n",
                     np_wait_window_samples,
@@ -1432,11 +1468,11 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
             np_wait_window_samples = 0;
         }
         if (host) {
-            *p1_buttons = local_buttons; *p1_dpad = local_dpad; *p1_actions = local_actions;
+            *p1_buttons = delayed_local.buttons; *p1_dpad = delayed_local.dpad; *p1_actions = delayed_local.actions;
             *p2_buttons = remote.buttons; *p2_dpad = remote.dpad; *p2_actions = remote.actions;
         } else {
             *p1_buttons = remote.buttons; *p1_dpad = remote.dpad; *p1_actions = remote.actions;
-            *p2_buttons = local_buttons; *p2_dpad = local_dpad; *p2_actions = local_actions;
+            *p2_buttons = delayed_local.buttons; *p2_dpad = delayed_local.dpad; *p2_actions = delayed_local.actions;
         }
         ok = 1;
     } else {
@@ -1445,7 +1481,6 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
     np_unlock();
     return ok ? 0 : -1;
 }
-
 void netplay_game_end(void)
 {
     if (!np_mutex) return;
