@@ -204,12 +204,83 @@ static void sml2_capture_actor(uint8_t sentinel)
     }
 }
 
+
+static int sml2_fireball_world_match(unsigned idx, unsigned sx, unsigned sy,
+                                     int *world_x, int *world_y)
+{
+    if (idx < 0xB0u || idx > 0xB7u) return 0;
+    int cam_x = sml2_read16(SML2_CAMERA_X);
+    int cam_y = sml2_read16(SML2_CAMERA_Y);
+    for (int i = 0; i < 2; i++) {
+        unsigned base = 0xA880u + (unsigned)i * 0x10u;
+        if (!rd8((uint16_t)base)) continue;
+        int y = rd8((uint16_t)(base + 1u)) | (rd8((uint16_t)(base + 2u)) << 8);
+        int x = rd8((uint16_t)(base + 3u)) | (rd8((uint16_t)(base + 4u)) << 8);
+        if (((unsigned)(x - cam_x + 80) & 0xFFu) != sx) continue;
+        if (((unsigned)(y - cam_y + 70) & 0xFFu) != sy) continue;
+        if (world_x) *world_x = x;
+        if (world_y) *world_y = y;
+        return 1;
+    }
+    return 0;
+}
+
+/* Bank 1's shared emitter draws Mario's projectiles. Take the sampled screen-X
+ * as an argument so the tap does not recursively read $FFC5. */
+static void sml2_capture_emitter(unsigned sx)
+{
+    unsigned sy = rd8(0xFFC4u);
+    unsigned idx = rd8(0xFFC6u);
+    int pal = rd8(0xFFC7u) != 0;
+
+    int cam_x = sml2_read16(SML2_CAMERA_X);
+    int cam_y = sml2_read16(SML2_CAMERA_Y);
+    int native_left = cam_x - SML2_CAMERA_CENTRE_X;
+    int native_top = cam_y - SML2_CAMERA_CENTRE_Y;
+    int scx = rd8(0xFF43u), scy = rd8(0xFF42u);
+    native_left += (int8_t)(uint8_t)(scx - (native_left & 0xFF));
+    native_top += (int8_t)(uint8_t)(scy - (native_top & 0xFF));
+
+    int ox = native_left + (sx >= 0xD0u ? (int)sx - 256 : (int)sx) - 8;
+    int oy = native_top + (sy >= 0xD0u ? (int)sy - 256 : (int)sy) - 16;
+    int fireball_x, fireball_y;
+    if (sml2_fireball_world_match(idx, sx, sy, &fireball_x, &fireball_y)) {
+        ox = fireball_x - 8;
+        oy = fireball_y - 16;
+    }
+
+    unsigned entry = 0x4000u + idx * 2u;
+    unsigned de = (unsigned)sml2_mapped_rom_byte(entry) |
+                  ((unsigned)sml2_mapped_rom_byte(entry + 1u) << 8);
+    if (de < 0x4000u || de >= 0x8000u) return;
+    for (int n = 0; n < SML2_MAX_PIECES && de + 3u < 0x8000u; n++, de += 4u) {
+        uint8_t yraw = sml2_mapped_rom_byte(de);
+        if (yraw == 0x80u) break;
+        if (sml2_actor_build_count >= SML2_CAPTURED_SPRITE_CAP) break;
+        WideSml2Sprite *sp = &sml2_actor_build[sml2_actor_build_count++];
+        sp->x = (int16_t)(ox + (int8_t)sml2_mapped_rom_byte(de + 1u));
+        sp->y = (int16_t)(oy + (int8_t)yraw);
+        sp->tile = sml2_mapped_rom_byte(de + 2u);
+        sp->attr = sml2_mapped_rom_byte(de + 3u);
+        if (pal) sp->attr |= 0x10u;
+    }
+}
+
 uint8_t wide_sml2_read_tap(uint16_t address, uint8_t value)
 {
     if (!sml2_compositor_installed || !rom || !cart_hi) return value;
     if (address == 0xFFE2u && cart_hi == rom + 0xC000 &&
-        (cpu.pc == 0x4019u || cpu.pc == 0x401Bu))
+        (cpu.pc == 0x4019u || cpu.pc == 0x401Bu)) {
         sml2_capture_actor(value);
+    } else if (address == 0xFFC5u && cart_hi == rom + 0x4000) {
+        static const uint16_t tap_pcs[] = {0x52BAu, 0x5E5Du, 0x5D8Bu, 0x5E3Fu};
+        for (unsigned i = 0; i < sizeof tap_pcs / sizeof tap_pcs[0]; i++) {
+            if (cpu.pc == tap_pcs[i] || cpu.pc == (uint16_t)(tap_pcs[i] - 2u)) {
+                sml2_capture_emitter(value);
+                break;
+            }
+        }
+    }
     return value;
 }
 
