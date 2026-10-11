@@ -2,6 +2,11 @@
 #include <stdint.h>
 #include "util.h"
 
+/* Deployment workflow replaces this with the project's public TLS relay. */
+#ifndef PIPECLEAN_DEFAULT_RELAY_ENDPOINT
+#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "127.0.0.1:27800"
+#endif
+
 typedef struct {
     const char *name;
     uint32_t bg[4], ob0[4], ob1[4];     /* 0xRRGGBB, lightest -> darkest */
