@@ -580,8 +580,8 @@ static int SDLCALL np_worker(void *unused)
     {
         char safe_name[32], command[160];
         np_safe_name(safe_name, sizeof safe_name, name);
-        if (is_host) snprintf(command, sizeof command, "HOST\\t%s\\n", safe_name);
-        else snprintf(command, sizeof command, "JOIN\\t%s\\t%s\\n", join_code, safe_name);
+        if (is_host) snprintf(command, sizeof command, "HOST\t%s\n", safe_name);
+        else snprintf(command, sizeof command, "JOIN\t%s\t%s\n", join_code, safe_name);
         if (!np_write_transport(sock, command, strlen(command), use_tls)) {
             np_set_status(NETPLAY_ERROR, "Couldn't send session request to relay");
             goto socket_finished;
