@@ -726,13 +726,12 @@ static int play_multiplayer(int g)
                         Frame *pf = player_frames[player - 1];
                         int result = emu_mp_step(player, buttons[player], dpad[player], pf, NULL, 0);
                         if (result < 0) { failed = 1; break; }
-                        /* SML2's character routine now emits the real ROM sounds.
-                         * The PipeClean fallback bank is retained for SML1 only. */
-                        if (g != GAME_SML2) {
-                            for (int event = 0; event < N_P2_SFX; event++)
-                                if (pf->p2_sfx_events & (1u << event))
-                                    audio_mp_sfx(player + 1, event);
-                        }
+                        /* SML2 shares one APU between all characters. Luigi's
+                         * private movement pass restores shared sound-engine RAM,
+                         * so play his captured one-shot events through his own bank. */
+                        for (int event = 0; event < N_P2_SFX; event++)
+                            if (pf->p2_sfx_events & (1u << event))
+                                audio_mp_sfx(player + 1, event);
                     }
                     if (failed) {
                         quit = 1;
