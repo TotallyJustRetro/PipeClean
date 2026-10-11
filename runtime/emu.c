@@ -1745,6 +1745,208 @@ static void mp_sml2_spawn_player(int player)
     p->sfx_events = 0;
 }
 
+
+static int mp_sml2_direct_signature(void)
+{
+    /* Shared-world mode is enabled only for ROM images whose main loop still
+     * calls the stock movement routine, then the stock player renderer, before
+     * the one shared enemy/world update. Unknown revisions remain on fallback. */
+    return rom &&
+        rom[0x0618] == 0xCD && rom[0x0619] == 0x0A && rom[0x061A] == 0x2D &&
+        rom[0x061B] == 0xCD && rom[0x061C] == 0x82 && rom[0x061D] == 0x2C;
+}
+
+static int mp_sml2_skip_secondary_call(uint16_t pc)
+{
+    /* These routines are owned by the shared world and must run once, not once
+     * for Mario plus once for every extra player. Pipe entry/exit is likewise
+     * a scene transition and remains Player 1's responsibility. */
+    return pc == 0x1189 || pc == 0x331C || pc == 0x324F;
+}
+
+static int mp_sml2_run_original_subroutine(uint16_t entry, unsigned budget,
+                                           int keep_result_registers)
+{
+    CPU saved = cpu;
+    const uint16_t sentinel = 0xFFF0;
+    uint16_t call_sp = (uint16_t)(saved.sp - 2u);
+    wr8(call_sp, (uint8_t)sentinel);
+    wr8((uint16_t)(call_sp + 1u), (uint8_t)(sentinel >> 8));
+    cpu.sp = call_sp;
+    cpu.pc = entry;
+    cpu.ime = 0;
+    cpu.ei_pending = 0;
+    mp_sml2_inline_active = 1;
+
+    while (budget && cpu.pc != sentinel) {
+        budget--;
+        if (mp_sml2_skip_secondary_call(cpu.pc)) {
+            uint8_t lo = rd8(cpu.sp);
+            uint8_t hi = rd8((uint16_t)(cpu.sp + 1u));
+            cpu.sp = (uint16_t)(cpu.sp + 2u);
+            cpu.pc = (uint16_t)(lo | ((uint16_t)hi << 8));
+            continue;
+        }
+        cpu_step_checked();
+    }
+
+    int ok = cpu.pc == sentinel;
+    CPU result = cpu;
+    mp_sml2_inline_active = 0;
+    cpu = saved;
+    if (ok && keep_result_registers) {
+        cpu.a = result.a; cpu.f = result.f;
+        cpu.b = result.b; cpu.c = result.c;
+        cpu.d = result.d; cpu.e = result.e;
+        cpu.h = result.h; cpu.l = result.l;
+    }
+    return ok;
+}
+
+static int mp_sml2_capture_direct_oam(int player, MpSml2Player *p)
+{
+    if (player < 1 || player >= MAX_MP_PLAYERS || !p) return 0;
+
+    /* Render the live selector once into a scratch copy of the game's own OAM
+     * staging area. That gives us the exact metasprite the ROM chose, without
+     * the old heuristic that searched nearby maps and could pick an enemy pose. */
+    uint8_t saved_oam[0xA0];
+    for (int i = 0; i < (int)sizeof saved_oam; i++)
+        saved_oam[i] = rd8((uint16_t)(0xA100 + i));
+    uint8_t saved_cursor = rd8(0xFF8D);
+    for (int i = 0; i < (int)sizeof saved_oam; i++)
+        wr8((uint16_t)(0xA100 + i), 0);
+    wr8(0xFF8D, 0);
+
+    int ok = mp_sml2_run_original_subroutine(0x2D0A, 6000, 0);
+    unsigned bytes = rd8(0xFF8D);
+    if (bytes > sizeof saved_oam) bytes = sizeof saved_oam;
+    bytes &= ~3u;
+    unsigned count = bytes / 4u;
+    memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+    for (unsigned i = 0; i < bytes; i++)
+        mp_sml2_render_oam[player][i] = rd8((uint16_t)(0xA100 + i));
+    mp_sml2_render_oam_count[player] = (uint8_t)count;
+    mp_sml2_render_tiles_valid[player] = 0; /* Use the live shared VRAM tiles. */
+    memset(p->oam, 0, sizeof p->oam);
+    if (bytes > sizeof p->oam) bytes = sizeof p->oam;
+    memcpy(p->oam, mp_sml2_render_oam[player], bytes);
+
+    mp_sml2_debug_set_mapping(player, p->h_c6, p->h_c6, 0xFF, 6, 0, ok);
+    for (int i = 0; i < (int)sizeof saved_oam; i++)
+        wr8((uint16_t)(0xA100 + i), saved_oam[i]);
+    wr8(0xFF8D, saved_cursor);
+    return ok;
+}
+
+static void mp_sml2_instruction_hook(uint16_t pc)
+{
+    if (pc != 0x061B || mp_sml2_inline_active || !mp_sml2_direct_world ||
+        !mp_ready || !mp_active || mp_game != GAME_SML2 ||
+        mp_player_count < 2 || mp_sml2_inline_frame == (unsigned)frame_count)
+        return;
+
+    mp_sml2_inline_frame = (unsigned)frame_count;
+    for (int player = 1; player < mp_player_count; player++) {
+        mp_sml2_render_oam_count[player] = 0;
+        mp_sml2_render_tiles_valid[player] = 0;
+        mp_sml2_players[player].sfx_events = 0;
+    }
+
+    /* No independent actors while SML2 is in a non-playing mode, pipe/door
+     * transition, or a room state that doesn't own the scrolling level. */
+    if (!mp_sml2_initialized || !mp_sml2_gameplay_active() ||
+        rd8(0xA20E) != 0 || rd8(0xA221) != 0)
+        return;
+
+    CPU p1_cpu = cpu;
+    MpSml2Player p1_restore;
+    mp_sml2_save_player_state(&p1_restore);
+    mp_sml2_players[0] = p1_restore;
+
+    for (int player = 1; player < mp_player_count; player++) {
+        MpSml2Player *p = &mp_sml2_players[player];
+        p->sfx_events = 0;
+        if (p->respawn_requested) {
+            uint8_t lives = p->lives;
+            mp_sml2_spawn_player(player);
+            p->lives = lives;
+            p->ram[0x2C] = lives;
+            p->sfx_events |= P2_SFX_EVENT_RESPAWN;
+        }
+        if (!p->spawned || mp_sml2_bcd_to_int(p->lives) == 0) {
+            memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+            mp_sml2_render_oam_count[player] = 0;
+            continue;
+        }
+
+        const uint8_t old_a = p->previous_a;
+        const uint8_t old_ground = p->ram[0x14];
+        const uint8_t old_air = p->ram[0x15];
+        const uint8_t old_power = p->ram[0x16];
+        const uint8_t old_lives = p->lives;
+        const int old_lives_value = mp_sml2_bcd_to_int(old_lives);
+
+        uint8_t dpad = mp_sml2_input_dpad[player];
+        mp_sml2_constrain_horizontal_input(player, &dpad);
+        const uint8_t buttons = mp_sml2_input_buttons[player];
+        const uint8_t held = (uint8_t)((buttons & 0x0Fu) | ((dpad & 0x0Fu) << 4));
+        const uint8_t pressed = (uint8_t)(held & (uint8_t)~p->keys_held);
+
+        mp_sml2_load_player(p);
+        /* The original main loop copies HRAM world coordinates into A227/A229
+         * immediately before calling 0F71. Recreate that step for this actor. */
+        wr8(0xA227, rd8(0xFFC2)); wr8(0xA228, rd8(0xFFC3));
+        wr8(0xA229, rd8(0xFFC0)); wr8(0xA22A, rd8(0xFFC1));
+        wr8(0xFF80, held);
+        wr8(0xFF81, pressed);
+
+        /* Match the original call site: XOR A immediately before CALL 0F71. */
+        cpu.a = 0;
+        cpu.f = 0x80;
+        if (!mp_sml2_run_original_subroutine(0x0F71, 30000, 1) ||
+            !mp_sml2_capture_direct_oam(player, p)) {
+            cpu = p1_cpu;
+            mp_sml2_load_player(&p1_restore);
+            longjmp(stop_jmp, 4);
+        }
+
+        mp_sml2_save_player_state(p);
+        const uint8_t new_lives = p->lives;
+        const int new_lives_value = mp_sml2_bcd_to_int(new_lives);
+        const int valid_lives = ((new_lives >> 4) & 0x0Fu) <= 9 &&
+                                (new_lives & 0x0Fu) <= 9;
+        if (!valid_lives || new_lives_value > old_lives_value + 1) {
+            p->lives = old_lives;
+            p->ram[0x2C] = old_lives;
+            wr8(0xA22C, old_lives);
+        } else {
+            if ((buttons & 0x01u) && !old_a && old_ground && !old_air)
+                p->sfx_events |= P2_SFX_EVENT_JUMP;
+            if (old_power != p->ram[0x16])
+                p->sfx_events |= p->ram[0x16] > old_power
+                    ? P2_SFX_EVENT_POWER_UP : P2_SFX_EVENT_POWER_DOWN;
+            if (new_lives_value < old_lives_value) {
+                p->sfx_events |= P2_SFX_EVENT_DIE;
+                p->respawn_requested = (uint8_t)(new_lives_value > 0);
+                if (new_lives_value == 0) p->spawned = 0;
+            }
+            if ((buttons & 0x02u) && p->ram[0x16] == 3)
+                p->sfx_events |= P2_SFX_EVENT_FIREBALL;
+        }
+
+        p->previous_a = (uint8_t)((buttons & 0x01u) != 0);
+        p->keys_held = held;
+        p->keys_pressed = pressed;
+        if (p->invulnerability_frames > 0) p->invulnerability_frames--;
+
+        /* Restore Mario's private values only. Block/coin/pickup changes that
+         * Luigi made above remain in the one authoritative cartridge world. */
+        mp_sml2_load_player(&p1_restore);
+        cpu = p1_cpu;
+    }
+}
+
 static int emu_mp_step_sml2(int player, uint8_t buttons, uint8_t dpad,
                             Frame *frame, int16_t *audio, int audio_max)
 {
