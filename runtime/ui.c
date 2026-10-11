@@ -13,6 +13,7 @@ void (*ui_sfx_cb)(int);
 uint32_t ui_accent = 0x4C8DFF;
 
 static SDL_Renderer *ren;
+static SDL_Texture *color_wheel_tex;
 static float ox, oy;
 static int PW, PH;
 static stbtt_fontinfo finfo[2];
@@ -167,10 +168,80 @@ static CornerTex *corner_for(int r, int ring_t)
     return c;
 }
 
+/* ------------------------------------------------------------ HSV colour wheel */
+static void hsv_rgb(float h, float s, float v, Uint8 *ro, Uint8 *go, Uint8 *bo)
+{
+    float c = v * s;
+    float hp = h * 6.0f;
+    float x = c * (1.0f - fabsf(fmodf(hp, 2.0f) - 1.0f));
+    float rr = 0, gg = 0, bb = 0;
+    if (hp < 1) { rr = c; gg = x; }
+    else if (hp < 2) { rr = x; gg = c; }
+    else if (hp < 3) { gg = c; bb = x; }
+    else if (hp < 4) { gg = x; bb = c; }
+    else if (hp < 5) { rr = x; bb = c; }
+    else { rr = c; bb = x; }
+    float m = v - c;
+    *ro = (Uint8)lrintf((rr + m) * 255.0f);
+    *go = (Uint8)lrintf((gg + m) * 255.0f);
+    *bo = (Uint8)lrintf((bb + m) * 255.0f);
+}
+
+static void color_wheel_make(void)
+{
+    enum { WHEEL_SIZE = 256 };
+    if (color_wheel_tex) { SDL_DestroyTexture(color_wheel_tex); color_wheel_tex = NULL; }
+    SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, WHEEL_SIZE, WHEEL_SIZE, 32, SDL_PIXELFORMAT_RGBA32);
+    if (!s) return;
+    const float center = (WHEEL_SIZE - 1) * 0.5f;
+    const float radius = center - 1.0f;
+    for (int y = 0; y < WHEEL_SIZE; y++) {
+        Uint32 *row = (Uint32 *)((Uint8 *)s->pixels + y * s->pitch);
+        for (int x = 0; x < WHEEL_SIZE; x++) {
+            float dx = x - center, dy = center - y;
+            float d = sqrtf(dx * dx + dy * dy);
+            if (d > radius) { row[x] = SDL_MapRGBA(s->format, 0, 0, 0, 0); continue; }
+            float hue = atan2f(dy, dx) / 6.28318530718f;
+            if (hue < 0) hue += 1.0f;
+            Uint8 r, g, b;
+            hsv_rgb(hue, d / radius, 1.0f, &r, &g, &b);
+            row[x] = SDL_MapRGBA(s->format, r, g, b, 255);
+        }
+    }
+    color_wheel_tex = SDL_CreateTextureFromSurface(ren, s);
+    SDL_FreeSurface(s);
+    if (color_wheel_tex) SDL_SetTextureBlendMode(color_wheel_tex, SDL_BLENDMODE_BLEND);
+}
+
+/* Draw the shared HSV wheel; the caller handles pointer/touch interaction and persistence. */
+void ui_color_wheel(float cx, float cy, float radius, uint32_t selected_rgb)
+{
+    if (!color_wheel_tex || radius <= 0) return;
+    ui_image(color_wheel_tex, NULL, cx - radius, cy - radius, radius * 2.0f, radius * 2.0f);
+
+    float r = ((selected_rgb >> 16) & 255) / 255.0f;
+    float g = ((selected_rgb >> 8) & 255) / 255.0f;
+    float b = (selected_rgb & 255) / 255.0f;
+    float hi = fmaxf(r, fmaxf(g, b)), lo = fminf(r, fminf(g, b));
+    float delta = hi - lo, hue = 0.0f, sat = hi > 0.0f ? delta / hi : 0.0f;
+    if (delta > 0.0001f) {
+        if (hi == r) hue = fmodf((g - b) / delta, 6.0f) / 6.0f;
+        else if (hi == g) hue = ((b - r) / delta + 2.0f) / 6.0f;
+        else hue = ((r - g) / delta + 4.0f) / 6.0f;
+        if (hue < 0) hue += 1.0f;
+    }
+    float a = hue * 6.28318530718f;
+    float mx = cx + cosf(a) * sat * radius, my = cy - sinf(a) * sat * radius;
+    ui_rrect(mx - 8, my - 8, 16, 16, 8, RGBA(8, 10, 16, 245));
+    ui_rrect(mx - 6, my - 6, 12, 12, 6, RGBA(255, 255, 255, 255));
+    ui_rrect(mx - 3, my - 3, 6, 6, 3, HEX(selected_rgb));
+}
+
 /* ------------------------------------------------------------ setup */
 void ui_init(SDL_Renderer *r)
 {
     ren = r;
+    color_wheel_make();
     stbtt_InitFont(&finfo[F_REG], font_regular, stbtt_GetFontOffsetForIndex(font_regular, 0));
     stbtt_InitFont(&finfo[F_BOLD], font_bold, stbtt_GetFontOffsetForIndex(font_bold, 0));
     fonts_ok = 1;
@@ -178,6 +249,8 @@ void ui_init(SDL_Renderer *r)
 
 void ui_shutdown(void)
 {
+    if (color_wheel_tex) SDL_DestroyTexture(color_wheel_tex);
+    color_wheel_tex = NULL;
     for (int i = 0; i < MAX_ATLAS; i++) atlas_free(&atlas[i]);
     for (int i = 0; i < n_corners; i++) {
         if (corners[i].disc) SDL_DestroyTexture(corners[i].disc);
