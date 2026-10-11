@@ -40,6 +40,9 @@ void gb_serial_hook(void (*fn)(uint8_t)) { serial_cb = fn; }
 static GbCpuFaultHook cpu_fault_hook;
 void gb_set_cpu_fault_hook(GbCpuFaultHook hook) { cpu_fault_hook = hook; }
 
+static GbInstructionHook cpu_instruction_hook;
+void gb_set_instruction_hook(GbInstructionHook hook) { cpu_instruction_hook = hook; }
+
 /* ------------------------------------------------------------------ */
 static uint8_t joyp_read(void)
 {
@@ -304,6 +307,9 @@ void cpu_lockup(uint8_t op, uint16_t pc)
 
 void cpu_step_checked(void)
 {
+    /* The callback may emulate a helper routine, but must return with the
+     * same PC so the interrupted guest instruction still executes normally. */
+    if (cpu_instruction_hook) cpu_instruction_hook(cpu.pc);
     uint16_t pc_before = cpu.pc;
     uint8_t opcode = rd8(cpu.pc);
     cpu_step();
