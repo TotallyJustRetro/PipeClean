@@ -1854,6 +1854,10 @@ static int mp_sml2_capture_direct_oam(int player, MpSml2Player *p)
     for (int i = 0; i < (int)sizeof saved_oam; i++)
         saved_oam[i] = rd8((uint16_t)(0xA100 + i));
     uint8_t saved_cursor = rd8(0xFF8D);
+    uint8_t saved_oam_end = rd8(0xA26E);
+    uint8_t saved_obj_mode = rd8(0xFFBB);
+    uint8_t saved_sfx_scratch = rd8(0xA460);
+    uint8_t saved_bank_latch = rd8(0xA24E);
     for (int i = 0; i < (int)sizeof saved_oam; i++)
         wr8((uint16_t)(0xA100 + i), 0);
     wr8(0xFF8D, 0);
@@ -1876,6 +1880,13 @@ static int mp_sml2_capture_direct_oam(int player, MpSml2Player *p)
     for (int i = 0; i < (int)sizeof saved_oam; i++)
         wr8((uint16_t)(0xA100 + i), saved_oam[i]);
     wr8(0xFF8D, saved_cursor);
+    wr8(0xA26E, saved_oam_end);
+    wr8(0xFFBB, saved_obj_mode);
+    wr8(0xA460, saved_sfx_scratch);
+    /* 2D0A is a bank-1 renderer dispatcher. Restore the main program's mapper
+     * selection and its software bank latch before resuming Player 1. */
+    wr8(0x2100, saved_bank_latch);
+    wr8(0xA24E, saved_bank_latch);
     return ok;
 }
 
