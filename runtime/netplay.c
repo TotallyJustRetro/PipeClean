@@ -59,7 +59,9 @@ static NetSend np_sends[NP_SEND_CAP];
 static int np_send_head, np_send_count;
 static int np_tls_mode;
 static int np_ws_mode, np_ws_ready;
-static uint32_t np_ws_mask_counter;
+static mbedtls_entropy_context np_ws_entropy;
+static mbedtls_ctr_drbg_context np_ws_drbg;
+static int np_ws_rng_ready;
 static int np_local_game_pending, np_local_game, np_local_game_verified;
 static int np_local_game_mismatch, np_remote_game_seen, np_remote_game;
 static uint32_t np_local_crc, np_remote_crc;
@@ -329,15 +331,10 @@ static int np_tls_write_all_raw(NetSocket sock, const char *data, size_t length)
 static int np_ws_send_frame(NetSocket sock, unsigned opcode, const unsigned char *payload, size_t length)
 {
     unsigned char frame[2 + 4 + 125];
-    uint32_t mask;
-    if (length > 125 || (length && !payload)) return 0;
+    if (length > 125 || (length && !payload) || !np_ws_rng_ready) return 0;
     frame[0] = (unsigned char)(0x80u | (opcode & 0x0fu));
     frame[1] = (unsigned char)(0x80u | (unsigned char)length); /* Client frames must be masked. */
-    mask = SDL_GetTicks() ^ (uint32_t)SDL_ThreadID() ^ (++np_ws_mask_counter * 0x9e3779b9u);
-    frame[2] = (unsigned char)(mask >> 24);
-    frame[3] = (unsigned char)(mask >> 16);
-    frame[4] = (unsigned char)(mask >> 8);
-    frame[5] = (unsigned char)mask;
+    if (mbedtls_ctr_drbg_random(&np_ws_drbg, frame + 2, 4) != 0) return 0;
     for (size_t i = 0; i < length; ++i)
         frame[6 + i] = payload[i] ^ frame[2 + (i & 3u)];
     return np_tls_write_all_raw(sock, (const char *)frame, 6 + length);
@@ -372,15 +369,24 @@ static int np_websocket_handshake(NetSocket sock, const char *host)
     unsigned char nonce[16], digest[20], accept_b64[64];
     char key[32], expected[64], request[1024], response[2048];
     size_t key_len = 0, accept_len = 0, used = 0;
-    mbedtls_entropy_context entropy;
+    static const unsigned char personalization[] = "PipeClean WebSocket";
     int ok = 0;
 
-    mbedtls_entropy_init(&entropy);
-    if (mbedtls_entropy_func(&entropy, nonce, sizeof nonce) != 0) {
-        mbedtls_entropy_free(&entropy);
+    if (np_ws_rng_ready) {
+        mbedtls_ctr_drbg_free(&np_ws_drbg);
+        mbedtls_entropy_free(&np_ws_entropy);
+        np_ws_rng_ready = 0;
+    }
+    mbedtls_entropy_init(&np_ws_entropy);
+    mbedtls_ctr_drbg_init(&np_ws_drbg);
+    if (mbedtls_ctr_drbg_seed(&np_ws_drbg, mbedtls_entropy_func, &np_ws_entropy,
+                              personalization, sizeof personalization - 1) != 0 ||
+        mbedtls_ctr_drbg_random(&np_ws_drbg, nonce, sizeof nonce) != 0) {
+        mbedtls_ctr_drbg_free(&np_ws_drbg);
+        mbedtls_entropy_free(&np_ws_entropy);
         return 0;
     }
-    mbedtls_entropy_free(&entropy);
+    np_ws_rng_ready = 1;
     if (mbedtls_base64_encode((unsigned char *)key, sizeof key, &key_len,
                               nonce, sizeof nonce) != 0 || key_len >= sizeof key)
         return 0;
@@ -798,6 +804,11 @@ socket_finished:
     if (np_send_mutex) SDL_LockMutex(np_send_mutex);
     np_ws_ready = 0;
     if (use_tls) netplay_tls_close();
+    if (np_ws_rng_ready) {
+        mbedtls_ctr_drbg_free(&np_ws_drbg);
+        mbedtls_entropy_free(&np_ws_entropy);
+        np_ws_rng_ready = 0;
+    }
     np_lock();
     if (np_socket == sock) np_socket = NET_INVALID_SOCKET;
     np_send_head = np_send_count = 0;
