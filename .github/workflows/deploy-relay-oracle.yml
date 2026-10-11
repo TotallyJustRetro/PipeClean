@@ -59,6 +59,15 @@ jobs:
           [[ -n "$OCI_HOST" ]] || { echo "::error::Add the VM public IP as the OCI_RELAY_HOST Actions secret."; exit 1; }
           [[ -n "$OCI_SSH_PRIVATE_KEY" ]] || { echo "::error::Add the VM SSH private key as OCI_SSH_PRIVATE_KEY."; exit 1; }
           [[ -n "$RELAY_EMAIL" ]] || { echo "::error::Add PIPECLEAN_RELAY_EMAIL as a repository Actions variable."; exit 1; }
+          OCI_HOST="$(python3 - "$OCI_HOST" <<'PY'
+          import ipaddress
+          import sys
+          address = ipaddress.ip_address(sys.argv[1])
+          if address.version != 4:
+              raise SystemExit("OCI_RELAY_HOST must be the VM's public IPv4 address.")
+          print(address)
+          PY
+          )"
           OCI_USER="${OCI_USER:-ubuntu}"
           if [[ ! "$OCI_USER" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
             echo "::error::OCI_RELAY_USER must be a valid Linux username."
@@ -71,8 +80,6 @@ jobs:
           import ipaddress
           import sys
           address = ipaddress.ip_address(sys.argv[1])
-          if address.version != 4:
-              raise SystemExit("Set PIPECLEAN_RELAY_HOSTNAME for IPv6 or custom-domain deployments.")
           print(str(address).replace(".", "-") + ".sslip.io")
           PY
           )"
@@ -81,7 +88,7 @@ jobs:
             echo "::error::Relay hostname contains unsupported characters."
             exit 1
           fi
-          if [[ ! "$RELAY_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; then
+          if [[ ! "$RELAY_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]]; then
             echo "::error::PIPECLEAN_RELAY_EMAIL must be a valid email address."
             exit 1
           fi
