@@ -1463,7 +1463,7 @@ static void tab_mp_controllers(float x, float y)
                     "Test, import, or reset sounds per player; empty paths use built-in chiptunes.");
 
         static const char *sound_names[N_P2_SFX] = {
-            "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn"
+            "Jump", "Fireball", "Power up", "Power down", "Death", "Respawn", "Coin"
         };
         static const int players[3] = {2, 3, 4};
         for (int col = 0; col < 3; col++) {
