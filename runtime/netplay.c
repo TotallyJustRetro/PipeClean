@@ -765,10 +765,19 @@ static int SDLCALL np_worker(void *unused)
         int tls_result = netplay_tls_open(sock, host, np_stopping);
         if (tls_result != 1) {
             if (!np_stopping()) {
-                np_set_status(NETPLAY_ERROR,
-                    tls_result == -2 ? "TLS CA bundle missing or invalid; reinstall or rebuild PipeClean."
-                  : tls_result == -3 ? "TLS certificate rejected. Check the relay hostname and certificate."
-                                     : "Secure relay TLS handshake failed.");
+                char tls_status[128];
+                if (tls_result == -2) {
+                    snprintf(tls_status, sizeof tls_status,
+                             "TLS CA bundle missing or invalid; reinstall or rebuild PipeClean.");
+                } else if (tls_result == -3) {
+                    snprintf(tls_status, sizeof tls_status,
+                             "TLS certificate rejected. Check the relay hostname and certificate.");
+                } else {
+                    const char *detail = netplay_tls_last_error();
+                    snprintf(tls_status, sizeof tls_status, "Secure TLS failure: %.100s",
+                             detail && detail[0] ? detail : "unknown TLS error");
+                }
+                np_set_status(NETPLAY_ERROR, tls_status);
             }
             goto socket_finished;
         }
