@@ -33,6 +33,8 @@ typedef int NetSocket;
 #endif
 
 static SDL_mutex *np_mutex;
+static SDL_mutex *np_send_mutex;
+static SDL_cond *np_cond;
 static SDL_Thread *np_thread;
 static NetSocket np_socket = NET_INVALID_SOCKET;
 static int np_state = NETPLAY_OFFLINE;
@@ -40,6 +42,17 @@ static int np_running, np_stop, np_is_host;
 static char np_status[128] = "Not connected";
 static char np_code[16], np_peer[32];
 static char np_endpoint[160], np_name[32], np_join_code[16];
+
+#define NP_INPUT_CAP 256
+#define NP_GAME_TIMEOUT_MS 30000u
+#define NP_FRAME_TIMEOUT_MS 15000u
+typedef struct { uint64_t frame; uint8_t buttons, dpad, actions; } NetInput;
+static NetInput np_inputs[NP_INPUT_CAP];
+static int np_input_head, np_input_count, np_input_overflow;
+static int np_local_game_pending, np_local_game, np_local_game_verified;
+static int np_local_game_mismatch, np_remote_game_seen, np_remote_game;
+static uint32_t np_local_crc, np_remote_crc;
+static int np_game_end_received;
 
 static void np_lock(void) { if (np_mutex) SDL_LockMutex(np_mutex); }
 static void np_unlock(void) { if (np_mutex) SDL_UnlockMutex(np_mutex); }
@@ -49,6 +62,7 @@ static void np_set_status(int state, const char *status)
     np_lock();
     np_state = state;
     snprintf(np_status, sizeof np_status, "%s", status ? status : "");
+    if (np_cond) SDL_CondBroadcast(np_cond);
     np_unlock();
 }
 static void np_set_code(const char *code)
@@ -252,10 +266,10 @@ static void np_clear_input_queue_locked(void)
 static void np_handle_input_line(const char *line)
 {
     unsigned long long frame;
-    unsigned buttons, dpad;
+    unsigned buttons, dpad, actions;
     char extra;
-    if (sscanf(line, "INPUT\t%llu\t%u\t%u%c", &frame, &buttons, &dpad, &extra) != 3 ||
-        buttons > 255 || dpad > 255) return;
+    if (sscanf(line, "INPUT\t%llu\t%u\t%u\t%u%c", &frame, &buttons, &dpad, &actions, &extra) != 4 ||
+        buttons > 255 || dpad > 255 || actions > 255) return;
     np_lock();
     if (np_input_count >= NP_INPUT_CAP) {
         np_input_overflow = 1;
@@ -264,6 +278,7 @@ static void np_handle_input_line(const char *line)
         np_inputs[tail].frame = (uint64_t)frame;
         np_inputs[tail].buttons = (uint8_t)buttons;
         np_inputs[tail].dpad = (uint8_t)dpad;
+        np_inputs[tail].actions = (uint8_t)actions;
         np_input_count++;
     }
     if (np_cond) SDL_CondBroadcast(np_cond);
@@ -649,15 +664,15 @@ int netplay_game_begin(int game_id, uint32_t rom_crc)
     return result;
 }
 
-int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local_dpad,
-                            uint8_t *p1_buttons, uint8_t *p1_dpad,
-                            uint8_t *p2_buttons, uint8_t *p2_dpad)
+int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local_dpad, uint8_t local_actions,
+                            uint8_t *p1_buttons, uint8_t *p1_dpad, uint8_t *p1_actions,
+                            uint8_t *p2_buttons, uint8_t *p2_dpad, uint8_t *p2_actions)
 {
     char message[96];
     Uint32 started;
     NetInput remote;
     int got_remote = 0, ok = 0, host;
-    if (!p1_buttons || !p1_dpad || !p2_buttons || !p2_dpad ||
+    if (!p1_buttons || !p1_dpad || !p1_actions || !p2_buttons || !p2_dpad || !p2_actions ||
         !np_mutex || !np_cond) return -1;
 
     np_lock();
@@ -667,8 +682,8 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
     np_unlock();
     if (!ok) return -1;
 
-    snprintf(message, sizeof message, "INPUT\t%llu\t%u\t%u\n",
-             (unsigned long long)frame, (unsigned)local_buttons, (unsigned)local_dpad);
+    snprintf(message, sizeof message, "INPUT\t%llu\t%u\t%u\t%u\n",
+             (unsigned long long)frame, (unsigned)local_buttons, (unsigned)local_dpad, (unsigned)local_actions);
     if (!np_send_current(message)) return -1;
 
     started = SDL_GetTicks();
@@ -708,11 +723,11 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
     }
     if (got_remote && !np_game_end_received && np_state == NETPLAY_CONNECTED) {
         if (host) {
-            *p1_buttons = local_buttons; *p1_dpad = local_dpad;
-            *p2_buttons = remote.buttons; *p2_dpad = remote.dpad;
+            *p1_buttons = local_buttons; *p1_dpad = local_dpad; *p1_actions = local_actions;
+            *p2_buttons = remote.buttons; *p2_dpad = remote.dpad; *p2_actions = remote.actions;
         } else {
-            *p1_buttons = remote.buttons; *p1_dpad = remote.dpad;
-            *p2_buttons = local_buttons; *p2_dpad = local_dpad;
+            *p1_buttons = remote.buttons; *p1_dpad = remote.dpad; *p1_actions = remote.actions;
+            *p2_buttons = local_buttons; *p2_dpad = local_dpad; *p2_actions = local_actions;
         }
         ok = 1;
     } else {

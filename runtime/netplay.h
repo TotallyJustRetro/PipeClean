@@ -28,8 +28,9 @@ int netplay_is_connected(void);
 int netplay_is_host(void);
 
 /* Lockstep API for SML/SML2 local co-op simulations on two clients. */
+enum { NETPLAY_ACTION_RESPAWN_P2 = 1u << 0 };
 int netplay_game_begin(int game_id, uint32_t rom_crc);
-int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local_dpad,
-                            uint8_t *p1_buttons, uint8_t *p1_dpad,
-                            uint8_t *p2_buttons, uint8_t *p2_dpad);
+int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local_dpad, uint8_t local_actions,
+                            uint8_t *p1_buttons, uint8_t *p1_dpad, uint8_t *p1_actions,
+                            uint8_t *p2_buttons, uint8_t *p2_dpad, uint8_t *p2_actions);
 void netplay_game_end(void);
