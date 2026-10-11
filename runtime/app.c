@@ -730,7 +730,6 @@ static int play_multiplayer(int g)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            touch_handle_event(&e);
             if (dev_diag_handle_event(&e)) continue;
             if (e.type == SDL_WINDOWEVENT &&
                 e.window.event == SDL_WINDOWEVENT_CLOSE &&
