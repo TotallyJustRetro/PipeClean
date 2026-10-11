@@ -528,7 +528,26 @@ static int clickable(float x, float y, float w, float h, int *over_out)
 
 static void launcher_controller_default_cursor(void)
 {
-    /* Start on the selected sidebar entry, so the initial position is clear. */
+    if (ui_scale < 0.75f) {
+        float vx = ui_view_x0(), vw = ui_view_w();
+        float left = vx + 170.0f;
+        float nav_w = vw - 190.0f;
+        if (nav_w < 620.0f) nav_w = 620.0f;
+        if (tab < N_GAMES) {
+            float w = nav_w / (float)N_GAMES;
+            if (w > 220.0f) w = 220.0f;
+            launcher_controller_x = left + tab * w + (w - 5.0f) * 0.5f;
+            launcher_controller_y = 24.0f;
+        } else {
+            int count = N_TABS - TAB_MULTIPLAYER;
+            float w = nav_w / (float)count;
+            if (w > 220.0f) w = 220.0f;
+            launcher_controller_x = left + (tab - TAB_MULTIPLAYER) * w + (w - 5.0f) * 0.5f;
+            launcher_controller_y = 64.0f;
+        }
+        return;
+    }
+    /* Start on the selected sidebar entry on the desktop layout. */
     const float sx = 24.0f, sy = 108.0f;
     const float row = N_GAMES > 4 ? 46.0f : 76.0f;
     const float h = N_GAMES > 4 ? 42.0f : 68.0f;
@@ -575,10 +594,12 @@ static void launcher_controller_update(float dt)
     if (dt > 0.05f) dt = 0.05f;
     launcher_controller_x += ax * 560.0f * dt;
     launcher_controller_y += ay * 560.0f * dt;
-    if (launcher_controller_x < 6.0f) launcher_controller_x = 6.0f;
-    if (launcher_controller_x > UI_W - 6.0f) launcher_controller_x = UI_W - 6.0f;
-    if (launcher_controller_y < 6.0f) launcher_controller_y = 6.0f;
-    if (launcher_controller_y > UI_H - 6.0f) launcher_controller_y = UI_H - 6.0f;
+    float view_x = ui_view_x0(), view_y = ui_view_y0();
+    float view_w = ui_view_w(), view_h = ui_view_h();
+    if (launcher_controller_x < view_x + 6.0f) launcher_controller_x = view_x + 6.0f;
+    if (launcher_controller_x > view_x + view_w - 6.0f) launcher_controller_x = view_x + view_w - 6.0f;
+    if (launcher_controller_y < view_y + 6.0f) launcher_controller_y = view_y + 6.0f;
+    if (launcher_controller_y > view_y + view_h - 6.0f) launcher_controller_y = view_y + view_h - 6.0f;
 
     ui_mouse.x = launcher_controller_x;
     ui_mouse.y = launcher_controller_y;
