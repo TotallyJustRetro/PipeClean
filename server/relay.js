@@ -135,6 +135,20 @@ function validInputLine(line) {
   } catch (_) { return false; }
   return match.slice(2).every((v) => Number(v) <= 255);
 }
+
+function sendRomResult(room) {
+  if (!room || !room.selectedGame || !room.hostRom || !room.guestRom) return;
+  const host = room.hostRom;
+  const guest = room.guestRom;
+  if (host.game !== room.selectedGame || guest.game !== room.selectedGame) return;
+  const hostCrc = host.ok ? host.crc : '00000000';
+  const guestCrc = guest.ok ? guest.crc : '00000000';
+  const line = 'ROM_RESULT\t' + room.selectedGame + '\t' +
+    (host.ok ? '1' : '0') + '\t' + hostCrc + '\t' +
+    (guest.ok ? '1' : '0') + '\t' + guestCrc;
+  reply(room.host, line);
+  reply(room.guest, line);
+}
 function processLine(client, line) {
   if (line.length > MAX_LINE) {
     rejectClient(client, 'Message too large');
@@ -151,6 +165,7 @@ function processLine(client, line) {
     if (parts[0] === 'HOST' && parts.length <= 2) {
       const room = {
         code: makeCode(), host: client, guest: null, selectedGame: null,
+        hostRom: null, guestRom: null,
         expiresAt: Date.now() + WAITING_ROOM_TTL_MS
       };
       client.room = room;
@@ -200,9 +215,15 @@ function processLine(client, line) {
       rejectClient(client, 'Only the host can choose the game');
       return;
     }
-    room.selectedGame = Number(line.slice('SELECT_GAME\t'.length));
+    const selectedGame = Number(line.slice('SELECT_GAME\t'.length));
+    if (room.selectedGame !== selectedGame) {
+      room.selectedGame = selectedGame;
+      if (room.hostRom && room.hostRom.game !== selectedGame) room.hostRom = null;
+      if (room.guestRom && room.guestRom.game !== selectedGame) room.guestRom = null;
+    }
     reply(client, line);
     reply(client.peer, line);
+    sendRomResult(room);
     return;
   }
   if (/^START_GAME\t[12]$/.test(line)) {
@@ -210,8 +231,16 @@ function processLine(client, line) {
       rejectClient(client, 'Only the host can start the game');
       return;
     }
-    if (room.selectedGame !== Number(line.slice('START_GAME\t'.length))) {
-      reply(client, 'ERR\tChoose that game in the lobby before starting');
+    const startGame = Number(line.slice('START_GAME\t'.length));
+    if (room.selectedGame !== startGame) {
+      reply(client, 'START_DENIED\tchoose a game in the lobby first');
+      return;
+    }
+    const host = room.hostRom, guest = room.guestRom;
+    if (!host || !guest || !host.ok || !guest.ok ||
+        host.game !== startGame || guest.game !== startGame ||
+        host.crc !== guest.crc) {
+      reply(client, 'START_DENIED\tboth players must pass the ROM check');
       return;
     }
     reply(client.peer, line);
@@ -226,6 +255,20 @@ function processLine(client, line) {
     const chatLine = 'CHAT\t' + client.name + '\t' + message;
     reply(client, chatLine);
     reply(client.peer, chatLine);
+    return;
+  }
+  const romMatch = /^ROM_CHECK\t([12])\t([0-9A-Fa-f]{8})$/.exec(line);
+  const romInvalid = /^ROM_INVALID\t([12])\t([1-9])$/.exec(line);
+  if (romMatch || romInvalid) {
+    const parsed = romMatch || romInvalid;
+    const report = {
+      game: Number(parsed[1]),
+      ok: !!romMatch,
+      crc: romMatch ? parsed[2].toUpperCase() : '00000000'
+    };
+    if (client === room.host) room.hostRom = report;
+    else if (client === room.guest) room.guestRom = report;
+    sendRomResult(room);
     return;
   }
   if (line === 'GAME_END' || validGameLine(line) || validInputLine(line)) {
