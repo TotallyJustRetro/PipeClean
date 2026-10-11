@@ -1574,7 +1574,6 @@ static void tab_mp_controllers(float x, float y)
         static const int players[3] = {2, 3, 4};
         for (int col = 0; col < 3; col++) {
             int player = players[col];
-            int ci = mp_color_index(c, player);
             float bx = x + 18 + col * 258.0f;
             float cw = 250.0f;
             ui_rrect(bx, y + 164, cw, 24, 7, RGBA(255,255,255,8));
@@ -1914,7 +1913,6 @@ static void tab_online(float x, float y)
 
     float dx = ui_mouse.x - wx, dy = ui_mouse.y - wy;
     float dist = sqrtf(dx * dx + dy * dy);
-    int color_changed = 0;
     if (ui_mouse.down && dist <= wr) {
         float hue = atan2f(-dy, dx) / 6.28318530718f;
         if (hue < 0.0f) hue += 1.0f;
@@ -1924,7 +1922,6 @@ static void tab_online(float x, float y)
         if (val < 0.20f) val = 0.20f;
         settings.online_color = (int)mp_hsv_to_rgb(hue, dist / wr, val);
         rgb = (uint32_t)settings.online_color;
-        color_changed = 1;
     }
     ui_rrect(x + 204, y + 226, 62, 34, 8, HEX(rgb));
     ui_stroke(x + 204, y + 226, 62, 34, 8, 1, RGBA(255,255,255,120));
@@ -1944,7 +1941,6 @@ static void tab_online(float x, float y)
     if (brightness_changed) {
         settings.online_color = (int)mp_hsv_to_rgb(hue, sat, brightness / 100.0f);
         rgb = (uint32_t)settings.online_color;
-        color_changed = 1;
     }
     if (ui_toggle(x + 34, y + 440, &settings.touch_controls)) settings_save();
     ui_text(F_REG, 11, x + 90, y + 443, C_TEXT, "On-screen touch controls");
@@ -1979,7 +1975,6 @@ static void tab_online(float x, float y)
     ui_rrect(x + 408, y + 414, 360, 48, 8, RGBA(237,180,81,20));
     ui_text(F_BOLD, 11, x + 422, y + 421, C_WARN, "OFFLINE / NOT CONNECTED");
     ui_text(F_REG, 10, x + 422, y + 439, C_DIM, "No sessions can be joined in this build.");
-    if (color_changed) settings_save();
 }
 
 /* ------------------------------------------------------------------ frame */
