@@ -101,7 +101,8 @@ typedef struct {
     int launcher_window_size;           /* 0 = compact, 1 = default, 2 = large */
     int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
     char online_name[32];
-    char online_server[160];          /* relay host:port */
+    char online_server[160];          /* direct peer or traversal host:port */
+    int online_connection_mode;          /* 0 = direct connection, 1 = traversal server */
     int online_color;                /* default profile colour, 0xRRGGBB */
     int touch_controls;                   /* on-screen controls are enabled */
     FilterCfg flt;
