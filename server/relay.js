@@ -150,7 +150,7 @@ function processLine(client, line) {
     const parts = line.split('\t');
     if (parts[0] === 'HOST' && parts.length <= 2) {
       const room = {
-        code: makeCode(), host: client, guest: null,
+        code: makeCode(), host: client, guest: null, selectedGame: null,
         expiresAt: Date.now() + WAITING_ROOM_TTL_MS
       };
       client.room = room;
@@ -192,6 +192,40 @@ function processLine(client, line) {
 
   if (client.phase !== 'paired' || !client.peer || client.peer.closed) {
     rejectClient(client, 'Join a room before sending gameplay messages');
+    return;
+  }
+  const room = client.room;
+  if (/^SELECT_GAME\\t[12]$/.test(line)) {
+    if (client !== room.host) {
+      rejectClient(client, 'Only the host can choose the game');
+      return;
+    }
+    room.selectedGame = Number(line.slice('SELECT_GAME\\t'.length));
+    reply(client, line);
+    reply(client.peer, line);
+    return;
+  }
+  if (/^START_GAME\\t[12]$/.test(line)) {
+    if (client !== room.host) {
+      rejectClient(client, 'Only the host can start the game');
+      return;
+    }
+    if (room.selectedGame !== Number(line.slice('START_GAME\\t'.length))) {
+      reply(client, 'ERR\\tChoose that game in the lobby before starting');
+      return;
+    }
+    reply(client.peer, line);
+    return;
+  }
+  if (line.startsWith('CHAT\\t')) {
+    const message = line.slice(5);
+    if (!message || message.length > 88 || /[\\t\\r\\n\\u0000-\\u001f\\u007f]/.test(message)) {
+      rejectClient(client, 'Invalid chat message');
+      return;
+    }
+    const chatLine = 'CHAT\\t' + client.name + '\\t' + message;
+    reply(client, chatLine);
+    reply(client.peer, chatLine);
     return;
   }
   if (line === 'GAME_END' || validGameLine(line) || validInputLine(line)) {
