@@ -292,6 +292,12 @@ void ui_set_mouse(int wx, int wy, int ww, int wh)
     ui_mouse.y = (py - oy) / ui_scale;
 }
 
+void ui_touch_to_dp(float nx, float ny, float *x, float *y)
+{
+    if (x) *x = ((nx * PW) - ox) / ui_scale;
+    if (y) *y = ((ny * PH) - oy) / ui_scale;
+}
+
 void ui_mouse_button(int down)
 {
     if (down && !ui_mouse.down) ui_mouse.pressed = 1;
