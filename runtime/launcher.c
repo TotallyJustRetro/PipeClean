@@ -64,10 +64,13 @@ static int multiplayer_count_menu = -1;
 static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
 static int mp_config_game = GAME_SML;
 static int mp_color_selected; /* 0=P2, 1=P3, 2=P4 in the wheel editor */
-static int online_name_editing, online_code_editing, online_server_editing;
+static int online_name_editing, online_code_editing, online_server_editing, online_chat_editing;
 static int online_mode_menu;
 static char online_join_code[9];
+static char online_chat_buffer[96];
 static char online_server_before[160];
+static int online_selected_game = GAME_SML2;
+static int online_last_netplay_state = NETPLAY_OFFLINE;
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -1942,23 +1945,151 @@ static void tab_audio(float x, float y)
 }
 
 /* ------------------------------------------------------------------ online session/profile tab */
+static const char *online_game_name(int game)
+{
+    if (game == GAME_SML) return games[GAME_SML].name;
+    if (game == GAME_SML2) return games[GAME_SML2].name;
+    return "Choose a game";
+}
+
+static void tab_online_lobby(float x, float y, const NetplayInfo *np)
+{
+    const int connected = np->state == NETPLAY_CONNECTED && np->peer[0];
+    const int selected_game = netplay_lobby_get_game();
+    NetplayChatMessage messages[7];
+    int message_count = netplay_chat_snapshot(messages, 7);
+    char host_name[32], guest_name[32], line[128];
+
+    snprintf(host_name, sizeof host_name, "%s",
+             np->is_host ? settings.online_name : (np->peer[0] ? np->peer : "Host"));
+    snprintf(guest_name, sizeof guest_name, "%s",
+             np->is_host ? (np->peer[0] ? np->peer : "") :
+                           (np->state == NETPLAY_CONNECTED ? settings.online_name : ""));
+
+    card(x, y, 808, 512, "ONLINE SESSION LOBBY");
+    ui_text_fit(F_REG, 11, x + 20, y + 41, 100, C_MUTED, "INVITE CODE");
+    ui_text(F_BOLD, 18, x + 20, y + 56, C_TEXT, np->code[0] ? np->code : "Creating room…");
+    if (np->code[0] && ui_button(x + 218, y + 43, 74, 30, "Copy code", B_GHOST, 1)) {
+        if (SDL_SetClipboardText(np->code) == 0) launcher_toast("Invite code copied.");
+        else launcher_toast("Couldn't copy the invite code.");
+    }
+    ui_text_fit(F_REG, 11, x + 310, y + 52, 320, C_DIM,
+                connected ? "Share the code with one other player." : "Your room is open while you wait for a player.");
+    if (ui_button(x + 680, y + 43, 92, 30, "Disconnect", B_GHOST, 1)) {
+        netplay_disconnect();
+        online_chat_editing = 0;
+        SDL_StopTextInput();
+        launcher_toast("Disconnected from the online session.");
+        return;
+    }
+
+    ui_rrect(x + 18, y + 82, 344, 328, 12, C_PANEL);
+    ui_text(F_BOLD, 13, x + 34, y + 94, C_TEXT, "PLAYERS");
+    ui_rrect(x + 30, y + 118, 320, 48, 9, RGBA(66, 126, 92, 32));
+    ui_text(F_BOLD, 12, x + 44, y + 127, C_TEXT, host_name[0] ? host_name : "Host");
+    ui_text(F_REG, 10, x + 44, y + 145, C_OK, "HOST");
+    ui_rrect(x + 30, y + 176, 320, 48, 9,
+             connected ? RGBA(66, 126, 92, 32) : RGBA(237, 180, 81, 18));
+    ui_text(F_BOLD, 12, x + 44, y + 185, C_TEXT,
+            connected ? guest_name : (np.is_host ? "Waiting for player…" : "Joining room…"));
+    ui_text(F_REG, 10, x + 44, y + 203, connected ? C_OK : C_MUTED,
+            connected ? (np.is_host ? "PLAYER 2" : "YOU") : "NOT CONNECTED");
+    ui_rect(x + 34, y + 238, 312, 1, C_LINE);
+    ui_text(F_BOLD, 12, x + 34, y + 250, C_TEXT, "GAME FOR THIS SESSION");
+    if (np.is_host) {
+        int enabled = np.state == NETPLAY_HOSTING || connected;
+        if (ui_button(x + 34, y + 270, 148, 34,
+                      "Super Mario Land", selected_game == GAME_SML ? B_PRIMARY : B_GHOST,
+                      enabled)) {
+            online_selected_game = GAME_SML;
+            if (!netplay_lobby_set_game(GAME_SML))
+                launcher_toast("Couldn't update the selected game.");
+        }
+        if (ui_button(x + 190, y + 270, 156, 34,
+                      "Super Mario Land 2", selected_game == GAME_SML2 ? B_PRIMARY : B_GHOST,
+                      enabled)) {
+            online_selected_game = GAME_SML2;
+            if (!netplay_lobby_set_game(GAME_SML2))
+                launcher_toast("Couldn't update the selected game.");
+        }
+    } else {
+        ui_text_fit(F_BOLD, 13, x + 34, y + 274, 310, C_TEXT,
+                    online_game_name(selected_game));
+    }
+    ui_text_wrap(F_REG, 10, x + 34, y + 316, 312, C_DIM,
+                 "Both players need the same game and matching ROM. More games can be added to online play later.", 3);
+
+    ui_rrect(x + 374, y + 82, 416, 328, 12, C_PANEL);
+    ui_text(F_BOLD, 13, x + 390, y + 94, C_TEXT, "SESSION CHAT");
+    if (message_count == 0) {
+        ui_text_fit(F_REG, 11, x + 390, y + 124, 380, C_DIM,
+                    connected ? "No messages yet. Say hello!" : "Chat becomes available when a player joins.");
+    } else {
+        float row_y = y + 121 + (7 - message_count) * 27.0f;
+        for (int i = 0; i < message_count; i++) {
+            snprintf(line, sizeof line, "%.22s: %.80s", messages[i].name, messages[i].text);
+            ui_text_fit(F_REG, 11, x + 390, row_y + i * 27.0f, 380, C_TEXT, line);
+        }
+    }
+    int chat_over = 0;
+    int chat_clicked = connected ? clickable(x + 390, y + 365, 286, 32, &chat_over) : 0;
+    ui_rrect(x + 390, y + 365, 286, 32, 7,
+             online_chat_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
+             (chat_over ? C_BTN_H : C_BTN));
+    const char *chat_value = online_chat_buffer[0] ? online_chat_buffer :
+                             (online_chat_editing ? "Type a message…" : "Message (Enter to send)");
+    ui_text_fit(F_REG, 11, x + 401, y + 374, 264,
+                online_chat_buffer[0] ? C_TEXT : C_DIM, chat_value);
+    if (chat_clicked) {
+        online_name_editing = online_code_editing = online_server_editing = 0;
+        online_chat_editing = 1;
+        SDL_StartTextInput();
+    }
+    if (ui_button(x + 686, y + 365, 88, 32, "Send", B_NORMAL,
+                  connected && online_chat_buffer[0])) {
+        if (netplay_chat_send(online_chat_buffer)) {
+            online_chat_buffer[0] = 0;
+            online_chat_editing = 0;
+            SDL_StopTextInput();
+        } else launcher_toast("Couldn't send that chat message.");
+    }
+
+    ui_text_fit(F_REG, 11, x + 24, y + 426, 540, C_DIM,
+                np.status[0] ? np.status : "Connected to the PipeClean relay.");
+    if (np.is_host) {
+        int can_play = connected && (selected_game == GAME_SML || selected_game == GAME_SML2);
+        if (ui_button(x + 592, y + 428, 180, 44, "Play for Everyone",
+                      B_PRIMARY, can_play)) {
+            if (!netplay_lobby_start_game(selected_game))
+                launcher_toast("Couldn't start the shared game.");
+        }
+    } else {
+        ui_text_fit(F_BOLD, 12, x + 560, y + 443, 210, C_TEXT,
+                    connected ? "Waiting for host to press Play…" : "Waiting for host…");
+    }
+}
+
 static void tab_online(float x, float y)
 {
     NetplayInfo np;
     netplay_get_info(&np);
+    if (np.state == NETPLAY_HOSTING || np.state == NETPLAY_CONNECTED) {
+        tab_online_lobby(x, y, &np);
+        return;
+    }
     const int can_start = np.state == NETPLAY_OFFLINE || np.state == NETPLAY_ERROR;
 
     card(x, y, 808, 512, "ONLINE PLAY");
     ui_text_fit(F_REG, 12, x + 18, y + 42, 772, C_DIM,
                 settings.online_connection_mode == 0
                     ? "Direct peer-to-peer mode is not implemented in this build. Choose Traversal Server to play online."
-                    : "Host a room through the traversal relay, then share its invite code with the other player.");
+                    : "Host a room, choose a supported game, and share its invite code with another player.");
 
     ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
     ui_text(F_REG, 11, x + 34, y + 112, C_MUTED, "Display name");
     if (ui_button(x + 280, y + 106, 76, 22, "Reset", B_GHOST, 1)) {
-        online_name_editing = online_server_editing = 0;
+        online_name_editing = online_server_editing = online_chat_editing = 0;
         SDL_StopTextInput();
         snprintf(settings.online_name, sizeof settings.online_name, "Player");
         settings_save();
@@ -1972,7 +2103,7 @@ static void tab_online(float x, float y)
                        (online_name_editing ? "Type a name…" : "Player");
     ui_text_fit(F_REG, 13, x + 46, y + 141, 292, online_name_editing ? C_DIM : C_TEXT, name);
     if (name_clicked) {
-        online_code_editing = online_server_editing = 0;
+        online_code_editing = online_server_editing = online_chat_editing = 0;
         online_name_editing = 1;
         settings.online_name[0] = 0;
         SDL_StartTextInput();
@@ -2029,24 +2160,22 @@ static void tab_online(float x, float y)
     ui_rrect(x + 390, y + 70, 400, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
-                 settings.online_connection_mode == 0
-                    ? "Direct mode will connect to another player's reachable address. That peer-to-peer transport still needs implementation."
-                    : "Use wss://your-service.onrender.com for encrypted Render Internet play. Host first, then share the invite code.", 2);
+                 "Choose the game before creating the room. Invite code is generated automatically.", 2);
 
-    ui_text_fit(F_REG, 10, x + 408, y + 151, 360, C_MUTED, "Connection mode");
+    ui_text_fit(F_REG, 10, x + 408, y + 143, 360, C_MUTED, "Connection mode");
     int mode_over = 0;
-    int mode_clicked = clickable(x + 408, y + 164, 360, 30, &mode_over);
-    ui_rrect(x + 408, y + 164, 360, 30, 7,
+    int mode_clicked = clickable(x + 408, y + 155, 360, 30, &mode_over);
+    ui_rrect(x + 408, y + 155, 360, 30, 7,
              online_mode_menu ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (mode_over ? C_BTN_H : C_BTN));
-    ui_text_fit(F_REG, 12, x + 420, y + 172, 320, C_TEXT,
+    ui_text_fit(F_REG, 12, x + 420, y + 163, 320, C_TEXT,
                 settings.online_connection_mode == 0 ? "Direct Connection" : "Traversal Server");
-    ui_tri(x + 748, y + 174, x + 758, y + 174, x + 753, y + 181, C_MUTED);
+    ui_tri(x + 748, y + 165, x + 758, y + 165, x + 753, y + 172, C_MUTED);
     if (mode_clicked) online_mode_menu = !online_mode_menu;
     if (online_mode_menu) {
-        ui_shadow(x + 408, y + 98, 360, 66, 10, 6, RGBA(0, 0, 0, 100));
-        ui_rrect(x + 408, y + 98, 360, 66, 8, C_BG2);
+        ui_shadow(x + 408, y + 89, 360, 66, 10, 6, RGBA(0, 0, 0, 100));
+        ui_rrect(x + 408, y + 89, 360, 66, 8, C_BG2);
         for (int mode = 0; mode < 2; mode++) {
-            float my = y + 100 + mode * 32;
+            float my = y + 91 + mode * 32;
             int over = 0;
             int pick = clickable(x + 412, my, 352, 30, &over);
             int selected = settings.online_connection_mode == mode;
@@ -2059,83 +2188,81 @@ static void tab_online(float x, float y)
                 settings.online_connection_mode = mode;
                 settings_save();
                 online_mode_menu = 0;
-                online_server_editing = 0;
+                online_server_editing = online_chat_editing = 0;
                 online_name_editing = online_code_editing = 0;
                 SDL_StopTextInput();
             }
         }
     }
 
-    ui_text_fit(F_REG, 10, x + 408, y + 202, 360, C_MUTED,
-                settings.online_connection_mode == 0
-                    ? "Peer address (not active until direct mode is implemented)"
-                    : "Traversal server (host:port, tls://, or wss://)");
+    ui_text_fit(F_REG, 10, x + 408, y + 192, 360, C_MUTED, "Choose the game to host");
+    if (ui_button(x + 408, y + 204, 172, 32, "Super Mario Land",
+                  online_selected_game == GAME_SML ? B_PRIMARY : B_GHOST, can_start)) {
+        online_selected_game = GAME_SML;
+        (void)netplay_lobby_set_game(GAME_SML);
+    }
+    if (ui_button(x + 590, y + 204, 178, 32, "Super Mario Land 2",
+                  online_selected_game == GAME_SML2 ? B_PRIMARY : B_GHOST, can_start)) {
+        online_selected_game = GAME_SML2;
+        (void)netplay_lobby_set_game(GAME_SML2);
+    }
+
+    ui_text_fit(F_REG, 10, x + 408, y + 242, 360, C_MUTED, "Traversal server address");
     int server_over = 0;
-    int server_clicked = clickable(x + 408, y + 215, 360, 30, &server_over);
-    ui_rrect(x + 408, y + 215, 360, 30, 7,
+    int server_clicked = clickable(x + 408, y + 254, 360, 30, &server_over);
+    ui_rrect(x + 408, y + 254, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
     const char *server_text = settings.online_server[0] ? settings.online_server :
                               (online_server_editing ? "Type host:port or wss://service.onrender.com…" : PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
-    ui_text_fit(F_REG, 12, x + 420, y + 223, 336,
+    ui_text_fit(F_REG, 12, x + 420, y + 262, 336,
                 (online_server_editing && !settings.online_server[0]) ? C_DIM : C_TEXT,
                 server_text);
     if (server_clicked) {
-        online_name_editing = online_code_editing = 0;
+        online_name_editing = online_code_editing = online_chat_editing = 0;
         snprintf(online_server_before, sizeof online_server_before, "%s", settings.online_server);
         settings.online_server[0] = 0;
         online_server_editing = 1;
         SDL_StartTextInput();
     }
-    if (ui_button(x + 408, y + 254, 360, 38, "Host Session", B_PRIMARY, can_start)) {
+    if (ui_button(x + 408, y + 290, 360, 36, "Host Room — Generate Invite Code", B_PRIMARY, can_start)) {
         if (settings.online_connection_mode == 0)
             launcher_toast("Direct peer-to-peer networking is not implemented yet. Select Traversal Server.");
-        else if (netplay_host(settings.online_server, settings.online_name) == 0)
-            launcher_toast("Connecting to traversal server to create a session…");
-        else
-            launcher_toast("Disconnect from the current session first.");
+        else {
+            (void)netplay_lobby_set_game(online_selected_game);
+            if (netplay_host(settings.online_server, settings.online_name) == 0)
+                launcher_toast("Connecting to traversal server to create a room…");
+            else launcher_toast("Disconnect from the current session first.");
+        }
     }
-    ui_rect(x + 408, y + 302, 364, 1, C_LINE);
-    ui_text(F_BOLD, 14, x + 408, y + 309, C_TEXT, "JOIN A SESSION");
+
+    ui_rect(x + 408, y + 336, 364, 1, C_LINE);
+    ui_text(F_BOLD, 13, x + 408, y + 344, C_TEXT, "JOIN A ROOM");
     int code_over = 0;
-    int code_clicked = clickable(x + 408, y + 333, 228, 36, &code_over);
-    ui_rrect(x + 408, y + 333, 228, 36, 8,
+    int code_clicked = clickable(x + 408, y + 365, 228, 32, &code_over);
+    ui_rrect(x + 408, y + 365, 228, 32, 8,
              online_code_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (code_over ? C_BTN_H : C_BTN));
-    ui_text_fit(F_BOLD, 14, x + 420, y + 342, 204, online_join_code[0] ? C_TEXT : C_DIM,
+    ui_text_fit(F_BOLD, 13, x + 420, y + 373, 204, online_join_code[0] ? C_TEXT : C_DIM,
                 online_join_code[0] ? online_join_code : "Enter invite code");
     if (code_clicked) {
-        online_name_editing = online_server_editing = 0;
+        online_name_editing = online_server_editing = online_chat_editing = 0;
         online_code_editing = 1;
         SDL_StartTextInput();
     }
-    if (ui_button(x + 644, y + 333, 124, 36, "Join", B_NORMAL, can_start)) {
+    if (ui_button(x + 644, y + 365, 124, 32, "Join Room", B_NORMAL, can_start)) {
         if (settings.online_connection_mode == 0)
             launcher_toast("Direct peer-to-peer networking is not implemented yet. Select Traversal Server.");
         else if (!online_join_code[0]) launcher_toast("Enter the invite code first.");
         else if (netplay_join(settings.online_server, online_join_code, settings.online_name) == 0)
-            launcher_toast("Connecting to the traversal session…");
-        else
-            launcher_toast("Disconnect from the current session first.");
+            launcher_toast("Connecting to the traversal room…");
+        else launcher_toast("Disconnect from the current session first.");
     }
 
-    ui_rrect(x + 408, y + 381, 360, 105, 9,
+    ui_rrect(x + 408, y + 405, 364, 78, 9,
              np.state == NETPLAY_ERROR ? RGBA(206,75,74,25) :
              (np.state == NETPLAY_OFFLINE ? RGBA(237,180,81,18) : RGBA(54,160,112,20)));
-    ui_text(F_BOLD, 10, x + 422, y + 390, C_MUTED, "NETWORK STATUS");
-    uint32_t status_color = np.state == NETPLAY_ERROR ? C_WARN :
-                            (np.state == NETPLAY_OFFLINE ? C_DIM : C_TEXT);
-    ui_text_fit(F_REG, 12, x + 422, y + 408, 330, status_color,
+    ui_text(F_BOLD, 10, x + 422, y + 413, C_MUTED, "CONNECTION STATUS");
+    ui_text_fit(F_REG, 11, x + 422, y + 433, 330, np.state == NETPLAY_ERROR ? C_WARN : C_TEXT,
                 np.status[0] ? np.status : "Not connected");
-    ui_text(F_REG, 10, x + 422, y + 430, C_MUTED, "INVITE CODE");
-    ui_text(F_BOLD, 16, x + 422, y + 444, C_TEXT, np.code[0] ? np.code : "—");
-    if (np.code[0] && ui_button(x + 598, y + 450, 74, 28, "Copy", B_GHOST, 1)) {
-        if (SDL_SetClipboardText(np.code) == 0) launcher_toast("Invite code copied.");
-        else launcher_toast("Couldn't copy the invite code.");
-    }
-    if (np.state != NETPLAY_OFFLINE &&
-        ui_button(x + 680, y + 450, 76, 28, "Disconnect", B_NORMAL, 1)) {
-        netplay_disconnect();
-        launcher_toast("Disconnected from the online session.");
-    }
 }
 
 static void tab_display(float x, float y)
