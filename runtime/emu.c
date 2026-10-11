@@ -2083,15 +2083,18 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
     uint8_t saved_cursor = rd8(0xFF8D);
     uint8_t saved_oam_end = rd8(0xA26E);
     uint8_t saved_obj_mode = rd8(0xFFBB);
-    uint8_t saved_sfx_scratch = rd8(0xA460);
     uint8_t saved_bank_latch = rd8(0xA24E);
     uint8_t saved_game_mode = rd8(0xFF9B);
     uint8_t saved_sfx_command = rd8(0xA460);
-    uint8_t saved_music_command = rd8(0xA468);
-    uint8_t saved_current_song = rd8(0xA469);
     uint8_t saved_fast_music = rd8(0xA50D);
     uint8_t saved_sprite_clear = rd8(0xA266);
     uint8_t saved_sprite_set = rd8(0xA267);
+    /* Preserve the complete cartridge sound-engine workspace. Luigi's
+     * death routine may queue a music transition at $A468, but that command
+     * must never escape into Mario's one shared level audio. */
+    uint8_t saved_sound_state[0x80];
+    for (unsigned i = 0; i < sizeof saved_sound_state; i++)
+        saved_sound_state[i] = rd8((uint16_t)(0xA400 + i));
 
     for (int i = 0; i < (int)sizeof saved_oam; i++)
         wr8((uint16_t)(0xA100 + i), 0);
@@ -2138,11 +2141,9 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
     wr8(0xFF8D, saved_cursor);
     wr8(0xA26E, saved_oam_end);
     wr8(0xFFBB, saved_obj_mode);
-    wr8(0xA460, saved_sfx_scratch);
     wr8(0xFF9B, saved_game_mode);
-    wr8(0xA460, saved_sfx_command);
-    wr8(0xA468, saved_music_command);
-    wr8(0xA469, saved_current_song);
+    for (unsigned i = 0; i < sizeof saved_sound_state; i++)
+        wr8((uint16_t)(0xA400 + i), saved_sound_state[i]);
     wr8(0xA50D, saved_fast_music);
     wr8(0xA266, saved_sprite_clear);
     wr8(0xA267, saved_sprite_set);
