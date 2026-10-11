@@ -475,7 +475,7 @@ static void update_events(const DiagSample *s)
         }
         if (diag.last_lives[1] >= 0 && diag.last_lives[1] != m->p2_lives) {
             char text[120];
-            snprintf(text, sizeof text, "P2 LIVES %d -> %d",
+            snprintf(text, sizeof text, "P2 LIFE COUNT %d -> %d",
                      diag.last_lives[1], m->p2_lives);
             diag_event_log(text);
         }
@@ -490,13 +490,6 @@ static void update_events(const DiagSample *s)
             char text[120];
             snprintf(text, sizeof text, "WORLD MAP HASH %08X -> %08X WITH STATIC CAMERA",
                      diag.last_map_hash, m->bg_map_hash);
-            diag_event_log(text);
-        }
-        if (diag.last_level >= 0 &&
-            (diag.last_level != m->level || diag.last_bank != m->level_bank)) {
-            char text[120];
-            snprintf(text, sizeof text, "WORLD LEVEL %02X/%02X -> %02X/%02X",
-                     diag.last_level, diag.last_bank, m->level, m->level_bank);
             diag_event_log(text);
         }
         if (diag.last_p2_powerup >= 0 && diag.last_p2_powerup != m->p2_powerup) {
@@ -616,7 +609,6 @@ static void log_frame(const DiagSample *s)
             m->tile_patch_count);
         log_hex_field("p1_ram_A200_A2DF", m->p1_ram, sizeof m->p1_ram);
         log_hex_field("p2_private_ram", m->p2_ram, sizeof m->p2_ram);
-        log_hex_field("p1_oam", s->has_sml2 ? s->sml2.p1_ram : m->p1_ram, 0);
         if (s->frame % 5u == 0)
             log_hex_field("actor_ram_AD00_AEFF", m->actor_ram, sizeof m->actor_ram);
         if (s->frame % 30u == 0) {
