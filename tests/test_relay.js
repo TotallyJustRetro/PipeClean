@@ -72,8 +72,8 @@ async function main() {
     const guest = await connectClient(port);
     host.socket.write('HOST\tHost\n');
     const hosted = await waitForLine(host);
-    const match = hosted.match(/^HOSTED\t([A-HJ-NP-Z2-9]{6})$/);
-    assert.ok(match, 'host receives a six-character room code');
+    const match = hosted.match(/^HOSTED\t([A-HJ-NP-Z2-9]{8})$/);
+    assert.ok(match, 'host receives a eight-character room code');
 
     guest.socket.write('JOIN\t' + match[1] + '\tGuest\n');
     const [joined, peerJoined] = await Promise.all([waitForLine(guest), waitForLine(host)]);
