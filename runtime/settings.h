@@ -98,6 +98,7 @@ typedef struct {
     char menu_music_path[512], ui_sfx_path[N_UI_SFX][512];
     int last_tab, show_stats;
     char online_name[32];
+    char online_server[160];          /* relay host:port */
     int online_color;                /* default profile colour, 0xRRGGBB */
     int touch_controls;                   /* on-screen controls are enabled */
     FilterCfg flt;

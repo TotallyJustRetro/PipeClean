@@ -103,7 +103,7 @@ if(NOT WIN32)
   target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE m)
 endif()
 if(WIN32)
-  target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE shell32 ole32 comdlg32 uuid)
+  target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE shell32 ole32 comdlg32 uuid ws2_32)
 endif()
 
 if(NOT ANDROID)

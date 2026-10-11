@@ -19,6 +19,7 @@
 #include "util.h"
 #include "branding.h"
 #include "widescreen.h"
+#include "netplay.h"
 
 static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
@@ -63,8 +64,9 @@ static int multiplayer_count_menu = -1;
 static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
 static int mp_config_game = GAME_SML;
 static int mp_color_selected; /* 0=P2, 1=P3, 2=P4 in the wheel editor */
-static int online_name_editing, online_code_editing;
+static int online_name_editing, online_code_editing, online_server_editing;
 static char online_join_code[9];
+static char online_server_before[160];
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -460,6 +462,7 @@ static void ensure_background(int g)
 
 void launcher_init(void)
 {
+    netplay_init();
     clear_state_thumbs();
     clear_romhack_thumbs();
     int migrated_legacy_hacks = 0;
@@ -499,7 +502,7 @@ void launcher_enter(void)
     audio_menu_music(1);
 }
 
-void launcher_shutdown(void) { clear_state_thumbs(); clear_romhack_thumbs(); tex_collect_save(); }
+void launcher_shutdown(void) { netplay_shutdown(); clear_state_thumbs(); clear_romhack_thumbs(); tex_collect_save(); }
 
 /* ------------------------------------------------------------------ small drawing helpers */
 static SDL_Rect to_px(float x, float y, float w, float h)
@@ -1916,20 +1919,22 @@ static void tab_audio(float x, float y)
     (void)sfx_test_msg;
 }
 
-/* ------------------------------------------------------------------ online session/profile tab
- * Shared by desktop and future Android builds. Transport buttons stay explicit
- * until a relay-backed session implementation is connected. */
+/* ------------------------------------------------------------------ online session/profile tab */
 static void tab_online(float x, float y)
 {
+    NetplayInfo np;
+    netplay_get_info(&np);
+    const int can_start = np.state == NETPLAY_OFFLINE || np.state == NETPLAY_ERROR;
+
     card(x, y, 808, 512, "ONLINE PLAY");
     ui_text_fit(F_REG, 12, x + 18, y + 42, 772, C_DIM,
-                "Use the same profile on desktop or Android. Hosting and joining will work on either platform once the session service is connected.");
+                "Connect desktop and Android clients through a PipeClean relay.");
 
     ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
     ui_text(F_REG, 11, x + 34, y + 112, C_MUTED, "Display name");
     if (ui_button(x + 280, y + 106, 76, 22, "Reset", B_GHOST, 1)) {
-        online_name_editing = 0;
+        online_name_editing = online_server_editing = 0;
         SDL_StopTextInput();
         snprintf(settings.online_name, sizeof settings.online_name, "Player");
         settings_save();
@@ -1943,7 +1948,7 @@ static void tab_online(float x, float y)
                        (online_name_editing ? "Type a name…" : "Player");
     ui_text_fit(F_REG, 13, x + 46, y + 141, 292, online_name_editing ? C_DIM : C_TEXT, name);
     if (name_clicked) {
-        online_code_editing = 0;
+        online_code_editing = online_server_editing = 0;
         online_name_editing = 1;
         settings.online_name[0] = 0;
         SDL_StartTextInput();
@@ -1995,37 +2000,77 @@ static void tab_online(float x, float y)
     if (ui_toggle(x + 34, y + 440, &settings.touch_controls)) settings_save();
     ui_text(F_REG, 11, x + 90, y + 443, C_TEXT, "On-screen touch controls");
     ui_text_fit(F_REG, 10, x + 34, y + 472, 322, C_DIM,
-                "This preference is saved for the planned Android touch overlay.");
+                "Touch controls are useful on Android devices.");
 
     ui_rrect(x + 390, y + 70, 400, 422, 12, C_PANEL);
     ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
-    ui_text_wrap(F_REG, 12, x + 408, y + 112, 360, C_DIM,
-                 "A host will create a short invite code and choose which supported game to play. Desktop and Android clients will use the same flow.", 3);
-    if (ui_button(x + 408, y + 174, 360, 42, "Host Session", B_PRIMARY, 1))
-        launcher_toast("Hosting isn't active yet: the online relay and game sync are not connected.");
-    ui_rect(x + 408, y + 237, 364, 1, C_LINE);
-    ui_text(F_BOLD, 14, x + 408, y + 252, C_TEXT, "JOIN A SESSION");
+    ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
+                 "Both players connect to the same reachable relay. Host first, then share the invite code.", 2);
+
+    ui_text(F_REG, 10, x + 408, y + 151, C_MUTED, "Relay address (host:port)");
+    int server_over = 0;
+    int server_clicked = clickable(x + 408, y + 164, 360, 30, &server_over);
+    ui_rrect(x + 408, y + 164, 360, 30, 7,
+             online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
+    ui_text_fit(F_REG, 12, x + 420, y + 172, 336,
+                online_server_editing ? C_TEXT : C_DIM,
+                settings.online_server[0] ? settings.online_server : "127.0.0.1:27800");
+    if (server_clicked) {
+        online_name_editing = online_code_editing = 0;
+        snprintf(online_server_before, sizeof online_server_before, "%s", settings.online_server);
+        settings.online_server[0] = 0;
+        online_server_editing = 1;
+        SDL_StartTextInput();
+    }
+    if (ui_button(x + 408, y + 204, 360, 38, "Host Session", B_PRIMARY, can_start)) {
+        if (netplay_host(settings.online_server, settings.online_name) == 0)
+            launcher_toast("Connecting to relay to create a session…");
+        else
+            launcher_toast("Disconnect from the current session first.");
+    }
+    ui_rect(x + 408, y + 252, 364, 1, C_LINE);
+    ui_text(F_BOLD, 14, x + 408, y + 263, C_TEXT, "JOIN A SESSION");
     int code_over = 0;
-    int code_clicked = clickable(x + 408, y + 286, 228, 38, &code_over);
-    ui_rrect(x + 408, y + 286, 228, 38, 8,
+    int code_clicked = clickable(x + 408, y + 289, 228, 36, &code_over);
+    ui_rrect(x + 408, y + 289, 228, 36, 8,
              online_code_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (code_over ? C_BTN_H : C_BTN));
-    ui_text_fit(F_BOLD, 15, x + 420, y + 295, 204, online_join_code[0] ? C_TEXT : C_DIM,
-                online_join_code[0] ? online_join_code : "Enter session code");
+    ui_text_fit(F_BOLD, 14, x + 420, y + 298, 204, online_join_code[0] ? C_TEXT : C_DIM,
+                online_join_code[0] ? online_join_code : "Enter invite code");
     if (code_clicked) {
-        online_name_editing = 0;
+        online_name_editing = online_server_editing = 0;
         online_code_editing = 1;
         SDL_StartTextInput();
     }
-    if (ui_button(x + 644, y + 286, 124, 38, "Join", B_NORMAL, 1))
-        launcher_toast(online_join_code[0] ?
-            "Joining isn't active yet: the online relay and game sync are not connected." :
-            "Enter the session code first.");
-    ui_text_wrap(F_REG, 11, x + 408, y + 342, 360, C_DIM,
-                 "Session codes are not generated yet. This screen is shared across platforms; the network service is the remaining blocker.", 3);
-    ui_rrect(x + 408, y + 414, 360, 48, 8, RGBA(237,180,81,20));
-    ui_text(F_BOLD, 11, x + 422, y + 421, C_WARN, "OFFLINE / NOT CONNECTED");
-    ui_text(F_REG, 10, x + 422, y + 439, C_DIM, "No sessions can be joined in this build.");
+    if (ui_button(x + 644, y + 289, 124, 36, "Join", B_NORMAL, can_start)) {
+        if (!online_join_code[0]) launcher_toast("Enter the invite code first.");
+        else if (netplay_join(settings.online_server, online_join_code, settings.online_name) == 0)
+            launcher_toast("Connecting to the session…");
+        else
+            launcher_toast("Disconnect from the current session first.");
+    }
+
+    ui_rrect(x + 408, y + 340, 360, 136, 9,
+             np.state == NETPLAY_ERROR ? RGBA(206,75,74,25) :
+             (np.state == NETPLAY_OFFLINE ? RGBA(237,180,81,18) : RGBA(54,160,112,20)));
+    ui_text(F_BOLD, 10, x + 422, y + 352, C_MUTED, "NETWORK STATUS");
+    uint32_t status_color = np.state == NETPLAY_ERROR ? C_WARN :
+                            (np.state == NETPLAY_OFFLINE ? C_DIM : C_TEXT);
+    ui_text_fit(F_REG, 12, x + 422, y + 371, 330, status_color,
+                np.status[0] ? np.status : "Not connected");
+    ui_text(F_REG, 10, x + 422, y + 396, C_MUTED, "INVITE CODE");
+    ui_text(F_BOLD, 16, x + 422, y + 411, C_TEXT, np.code[0] ? np.code : "—");
+    if (np.code[0] && ui_button(x + 598, y + 432, 74, 28, "Copy", B_GHOST, 1)) {
+        if (SDL_SetClipboardText(np.code) == 0) launcher_toast("Invite code copied.");
+        else launcher_toast("Couldn't copy the invite code.");
+    }
+    if (np.state != NETPLAY_OFFLINE &&
+        ui_button(x + 680, y + 432, 76, 28, "Disconnect", B_NORMAL, 1)) {
+        netplay_disconnect();
+        launcher_toast("Disconnected from the relay.");
+    }
 }
+
+/* ------------------------------------------------------------------ frame */
 
 /* ------------------------------------------------------------------ frame */
 static const char *tab_labels[N_TABS] = {
@@ -2286,13 +2331,16 @@ void launcher_event(const SDL_Event *e)
             return;
         }
     }
-    if (online_name_editing || online_code_editing) {
+    if (online_name_editing || online_code_editing || online_server_editing) {
         int editing_name = online_name_editing;
-        char *dst = editing_name ? settings.online_name : online_join_code;
-        size_t cap = editing_name ? sizeof settings.online_name : sizeof online_join_code;
-        const char *fallback = "Player";
+        int editing_server = online_server_editing;
+        char *dst = editing_name ? settings.online_name :
+                    (editing_server ? settings.online_server : online_join_code);
+        size_t cap = editing_name ? sizeof settings.online_name :
+                     (editing_server ? sizeof settings.online_server : sizeof online_join_code);
+        const char *fallback = editing_name ? "Player" : "127.0.0.1:27800";
         if (!dst || cap == 0) {
-            online_name_editing = online_code_editing = 0;
+            online_name_editing = online_code_editing = online_server_editing = 0;
             SDL_StopTextInput();
             return;
         }
@@ -2302,6 +2350,18 @@ void launcher_event(const SDL_Event *e)
                 if (have + add < cap && have + add <= 24 &&
                     (unsigned char)e->text.text[0] >= 32)
                     memcpy(dst + have, e->text.text, add + 1);
+            } else if (editing_server) {
+                size_t have = strlen(dst);
+                for (const unsigned char *p = (const unsigned char *)e->text.text;
+                     *p && have + 1 < cap && have < 150; ++p) {
+                    unsigned char ch = *p;
+                    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                        (ch >= '0' && ch <= '9') || ch == '.' || ch == '-' ||
+                        ch == '_' || ch == ':') {
+                        dst[have++] = (char)ch;
+                        dst[have] = 0;
+                    }
+                }
             } else {
                 size_t have = strlen(dst);
                 for (const unsigned char *p = (const unsigned char *)e->text.text;
@@ -2318,11 +2378,19 @@ void launcher_event(const SDL_Event *e)
         }
         if (e->type == SDL_KEYDOWN && !e->key.repeat) {
             SDL_Keycode k = e->key.keysym.sym;
-            if (k == SDLK_ESCAPE || k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
-                online_name_editing = online_code_editing = 0;
+            if (k == SDLK_ESCAPE) {
+                if (editing_server)
+                    snprintf(settings.online_server, sizeof settings.online_server, "%s", online_server_before);
+                online_name_editing = online_code_editing = online_server_editing = 0;
                 SDL_StopTextInput();
                 if (editing_name && !dst[0]) snprintf(dst, cap, "%s", fallback);
-                if (editing_name) settings_save();
+                return;
+            }
+            if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_TAB) {
+                online_name_editing = online_code_editing = online_server_editing = 0;
+                SDL_StopTextInput();
+                if (!dst[0]) snprintf(dst, cap, "%s", fallback);
+                if (editing_name || editing_server) settings_save();
                 return;
             }
             if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
@@ -2343,12 +2411,10 @@ void launcher_event(const SDL_Event *e)
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
             e->type == SDL_MOUSEBUTTONDOWN) {
-            online_name_editing = online_code_editing = 0;
+            online_name_editing = online_code_editing = online_server_editing = 0;
             SDL_StopTextInput();
-            if (editing_name) {
-                if (!dst[0]) snprintf(dst, cap, "%s", fallback);
-                settings_save();
-            }
+            if (!dst[0]) snprintf(dst, cap, "%s", fallback);
+            if (editing_name || editing_server) settings_save();
         }
         return;
     }

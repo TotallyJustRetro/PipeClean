@@ -182,6 +182,7 @@ void settings_defaults(Settings *s)
     s->menu_music = 1; s->menu_music_vol = 55;
     s->ui_sfx = 1; s->ui_sfx_vol = 70;
     snprintf(s->online_name, sizeof s->online_name, "Player");
+    snprintf(s->online_server, sizeof s->online_server, "127.0.0.1:27800");
     s->online_color = 0x2CA83D;
     s->touch_controls = 1;
     for (int i = 0; i < N_GAMES; i++) game_cfg_defaults(&s->g[i], i);
@@ -231,7 +232,7 @@ static int field_table(Field *t, int cap)
     static char names[N_UI_SFX][24];
     for (int i = 0; i < N_UI_SFX; i++) { snprintf(names[i], sizeof names[i], "ui_sfx_path%d", i); S(names[i], s->ui_sfx_path[i]); }
     I("last_tab", s->last_tab, 0, 20); I("show_stats", s->show_stats, 0, 1);
-    S("online_name", s->online_name); I("online_color", s->online_color, 0, 0xFFFFFF);
+    S("online_name", s->online_name); S("online_server", s->online_server); I("online_color", s->online_color, 0, 0xFFFFFF);
     I("touch_controls", s->touch_controls, 0, 1);
     FilterCfg *f = &s->flt;
     I("f_grid", f->lcd_grid, 0, 100); I("f_ghost", f->ghost, 0, 100); I("f_scan", f->scanlines, 0, 100);

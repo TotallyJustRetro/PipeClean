@@ -53,6 +53,9 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Iruntime tests/test_cgb_ppu.c runtime/ppu.c -o test_cgb_ppu
           ./test_cgb_ppu
 
+      - name: Validate relay server syntax
+        run: node --check server/relay.js
+
       - name: Validate Python tools
         run: |
           python3 -m py_compile \
