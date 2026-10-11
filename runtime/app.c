@@ -1004,7 +1004,6 @@ static int play_multiplayer(int g)
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
         last = now;
-        apply_launcher_display_preferences();
         int W, H;
         out_size(&W, &H);
         SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
@@ -1424,6 +1423,7 @@ int app_run(const char *autorun, const char *hack)
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
         last = now;
+        apply_launcher_display_preferences();
         int W, H;
         out_size(&W, &H);
         SDL_SetRenderDrawColor(ren, 14, 16, 22, 255);
