@@ -2101,7 +2101,17 @@ static int mp_sml2_capture_direct_death_oam(int player, MpSml2Player *p,
      * movement path, it applies the dead velocity table and renders the
      * falling pose. It may set mode 9 and queue a music command at completion;
      * neither effect may take over the shared game for Player 1. */
+    /* The cartridge death routine is simulated for Luigi without advancing
+     * hardware time, but any APU register writes still happen immediately.
+     * Keep Mario's active channel/sequence state, while leaving the queued PCM
+     * output ring untouched so this cannot flush or overlap ongoing audio. */
+    uint8_t saved_apu_hw_state[1024];
+    size_t apu_hw_bytes = apu_hw_state_size();
+    int apu_hw_saved = apu_hw_bytes <= sizeof saved_apu_hw_state &&
+                       apu_hw_state_save(saved_apu_hw_state, sizeof saved_apu_hw_state) == 0;
     int ok = mp_sml2_run_original_subroutine(0x315C, 8000, 0);
+    if (apu_hw_saved)
+        (void)apu_hw_state_load(saved_apu_hw_state, apu_hw_bytes);
     /* Capture a stock sound request before the isolation code restores A460. */
     if (native_sfx_command && saved_sfx_command == 0)
         *native_sfx_command = rd8(0xA460);
