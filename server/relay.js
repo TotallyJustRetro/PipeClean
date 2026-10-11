@@ -297,5 +297,7 @@ server.listen(PORT, HOST, () => {
   const address = server.address();
   const boundPort = address && typeof address === 'object' ? address.port : PORT;
   process.stdout.write('PipeClean relay listening on ' + HOST + ':' + boundPort + '\n');
-  process.stdout.write('Security mode: loopback default; no TLS. Trusted LAN only when explicitly exposed.\n');
+  process.stdout.write(USE_PROXY_PROTOCOL
+    ? 'Security mode: TLS must terminate at a trusted edge proxy; PROXY v2 required. Relay process itself has no TLS.\n'
+    : 'Security mode: loopback default; no TLS. Trusted LAN only when explicitly exposed.\n');
 });
