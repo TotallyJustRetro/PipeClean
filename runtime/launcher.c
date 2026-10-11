@@ -2031,7 +2031,7 @@ static void tab_online(float x, float y)
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
                  settings.online_connection_mode == 0
                     ? "Direct mode will connect to another player's reachable address. That peer-to-peer transport still needs implementation."
-                    : "Use tls://hostname:443 for encrypted Internet play. Host first, then share the invite code.", 2);
+                    : "Use wss://your-service.onrender.com for encrypted Render Internet play. Host first, then share the invite code.", 2);
 
     ui_text_fit(F_REG, 10, x + 408, y + 151, 360, C_MUTED, "Connection mode");
     int mode_over = 0;
@@ -2069,13 +2069,13 @@ static void tab_online(float x, float y)
     ui_text_fit(F_REG, 10, x + 408, y + 202, 360, C_MUTED,
                 settings.online_connection_mode == 0
                     ? "Peer address (not active until direct mode is implemented)"
-                    : "Traversal server (host:port or tls://host:443)");
+                    : "Traversal server (host:port, tls://, or wss://)");
     int server_over = 0;
     int server_clicked = clickable(x + 408, y + 215, 360, 30, &server_over);
     ui_rrect(x + 408, y + 215, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
     const char *server_text = settings.online_server[0] ? settings.online_server :
-                              (online_server_editing ? "Type host:port or tls://host:443…" : PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
+                              (online_server_editing ? "Type host:port or wss://service.onrender.com…" : PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
     ui_text_fit(F_REG, 12, x + 420, y + 223, 336,
                 (online_server_editing && !settings.online_server[0]) ? C_DIM : C_TEXT,
                 server_text);
