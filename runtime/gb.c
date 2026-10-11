@@ -318,9 +318,15 @@ void cpu_step_checked(void)
     cpu_step();
     (void)pc_before;
     (void)opcode;
-    if (gb_mp_vblank_watch && cpu.pc == gb_mp_vblank_return_pc)
-        gb_mp_vblank_done();
-    if (cpu_irq_check()) cpu_service_irq();
+    if (!suppress_hardware_timing) {
+        if (gb_mp_vblank_watch && cpu.pc == gb_mp_vblank_return_pc)
+            gb_mp_vblank_done();
+        if (cpu_irq_check()) cpu_service_irq();
+    } else {
+        /* These extra character routines are not a second slice of hardware
+         * time, so they cannot dispatch a timer/VBlank interrupt either. */
+        cpu.ei_pending = 0;
+    }
 }
 
 void run_interpreter(void)
