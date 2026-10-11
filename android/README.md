@@ -1,6 +1,6 @@
 # PipeClean for Android (development scaffold)
 
-PipeClean now has SDL multi-touch input, a saved setting to disable the touch overlay, a color wheel in the desktop/local-co-op settings, and a platform-shared Online/profile screen. This directory starts the Android Studio project; the APK still needs a build with the Android SDK/NDK and playtesting on a real device.
+PipeClean now has SDL multi-touch input, a saved setting to disable the touch overlay, a color wheel in the desktop/local-co-op settings, and a platform-shared Online/profile screen. This directory contains the Android Studio project scaffold. A debug APK has now built successfully in GitHub Actions for arm64-v8a and armeabi-v7a; installation, startup, and gameplay still need to be verified on a real Android device.
 
 ## Requirements
 
