@@ -24,7 +24,7 @@ static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
-enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, N_TABS };
+enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, N_TABS };
 enum { SUB_GAME, SUB_ROMHACKS, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
 static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
@@ -63,6 +63,8 @@ static int multiplayer_count_menu = -1;
 static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
 static int mp_config_game = GAME_SML;
 static int mp_color_selected; /* 0=P2, 1=P3, 2=P4 in the wheel editor */
+static int online_name_editing, online_code_editing;
+static char online_join_code[9];
 static int launcher_controller_cursor_active;
 static int launcher_controller_confirm_was_down, launcher_controller_back_was_down;
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
@@ -1877,12 +1879,116 @@ static void tab_audio(float x, float y)
     (void)sfx_test_msg;
 }
 
+/* ------------------------------------------------------------------ online session/profile tab
+ * Shared by desktop and future Android builds. Transport buttons stay explicit
+ * until a relay-backed session implementation is connected. */
+static void tab_online(float x, float y)
+{
+    card(x, y, 808, 512, "ONLINE PLAY");
+    ui_text_fit(F_REG, 12, x + 18, y + 42, 772, C_DIM,
+                "Use the same profile on desktop or Android. Hosting and joining will work on either platform once the session service is connected.");
+
+    ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
+    ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
+    ui_text(F_REG, 11, x + 34, y + 112, C_MUTED, "Display name");
+    int name_over = 0;
+    int name_clicked = clickable(x + 34, y + 132, 322, 36, &name_over);
+    ui_rrect(x + 34, y + 132, 322, 36, 8,
+             online_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (name_over ? C_BTN_H : C_BTN));
+    const char *name = settings.online_name[0] ? settings.online_name :
+                       (online_name_editing ? "Type a name…" : "Player");
+    ui_text_fit(F_REG, 13, x + 46, y + 141, 292, online_name_editing ? C_DIM : C_TEXT, name);
+    if (name_clicked) {
+        online_code_editing = 0;
+        online_name_editing = 1;
+        settings.online_name[0] = 0;
+        SDL_StartTextInput();
+    }
+
+    uint32_t rgb = (uint32_t)settings.online_color & 0xFFFFFFu;
+    if (!rgb) rgb = 0x2CA83Du;
+    const float wx = x + 106.0f, wy = y + 286.0f, wr = 62.0f;
+    ui_text(F_REG, 11, x + 34, y + 180, C_MUTED, "Profile color");
+    ui_color_wheel(wx, wy, wr, rgb);
+    ui_text_c(F_REG, 10, wx, wy + wr + 3, C_DIM, "Hue + saturation");
+
+    float dx = ui_mouse.x - wx, dy = ui_mouse.y - wy;
+    float dist = sqrtf(dx * dx + dy * dy);
+    int color_changed = 0;
+    if (ui_mouse.down && dist <= wr) {
+        float hue = atan2f(-dy, dx) / 6.28318530718f;
+        if (hue < 0.0f) hue += 1.0f;
+        float h0, s0, val;
+        mp_rgb_to_hsv(rgb, &h0, &s0, &val);
+        (void)h0; (void)s0;
+        if (val < 0.20f) val = 0.20f;
+        settings.online_color = (int)mp_hsv_to_rgb(hue, dist / wr, val);
+        rgb = (uint32_t)settings.online_color;
+        color_changed = 1;
+    }
+    ui_rrect(x + 204, y + 226, 62, 34, 8, HEX(rgb));
+    ui_stroke(x + 204, y + 226, 62, 34, 8, 1, RGBA(255,255,255,120));
+    char rgb_text[24];
+    snprintf(rgb_text, sizeof rgb_text, "#%06X", (unsigned)(rgb & 0xFFFFFFu));
+    ui_text(F_BOLD, 13, x + 278, y + 235, C_TEXT, rgb_text);
+    float hue, sat, val;
+    mp_rgb_to_hsv(rgb, &hue, &sat, &val);
+    int brightness = (int)lrintf(val * 100.0f);
+    if (brightness < 20) brightness = 20;
+    if (brightness > 100) brightness = 100;
+    ui_text(F_REG, 11, x + 204, y + 278, C_MUTED, "Brightness");
+    int brightness_changed = ui_slider(x + 204, y + 300, 138, &brightness, 20, 100);
+    char brightness_text[16];
+    snprintf(brightness_text, sizeof brightness_text, "%d%%", brightness);
+    ui_text_r(F_REG, 11, x + 342, y + 322, C_TEXT, brightness_text);
+    if (brightness_changed) {
+        settings.online_color = (int)mp_hsv_to_rgb(hue, sat, brightness / 100.0f);
+        rgb = (uint32_t)settings.online_color;
+        color_changed = 1;
+    }
+    if (ui_toggle(x + 34, y + 440, &settings.touch_controls)) settings_save();
+    ui_text(F_REG, 11, x + 90, y + 443, C_TEXT, "On-screen touch controls");
+    ui_text_fit(F_REG, 10, x + 34, y + 472, 322, C_DIM,
+                "This preference is saved for the planned Android touch overlay.");
+
+    ui_rrect(x + 390, y + 70, 400, 422, 12, C_PANEL);
+    ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
+    ui_text_wrap(F_REG, 12, x + 408, y + 112, 360, C_DIM,
+                 "A host will create a short invite code and choose which supported game to play. Desktop and Android clients will use the same flow.", 3);
+    if (ui_button(x + 408, y + 174, 360, 42, "Host Session", B_PRIMARY, 1))
+        launcher_toast("Hosting isn't active yet: the online relay and game sync are not connected.");
+    ui_rect(x + 408, y + 237, 364, 1, C_LINE);
+    ui_text(F_BOLD, 14, x + 408, y + 252, C_TEXT, "JOIN A SESSION");
+    int code_over = 0;
+    int code_clicked = clickable(x + 408, y + 286, 228, 38, &code_over);
+    ui_rrect(x + 408, y + 286, 228, 38, 8,
+             online_code_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (code_over ? C_BTN_H : C_BTN));
+    ui_text_fit(F_BOLD, 15, x + 420, y + 295, 204, online_join_code[0] ? C_TEXT : C_DIM,
+                online_join_code[0] ? online_join_code : "Enter session code");
+    if (code_clicked) {
+        online_name_editing = 0;
+        online_code_editing = 1;
+        SDL_StartTextInput();
+    }
+    if (ui_button(x + 644, y + 286, 124, 38, "Join", B_NORMAL, 1))
+        launcher_toast(online_join_code[0] ?
+            "Joining isn't active yet: the online relay and game sync are not connected." :
+            "Enter the session code first.");
+    ui_text_wrap(F_REG, 11, x + 408, y + 342, 360, C_DIM,
+                 "Session codes are not generated yet. This screen is shared across platforms; the network service is the remaining blocker.", 3);
+    ui_rrect(x + 408, y + 414, 360, 48, 8, RGBA(237,180,81,20));
+    ui_text(F_BOLD, 11, x + 422, y + 421, C_WARN, "OFFLINE / NOT CONNECTED");
+    ui_text(F_REG, 10, x + 422, y + 439, C_DIM, "No sessions can be joined in this build.");
+    if (color_changed) settings_save();
+}
+
 /* ------------------------------------------------------------------ frame */
 static const char *tab_labels[N_TABS] = {
     [TAB_MULTIPLAYER] = "Multiplayer",
     [TAB_MP_CONTROLLERS] = "MP Controllers",
     [TAB_FILTERS] = "Filters",
-    [TAB_AUDIO] = "Audio & menu"
+    [TAB_AUDIO] = "Audio & menu",
+    [TAB_ONLINE] = "Online"
 };
 
 static int tab_button(float x, float y, float w, float h, int selected, uint32_t accent)
@@ -1945,10 +2051,10 @@ LauncherResult launcher_frame(float dt)
     float y2 = sy + N_GAMES * game_row + 8;
     ui_rect(sx + 8, y2, 208, 1, C_LINE);
     for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
-        float y = y2 + 12 + (i - TAB_MULTIPLAYER) * 52;
+        float y = y2 + 8 + (i - TAB_MULTIPLAYER) * 43;
         uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
-        if (tab_button(sx, y, 224, 44, tab == i, accent)) tab = i;
-        ui_text(F_BOLD, 15, sx + 18, y + 11, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
+        if (tab_button(sx, y, 224, 38, tab == i, accent)) tab = i;
+        ui_text(F_BOLD, 14, sx + 18, y + 8, tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
     }
 
     float cx = 268, cy = 108;
@@ -2012,10 +2118,14 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Make the screen look like a real Game Boy, a CRT TV, or something glowing.");
         tab_filters(cx, cy + 58);
-    } else {
+    } else if (tab == TAB_AUDIO) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Audio & menu");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Game volume, the launcher's own music and the little click sounds.");
         tab_audio(cx, cy + 58);
+    } else {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Online");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Session invites, player identity, and cross-platform play.");
+        tab_online(cx, cy + 58);
     }
 
     /* footer */
