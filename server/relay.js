@@ -110,6 +110,8 @@ function removeClient(client) {
     }
   } else if (room.guest === client) {
     room.guest = null;
+    room.hostRom = null;
+    room.guestRom = null;
     client.peer = null;
     room.expiresAt = Date.now() + WAITING_ROOM_TTL_MS;
     if (room.host && !room.host.closed) {
@@ -243,6 +245,7 @@ function processLine(client, line) {
       reply(client, 'START_DENIED\tboth players must pass the ROM check');
       return;
     }
+    reply(client, line);
     reply(client.peer, line);
     return;
   }
