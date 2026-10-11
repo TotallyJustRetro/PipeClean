@@ -182,7 +182,7 @@ void settings_defaults(Settings *s)
     s->menu_music = 1; s->menu_music_vol = 55;
     s->ui_sfx = 1; s->ui_sfx_vol = 70;
     snprintf(s->online_name, sizeof s->online_name, "Player");
-    snprintf(s->online_server, sizeof s->online_server, "127.0.0.1:27800");
+    snprintf(s->online_server, sizeof s->online_server, "%s", PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
     s->online_connection_mode = 1; /* traversal server by default */
     s->online_color = 0x2CA83D;
     s->touch_controls = 1;
@@ -351,6 +351,16 @@ void settings_load(void)
             c->romhack_selected = -1;
     }
     if (settings.last_tab > N_GAMES + 5) settings.last_tab = 0;
+
+    /* Migrate the prior local-only default to the deployed traversal endpoint.
+       If the user explicitly configured another address, leave it untouched. */
+    if (settings.online_connection_mode == 1 &&
+        strcmp(settings.online_server, "127.0.0.1:27800") == 0 &&
+        strcmp(PIPECLEAN_DEFAULT_RELAY_ENDPOINT, "127.0.0.1:27800") != 0) {
+        snprintf(settings.online_server, sizeof settings.online_server, "%s",
+                 PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
+        settings_save();
+    }
 }
 
 void settings_save(void)
