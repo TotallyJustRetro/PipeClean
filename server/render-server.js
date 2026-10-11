@@ -41,6 +41,7 @@ const relay = spawn(process.execPath, [path.join(__dirname, 'relay.js')], {
 
 let relayReady = false;
 let stopping = false;
+let relayStdoutBuffer = '';
 const httpServer = http.createServer((request, response) => {
   const url = new URL(request.url || '/', 'http://localhost');
   if (request.method === 'GET' && url.pathname === '/healthz') {
@@ -92,15 +93,13 @@ function closeSocket(ws, code, reason) {
 }
 
 function clientAddress(request) {
-  /* Render sits behind its managed edge. Prefer the single-IP Cloudflare
-     client header when present; otherwise use the first valid XFF item. */
-  const cfAddress = request.headers['cf-connecting-ip'];
-  if (typeof cfAddress === 'string' && net.isIP(cfAddress.trim()))
-    return cfAddress.trim();
+  /* Proxies append the source they observe. Use the rightmost valid address
+     so a client-supplied X-Forwarded-For prefix cannot bypass rate limits. */
   const forwarded = request.headers['x-forwarded-for'];
   if (typeof forwarded === 'string') {
-    for (const item of forwarded.split(',')) {
-      const candidate = item.trim();
+    const entries = forwarded.split(',');
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const candidate = entries[i].trim().replace(/^::ffff:/, '');
       if (net.isIP(candidate)) return candidate;
     }
   }
@@ -250,15 +249,18 @@ wss.on('connection', (websocket, request) => {
 relay.stdout.setEncoding('utf8');
 relay.stdout.on('data', (chunk) => {
   process.stdout.write('[relay] ' + chunk);
-  if (chunk.includes('PipeClean relay listening on 127.0.0.1:' + RELAY_PORT)) {
+  relayStdoutBuffer += chunk;
+  if (relayStdoutBuffer.length > 8192) relayStdoutBuffer = relayStdoutBuffer.slice(-4096);
+  if (relayStdoutBuffer.includes('PipeClean relay listening on 127.0.0.1:' + RELAY_PORT)) {
     relayReady = true;
     if (!httpServer.listening) {
       httpServer.listen(WEB_PORT, HOST, () => {
-        process.stdout.write('PipeClean Render WebSocket bridge listening on ' + HOST + ':' + WEB_PORT + '\n');
+        process.stdout.write('PipeClean Render WebSocket bridge listening on ' + HOST + ':' + WEB_PORT + '\\n');
       });
     }
   }
 });
+
 relay.on('error', (error) => {
   process.stderr.write('Could not start relay: ' + error.message + '\n');
   process.exitCode = 1;
