@@ -10,7 +10,7 @@
 
 #define GB_W 160
 #define GB_H 144
-#define GB_WMAX 320            /* supports the extra-wide SML2 Homeworld map view */
+#define GB_WMAX 384            /* supports the ultra-wide SML2 Homeworld map view */
 #define CYCLES_PER_FRAME 70224
 #define CPU_HZ 4194304
 
