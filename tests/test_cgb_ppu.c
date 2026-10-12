@@ -94,11 +94,11 @@ int main(void)
     assert(ppu_w == 242);
     assert(ppu_xoff == 0);
     ppu_tick(11 * 456);
-    assert(ppu_bgtile[11][0] == 1);
-    assert(ppu_bgtile[11][241] == 2);
+    assert(ppu_bgtile[11][0] == 257);
+    assert(ppu_bgtile[11][241] == 258);
     ppu_tick((127 - 11) * 456);
-    assert(ppu_bgtile[127][0] == 3);
-    assert(ppu_bgtile[127][241] == 4);
+    assert(ppu_bgtile[127][0] == 259);
+    assert(ppu_bgtile[127][241] == 260);
 
     /* Returning to the normal SML2 window setup restores slider-controlled width. */
     ppu_write(0x4B, 7);
