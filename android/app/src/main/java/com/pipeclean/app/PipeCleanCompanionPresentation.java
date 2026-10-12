@@ -201,6 +201,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawWallpaper(Canvas c, float w, float h) {
+            // Clear before drawing so transparent PNGs reveal a clean theme-colored base.
+            c.drawColor(bg());
             if (wallpaperMovie != null && wallpaperMovie.width() > 0 && wallpaperMovie.height() > 0) {
                 int duration = wallpaperMovie.duration();
                 if (duration <= 0) duration = 1000;
