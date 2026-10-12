@@ -169,6 +169,13 @@ int main(void)
     if (!wide_sml2_world_origin(&world_left, &world_top) ||
         world_left != 511 || world_top != 0) return 36;
 
+    /* Switching back to native width must clear the hooks from the prior
+       widescreen session, so they do not keep changing SML2 spawn/cull reads. */
+    cart_hi = rom + 0x8000;
+    if (!wide_install(GAME_SML2, 0, 0)) return 37;
+    cpu.pc = 0x408A;
+    if (wide_read_sml2(0xAF12, 0xAA) != 0xAA) return 38;
+
     free(rom);
     puts("SML2 widescreen hook: PASS");
     return 0;
