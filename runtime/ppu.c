@@ -15,6 +15,7 @@ extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
 extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern int wide_sml2_homeworld_active(int, int, int) __attribute__((weak));
+extern void wide_sml2_homeworld_dims(int, int, int *, int *) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -51,17 +52,25 @@ static int dot, ly, mode, lcd_on, stat_line, wlc;
 static int off_cycles;
 int frame_count;
 
-/* The Homeworld has a full-width 512px source map. Give that scene an 80px
- * margin on each side (320px total), while keeping the normal level dimensions
- * user-controlled. Re-evaluate only at frame start so every scanline shares
- * one width and existing renderers see the updated frame size. */
+/* The Homeworld has a 512px source map. Give it a 384px output canvas, then
+ * shift the extra 224 pixels toward whichever map edge has more room. This
+ * avoids wasting half the added view off-map near either end of the world. */
 static void ppu_refresh_wide_layout(void)
 {
     int l = cfg_left, r = cfg_right;
     if (wide_on && cfg_left + cfg_right > 0 && wide_sml2_homeworld_active &&
         wide_sml2_homeworld_active(lcdc, wx, wy)) {
-        l = SML2_HOME_WIDE_LEFT;
-        r = SML2_HOME_WIDE_RIGHT;
+        int map_screen_left = rd8(SML2_HOME_CAMERA_X) |
+                              (rd8(SML2_HOME_CAMERA_X + 1) << 8);
+        map_screen_left += (int8_t)(uint8_t)(scx - (map_screen_left & 0xFF));
+        if (wide_sml2_homeworld_dims) {
+            wide_sml2_homeworld_dims(map_screen_left,
+                                     SML2_HOME_WIDE_LEFT + SML2_HOME_WIDE_RIGHT,
+                                     &l, &r);
+        } else {
+            l = SML2_HOME_WIDE_LEFT;
+            r = SML2_HOME_WIDE_RIGHT;
+        }
     }
     if (l < 0) l = 0;
     if (r < 0) r = 0;
