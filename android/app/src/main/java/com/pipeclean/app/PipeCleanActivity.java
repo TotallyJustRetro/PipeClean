@@ -48,6 +48,7 @@ public final class PipeCleanActivity extends SDLActivity {
 
     public static native void nativeDocumentPicked(String path);
     public static native void nativeCompanionAction(int action, int pressed);
+    public static native void nativeCompanionDisplayAvailable(int available);
 
     @Override
     protected void onCreate(android.os.Bundle state) {
@@ -96,27 +97,35 @@ public final class PipeCleanActivity extends SDLActivity {
         if (target == null) target = fallback;
         if (target == null) {
             dismissCompanionDisplay();
+            nativeCompanionDisplayAvailable(0);
             return;
         }
         if (companionPresentation != null) {
             Display current = companionPresentation.getDisplay();
-            if (current != null && current.getDisplayId() == target.getDisplayId()) return;
+            if (current != null && current.getDisplayId() == target.getDisplayId()) {
+                nativeCompanionDisplayAvailable(1);
+                return;
+            }
             dismissCompanionDisplay();
         }
         try {
             companionPresentation = new PipeCleanCompanionPresentation(this, target);
             companionPresentation.show();
             companionPresentation.setPipeSwapMode(companionPipeSwapMode);
+            nativeCompanionDisplayAvailable(1);
         } catch (Exception ex) {
             dismissCompanionDisplay();
+            nativeCompanionDisplayAvailable(0);
             android.util.Log.w("PipeClean", "Couldn't open the companion display.", ex);
         }
     }
 
     private void dismissCompanionDisplay() {
-        if (companionPresentation == null) return;
-        try { companionPresentation.dismiss(); } catch (Exception ignored) {}
-        companionPresentation = null;
+        if (companionPresentation != null) {
+            try { companionPresentation.dismiss(); } catch (Exception ignored) {}
+            companionPresentation = null;
+        }
+        nativeCompanionDisplayAvailable(0);
     }
 
     /** Open Android's document picker for a custom second-screen wallpaper. */
