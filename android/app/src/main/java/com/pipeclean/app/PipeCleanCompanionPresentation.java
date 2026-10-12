@@ -1,5 +1,6 @@
 package com.pipeclean.app;
 
+import android.app.Activity;
 import android.app.Presentation;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -14,6 +15,7 @@ import android.os.SystemClock;
 import android.view.Display;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -23,11 +25,16 @@ import java.util.Locale;
 
 /** A playful, game-specific second-screen companion deck. All artwork is original UI art. */
 final class PipeCleanCompanionPresentation extends Presentation {
+    private final Activity host;
     private final DeckView deck;
+    private final GameFrameView gameFrameView;
+    private boolean pipeSwapMode;
 
     PipeCleanCompanionPresentation(Context context, Display display) {
         super(context, display);
+        host = (Activity) context;
         deck = new DeckView(context);
+        gameFrameView = new GameFrameView(context);
         String savedBackground = context.getSharedPreferences(
             "PipeCleanCompanion", Context.MODE_PRIVATE).getString("background_path", "");
         deck.setBackgroundFile(savedBackground);
@@ -48,9 +55,85 @@ final class PipeCleanCompanionPresentation extends Presentation {
     }
 
     void setBackgroundFile(String path) { deck.setBackgroundFile(path); }
-    void setPipeSwapMode(boolean enabled) { deck.setPipeSwapMode(enabled); }
+
+    void setPipeSwapMode(boolean enabled) {
+        if (pipeSwapMode == enabled) return;
+        pipeSwapMode = enabled;
+        if (enabled) {
+            // Put the actual interactive deck on the primary screen while the
+            // game frame occupies this secondary Presentation.
+            detachFromParent(deck);
+            host.addContentView(deck, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            setContentView(gameFrameView);
+        } else {
+            // Return the deck to its usual secondary-screen home.
+            detachFromParent(deck);
+            setContentView(deck);
+            gameFrameView.clear();
+        }
+    }
+
     void updateGameFrame(int width, int height, int[] pixels) {
-        deck.updateGameFrame(width, height, pixels);
+        gameFrameView.updateGameFrame(width, height, pixels);
+    }
+
+    private static void detachFromParent(View view) {
+        if (view.getParent() instanceof ViewGroup)
+            ((ViewGroup) view.getParent()).removeView(view);
+    }
+
+    private static final class GameFrameView extends View {
+        private final Paint framePaint = new Paint();
+        private final Paint messagePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private Bitmap frame;
+
+        GameFrameView(Context context) {
+            super(context);
+            framePaint.setFilterBitmap(false);
+            framePaint.setAntiAlias(false);
+            messagePaint.setColor(0xFFEAF5FF);
+            messagePaint.setTextSize(16f);
+            messagePaint.setTextAlign(Paint.Align.CENTER);
+            messagePaint.setTypeface(Typeface.create("monospace", Typeface.BOLD));
+        }
+
+        void updateGameFrame(int width, int height, int[] pixels) {
+            if (width <= 0 || height <= 0 || pixels == null ||
+                (long) width * (long) height != pixels.length ||
+                (long) width * (long) height > 1048576L) return;
+            if (frame == null || frame.isRecycled() ||
+                frame.getWidth() != width || frame.getHeight() != height) {
+                if (frame != null && !frame.isRecycled()) frame.recycle();
+                frame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            }
+            frame.setPixels(pixels, 0, width, 0, 0, width, height);
+            postInvalidateOnAnimation();
+        }
+
+        void clear() {
+            if (frame != null && !frame.isRecycled()) frame.recycle();
+            frame = null;
+            invalidate();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            canvas.drawColor(0xFF07111F);
+            if (frame == null || frame.isRecycled()) {
+                canvas.drawText("Preparing gameplay display…",
+                    getWidth() * 0.5f, getHeight() * 0.5f, messagePaint);
+                return;
+            }
+            float fit = Math.min(getWidth() / (float) frame.getWidth(),
+                                 getHeight() / (float) frame.getHeight());
+            float dw = frame.getWidth() * fit;
+            float dh = frame.getHeight() * fit;
+            float left = (getWidth() - dw) * 0.5f;
+            float top = (getHeight() - dh) * 0.5f;
+            canvas.drawBitmap(frame, null, new RectF(left, top, left + dw, top + dh),
+                              framePaint);
+        }
     }
 
     private static final class DeckView extends View {
@@ -59,9 +142,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private static final int ITEM_USE = 9, BACKGROUND = 10, RESET_BACKGROUND = 11, CLOSE_GAME = 12;
 
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint gameFramePaint = new Paint();
-        private Bitmap gameFrame;
-        private boolean pipeSwapMode;
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
         private boolean paused, itemPressed;
         private long itemPressStart, itemReleaseStart;
@@ -97,28 +177,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
             this.filter = Math.max(0, Math.min(FILTERS.length - 1, filter));
             this.item = item;
             postInvalidate();
-        }
-
-        void setPipeSwapMode(boolean enabled) {
-            if (pipeSwapMode == enabled) return;
-            pipeSwapMode = enabled;
-            if (!enabled && gameFrame != null) {
-                gameFrame.recycle();
-                gameFrame = null;
-            }
-            postInvalidate();
-        }
-
-        void updateGameFrame(int width, int height, int[] pixels) {
-            if (width <= 0 || height <= 0 || pixels == null ||
-                (long)width * (long)height != pixels.length) return;
-            if (gameFrame == null || gameFrame.isRecycled() ||
-                gameFrame.getWidth() != width || gameFrame.getHeight() != height) {
-                if (gameFrame != null && !gameFrame.isRecycled()) gameFrame.recycle();
-                gameFrame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            }
-            gameFrame.setPixels(pixels, 0, width, 0, 0, width, height);
-            if (pipeSwapMode) postInvalidateOnAnimation();
         }
 
         void setBackgroundFile(String path) {
@@ -216,30 +274,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
-            if (pipeSwapMode) {
-                c.drawColor(0xFF07111F);
-                if (gameFrame != null && !gameFrame.isRecycled()) {
-                    gameFramePaint.setFilterBitmap(false);
-                    gameFramePaint.setAntiAlias(false);
-                    float fit = Math.min(getWidth() / (float)gameFrame.getWidth(),
-                                         getHeight() / (float)gameFrame.getHeight());
-                    float dw = gameFrame.getWidth() * fit;
-                    float dh = gameFrame.getHeight() * fit;
-                    float left = (getWidth() - dw) * 0.5f;
-                    float top = (getHeight() - dh) * 0.5f;
-                    c.drawBitmap(gameFrame, null, new RectF(left, top, left + dw, top + dh),
-                                 gameFramePaint);
-                } else {
-                    p.setColor(0xFFFFFFFF);
-                    p.setTextSize(16f);
-                    p.setTextAlign(Paint.Align.CENTER);
-                    c.drawText("Waiting for gameplay frame…", getWidth() * 0.5f,
-                               getHeight() * 0.5f, p);
-                    p.setTextAlign(Paint.Align.LEFT);
-                }
-                postInvalidateDelayed(33);
-                return;
-            }
             boolean portrait = getHeight() > getWidth();
             float w = portrait ? 450f : 800f, h = portrait ? 800f : 450f;
             float scale = Math.min(getWidth() / w, getHeight() / h);
