@@ -630,7 +630,7 @@ static int np_ws_read_line(NetSocket sock, char *out, size_t cap)
             length = 0;
             for (int i = 0; i < 8; ++i) length = (length << 8) | extended[i];
         }
-        if (length > sizeof payload || length + 1 > cap || length > 2048) return 0;
+        if (length > sizeof payload || length + 1 > cap) return 0;
         if (masked && !np_tls_read_exact(sock, mask, sizeof mask)) return 0;
         if (length && !np_tls_read_exact(sock, payload, (size_t)length)) return 0;
         if (masked)
