@@ -31,10 +31,75 @@
 #include "dev_diag.h"
 #include "widescreen.h"
 #include <SDL_image.h>
+#if defined(__ANDROID__)
+#include <jni.h>
+#include <SDL_system.h>
+#endif
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
 static int win_w = 1100, win_h = 720;
+static int companion_rewind_held;
+#define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
+#define PIPECLEAN_COMPANION_SAVE 1
+#define PIPECLEAN_COMPANION_LOAD 2
+#define PIPECLEAN_COMPANION_PAUSE 3
+#define PIPECLEAN_COMPANION_REWIND 4
+#define PIPECLEAN_COMPANION_PALETTE 5
+#define PIPECLEAN_COMPANION_FILTER 6
+#define PIPECLEAN_COMPANION_SLOT_PREV 7
+#define PIPECLEAN_COMPANION_SLOT_NEXT 8
+
+#if defined(__ANDROID__)
+JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionAction(
+    JNIEnv *env, jclass cls, jint action, jint pressed)
+{
+    (void)env; (void)cls;
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_USEREVENT;
+    event.user.code = PIPECLEAN_COMPANION_EVENT_CODE;
+    event.user.data1 = (void *)(intptr_t)action;
+    event.user.data2 = (void *)(intptr_t)pressed;
+    (void)SDL_PushEvent(&event);
+}
+
+static void companion_publish_state(int game, const Frame *frame, int paused)
+{
+    static unsigned tick;
+    if (++tick < 6) return;
+    tick = 0;
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIII)V");
+    if (method) {
+        int lives = 0, stage = -1, world = -1;
+        if (frame && (game == GAME_SML || game == GAME_SML2)) {
+            uint8_t bcd = frame->p1_lives;
+            int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
+            lives = (tens <= 9 && ones <= 9) ? tens * 10 + ones : bcd;
+            if (frame->level_id != 0xFF) stage = frame->level_id;
+            if (game == GAME_SML && frame->level_bank != 0xFF) world = frame->level_bank;
+        }
+        (void)(*env)->CallVoidMethod(env, activity, method,
+            (jint)game, (jint)lives, (jint)stage, (jint)world,
+            (jint)paused, (jint)settings.g[game].state_slot,
+            (jint)settings.g[game].palette, (jint)settings.flt.preset, (jint)0);
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+#else
+static void companion_publish_state(int game, const Frame *frame, int paused)
+{
+    (void)game; (void)frame; (void)paused;
+}
+#endif
 static SDL_FingerID launcher_touch_finger;
 static int launcher_touch_active, launcher_touch_pointer;
 
@@ -518,6 +583,57 @@ static int app_rewind_held(int g)
            pad_binding_down(g, ACT_REWIND);
 }
 
+static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *quit)
+{
+    if (!e || e->type != SDL_USEREVENT || e->user.code != PIPECLEAN_COMPANION_EVENT_CODE)
+        return 0;
+    int action = (int)(intptr_t)e->user.data1;
+    int pressed = (int)(intptr_t)e->user.data2;
+    if (g < 0 || g >= N_GAMES) return 1;
+    if (action == PIPECLEAN_COMPANION_REWIND) {
+        companion_rewind_held = pressed != 0;
+        return 1;
+    }
+    if (!pressed) return 1;
+    switch (action) {
+    case PIPECLEAN_COMPANION_SAVE:
+        if (netplay_is_connected()) game_notice("Save from the second screen is disabled during online co-op.");
+        else (void)game_state_save(g, paused ? *paused : 0);
+        break;
+    case PIPECLEAN_COMPANION_LOAD:
+        if (netplay_is_connected()) game_notice("Load from the second screen is disabled during online co-op.");
+        else load_state_request_app[g] = 1;
+        break;
+    case PIPECLEAN_COMPANION_PAUSE:
+        if (netplay_is_connected()) game_notice("Pause is disabled during online co-op.");
+        else if (paused) {
+            *paused = !*paused;
+            emu_set_paused(*paused);
+            game_notice(*paused ? "Game paused." : "Game resumed.");
+        }
+        break;
+    case PIPECLEAN_COMPANION_PALETTE:
+        settings.g[g].palette = (settings.g[g].palette + 1) % n_palettes;
+        render_reset(); settings_save();
+        break;
+    case PIPECLEAN_COMPANION_FILTER:
+        filter_preset(&settings.flt, (settings.flt.preset + 1) % n_filter_presets);
+        render_reset(); settings_save();
+        break;
+    case PIPECLEAN_COMPANION_SLOT_PREV:
+        settings.g[g].state_slot = (settings.g[g].state_slot + 9) % 10;
+        settings_save(); game_notice("Previous save slot selected.");
+        break;
+    case PIPECLEAN_COMPANION_SLOT_NEXT:
+        settings.g[g].state_slot = (settings.g[g].state_slot + 1) % 10;
+        settings_save(); game_notice("Next save slot selected.");
+        break;
+    default: break;
+    }
+    (void)quit;
+    return 1;
+}
+
 enum {
     DS_MENU_SAVE, DS_MENU_LOAD, DS_MENU_SLOT_PLUS, DS_MENU_REWIND,
     DS_MENU_SLOT_MINUS, DS_MENU_SUSPEND, DS_MENU_PAUSE,
@@ -850,6 +966,7 @@ static void draw_coop_hud(int game, const Frame *f)
 static int play_multiplayer(int g)
 {
     touch_reset_all();
+    companion_rewind_held = 0;
     ds_menu_close();
     GameCfg *c = &settings.g[g];
     int online = netplay_is_connected();
@@ -952,6 +1069,7 @@ static int play_multiplayer(int g)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (companion_handle_event(g, &e, &paused, &quit)) continue;
             if (dev_diag_handle_event(&e)) continue;
             if (e.type == SDL_WINDOWEVENT &&
                 e.window.event == SDL_WINDOWEVENT_CLOSE &&
@@ -1052,7 +1170,7 @@ static int play_multiplayer(int g)
         }
 
         int ds_rewinding = !online && ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND;
-        int now_rewind = !online && app_rewind_held(g) && !paused;
+        int now_rewind = !online && (app_rewind_held(g) || companion_rewind_held) && !paused;
         if (ds_rewinding) {
             emu_rewind_step();
             emu_mp_frame_refresh(f);
@@ -1230,6 +1348,8 @@ static int play_multiplayer(int g)
             pad_set_screen_color(render_avg_color());
         }
 
+        companion_publish_state(g, f, paused);
+        companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (have) {
@@ -1393,6 +1513,7 @@ static int play_external_game(int g)
 static int play(int g)
 {
     touch_reset_all();
+    companion_rewind_held = 0;
     ds_menu_close();
     if (g < 0 || g >= N_GAMES) return 0;
     int online = netplay_is_connected();
@@ -1472,6 +1593,7 @@ static int play(int g)
         if (emu_cpu_faulted()) { quit = 1; break; }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (companion_handle_event(g, &e, &paused, &quit)) continue;
             touch_handle_event(&e);
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
@@ -1499,7 +1621,7 @@ static int play(int g)
             emu_rewind_step();
             if (emu_frame_get(f)) have = 1;
         }
-        int now_rewind = app_rewind_held(g) && !paused;
+        int now_rewind = (app_rewind_held(g) || companion_rewind_held) && !paused;
         if (now_rewind) {
             if (!rewind_held) {
                 if (emu_rewind_available()) {

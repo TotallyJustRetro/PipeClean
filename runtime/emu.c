@@ -90,6 +90,17 @@ static void publish(void)
     pub.w = ppu_w; pub.xoff = ppu_xoff;
     pub.player_x = rd8(0xC202); pub.player_y = rd8(0xC201);
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
+    pub.level_id = 0xFF; pub.level_bank = 0xFF; pub.p1_lives = 0;
+    int active_game = rom_loaded_game();
+    if (active_game == GAME_SML) {
+        uint8_t world_level = rd8(0xFFB4); /* Packed BCD: high nibble world, low nibble level. */
+        pub.p1_lives = rd8(0xDA15);
+        pub.level_bank = (uint8_t)(world_level >> 4);
+        pub.level_id = (uint8_t)(world_level & 0x0Fu);
+    } else if (active_game == GAME_SML2) {
+        pub.p1_lives = rd8(0xA22C);
+        pub.level_id = rd8(0xA269);
+    }
     pub.obp0 = ppu_read(0x48); pub.obp1 = ppu_read(0x49); pub.sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     memcpy(pub.mario_oam, &oam[0x0C], sizeof pub.mario_oam);
     memcpy(pub.bg_map, &vram[0x1800], sizeof pub.bg_map);
@@ -856,6 +867,7 @@ void emu_mp_frame_refresh(Frame *frame)
         return;
     }
     mp_capture_frame(frame, 0);
+    { uint8_t world_level = rd8(0xFFB4); frame->level_bank = (uint8_t)(world_level >> 4); frame->level_id = (uint8_t)(world_level & 0x0Fu); }
     if (mp_p2_spawned && mp_p2_lives > 0) {
         memcpy(frame->mario_oam2, mp_p2_state.mario_oam, sizeof frame->mario_oam2);
         memcpy(frame->p2_projectile_oam, mp_p2_state.projectile_oam, sizeof frame->p2_projectile_oam);
@@ -1738,6 +1750,8 @@ static void mp_sml2_capture_frame(Frame *frame)
     /* SML2 maps its character as four 8x8 OAM entries. */
     frame->sprite_size16 = 0;
     frame->game_state = 0;
+    frame->level_id = rd8(0xA269);
+    frame->level_bank = 0xFF;
     frame->p1_lives = rd8(0xA22C);
     frame->mp_player_lives[0] = (uint8_t)mp_sml2_bcd_to_int(rd8(0xA22C));
     frame->mp_player_game_state[0] = 0;
