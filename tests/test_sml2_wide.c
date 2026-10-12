@@ -151,7 +151,24 @@ int main(void)
     test_hram[0xFFD3 - 0xFF80] = 0x00; /* actor Y = 72 */
     test_hram[0xFFD4 - 0xFF80] = 0x48;
     test_hram[0xFFDB - 0xFF80] = 0;
+    test_hram[0xFF43 - 0xFF80] = 0x30; /* SCX aligned with camera X = $0280 */
     test_hram[0xFFE2 - 0xFF80] = 0;
+
+    /* Widened actors beyond the native strip must not wrap into its centre:
+       $A2B1 is overridden only from the real actor-draw bank/call site. */
+    cpu.pc = 0x409E;
+    if (wide_read_sml2(0xA2B1, 0xAA) != 0x58) return 39; /* X=520 -> rel=-40 */
+    test_hram[0xFFD1 - 0xFF80] = 0x80; /* X=640 -> rel=80: keep native draw */
+    if (wide_read_sml2(0xA2B1, 0xAA) != 0xAA) return 40;
+    test_hram[0xFFD0 - 0xFF80] = 0x03;
+    test_hram[0xFFD1 - 0xFF80] = 0x20; /* X=800 -> rel=240 */
+    if (wide_read_sml2(0xA2B1, 0xAA) != 0x70) return 41;
+    cpu.pc = 0x4080; /* Never alter unrelated reads. */
+    if (wide_read_sml2(0xA2B1, 0xAA) != 0xAA) return 42;
+
+    /* Restore X=520 for the margin metasprite-capture test below. */
+    test_hram[0xFFD0 - 0xFF80] = 0x02;
+    test_hram[0xFFD1 - 0xFF80] = 0x08;
     rom[0xC0B1] = 0x00; rom[0xC0B2] = 0x41; /* bank-3 pointer -> $4100 */
     rom[0xC100] = 0x00;
     rom[0xC101] = 0x00;
