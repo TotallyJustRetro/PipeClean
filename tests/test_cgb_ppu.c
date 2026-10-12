@@ -85,5 +85,11 @@ int main(void)
     ppu_tick(252);
     assert(ppu_w == 384);
     assert(ppu_xoff == 192);
+
+    /* Returning to the normal SML2 window setup restores slider-controlled width. */
+    ppu_write(0x4B, 7);
+    ppu_tick(70224);
+    assert(ppu_w == 242);
+    assert(ppu_xoff == 49);
     return 0;
 }
