@@ -49,6 +49,7 @@ static int companion_rewind_held;
 #define PIPECLEAN_COMPANION_FILTER 6
 #define PIPECLEAN_COMPANION_SLOT_PREV 7
 #define PIPECLEAN_COMPANION_SLOT_NEXT 8
+#define PIPECLEAN_COMPANION_ITEM_USE 9
 
 #if defined(__ANDROID__)
 JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionAction(
@@ -651,6 +652,11 @@ static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *q
     case PIPECLEAN_COMPANION_SLOT_NEXT:
         settings.g[g].state_slot = (settings.g[g].state_slot + 1) % 10;
         settings_save(); game_notice("Next save slot selected.");
+        break;
+    case PIPECLEAN_COMPANION_ITEM_USE:
+        /* The emulation thread applies the stored power-up using the game's
+         * own item state/object mechanics. Empty slots safely do nothing. */
+        emu_reserve_item_use();
         break;
     default: break;
     }
