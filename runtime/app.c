@@ -74,9 +74,11 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
     if (!env || !activity) return;
     jclass cls = (*env)->GetObjectClass(env, activity);
     if (!cls) return;
-    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIII)V");
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIII)V");
     if (method) {
         int lives = 0, stage = -1, world = -1;
+        int dual_screen = (game == GAME_SML || game == GAME_SML2)
+            ? settings.g[game].dual_screen : 0;
         if (frame && (game == GAME_SML || game == GAME_SML2)) {
             uint8_t bcd = frame->p1_lives;
             int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
@@ -88,7 +90,7 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             (jint)game, (jint)lives, (jint)stage, (jint)world,
             (jint)paused, (jint)settings.g[game].state_slot,
             (jint)settings.g[game].palette, (jint)settings.flt.preset,
-            (jint)(frame ? frame->reserve_item : 0));
+            (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen);
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
     } else if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
@@ -100,6 +102,27 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
 {
     (void)game; (void)frame; (void)paused;
 }
+#endif
+
+#if defined(__ANDROID__)
+static void companion_set_display_enabled(int enabled)
+{
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "setCompanionEnabled", "(Z)V");
+    if (method) {
+        (*env)->CallVoidMethod(env, activity, method, enabled ? JNI_TRUE : JNI_FALSE);
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+#else
+static void companion_set_display_enabled(int enabled) { (void)enabled; }
 #endif
 static SDL_FingerID launcher_touch_finger;
 static int launcher_touch_active, launcher_touch_pointer;
@@ -1350,7 +1373,6 @@ static int play_multiplayer(int g)
         }
 
         companion_publish_state(g, f, paused);
-        companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (have) {
@@ -1390,6 +1412,7 @@ static int play_multiplayer(int g)
         SDL_RenderPresent(ren);
     }
 
+    companion_set_display_enabled(0);
     touch_reset_game(g);
     if (online) netplay_game_end();
     dev_diag_end(quit == 2 ? "main window closed" : "multiplayer exited");

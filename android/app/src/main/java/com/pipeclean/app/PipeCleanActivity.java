@@ -26,6 +26,7 @@ public final class PipeCleanActivity extends SDLActivity {
     private static volatile int pendingKind;
     private DisplayManager companionDisplayManager;
     private PipeCleanCompanionPresentation companionPresentation;
+    private boolean companionEnabled;
 
     private final DisplayManager.DisplayListener companionDisplayListener =
         new DisplayManager.DisplayListener() {
@@ -71,7 +72,10 @@ public final class PipeCleanActivity extends SDLActivity {
     }
 
     private void showCompanionDisplay() {
-        if (companionDisplayManager == null || isFinishing()) return;
+        if (!companionEnabled || companionDisplayManager == null || isFinishing()) {
+            dismissCompanionDisplay();
+            return;
+        }
         Display primary = getDisplay();
         int primaryId = primary != null ? primary.getDisplayId() : Display.DEFAULT_DISPLAY;
         Display target = null, fallback = null;
@@ -111,12 +115,25 @@ public final class PipeCleanActivity extends SDLActivity {
 
     /** Native game-loop status bridge; UI work is moved onto Android's main thread. */
     public void updateCompanionState(int game, int lives, int stage, int world,
-                                     int paused, int slot, int palette, int filter, int item) {
+                                     int paused, int slot, int palette, int filter,
+                                     int item, int dualScreenEnabled) {
         runOnUiThread(() -> {
+            companionEnabled = dualScreenEnabled != 0 && (game == 1 || game == 2);
+            if (companionEnabled) showCompanionDisplay();
+            else dismissCompanionDisplay();
             if (companionPresentation != null) {
                 companionPresentation.updateState(game, lives, stage, world,
                     paused != 0, slot, palette, filter, item);
             }
+        });
+    }
+
+    /** Called when gameplay exits so the second screen returns to the system display. */
+    public void setCompanionEnabled(boolean enabled) {
+        runOnUiThread(() -> {
+            companionEnabled = enabled;
+            if (companionEnabled) showCompanionDisplay();
+            else dismissCompanionDisplay();
         });
     }
 

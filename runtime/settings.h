@@ -56,6 +56,7 @@ typedef struct {
     int bg_dim;                         /* 0..80 percent darkening of the background image */
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
+    int dual_screen;                    /* Show the Android second-screen deck for this game. */
     int multiplayer;                    /* local multiplayer mode; default off */
     int multiplayer_players;             /* selected player count, clamped to 2..4 */
     char p2_name[32];                    /* Player 2 default name: Luigi */

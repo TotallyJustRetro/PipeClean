@@ -1091,30 +1091,42 @@ static void sub_display(int g, float x, float y)
     label(x + 18, yy, "Starting window size"); ui_seg(x + 18, yy + 22, 500, 36, size_names, N_SIZE, &c->size);
 
     float rx = x + 548, rw = 260;
+    const int dual_screen_available = g == GAME_SML || g == GAME_SML2;
+    /* The SML games need one short row for the Thor deck toggle. Keep the
+       other Display pages unchanged, but tighten this preview to make room. */
+    const float look_compact = dual_screen_available ? 40.0f : 0.0f;
     card(rx, y, rw, 476, "LOOK");
-    draw_preview(g, rx + 16, y + 40, rw - 32, 190, 1);
-    label(rx + 18, y + 246, "Background picture");
-    path_box(rx + 18, y + 268, rw - 36, c->bg_path, "None (solid colour)");
-    if (ui_button(rx + 18, y + 312, 110, 34, "Choose…", B_NORMAL, 1)) {
+    draw_preview(g, rx + 16, y + 40, rw - 32, 190 - look_compact, 1);
+    label(rx + 18, y + 246 - look_compact, "Background picture");
+    path_box(rx + 18, y + 268 - look_compact, rw - 36, c->bg_path, "None (solid colour)");
+    if (ui_button(rx + 18, y + 312 - look_compact, 110, 34, "Choose…", B_NORMAL, 1)) {
         char p[1100];
         if (dlg_pick(DLG_IMAGE, "Choose a background picture", p, sizeof p)) { snprintf(c->bg_path, sizeof c->bg_path, "%s", p); ensure_background(g); if (bg_msg[0]) launcher_toast(bg_msg); }
     }
-    if (ui_button(rx + 136, y + 312, 106, 34, "Remove", B_GHOST, c->bg_path[0] != 0)) { c->bg_path[0] = 0; ensure_background(g); }
+    if (ui_button(rx + 136, y + 312 - look_compact, 106, 34, "Remove", B_GHOST, c->bg_path[0] != 0)) { c->bg_path[0] = 0; ensure_background(g); }
     char t[64];
     if (bg_frames() > 1) snprintf(t, sizeof t, "Animated, %d frames", bg_frames());
     else snprintf(t, sizeof t, "PNG, JPG, BMP, TGA or animated GIF");
-    ui_text_fit(F_REG, 11, rx + 18, y + 354, rw - 36, C_DIM, t);
-    label(rx + 18, y + 380, "Darken background"); snprintf(t, sizeof t, "%d%%", c->bg_dim); ui_text_r(F_REG, 13, rx + rw - 18, y + 380, C_TEXT, t);
-    ui_slider(rx + 22, y + 402, rw - 44, &c->bg_dim, 0, 80);
+    ui_text_fit(F_REG, 11, rx + 18, y + 354 - look_compact, rw - 36, C_DIM, t);
+    label(rx + 18, y + 380 - look_compact, "Darken background"); snprintf(t, sizeof t, "%d%%", c->bg_dim); ui_text_r(F_REG, 13, rx + rw - 18, y + 380 - look_compact, C_TEXT, t);
+    ui_slider(rx + 22, y + 402 - look_compact, rw - 44, &c->bg_dim, 0, 80);
     if (games[g].wide_l + games[g].wide_r > 0) {
-        label(rx + 18, y + 428, "Widescreen");
-        snprintf(t, sizeof t, "%d%%", c->wide); ui_text_r(F_REG, 13, rx + rw - 18, y + 428, C_TEXT, t);
-        if (ui_slider(rx + 22, y + 450, rw - 44, &c->wide, 0, 100)) wide_dirty = g + 1;
-        hint_area(rx + 18, y + 424, rw - 36, 40, "Shows more of the level on the sides. 0% is the original 10:9 screen.");
-        if (wide_note[g]) ui_text_fit(F_REG, 11, rx + 18, y + 468 - 6, rw - 36, C_WARN, "This ROM version isn't supported for widescreen.");
+        label(rx + 18, y + 428 - look_compact, "Widescreen");
+        snprintf(t, sizeof t, "%d%%", c->wide); ui_text_r(F_REG, 13, rx + rw - 18, y + 428 - look_compact, C_TEXT, t);
+        if (ui_slider(rx + 22, y + 450 - look_compact, rw - 44, &c->wide, 0, 100)) wide_dirty = g + 1;
+        hint_area(rx + 18, y + 424 - look_compact, rw - 36, 40, "Shows more of the level on the sides. 0% is the original 10:9 screen.");
+        if (wide_note[g]) ui_text_fit(F_REG, 11, rx + 18, y + 468 - 6 - look_compact, rw - 36, C_WARN, "This ROM version isn't supported for widescreen.");
     } else {
-        label(rx + 18, y + 428, "Widescreen");
-        ui_text(F_REG, 12, rx + 18, y + 450, C_DIM, "Not available for this game");
+        label(rx + 18, y + 428 - look_compact, "Widescreen");
+        ui_text(F_REG, 12, rx + 18, y + 450 - look_compact, C_DIM, "Not available for this game");
+    }
+    if (dual_screen_available) {
+        label(rx + 18, y + 438, "Dual Screen");
+        if (ui_toggle(rx + rw - 62, y + 436, &c->dual_screen)) settings_save();
+        ui_text_fit(F_REG, 10, rx + 18, y + 462, rw - 36, C_DIM,
+                    "AYN Thor lower-screen deck (Android).");
+        if (ui_hover(rx + 18, y + 434, rw - 36, 40))
+            ui_hint("Shows the PipeClean control deck on a detected second display while this game is running.");
     }
 }
 

@@ -24,7 +24,7 @@ The native build creates a synthetic build-only ROM because PipeClean's generato
 
 ## What's present vs. still pending
 
-- Present in code: desktop player color wheel, persistent RGB colors for local extra players, shared Online/profile tab, Android project/manifest scaffold, SDL2 CMake Android target, storage-access-framework file picker, writable Android preference/save directory, and multi-touch gameplay overlay.
+- Present in code: desktop player color wheel, persistent RGB colors for local extra players, shared Online/profile tab, Android project/manifest scaffold, SDL2 CMake Android target, storage-access-framework file picker, writable Android preference/save directory, multi-touch gameplay overlay, and an opt-in per-game second-screen deck for Super Mario Land 1 and 2 (Display tab).
 - Touch control preference: enabled by default. Use Online -> On-screen touch controls to disable it when using a controller. The UI and wheel are also touch-driven on Android.
 - Still pending: verify that the Gradle/NDK build produces an APK, test on Android hardware, handle lifecycle/audio/storage edge cases, and make session hosting/joining real.
 - Online isn't connected yet: the host/join buttons are deliberately marked offline. Session codes, a public relay, game-state synchronization, player roster, and chat are not implemented by the current branch.
