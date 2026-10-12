@@ -16,8 +16,8 @@ void wide_sml2_homeworld_dims_from_camera(int scx, int extra_total,
 {
     (void)scx; /* The simulated camera is at X=320, aligned to SCX=64. */
     if (!left || !right) return;
-    *left = extra_total * 6 / 7;
-    *right = extra_total - *left;
+    *left = extra_total - 32;
+    *right = 32;
 }
 
 static void set_bg_color(unsigned index, unsigned rgb555)
@@ -73,7 +73,7 @@ int main(void)
     ppu_tick(252);
     assert(ppu_shade[0][0] == 1);
 
-    /* The Homeworld must switch to its 384px output canvas at frame start,
+    /* The Homeworld must switch to its full 512px map canvas at frame start,
        without changing regular SML2 scenes' configured width. */
     ppu_reset();
     ppu_set_cgb_mode(0);
@@ -83,8 +83,8 @@ int main(void)
     ppu_write(0x4B, 80);   /* WX */
     ppu_write(0x40, 0xE3); /* Homeworld LCDC/window setup */
     ppu_tick(252);
-    assert(ppu_w == 384);
-    assert(ppu_xoff == 192);
+    assert(ppu_w == 512);
+    assert(ppu_xoff == 320);
 
     /* Returning to the normal SML2 window setup restores slider-controlled width. */
     ppu_write(0x4B, 7);
