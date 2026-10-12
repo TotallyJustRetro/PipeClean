@@ -68,7 +68,7 @@ jobs:
           cp build-dev/PipeClean dist/PipeClean-Dev-Linux-x64/PipeClean
           cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Dev-Linux-x64/assets/
           cp README.md INSTALL.md LEGAL.md THIRD_PARTY.md dist/PipeClean-Dev-Linux-x64/
-          printf '%s\\n' \
+          printf '%s\n' \
             'PipeClean Linux dependencies:' \
             '  - SDL2 runtime (SDL2 2.x)' \
             '  - SDL2_image runtime' \
