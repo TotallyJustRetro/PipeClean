@@ -112,7 +112,7 @@ static const TouchRegion touch_regions[] = {
     {UI_W - 148, UI_H - 218, 64, 64, 0x01, 0, "A"},
     {UI_W - 230, UI_H - 144, 64, 64, 0x02, 0, "B"},
     {UI_W - 340, UI_H - 66, 70, 50, 0x04, 0, "SEL"},
-    {UI_W - 260, UI_H - 66, 80, 50, 0x08, "START"}
+    {UI_W - 260, UI_H - 66, 80, 50, 0x08, 0, "START"}
 };
 #else
 static const TouchRegion touch_regions[] = {
@@ -123,7 +123,7 @@ static const TouchRegion touch_regions[] = {
     {UI_W - 130, UI_H - 188, 56, 56, 0x01, 0, "A"},
     {UI_W - 205, UI_H - 131, 56, 56, 0x02, 0, "B"},
     {UI_W - 315, UI_H - 72, 45, 34, 0x04, 0, "SEL"},
-    {UI_W - 258, UI_H - 72, 54, 34, 0x08, "START"}
+    {UI_W - 258, UI_H - 72, 54, 34, 0x08, 0, "START"}
 };
 #endif
 
