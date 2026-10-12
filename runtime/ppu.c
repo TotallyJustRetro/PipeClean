@@ -32,6 +32,7 @@ uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
+#define SML2_HOME_CAMERA_X  0xA680u
 #define SML2_HOME_WIDE_LEFT  112
 #define SML2_HOME_WIDE_RIGHT 112
 void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
