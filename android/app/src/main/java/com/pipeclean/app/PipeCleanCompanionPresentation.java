@@ -221,7 +221,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if (gameFrame != null && !gameFrame.isRecycled()) {
                     gameFramePaint.setFilterBitmap(false);
                     gameFramePaint.setAntiAlias(false);
-                    c.drawBitmap(gameFrame, null, new RectF(0, 0, getWidth(), getHeight()),
+                    float fit = Math.min(getWidth() / (float)gameFrame.getWidth(),
+                                         getHeight() / (float)gameFrame.getHeight());
+                    float dw = gameFrame.getWidth() * fit;
+                    float dh = gameFrame.getHeight() * fit;
+                    float left = (getWidth() - dw) * 0.5f;
+                    float top = (getHeight() - dh) * 0.5f;
+                    c.drawBitmap(gameFrame, null, new RectF(left, top, left + dw, top + dh),
                                  gameFramePaint);
                 } else {
                     p.setColor(0xFFFFFFFF);
