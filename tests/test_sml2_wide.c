@@ -15,12 +15,13 @@ uint8_t vram[0x2000];
 static uint8_t test_level_map[0x3000];
 static uint8_t test_block_defs[0x200];
 static uint8_t test_hram[0x80];
+static uint16_t test_camera_x = 640;
 
 uint8_t rd8(uint16_t a)
 {
-    /* Camera X = 640, camera Y = 72 (native view begins at world Y=0). */
-    if (a == 0xFFCA) return 0x80;
-    if (a == 0xFFCB) return 0x02;
+    /* Camera X defaults to 640, camera Y = 72 (native view begins at world Y=0). */
+    if (a == 0xFFCA) return (uint8_t)test_camera_x;
+    if (a == 0xFFCB) return (uint8_t)(test_camera_x >> 8);
     if (a == 0xFFC8) return 0x48;
     if (a == 0xFFC9) return 0;
     if (a == 0xFF9B) return 0x04; /* SML2 scrolling gameplay */
@@ -108,6 +109,15 @@ int main(void)
         wide_read_sml2(0xAF1B, 0) != 0x41 ||
         wide_read_sml2(0xAF1C, 0) != 0x01 ||
         wide_read_sml2(0xAF1D, 0) != 0xAF) return 23;
+
+    /* The widened windows must saturate at the level start, not wrap a
+       negative lower bound to $FFxx and spuriously cull nearby actors. */
+    test_camera_x = 80;
+    if (wide_read_sml2(0xAF0C, 0xFF) != 0x00 ||
+        wide_read_sml2(0xAF0D, 0xFF) != 0x00 ||
+        wide_read_sml2(0xAF1C, 0xFF) != 0x00 ||
+        wide_read_sml2(0xAF1D, 0xFF) != 0x00) return 43;
+    test_camera_x = 640;
 
     /* Enemy spawn scan: the widened edge must advance in <=8 px steps
      * so the ROM cannot consume a spawn-list entry between frames. */
