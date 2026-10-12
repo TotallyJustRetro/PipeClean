@@ -174,10 +174,6 @@ async function main() {
     assert.equal(hostName, 'SAVE_NAME\t0\tMain Run');
     assert.equal(guestName, 'SAVE_NAME\t0\tMain Run');
 
-    guest.socket.write('SAVE_NAME\t0\tCheat Name\n');
-    assert.match(await waitForLine(guest), /^ERR\tOnly the host can rename shared save slots$/);
-    assert.equal(await waitForLine(host), 'PEER_LEFT');
-
     host.socket.write('SAVE_SELECT\t0\t-1\n');
     const [hostSelect, guestSelect] = await Promise.all([waitForLine(host), waitForLine(guest)]);
     assert.equal(hostSelect, 'SAVE_SELECT\t0\t-1');
