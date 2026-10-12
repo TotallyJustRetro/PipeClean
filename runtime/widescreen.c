@@ -165,9 +165,24 @@ void wide_sml2_homeworld_dims_from_camera(int scx, int extra_total,
     wide_sml2_homeworld_dims(screen_left, extra_total, left, right);
 }
 
+/* Return the live Homeworld camera origin, aligned to the PPU scroll registers.
+ * The overview renderer uses it only to position the currently animated player
+ * and other live OAM sprites over the full static map. */
+int wide_sml2_homeworld_camera(int scx, int scy, int *camera_x, int *camera_y)
+{
+    if (!camera_x || !camera_y || !sml2_compositor_installed) return 0;
+    int x = sml2_read16(SML2_HOME_CAMERA_X);
+    int y = sml2_read16(SML2_HOME_CAMERA_Y);
+    x += (int8_t)(uint8_t)(scx - (x & 0xFF));
+    y += (int8_t)(uint8_t)(scy - (y & 0xFF));
+    *camera_x = x;
+    *camera_y = y;
+    return 1;
+}
+
 /* Homeworld is stored as raw 8x8 tile IDs, unlike the 16x16 block map
  * used by side-scrolling levels. Do not decode those bytes through $A600. */
-static int sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
+int wide_sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
 {
     if (!sml2_compositor_installed || !tile ||
         world_x < 0 || world_x >= SML2_HOME_MAP_WIDTH ||
@@ -212,7 +227,7 @@ void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
         for (int sy = first_y; sy < 136; sy += 8) {
             for (int sx = first_x; sx < 160; sx += 8) {
                 uint8_t decoded;
-                if (!sml2_homeworld_tile_at(screen_left + sx, world_top + sy,
+                if (!wide_sml2_homeworld_tile_at(screen_left + sx, world_top + sy,
                                            &decoded))
                     return;
                 unsigned map_index = (unsigned)map_off +
@@ -288,7 +303,7 @@ int wide_sml2_margin_tile(int screen_x, int screen_y, uint8_t *tile,
     *world_x = x;
     *world_y = y;
     if (sml2_compositor_homeworld) {
-        if (!sml2_homeworld_tile_at(x, y, tile)) return -1;
+        if (!wide_sml2_homeworld_tile_at(x, y, tile)) return -1;
     } else if (!wide_sml2_tile_at(x, y, tile)) {
         return -1;
     }
