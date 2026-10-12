@@ -4,6 +4,22 @@
 uint8_t io_if, io_ie;
 void frame_hook(void) {}
 
+/* These stubs let the standalone PPU test exercise Homeworld's special output
+ * layout without linking the full emulator or cartridge-memory implementation. */
+int wide_sml2_homeworld_active(int lcdc, int wx, int wy)
+{
+    return lcdc == 0xE3 && wx == 80 && wy == 0x88;
+}
+
+void wide_sml2_homeworld_dims_from_camera(int scx, int extra_total,
+                                          int *left, int *right)
+{
+    (void)scx; /* The simulated camera is at X=320, aligned to SCX=64. */
+    if (!left || !right) return;
+    *left = extra_total * 6 / 7;
+    *right = extra_total - *left;
+}
+
 static void set_bg_color(unsigned index, unsigned rgb555)
 {
     ppu_cgb_write(0x68, (uint8_t)(0x80 | (index * 2)));
@@ -56,5 +72,18 @@ int main(void)
     ppu_write(0x40, 0x91);
     ppu_tick(252);
     assert(ppu_shade[0][0] == 1);
+
+    /* The Homeworld must switch to its 384px output canvas at frame start,
+       without changing regular SML2 scenes' configured width. */
+    ppu_reset();
+    ppu_set_cgb_mode(0);
+    ppu_set_wide(49, 33, 0, 0, 0);
+    ppu_write(0x43, 64);  /* SCX */
+    ppu_write(0x4A, 136);  /* WY */
+    ppu_write(0x4B, 80);   /* WX */
+    ppu_write(0x40, 0xE3); /* Homeworld LCDC/window setup */
+    ppu_tick(252);
+    assert(ppu_w == 384);
+    assert(ppu_xoff == 192);
     return 0;
 }
