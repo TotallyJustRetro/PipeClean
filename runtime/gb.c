@@ -187,9 +187,20 @@ uint8_t rd8(uint16_t a)
 static uint16_t watch_lo[MAX_WATCH], watch_hi[MAX_WATCH];
 static int watch_n;
 static void (*watch_cb)(uint16_t, uint8_t, uint8_t);
+static int watch_override_pending;
+static uint16_t watch_override_addr;
+static uint8_t watch_override_value;
+
+void gb_watch_override(uint16_t addr, uint8_t value)
+{
+    watch_override_addr = addr;
+    watch_override_value = value;
+    watch_override_pending = 1;
+}
 
 void gb_watch_set(const uint16_t *addrs, int n, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v))
 {
+    watch_override_pending = 0;
     watch_n = n > MAX_WATCH ? MAX_WATCH : n;
     for (int i = 0; i < watch_n; i++) watch_lo[i] = watch_hi[i] = addrs[i];
     watch_cb = cb;
@@ -215,6 +226,10 @@ void wr8(uint16_t a, uint8_t v)
     if (sml2_clone_global_writes_suppressed &&
         (a == 0xA468 || a == 0xA2CE || a == 0xFF9B)) return;
     if (UNLIKELY(watch_n)) watch_check(a, v);
+    if (watch_override_pending && watch_override_addr == a) {
+        v = watch_override_value;
+        watch_override_pending = 0;
+    }
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
     case 4: case 5: case 6: case 7: cart_write_ctrl(a, v); return;     /* mapper registers */

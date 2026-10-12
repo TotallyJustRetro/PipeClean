@@ -33,6 +33,7 @@ uint8_t rd8(uint16_t a);
 void wr8(uint16_t a, uint8_t v);
 void gb_watch_range(uint16_t lo, uint16_t hi, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
 void gb_watch_set(const uint16_t *addrs, int n, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
+void gb_watch_override(uint16_t addr, uint8_t value); /* Replace the value for the active watched write. */
 
 /* ---- core ---- */
 void gb_reset(void);

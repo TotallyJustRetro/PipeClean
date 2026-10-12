@@ -20,9 +20,9 @@ static SDL_mutex *fmx;
 static Frame pub;                         /* latest published frame */
 
 typedef struct {
-    uint8_t kind;          /* 0 = empty; 1 = reserved mushroom. */
-    uint8_t spawn_pending; /* Preserve deferred spawns across save-state and rewind. */
-    uint8_t object[16];    /* Captured SML1 mushroom object at D190-D19F. */
+    uint8_t kind;          /* 0 = empty; 1 = mushroom, 2 = second power-up, 3 = carrot. */
+    uint8_t spawn_pending; /* SML1 defers respawn until the object slot is free. */
+    uint8_t object[16];    /* Original SML1 power-up record at D190-D19F. */
 } ReserveItemState;
 
 static ReserveItemState reserve_item_state;
@@ -99,7 +99,7 @@ static void publish(void)
     pub.player_x = rd8(0xC202); pub.player_y = rd8(0xC201);
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
     pub.level_id = 0xFF; pub.level_bank = 0xFF; pub.p1_lives = 0;
-    pub.reserve_item = (uint8_t)(rom_loaded_game() == GAME_SML ? reserve_item_state.kind : 0);
+    pub.reserve_item = reserve_item_state.kind;
     int active_game = rom_loaded_game();
     if (active_game == GAME_SML) {
         uint8_t world_level = rd8(0xFFB4); /* Packed BCD: high nibble world, low nibble level. */
@@ -413,39 +413,61 @@ static int reserve_item_gameplay_active(void)
 
 static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
 {
-    if (rom_loaded_game() != GAME_SML || mp_ready || mp_active) return;
-    if (addr == 0xD190 && old_v == 0x29 && new_v == 0xFF &&
-        reserve_item_state.kind == 0 && reserve_item_gameplay_active() &&
-        rd8(0xFFFB) == 0x29 &&
-        (rd8(0xFF99) == 1 || rd8(0xFF99) == 2)) {
-        int dx = (int)rd8(0xD193) - (int)rd8(0xC202);
-        int dy = (int)rd8(0xD192) - (int)rd8(0xC201);
-        if (dx < 0) dx = -dx;
-        if (dx > 128) dx = 256 - dx;
-        if (dy < 0) dy = -dy;
-        /* Ignore mushrooms that disappear off-screen; only reserve a pickup
-         * whose object overlapped Mario during the live collision pass. */
-        if (dx <= 18 && dy <= 16) {
-            reserve_item_state.kind = 1;
+    int game = rom_loaded_game();
+    if (mp_ready || mp_active) return;
+
+    /* SML2 power-up values in $A216 are 1 (mushroom), 2 (fire flower),
+     * and 3 (carrot). Preserve the current form when a new power-up is
+     * collected into an empty reserve; use the reserve when the current
+     * power-up is cleared by damage. */
+    if (game == GAME_SML2 && addr == 0xA216) {
+        if (old_v >= 1 && old_v <= 3 && new_v >= 1 && new_v <= 3 &&
+            reserve_item_state.kind == 0) {
+            reserve_item_state.kind = new_v;
             reserve_item_state.spawn_pending = 0;
-            for (int i = 0; i < 16; i++)
-                reserve_item_state.object[i] = rd8((uint16_t)(0xD190 + i));
-            reserve_item_state.object[0] = 0x29;
+            gb_watch_override(addr, old_v);
+        } else if (old_v >= 1 && old_v <= 3 && new_v == 0 &&
+                   reserve_item_state.kind >= 1 && reserve_item_state.kind <= 3) {
+            uint8_t stored = reserve_item_state.kind;
+            memset(&reserve_item_state, 0, sizeof reserve_item_state);
+            gb_watch_override(addr, stored);
         }
-    } else if (addr == 0xFF99 && reserve_item_state.kind == 1 &&
-               reserve_item_gameplay_active() &&
+        return;
+    }
+
+    if (game != GAME_SML) return;
+    if (addr == 0xD190 && new_v == 0xFF && reserve_item_state.kind == 0 &&
+        reserve_item_gameplay_active() && (rd8(0xFF99) == 1 || rd8(0xFF99) == 2)) {
+        uint8_t kind = old_v == 0x29 ? 1 : (old_v == 0x2E ? 2 : 0);
+        if (kind) {
+            int dx = (int)rd8(0xD193) - (int)rd8(0xC202);
+            int dy = (int)rd8(0xD192) - (int)rd8(0xC201);
+            if (dx < 0) dx = -dx;
+            if (dx > 128) dx = 256 - dx;
+            if (dy < 0) dy = -dy;
+            /* Only capture a live mushroom or flower that overlapped Mario. */
+            if (dx <= 18 && dy <= 16) {
+                reserve_item_state.kind = kind;
+                reserve_item_state.spawn_pending = 0;
+                for (int i = 0; i < 16; i++)
+                    reserve_item_state.object[i] = rd8((uint16_t)(0xD190 + i));
+                reserve_item_state.object[0] = old_v;
+            }
+        }
+    } else if (addr == 0xFF99 && reserve_item_state.kind >= 1 &&
+               reserve_item_state.kind <= 2 && reserve_item_gameplay_active() &&
                (((old_v == 1 || old_v == 2) && new_v == 3) ||
                 (old_v != 0 && new_v == 0))) {
-        /* SML1 marks the hit/injury transition by writing status 3. Queue the
-         * reserve item on impact instead of waiting for the blink timer to end. */
+        /* Queue the original power-up object when SML1 loses the current form. */
         reserve_item_state.spawn_pending = 1;
     }
 }
 
 static void reserve_item_watch_setup(void)
 {
-    static const uint16_t addresses[] = {0xD190, 0xFF99};
-    if (rom_loaded_game() == GAME_SML && !mp_ready && !mp_active)
+    static const uint16_t addresses[] = {0xD190, 0xFF99, 0xA216};
+    int game = rom_loaded_game();
+    if ((game == GAME_SML || game == GAME_SML2) && !mp_ready && !mp_active)
         gb_watch_set(addresses, (int)(sizeof addresses / sizeof addresses[0]), reserve_item_watch);
     else
         gb_watch_set(NULL, 0, NULL);
@@ -462,7 +484,7 @@ static void reserve_item_try_spawn(void)
     int mario_x = rd8(0xC202);
     int item_x = mario_x + 20;
     if (item_x > 0xA0) item_x = mario_x > 20 ? mario_x - 20 : mario_x + 24;
-    object[0] = 0x29;
+    /* Preserve object[0], which identifies the mushroom or flower. */
     object[2] = rd8(0xC201);
     object[3] = (uint8_t)item_x;
     object[4] = 0; /* Reset the object's per-frame state. */
