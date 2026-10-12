@@ -153,26 +153,6 @@ static void log_memory_snapshot(const char *reason)
             state.actor_region_hash, diag.last_render_hash, state.tile_patch_count);
     }
     if (have_ram) {
-        /* Focused SML2 actor-pool view: each slot is 0x20 bytes at $AD00.
-         * Keeping this beside the raw RAM dump makes legitimate slot reuse
-         * distinguishable from two live actor records or a cursor anomaly. */
-        fputs(",\"actor_table\":{\"spawn_cursor\":[", diag.log);
-        fprintf(diag.log, "%u,%u", world_ram[0x71E], world_ram[0x71F]);
-        fputs("],\"slots\":[", diag.log);
-        for (unsigned slot = 0; slot < 16; slot++) {
-            const size_t off = 0x500u + slot * 0x20u;
-            if (slot) fputc(',', diag.log);
-            fprintf(diag.log,
-                "{\"slot\":%u,\"x\":%u,\"y\":%u,"
-                "\"type\":%u,\"state\":%u,\"metasprite\":%u,"
-                "\"animation\":%u}",
-                slot,
-                ((unsigned)world_ram[off] << 8) | world_ram[off + 1],
-                ((unsigned)world_ram[off + 3] << 8) | world_ram[off + 4],
-                world_ram[off + 5], world_ram[off + 8],
-                world_ram[off + 0x0B], world_ram[off + 0x12]);
-        }
-        fputs("]}", diag.log);
         fputs(",\"ram_hex\":{\"A200_A2DF\":\"", diag.log);
         write_hex_bytes(diag.log, player_ram, sizeof player_ram);
         fputs("\",\"A800_BFFF\":\"", diag.log);
