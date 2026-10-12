@@ -1121,12 +1121,22 @@ static void sub_display(int g, float x, float y)
         ui_text(F_REG, 12, rx + 18, y + 450 - look_compact, C_DIM, "Not available for this game");
     }
     if (dual_screen_available) {
-        label(rx + 18, y + 438, "Dual Screen");
-        if (ui_toggle(rx + rw - 62, y + 436, &c->dual_screen)) settings_save();
+        label(rx + 18, y + 438, "Dual");
+        if (ui_toggle(rx + 58, y + 436, &c->dual_screen)) {
+            if (!c->dual_screen) c->pipe_screen_swap = 0;
+            settings_save();
+        }
+        if (g == GAME_SML) {
+            label(rx + 122, y + 438, "Auto Pipe");
+            if (ui_toggle(rx + rw - 54, y + 436, &c->pipe_screen_swap)) settings_save();
+        }
         ui_text_fit(F_REG, 10, rx + 18, y + 462, rw - 36, C_DIM,
-                    "AYN Thor lower-screen deck (Android).");
+                    g == GAME_SML ? "Swap gameplay to the second display during pipe/bonus-room transitions." :
+                                    "AYN Thor lower-screen deck (Android).");
         if (ui_hover(rx + 18, y + 434, rw - 36, 40))
-            ui_hint("Shows the PipeClean control deck on a detected second display while this game is running.");
+            ui_hint(g == GAME_SML
+                ? "Requires Dual Screen. Super Mario Land switches gameplay to the second display during underground/bonus-room states, then switches back on exit."
+                : "Shows the PipeClean companion deck on a detected second display while this game is running.");
     }
 }
 
