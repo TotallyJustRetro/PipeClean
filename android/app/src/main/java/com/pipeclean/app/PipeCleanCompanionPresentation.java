@@ -355,6 +355,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 float u = (now - itemReleaseStart) / 220f;
                 pulse *= 0.87f + 0.13f * (1f - (1f-u)*(1f-u));
             }
+            c.save();
+            c.translate(cx, cy);
+            c.scale(pulse, pulse);
+            c.translate(-cx, -cy);
             // Soft gold aura, layered discs and a pixelated gold orbit.
             p.setStyle(Paint.Style.FILL);
             p.setColor(0x28FFD86A);
@@ -392,16 +396,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
 
             if(itemId>0) {
-                c.save();
-                c.translate(cx,cy);
-                c.scale(pulse,pulse);
-                drawPowerUpGlyph(c,-radius*0.46f,-radius*0.46f,radius*0.92f,itemId);
-                c.restore();
+                drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
             } else {
                 // Empty pocket: softly glowing 8-bit star prompt.
                 drawPixelStar(c,cx,cy,17,0xFFB4A1CB);
                 text(c,"READY",cx,cy+radius*.45f,8,muted(),true);
             }
+            c.restore();
         }
 
         private void drawPowerUpGlyph(Canvas c, float x, float y, float size, int itemId) {
