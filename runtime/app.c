@@ -1112,45 +1112,6 @@ static void draw_coop_hud(int game, const Frame *f)
     }
 }
 
-/* In pipe-swap mode the primary display becomes a compact status deck while
- * the live filtered game frame is shown by Android's secondary Presentation. */
-static void draw_pipe_swap_deck(int game, const Frame *f)
-{
-    float vx = ui_view_x0(), vy = ui_view_y0();
-    float vw = ui_view_w(), vh = ui_view_h();
-    float cx = vx + vw * 0.5f, cy = vy + vh * 0.5f;
-    float pw = fminf(760.0f, vw - 32.0f);
-    float ph = fminf(460.0f, vh - 32.0f);
-    if (pw < 220.0f) pw = vw - 12.0f;
-    if (ph < 200.0f) ph = vh - 12.0f;
-    float px = cx - pw * 0.5f, py = cy - ph * 0.5f;
-
-    ui_rect(vx, vy, vw, vh, HEX(0x0C1320));
-    ui_rrect(px, py, pw, ph, 22.0f, HEX(0x18263A));
-    ui_stroke(px, py, pw, ph, 22.0f, 2.0f, HEX(0x4C8DFF));
-    ui_text_c(F_BOLD, 14.0f, cx, py + 28.0f, HEX(0x8FB8FF), "PIPECLEAN  //  DUAL SCREEN");
-    ui_text_c(F_BOLD, 30.0f, cx, py + 82.0f, HEX(0xF3F7FF), "UNDERGROUND MODE");
-    ui_text_c(F_REG, 15.0f, cx, py + 112.0f, HEX(0xAABAD3), "Gameplay is now on the second display");
-
-    int lives = f ? sml1_bcd_to_int(f->p1_lives) : 0;
-    char stage[64], life_text[40];
-    if (f && f->level_bank != 0xFF && f->level_id != 0xFF)
-        snprintf(stage, sizeof stage, "WORLD %u  -  LEVEL %u",
-                 (unsigned)(f->level_bank & 0x0F), (unsigned)(f->level_id & 0x0F));
-    else snprintf(stage, sizeof stage, "WORLD / LEVEL");
-    snprintf(life_text, sizeof life_text, "MARIO LIVES   x %d", lives);
-
-    ui_rrect(cx - pw * 0.34f, py + 150.0f, pw * 0.68f, 54.0f, 12.0f, HEX(0x263A55));
-    ui_text_c(F_BOLD, 16.0f, cx, py + 168.0f, HEX(0xFFE08A), stage);
-    ui_text_c(F_BOLD, 16.0f, cx, py + 190.0f, HEX(0xF3F7FF), life_text);
-
-    ui_line(px + 28.0f, py + ph - 88.0f, px + pw - 28.0f, py + ph - 88.0f,
-            1.0f, HEX(0x354964));
-    ui_text_c(F_BOLD, 14.0f, cx, py + ph - 62.0f, HEX(0x8DE3B0), "PHYSICAL CONTROLS STAY ACTIVE");
-    ui_text_c(F_REG, 12.0f, cx, py + ph - 38.0f, HEX(0xAABAD3),
-              game == GAME_SML ? "Pipe / bonus-room screen swap is enabled" : "Companion display active");
-}
-
 /* Local SML1 multiplayer: Mario owns the shared world; up to three extra
  * characters each run through an isolated clone of the original SML1 logic. */
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
@@ -1545,18 +1506,14 @@ static int play_multiplayer(int g)
         companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
-        if (have) {
-            if (companion_pipe_swap_active) {
-                draw_pipe_swap_deck(g, f);
-            } else {
-                sml1_draw_player_tag(f, f->mp_player_oam[0], &game_rect, "Mario", C_ACCENT);
-                for (int player = 1; player < player_count; player++) {
-                    if (!f->mp_player_visible[player] || f->mp_player_blink_hidden[player]) continue;
-                    sml1_draw_player_tag(f, f->mp_player_oam[player], &game_rect,
-                                        mp_player_name(g, player), render_sml1_mp_player_color(player));
-                }
-                draw_coop_hud(g, f);
+        if (have && !companion_pipe_swap_active) {
+            sml1_draw_player_tag(f, f->mp_player_oam[0], &game_rect, "Mario", C_ACCENT);
+            for (int player = 1; player < player_count; player++) {
+                if (!f->mp_player_visible[player] || f->mp_player_blink_hidden[player]) continue;
+                sml1_draw_player_tag(f, f->mp_player_oam[player], &game_rect,
+                                    mp_player_name(g, player), render_sml1_mp_player_color(player));
             }
+            draw_coop_hud(g, f);
         }
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
@@ -1871,7 +1828,6 @@ static int play(int g)
         companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
-        if (have && companion_pipe_swap_active) draw_pipe_swap_deck(g, f);
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
