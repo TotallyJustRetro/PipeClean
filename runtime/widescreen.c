@@ -154,6 +154,17 @@ void wide_sml2_homeworld_dims(int screen_left, int extra_total,
     *right = extra_total - l;
 }
 
+/* Read and align the live Homeworld camera here, where emulator memory access
+ * is available. The PPU keeps this as an optional compositor hook. */
+void wide_sml2_homeworld_dims_from_camera(int scx, int extra_total,
+                                          int *left, int *right)
+{
+    if (!left || !right) return;
+    int screen_left = sml2_read16(SML2_HOME_CAMERA_X);
+    screen_left += (int8_t)(uint8_t)(scx - (screen_left & 0xFF));
+    wide_sml2_homeworld_dims(screen_left, extra_total, left, right);
+}
+
 /* Homeworld is stored as raw 8x8 tile IDs, unlike the 16x16 block map
  * used by side-scrolling levels. Do not decode those bytes through $A600. */
 static int sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
