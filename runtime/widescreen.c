@@ -119,6 +119,41 @@ int wide_sml2_homeworld_active(int lcdc, int wx, int wy)
            wx == SML2_HOME_HUD_WX && wy == SML2_HUD_WY;
 }
 
+/* Allocate the Homeworld's fixed extra width toward the map edges. The native
+ * 160px view starts at screen_left; keep all 384 output pixels inside the
+ * 512px map whenever the camera position allows it. */
+void wide_sml2_homeworld_dims(int screen_left, int extra_total,
+                              int *left, int *right)
+{
+    if (!left || !right) return;
+    if (extra_total < 0) extra_total = 0;
+
+    int left_capacity = screen_left;
+    int right_capacity = SML2_HOME_MAP_WIDTH - screen_left - 160;
+    if (left_capacity < 0) left_capacity = 0;
+    if (right_capacity < 0) right_capacity = 0;
+    if (left_capacity > extra_total) left_capacity = extra_total;
+    if (right_capacity > extra_total) right_capacity = extra_total;
+
+    /* The extra canvas must fit between the map's left and right edges. */
+    int min_left = extra_total - right_capacity;
+    int max_left = left_capacity;
+    if (min_left < 0) min_left = 0;
+    if (max_left > extra_total) max_left = extra_total;
+    if (min_left > max_left) {
+        /* Defensive fallback for a camera coordinate outside the map. */
+        *left = left_capacity;
+        *right = extra_total - *left;
+        return;
+    }
+
+    int l = extra_total / 2;
+    if (l < min_left) l = min_left;
+    if (l > max_left) l = max_left;
+    *left = l;
+    *right = extra_total - l;
+}
+
 /* Homeworld is stored as raw 8x8 tile IDs, unlike the 16x16 block map
  * used by side-scrolling levels. Do not decode those bytes through $A600. */
 static int sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
