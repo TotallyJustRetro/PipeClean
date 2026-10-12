@@ -15,8 +15,8 @@ const PORT = Number.parseInt(process.env.PIPECLEAN_RELAY_PORT || '27800', 10);
 const HOST = process.env.PIPECLEAN_RELAY_BIND || '127.0.0.1';
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MAX_CONNECTIONS = 256;
-const MAX_LINE = 128;
-const MAX_BUFFER = 2048;
+const MAX_LINE = 12288;
+const MAX_BUFFER = 32768;
 const MAX_CONNECTIONS_PER_IP_PER_MINUTE = 24;
 const MAX_JOINS_PER_IP_PER_MINUTE = 10;
 const MAX_MESSAGES_PER_SECOND = 240;
@@ -272,6 +272,85 @@ function processLine(client, line) {
     if (client === room.host) room.hostRom = report;
     else if (client === room.guest) room.guestRom = report;
     sendRomResult(room);
+    return;
+  }
+  const saveName = /^SAVE_NAME\t([0-9])\t([A-Za-z0-9 _-]{1,31})$/.exec(line);
+  if (saveName) {
+    if (client !== room.host) {
+      rejectClient(client, 'Only the host can rename shared save slots');
+      return;
+    }
+    reply(client, line);
+    reply(client.peer, line);
+    return;
+  }
+  const saveSelect = /^SAVE_SELECT\t([0-9])\t(-1|[0-9])$/.exec(line);
+  if (saveSelect) {
+    if (client !== room.host) {
+      rejectClient(client, 'Only the host can select the shared save slot');
+      return;
+    }
+    reply(client, line);
+    reply(client.peer, line);
+    return;
+  }
+  const saveStatus = /^SAVE_STATUS\t([0-9])\t([01])$/.exec(line);
+  if (saveStatus) {
+    reply(client.peer, line);
+    return;
+  }
+  const saveBegin = /^SAVE_BEGIN\t([1-9][0-9]{0,9})\t([0-9])\t([1-9][0-9]{0,6})\t([0-9A-Fa-f]{8})$/.exec(line);
+  if (saveBegin) {
+    if (client !== room.host) {
+      rejectClient(client, 'Only the host can transfer a shared save');
+      return;
+    }
+    if (Number(saveBegin[3]) > 1000000) {
+      rejectClient(client, 'Shared save is too large');
+      return;
+    }
+    reply(client.peer, line);
+    return;
+  }
+  const saveChunk = /^SAVE_CHUNK\t([1-9][0-9]{0,9})\t([0-9])\t([0-9]{1,7})\t([A-Za-z0-9+/]+={0,2})$/.exec(line);
+  if (saveChunk) {
+    if (client !== room.host) {
+      rejectClient(client, 'Only the host can transfer a shared save');
+      return;
+    }
+    if (saveChunk[4].length > 10668 || saveChunk[4].length % 4 !== 0 ||
+        Number(saveChunk[3]) > 1000000) {
+      rejectClient(client, 'Invalid shared save chunk');
+      return;
+    }
+    reply(client.peer, line);
+    return;
+  }
+  const saveEnd = /^SAVE_END\t([1-9][0-9]{0,9})\t([0-9])\t([1-9][0-9]{0,6})\t([0-9A-Fa-f]{8})$/.exec(line);
+  if (saveEnd) {
+    if (client !== room.host) {
+      rejectClient(client, 'Only the host can finish a shared save transfer');
+      return;
+    }
+    reply(client.peer, line);
+    return;
+  }
+  const saveAck = /^SAVE_ACK\t([1-9][0-9]{0,9})\t([0-9])\t([0-9A-Fa-f]{8})$/.exec(line);
+  if (saveAck) {
+    if (client !== room.guest) {
+      rejectClient(client, 'Only the guest can acknowledge a shared save');
+      return;
+    }
+    reply(client.peer, line);
+    return;
+  }
+  const saveFail = /^SAVE_FAIL\t([1-9][0-9]{0,9})\t([0-9])$/.exec(line);
+  if (saveFail) {
+    if (client !== room.guest) {
+      rejectClient(client, 'Only the guest can reject a shared save transfer');
+      return;
+    }
+    reply(client.peer, line);
     return;
   }
   if (line === 'GAME_END' || validGameLine(line) || validInputLine(line)) {

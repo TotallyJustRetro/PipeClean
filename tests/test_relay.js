@@ -168,6 +168,35 @@ async function main() {
     assert.match(forwardedBurst[59], /^INPUT\t10000000000000000059\t255\t255\t255$/);
 
 
+    /* Named shared slots and host/guest authority checks. */
+    host.socket.write('SAVE_NAME\t0\tMain Run\n');
+    const [hostName, guestName] = await Promise.all([waitForLine(host), waitForLine(guest)]);
+    assert.equal(hostName, 'SAVE_NAME\t0\tMain Run');
+    assert.equal(guestName, 'SAVE_NAME\t0\tMain Run');
+
+    guest.socket.write('SAVE_NAME\t0\tCheat Name\n');
+    assert.match(await waitForLine(guest), /^ERR\tOnly the host can rename shared save slots$/);
+    assert.equal(await waitForLine(host), 'PEER_LEFT');
+
+    host.socket.write('SAVE_SELECT\t0\t-1\n');
+    const [hostSelect, guestSelect] = await Promise.all([waitForLine(host), waitForLine(guest)]);
+    assert.equal(hostSelect, 'SAVE_SELECT\t0\t-1');
+    assert.equal(guestSelect, 'SAVE_SELECT\t0\t-1');
+    guest.socket.write('SAVE_STATUS\t0\t1\n');
+    assert.equal(await waitForLine(host), 'SAVE_STATUS\t0\t1');
+
+    /* The relay preserves bounded base64 chunks used for authoritative state transfer. */
+    host.socket.write('SAVE_BEGIN\t7\t0\t3\t352441C2\n');
+    assert.equal(await waitForLine(guest), 'SAVE_BEGIN\t7\t0\t3\t352441C2');
+    host.socket.write('SAVE_CHUNK\t7\t0\t0\tQUJD\n');
+    assert.equal(await waitForLine(guest), 'SAVE_CHUNK\t7\t0\t0\tQUJD');
+    host.socket.write('SAVE_END\t7\t0\t3\t352441C2\n');
+    assert.equal(await waitForLine(guest), 'SAVE_END\t7\t0\t3\t352441C2');
+    guest.socket.write('SAVE_ACK\t7\t0\t352441C2\n');
+    assert.equal(await waitForLine(host), 'SAVE_ACK\t7\t0\t352441C2');
+    guest.socket.write('SAVE_FAIL\t8\t0\n');
+    assert.equal(await waitForLine(host), 'SAVE_FAIL\t8\t0');
+
     /* Guests cannot change the host-selected game. */
     guest.socket.write('SELECT_GAME\t1\n');
     assert.equal(await waitForLine(guest), 'ERR\tOnly the host can choose the game');

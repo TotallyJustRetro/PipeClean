@@ -19,8 +19,8 @@ const WEB_PORT = Number.parseInt(process.env.PORT || '10000', 10);
 const RELAY_PORT = Number.parseInt(process.env.PIPECLEAN_INTERNAL_RELAY_PORT || '27800', 10);
 const HOST = '0.0.0.0';
 const WS_PATH = '/relay';
-const MAX_MESSAGE_BYTES = 128;
-const MAX_RELAY_BUFFER = 2048;
+const MAX_MESSAGE_BYTES = 12288;
+const MAX_RELAY_BUFFER = 2 * 1024 * 1024;
 
 if (!Number.isInteger(WEB_PORT) || WEB_PORT < 1 || WEB_PORT > 65535) {
   throw new Error('PORT must be a valid TCP port');
