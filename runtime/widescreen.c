@@ -51,6 +51,7 @@ static int sml2_scan_frame[2] = {-1, -1};
  * the real PPU framebuffer. Validate the native tilemap before drawing. */
 static int sml2_compositor_installed;
 static int sml2_compositor_frame_ok;
+static int sml2_compositor_homeworld;
 static int sml2_compositor_left, sml2_compositor_right;
 static int sml2_compositor_world_x0, sml2_compositor_world_y0;
 #define SML2_CAPTURED_SPRITE_CAP 1024
@@ -70,6 +71,18 @@ static int sml2_read16(uint16_t a);
 #define SML2_CAMERA_Y        0xFFC8u
 #define SML2_CAMERA_CENTRE_X 80
 #define SML2_CAMERA_CENTRE_Y 72
+
+/* The Homeworld uses a different live map: 64 columns of raw 8x8 tile IDs,
+ * with each row split across $B000 and $B020. Its scroll origin is kept at
+ * $A680/$A682, not in the level-camera variables above. */
+#define SML2_HOME_MAP_BASE   0xB000u
+#define SML2_HOME_MAP_COLS   64
+#define SML2_HOME_MAP_ROWS   32
+#define SML2_HOME_MAP_WIDTH  (SML2_HOME_MAP_COLS * 8)
+#define SML2_HOME_MAP_HEIGHT (SML2_HOME_MAP_ROWS * 8)
+#define SML2_HOME_CAMERA_X   0xA680u
+#define SML2_HOME_CAMERA_Y   0xA682u
+#define SML2_HOME_HUD_WX     80
 #define SML2_MODE_ADDR       0xFF9Bu
 #define SML2_BONUS_ADDR      0xA28Bu
 #define SML2_MODE_PLAY       0x04u
@@ -99,17 +112,72 @@ int wide_sml2_tile_at(int world_x, int world_y, uint8_t *tile)
     return 1;
 }
 
-/* Prepare a per-frame world transform, then compare the decoded block map
+/* Homeworld is stored as raw 8x8 tile IDs, unlike the 16x16 block map
+ * used by side-scrolling levels. Do not decode those bytes through $A600. */
+static int sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
+{
+    if (!sml2_compositor_installed || !tile ||
+        world_x < 0 || world_x >= SML2_HOME_MAP_WIDTH ||
+        world_y < 0 || world_y >= SML2_HOME_MAP_HEIGHT)
+        return 0;
+
+    unsigned tile_x = (unsigned)world_x >> 3;
+    unsigned tile_y = (unsigned)world_y >> 3;
+    unsigned address = SML2_HOME_MAP_BASE + tile_y * 0x40u + tile_x;
+    *tile = rd8((uint16_t)address);
+    return 1;
+}
+
+/* Prepare a per-frame world transform, then compare the decoded source map
  * against the real PPU tilemap. Unsupported scenes fail closed. */
 void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
                              int lcdc, int wx, int wy, const uint8_t *tilemap)
 {
     sml2_compositor_frame_ok = 0;
+    sml2_compositor_homeworld = 0;
     sml2_compositor_left = left;
     sml2_compositor_right = right;
     if (!sml2_compositor_installed || !tilemap ||
         left + right <= 0 || left < 0 || right < 0)
         return;
+
+    /* On the Homeworld map the game selects WX=80 and WY=136. Its source
+       tilemap is 512x256px in cartridge RAM ($B000-$B7FF), not the level's
+       4096x768px 16x16-block map. Rebuild margins from that full raw map. */
+    if (lcdc == 0xE3 && wx == SML2_HOME_HUD_WX && wy == SML2_HUD_WY) {
+        int camera_x = sml2_read16(SML2_HOME_CAMERA_X);
+        int camera_y = sml2_read16(SML2_HOME_CAMERA_Y);
+        int screen_left = camera_x;
+        int world_top = camera_y;
+        screen_left += (int8_t)(uint8_t)(scx - (screen_left & 0xFF));
+        world_top += (int8_t)(uint8_t)(scy - (world_top & 0xFF));
+
+        int hits = 0, samples = 0;
+        int first_x = (8 - (scx & 7)) & 7;
+        int first_y = (8 - (scy & 7)) & 7;
+        int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+        for (int sy = first_y; sy < 136; sy += 8) {
+            for (int sx = first_x; sx < 160; sx += 8) {
+                uint8_t decoded;
+                if (!sml2_homeworld_tile_at(screen_left + sx, world_top + sy,
+                                           &decoded))
+                    return;
+                unsigned map_index = (unsigned)map_off +
+                    (unsigned)(((sy + scy) >> 3) & 31) * 32u +
+                    (unsigned)(((sx + scx) >> 3) & 31);
+                if (decoded == tilemap[map_index]) hits++;
+                samples++;
+            }
+        }
+        /* Keep the same fail-closed validation as regular levels, since some
+           ROM revisions stamp a small number of tiles straight into VRAM. */
+        if (!samples || hits * 100 < samples * 95) return;
+        sml2_compositor_world_x0 = screen_left - left;
+        sml2_compositor_world_y0 = world_top;
+        sml2_compositor_homeworld = 1;
+        sml2_compositor_frame_ok = 1;
+        return;
+    }
 
     unsigned mode = rd8(SML2_MODE_ADDR);
     if (mode != SML2_MODE_PLAY && mode != SML2_MODE_PAUSE && mode != SML2_MODE_DEATH)
@@ -166,7 +234,11 @@ int wide_sml2_margin_tile(int screen_x, int screen_y, uint8_t *tile,
     int y = sml2_compositor_world_y0 + screen_y;
     *world_x = x;
     *world_y = y;
-    if (!wide_sml2_tile_at(x, y, tile)) return -1;
+    if (sml2_compositor_homeworld) {
+        if (!sml2_homeworld_tile_at(x, y, tile)) return -1;
+    } else if (!wide_sml2_tile_at(x, y, tile)) {
+        return -1;
+    }
     return 1;
 }
 
@@ -373,7 +445,8 @@ uint8_t wide_read_sml2(uint16_t address, uint8_t value)
      * $409B/$409E read of $A2B1, give that routine a scroll shadow that makes
      * its own whole-actor cull reject only actors the native strip cannot see.
      * Their separately captured world-space sprites are still drawn in margins. */
-    if (address == 0xA2B1u && sml2_is_actor_bank(sml2_mapped_bank()) &&
+    if (!sml2_compositor_homeworld && address == 0xA2B1u &&
+        sml2_is_actor_bank(sml2_mapped_bank()) &&
         (cpu.pc == 0x409Bu || cpu.pc == 0x409Eu)) {
         int actor_x = (rd8(0xFFD0u) << 8) | rd8(0xFFD1u);
         int cam_x = sml2_read16(SML2_CAMERA_X);
@@ -485,6 +558,7 @@ void wide_state_reset(void)
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
     sml2_compositor_frame_ok = 0;
+    sml2_compositor_homeworld = 0;
     sml2_actor_build_count = sml2_actor_frame_count = 0;
 }
 
@@ -494,6 +568,7 @@ int wide_install(int game, int l, int r)
     sml2_left_extra = 0;
     sml2_compositor_installed = 0;
     sml2_compositor_frame_ok = 0;
+    sml2_compositor_homeworld = 0;
     sml2_compositor_left = sml2_compositor_right = 0;
     sml2_actor_build_count = sml2_actor_frame_count = 0;
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;

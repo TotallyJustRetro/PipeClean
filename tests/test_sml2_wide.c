@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "gb.h"
 #include "sm83.h"
 #include "widescreen.h"
@@ -16,6 +17,8 @@ static uint8_t test_level_map[0x3000];
 static uint8_t test_block_defs[0x200];
 static uint8_t test_hram[0x80];
 static uint16_t test_camera_x = 640;
+static uint16_t test_world_x = 320;
+static uint16_t test_world_y = 32;
 static uint8_t test_scx;
 
 uint8_t rd8(uint16_t a)
@@ -23,6 +26,10 @@ uint8_t rd8(uint16_t a)
     /* Camera X defaults to 640, camera Y = 72 (native view begins at world Y=0). */
     if (a == 0xFFCA) return (uint8_t)test_camera_x;
     if (a == 0xFFCB) return (uint8_t)(test_camera_x >> 8);
+    if (a == 0xA680) return (uint8_t)test_world_x;
+    if (a == 0xA681) return (uint8_t)(test_world_x >> 8);
+    if (a == 0xA682) return (uint8_t)test_world_y;
+    if (a == 0xA683) return (uint8_t)(test_world_y >> 8);
     if (a == 0xFF43) return test_scx;
     if (a == 0xFFC8) return 0x48;
     if (a == 0xFFC9) return 0;
@@ -197,6 +204,34 @@ int main(void)
         return 35;
     if (!wide_sml2_world_origin(&world_left, &world_top) ||
         world_left != 511 || world_top != 0) return 36;
+
+    /* Homeworld's raw 64x32 tile map must be read with a 64-tile row stride,
+       and its margins must use the map camera at $A680/$A682. */
+    test_world_x = 320;
+    test_world_y = 32;
+    test_scx = 64;
+    for (int ty = 0; ty < 32; ty++) {
+        for (int tx = 0; tx < 64; tx++)
+            test_level_map[ty * 0x40 + tx] = (uint8_t)((ty * 3 + tx + 1) & 0x7F);
+    }
+    memset(vram, 0, sizeof vram);
+    for (int sy = 0; sy < 136; sy += 8) {
+        for (int sx = 0; sx < 160; sx += 8) {
+            unsigned col = (unsigned)(test_world_x + sx) >> 3;
+            unsigned row = (unsigned)(test_world_y + sy) >> 3;
+            unsigned src = row * 0x40u + col;
+            unsigned dst = 0x1800u + (row & 31u) * 32u + (col & 31u);
+            vram[dst] = test_level_map[src];
+        }
+    }
+    wide_sml2_prepare_frame(l, r, 64, 32, 0xE3, 80, 0x88, vram);
+    if (!wide_sml2_world_origin(&world_x, &world_y) ||
+        world_x != 271 || world_y != 32) return 39;
+    if (!wide_sml2_margin_tile(0, 0, &resolved_tile, &world_x, &world_y) ||
+        world_x != 271 || world_y != 32 || resolved_tile != 46) return 40;
+    if (!wide_sml2_margin_tile(l + 160, 0, &resolved_tile, &world_x, &world_y) ||
+        world_x != 480 || world_y != 32 || resolved_tile != 73) return 41;
+    if (wide_sml2_margin_tile(l, 0, &resolved_tile, &world_x, &world_y)) return 42;
 
     /* Switching back to native width must clear the hooks from the prior
        widescreen session, so they do not keep changing SML2 spawn/cull reads. */
