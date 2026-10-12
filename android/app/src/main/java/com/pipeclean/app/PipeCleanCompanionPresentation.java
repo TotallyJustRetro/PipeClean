@@ -76,12 +76,14 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private boolean sml1() { return game == 1; }
         private boolean sml2() { return game == 2; }
-        private int bg() { return sml1() ? 0xFF14251C : sml2() ? 0xFF241A2B : 0xFF171D2A; }
-        private int panel() { return sml1() ? 0xFF263D2D : sml2() ? 0xFF48342D : 0xFF283347; }
-        private int accent() { return sml1() ? 0xFFA8C98A : sml2() ? 0xFFFFC65C : 0xFF78DCE8; }
-        private int ink() { return sml1() ? 0xFFE8F4D9 : sml2() ? 0xFFFFF1CF : 0xFFE8F4FF; }
-        private int muted() { return sml1() ? 0xFF9FB59A : sml2() ? 0xFFD5B995 : 0xFFAAB9D2; }
-        private int edge() { return sml1() ? 0xFF617D5B : sml2() ? 0xFF9A6A42 : 0xFF536A8E; }
+        // SML1 uses a bright, nostalgic LCD-green palette; SML2 is a
+        // moonlit, treasure-hunt palette with warm gold accents.
+        private int bg() { return sml1() ? 0xFFC9E5A0 : sml2() ? 0xFF241A2B : 0xFF171D2A; }
+        private int panel() { return sml1() ? 0xFFF1F5D6 : sml2() ? 0xFF48342D : 0xFF283347; }
+        private int accent() { return sml1() ? 0xFF4E873B : sml2() ? 0xFFFFC65C : 0xFF78DCE8; }
+        private int ink() { return sml1() ? 0xFF253D20 : sml2() ? 0xFFFFF1CF : 0xFFE8F4FF; }
+        private int muted() { return sml1() ? 0xFF668456 : sml2() ? 0xFFD5B995 : 0xFFAAB9D2; }
+        private int edge() { return sml1() ? 0xFF84AD5D : sml2() ? 0xFF9A6A42 : 0xFF536A8E; }
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
@@ -133,12 +135,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
             // Decorative original pixel landscapes: DMG hills for SML1 and
             // moonlit golden stars for SML2. These are UI motifs, not game art.
             if (sml1()) {
-                p.setColor(0xFF1B3025);
+                p.setColor(0xFF9BC875);
                 c.drawRoundRect(-30, h-78, w*0.48f, h+22, 35, 35, p);
                 c.drawRoundRect(w*0.25f, h-55, w*0.78f, h+28, 30, 30, p);
                 c.drawRoundRect(w*0.62f, h-88, w+32, h+25, 42, 42, p);
-                pixelCloud(c, 48, 50, 5, 0xFF344B37);
-                pixelCloud(c, w-130, 122, 4, 0xFF304732);
+                pixelCloud(c, 48, 50, 5, 0xFFE9F4D0);
+                pixelCloud(c, w-130, 122, 4, 0xFFE2F0C4);
                 for (int i=0;i<9;i++) {
                     rect(c, 22+i*31, h-14, 3, 3, 0xFF526C48);
                 }
