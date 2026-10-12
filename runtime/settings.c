@@ -274,7 +274,7 @@ static int field_table(Field *t, int cap)
         GI("multiplayer_players", c->multiplayer_players, 2, MAX_MP_PLAYERS);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
-        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1); GI("dual_screen", c->dual_screen, 0, 1);
+        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1); GI("dual_screen", c->dual_screen, 0, 1); GI("pipe_screen_swap", c->pipe_screen_swap, 0, 1);
         GI("p2_respawn_key", c->p2_respawn_key, 0, 0x7FFFFFFF); GI("p2_respawn_pad", c->p2_respawn_pad, -1, PAD_AXIS_BASE + 1);
         GI("p3_respawn_key", c->p3_respawn_key, 0, 0x7FFFFFFF); GI("p3_respawn_pad", c->p3_respawn_pad, -1, PAD_AXIS_BASE + 1);
         GI("p4_respawn_key", c->p4_respawn_key, 0, 0x7FFFFFFF); GI("p4_respawn_pad", c->p4_respawn_pad, -1, PAD_AXIS_BASE + 1);
