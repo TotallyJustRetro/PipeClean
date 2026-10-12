@@ -42,7 +42,7 @@ static int win_w = 1100, win_h = 720;
 static int companion_rewind_held;
 static int companion_pipe_swap_active;
 static int companion_pipe_swap_exit_pending;
-static volatile int companion_display_available;
+static SDL_atomic_t companion_display_available;
 static Uint32 companion_last_frame_tick;
 #define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
 #define PIPECLEAN_COMPANION_SAVE 1
@@ -74,7 +74,7 @@ JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionD
     JNIEnv *env, jclass cls, jint available)
 {
     (void)env; (void)cls;
-    companion_display_available = available ? 1 : 0;
+    SDL_AtomicSet(&companion_display_available, available ? 1 : 0);
 }
 
 static void companion_publish_state(int game, const Frame *frame, int paused)
@@ -154,7 +154,7 @@ static void companion_set_pipe_swap(int enabled)
 
 static void companion_publish_game_frame(void)
 {
-    if (!companion_pipe_swap_active || !companion_display_available) return;
+    if (!companion_pipe_swap_active || !SDL_AtomicGet(&companion_display_available)) return;
     /* Read the filtered CPU frame, not the SDL backbuffer, to avoid a GPU readback. */
     Uint32 now = SDL_GetTicks();
     if ((Uint32)(now - companion_last_frame_tick) < 33) return;
@@ -200,24 +200,25 @@ static void companion_update_pipe_swap(int game, const Frame *frame, int enabled
 {
 #if defined(__ANDROID__)
     int next = companion_pipe_swap_active;
-    if (!enabled || !companion_display_available || game != GAME_SML) {
+    if (!enabled || !SDL_AtomicGet(&companion_display_available) || game != GAME_SML) {
         next = 0;
         companion_pipe_swap_exit_pending = 0;
     } else if (frame) {
         const uint8_t state = frame->game_state;
         /* SML1 HRAM states: 09=down pipe, 0A=warp underground, 0C=up out;
            12..1A cover entering/playing/leaving the pipe bonus room. */
-        if (state == 0x09 || state == 0x0A || (state >= 0x12 && state <= 0x1A)) {
+        if (state == 0x09 || state == 0x0A || state == 0x0B ||
+            (state >= 0x12 && state <= 0x1A)) {
             next = 1;
             companion_pipe_swap_exit_pending = 0;
-        } else if (state == 0x0C) {
-            /* Keep the game on the secondary screen throughout the climb out.
-               The normal gameplay state (00) marks the completed return. */
+        } else if (state == 0x0C || state == 0x1B) {
+            /* Keep the game on the secondary screen throughout the climb out
+               or bonus-room return. Normal state (00) marks the completed return. */
             if (next) companion_pipe_swap_exit_pending = 1;
         } else if (state == 0x00 && companion_pipe_swap_exit_pending) {
             next = 0;
             companion_pipe_swap_exit_pending = 0;
-        } else if (state == 0x1B || state == 0x06 || state == 0x07 ||
+        } else if (state == 0x06 || state == 0x07 ||
                    state == 0x08 || state == 0x0E || state == 0x0F || state == 0x11) {
             next = 0;
             companion_pipe_swap_exit_pending = 0;
