@@ -15,7 +15,8 @@ extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
 extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern int wide_sml2_homeworld_active(int, int, int) __attribute__((weak));
-extern void wide_sml2_homeworld_dims_from_camera(int, int, int *, int *) __attribute__((weak));
+extern int wide_sml2_homeworld_tile_at(int, int, uint8_t *) __attribute__((weak));
+extern int wide_sml2_homeworld_camera(int, int, int *, int *) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -32,8 +33,8 @@ uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
-#define SML2_HOME_WIDE_LEFT  176
-#define SML2_HOME_WIDE_RIGHT 176
+/* True only while the SML2 Homeworld's whole raw map is rendered as an overview. */
+static int ppu_homeworld_overview;
 void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
 {
     if (l < 0) l = 0;
@@ -58,29 +59,29 @@ int frame_count;
 static void ppu_refresh_wide_layout(void)
 {
     int l = cfg_left, r = cfg_right;
+    ppu_homeworld_overview = 0;
     int homeworld = wide_on && cfg_left + cfg_right > 0 &&
                     wide_sml2_homeworld_active &&
-                    wide_sml2_homeworld_active(lcdc, wx, wy);
+                    wide_sml2_homeworld_active(lcdc, wx, wy) &&
+                    wide_sml2_homeworld_tile_at &&
+                    wide_sml2_homeworld_camera;
     if (homeworld) {
-        if (wide_sml2_homeworld_dims_from_camera) {
-            wide_sml2_homeworld_dims_from_camera(
-                scx, SML2_HOME_WIDE_LEFT + SML2_HOME_WIDE_RIGHT, &l, &r);
-        } else {
-            l = SML2_HOME_WIDE_LEFT;
-            r = SML2_HOME_WIDE_RIGHT;
-        }
+        /* Preserve the normal widescreen output size. The Homeworld itself is
+           redrawn from its complete 512x256 source map into this frame. */
+        l = 0;
+        r = cfg_left + cfg_right;
+        ppu_homeworld_overview = 1;
     }
     if (l < 0) l = 0;
     if (r < 0) r = 0;
     if (l + r > GB_WMAX - GB_W) r = GB_WMAX - GB_W - l;
-    ppu_xoff = l; wide_r = r; ppu_w = GB_W + l + r;
-    hud_lines = (l + r) ? cfg_hud : 0;
+    ppu_xoff = ppu_homeworld_overview ? 0 : l;
+    wide_r = ppu_homeworld_overview ? 0 : r;
+    ppu_w = GB_W + l + r;
+    hud_lines = ppu_homeworld_overview ? 0 : ((l + r) ? cfg_hud : 0);
     hud_shift = (r - l) / 2;
-    win_centre = (l + r) ? cfg_win : 0;
-    /* The standard OAM path uses modulo-X corrections based on the left
-       margin. A Homeworld left margin can exceed 160px; keep native OAM
-       coordinates intact there so map icons do not wrap out of the centre. */
-    sprite_neg = homeworld ? 256 : (l > 8 ? 256 - (l - 8) : 256);
+    win_centre = ppu_homeworld_overview ? 0 : ((l + r) ? cfg_win : 0);
+    sprite_neg = l > 8 ? 256 - (l - 8) : 256;
 }
 
 void ppu_reset(void)
@@ -281,10 +282,138 @@ void ppu_write(uint8_t r, uint8_t v)
 }
 
 /* ------------------------------------------------------------------ */
+static void render_homeworld_overview_line(int y)
+{
+    const int W = ppu_w;
+    uint8_t *out = ppu_shade[y];
+    uint32_t *rgb = ppu_rgb[y];
+    uint8_t bgci[GB_WMAX];
+    memset(bgci, 0, sizeof bgci);
+    memset(ppu_layer[y], 0, W);
+    memset(ppu_bgtile[y], 0xFF, W * sizeof ppu_bgtile[y][0]);
+    memset(ppu_sprtile[y], 0xFF, W * sizeof ppu_sprtile[y][0]);
+    memset(ppu_bguv[y], 0, W);
+    memset(ppu_spruv[y], 0, W);
+
+    /* A 512x256 map scaled by W/512 has a height of W/2. This gives the
+       complete world map a stable 2:1 aspect ratio with narrow top/bottom
+       bars inside the ordinary 160px-high Game Boy frame geometry. */
+    int map_h = (SML2_HOME_MAP_HEIGHT * W + SML2_HOME_MAP_WIDTH / 2) /
+                SML2_HOME_MAP_WIDTH;
+    int map_top = (GB_H - map_h) / 2;
+    int camera_x = 0, camera_y = 0;
+    int have_camera = wide_sml2_homeworld_camera &&
+        wide_sml2_homeworld_camera(scx, scy, &camera_x, &camera_y);
+
+    for (int x = 0; x < W; x++) {
+        int world_x = (x * SML2_HOME_MAP_WIDTH) / W;
+        if (y < map_top || y >= map_top + map_h) {
+            bgci[x] = 0;
+            out[x] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
+            rgb[x] = cgb_render_enabled ? cgb_rgb(cgb_bg_palette, 0, 0) : 0;
+            continue;
+        }
+        int world_y = ((y - map_top) * SML2_HOME_MAP_WIDTH) / W;
+        uint8_t tile = 0;
+        int attr = 0, tile_id = 0;
+        int ci = 0;
+        if (wide_sml2_homeworld_tile_at &&
+            wide_sml2_homeworld_tile_at(world_x, world_y, &tile)) {
+            ci = tile_pixel_data(tile, 0, world_x, world_y, &attr, &tile_id);
+        }
+        bgci[x] = (uint8_t)ci;
+        out[x] = cgb_render_enabled ? (uint8_t)ci :
+                 (uint8_t)((bgp >> (ci * 2)) & 3);
+        rgb[x] = cgb_render_enabled ?
+                 cgb_rgb(cgb_bg_palette, (unsigned)(attr & 7), (unsigned)ci) : 0;
+        ppu_bgtile[y][x] = (uint16_t)tile_id;
+        ppu_bguv[y][x] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+    }
+
+    if (!have_camera || !(lcdc & 0x02)) return;
+
+    /* OAM coordinates are camera-relative during gameplay. Convert each live
+       sprite back to map coordinates, then draw it at the same overview scale. */
+    typedef struct {
+        int x, y, h, screen_x, index;
+        uint8_t tile, flags;
+    } OverviewSprite;
+    OverviewSprite sprites[40];
+    int n = 0;
+    int sprite_h = (lcdc & 0x04) ? 16 : 8;
+    for (int i = 0; i < 40; i++) {
+        int oy = oam[i * 4], ox = oam[i * 4 + 1];
+        if (ox <= 0 || ox >= 168 || oy <= 16 - sprite_h || oy >= 160)
+            continue;
+        sprites[n++] = (OverviewSprite){
+            camera_x + ox - 8, camera_y + oy - 16, sprite_h, ox, i,
+            oam[i * 4 + 2], oam[i * 4 + 3]
+        };
+    }
+
+    if (y < map_top || y >= map_top + map_h) return;
+    int world_y = ((y - map_top) * SML2_HOME_MAP_WIDTH) / W;
+    for (int x = 0; x < W; x++) {
+        int world_x = (x * SML2_HOME_MAP_WIDTH) / W;
+        int best = -1, best_priority = 0x7FFFFFFF;
+        int best_ci = 0, best_addr = 0, best_row = 0, best_col = 0;
+        uint8_t best_flags = 0;
+
+        for (int si = 0; si < n; si++) {
+            OverviewSprite *sp = &sprites[si];
+            int row = world_y - sp->y;
+            int col = world_x - sp->x;
+            if (row < 0 || row >= sp->h || col < 0 || col >= 8)
+                continue;
+            uint8_t flags = sp->flags;
+            if (flags & 0x40) row = sp->h - 1 - row;
+            int tile = sp->tile;
+            if (sp->h == 16) tile &= 0xFE;
+            int addr = (tile + (row >> 3)) * 16 + (row & 7) * 2;
+            const uint8_t *tiles = (cgb_render_enabled && (flags & 0x08))
+                                   ? vram_cgb1 : vram;
+            int bit = (flags & 0x20) ? col : 7 - col;
+            int ci = (((tiles[addr + 1] >> bit) & 1) << 1) |
+                     ((tiles[addr] >> bit) & 1);
+            if (ci == 0 || ((flags & 0x80) && bgci[x] != 0))
+                continue;
+
+            /* DMG SML2 uses lower screen X, then lower OAM index for priority. */
+            int priority = sp->screen_x * 64 + sp->index;
+            if (cgb_render_enabled && !(cgb_opri & 1))
+                priority = sp->index;
+            if (priority < best_priority) {
+                best = si; best_priority = priority;
+                best_ci = ci; best_addr = addr; best_row = row;
+                best_col = col; best_flags = flags;
+            }
+        }
+        if (best < 0) continue;
+        uint8_t pal = (best_flags & 0x10) ? obp1 : obp0;
+        if (cgb_render_enabled) {
+            out[x] = (uint8_t)best_ci;
+            rgb[x] = cgb_rgb(cgb_obj_palette, (unsigned)(best_flags & 7),
+                             (unsigned)best_ci);
+        } else {
+            out[x] = (uint8_t)((pal >> (best_ci * 2)) & 3);
+        }
+        ppu_layer[y][x] = (best_flags & 0x10) ? 2 : 1;
+        ppu_sprtile[y][x] = (uint16_t)(best_addr >> 4);
+        ppu_spruv[y][x] = (uint8_t)(((best_row & 7) << 3) |
+            ((best_flags & 0x20) ? (7 - best_col) : best_col) |
+            ((best_flags & 0x20) ? 0x40 : 0) |
+            ((best_flags & 0x40) ? 0x80 : 0));
+    }
+}
+
 static void render_line(int y)
 {
     if (y == 0) ppu_refresh_wide_layout();
     const int W = ppu_w, L = ppu_xoff;
+    if (ppu_homeworld_overview) {
+        render_homeworld_overview_line(y);
+        return;
+    }
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
     if (y == 0 && ppu_w > GB_W) {
         /* Captures were collected during the preceding game update. Snapshot
