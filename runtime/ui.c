@@ -21,6 +21,15 @@ static stbtt_fontinfo finfo[2];
 static int fonts_ok;
 static char hint_cur[200], hint_next[200];
 
+/* Android phone displays need a little extra type size because the
+ * desktop-designed 1100x720 layout otherwise leaves small labels tiny.
+ * Geometry is unchanged, and text fitting measures the enlarged glyphs. */
+#if defined(__ANDROID__)
+#define UI_FONT_SCALE 1.18f
+#else
+#define UI_FONT_SCALE 1.0f
+#endif
+
 /* ------------------------------------------------------------ glyph atlases */
 typedef struct { int x, y, w, h; float xoff, yoff, adv; } Glyph;
 typedef struct {
@@ -342,8 +351,12 @@ static inline int PXs(float v) { return (int)floorf(v * ui_scale + 0.5f); }
    still follows the fitted scale; only the glyph atlas gets a small pixel floor. */
 static int text_px(float logical_size)
 {
-    int px = PXs(logical_size);
+    int px = PXs(logical_size * UI_FONT_SCALE);
+#if defined(__ANDROID__)
+    if (ui_scale < 0.85f && px < 8) px = 8;
+#else
     if (ui_scale < 0.70f && px < 7) px = 7;
+#endif
     return px;
 }
 
@@ -518,7 +531,7 @@ float ui_text_w(int font, float size, const char *s)
     return w / ui_scale;
 }
 
-float ui_line_h(float size) { return size * 1.5f; }
+float ui_line_h(float size) { return size * 1.5f * UI_FONT_SCALE; }
 
 void ui_text(int font, float size, float x, float y, uint32_t c, const char *s)
 {

@@ -100,6 +100,21 @@ typedef struct {
 } TouchFinger;
 
 static TouchFinger touch_fingers[10];
+
+/* Android's smaller landscape displays need larger touch targets than the
+ * desktop overlay. Keep each hit region identical to its drawn button. */
+#if defined(__ANDROID__)
+static const TouchRegion touch_regions[] = {
+    {80, UI_H - 230, 60, 60, 0, 0x04, "UP"},
+    {80, UI_H - 110, 60, 60, 0, 0x08, "DN"},
+    {20, UI_H - 170, 60, 60, 0, 0x02, "LT"},
+    {140, UI_H - 170, 60, 60, 0, 0x01, "RT"},
+    {UI_W - 148, UI_H - 218, 64, 64, 0x01, 0, "A"},
+    {UI_W - 230, UI_H - 144, 64, 64, 0x02, 0, "B"},
+    {UI_W - 340, UI_H - 66, 70, 50, 0x04, 0, "SEL"},
+    {UI_W - 260, UI_H - 66, 80, 50, 0x08, "START"}
+};
+#else
 static const TouchRegion touch_regions[] = {
     {74, UI_H - 206, 46, 46, 0, 0x04, "UP"},
     {74, UI_H - 110, 46, 46, 0, 0x08, "DN"},
@@ -108,8 +123,17 @@ static const TouchRegion touch_regions[] = {
     {UI_W - 130, UI_H - 188, 56, 56, 0x01, 0, "A"},
     {UI_W - 205, UI_H - 131, 56, 56, 0x02, 0, "B"},
     {UI_W - 315, UI_H - 72, 45, 34, 0x04, 0, "SEL"},
-    {UI_W - 258, UI_H - 72, 54, 34, 0x08, 0, "START"}
+    {UI_W - 258, UI_H - 72, 54, 34, 0x08, "START"}
 };
+#endif
+
+static void touch_reset_all(void)
+{
+    memset(touch_fingers, 0, sizeof touch_fingers);
+    for (int g = 0; g < N_GAMES; g++)
+        for (int player = 0; player < MAX_MP_PLAYERS; player++)
+            pad_set_touch_input(g, player, 0, 0);
+}
 
 static int touch_overlay_visible(void)
 {
@@ -140,16 +164,33 @@ static int touch_region_at(float x, float y)
 
 static void touch_handle_event(const SDL_Event *e)
 {
-    if (!e || (e->type != SDL_FINGERDOWN && e->type != SDL_FINGERMOTION &&
-               e->type != SDL_FINGERUP)) return;
+    if (!e) return;
+
+    /* Android can suspend or defocus SDL without delivering FINGERUP for
+       every held contact. Release all virtual buttons on those transitions. */
+    if ((e->type == SDL_WINDOWEVENT &&
+         (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+          e->window.event == SDL_WINDOWEVENT_MINIMIZED)) ||
+        e->type == SDL_APP_WILLENTERBACKGROUND ||
+        e->type == SDL_APP_DIDENTERBACKGROUND ||
+        e->type == SDL_APP_TERMINATING) {
+        touch_reset_all();
+        return;
+    }
+
+    if (e->type != SDL_FINGERDOWN && e->type != SDL_FINGERMOTION &&
+        e->type != SDL_FINGERUP) return;
     if (!settings.touch_controls) {
-        memset(touch_fingers, 0, sizeof touch_fingers);
+        touch_reset_all();
         return;
     }
     SDL_FingerID id = e->tfinger.fingerId;
     int slot = touch_finger_slot(id);
     if (e->type == SDL_FINGERUP) {
-        if (slot >= 0) touch_fingers[slot].active = 0;
+        if (slot >= 0) {
+            touch_fingers[slot].active = 0;
+            touch_fingers[slot].region = -1;
+        }
         return;
     }
     if (slot < 0 && e->type == SDL_FINGERDOWN) {
@@ -191,8 +232,9 @@ static void touch_apply_inputs(int game, int paused)
 
 static void touch_reset_game(int game)
 {
-    memset(touch_fingers, 0, sizeof touch_fingers);
-    pad_set_touch_input(game, 0, 0, 0);
+    touch_reset_all();
+    if (game >= 0 && game < N_GAMES)
+        pad_set_touch_input(game, 0, 0, 0);
 }
 
 static void touch_draw_overlay(int paused)
@@ -798,6 +840,7 @@ static void draw_coop_hud(int game, const Frame *f)
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer(int g)
 {
+    touch_reset_all();
     ds_menu_close();
     GameCfg *c = &settings.g[g];
     int online = netplay_is_connected();
@@ -1340,6 +1383,7 @@ static int play_external_game(int g)
 /* returns 0 = back to launcher, 1 = quit */
 static int play(int g)
 {
+    touch_reset_all();
     ds_menu_close();
     if (g < 0 || g >= N_GAMES) return 0;
     int online = netplay_is_connected();
@@ -1538,6 +1582,9 @@ int app_run(const char *autorun, const char *hack)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+    /* Finger events drive the touch overlay directly. Prevent SDL's synthetic
+       touch-as-mouse events from leaving the launcher pointer in a held state. */
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_EVENTS)) {
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;

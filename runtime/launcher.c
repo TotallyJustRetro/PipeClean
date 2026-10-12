@@ -2631,7 +2631,13 @@ LauncherResult launcher_frame(float dt)
 
     /* backdrop */
     float vx = ui_view_x0(), vy = ui_view_y0(), vw = ui_view_w(), vh = ui_view_h();
+#if defined(__ANDROID__)
+    /* Android uses the two-row touch-first navigation on every screen size,
+       instead of showing the desktop sidebar on high-resolution phones. */
+    int compact_layout = 1;
+#else
     int compact_layout = ui_scale < 0.75f;
+#endif
     ui_vgrad(vx, vy, vw, vh, C_BG2, C_BG);
     int bw, bh;
     SDL_Texture *bt = bg_texture(&bw, &bh);
@@ -2649,12 +2655,21 @@ LauncherResult launcher_frame(float dt)
         if (brand_logo) ui_image(brand_logo, NULL, vx + 14, 10, 138, 68);
         /* Small windows move navigation into the header instead of squeezing
            the content beside a permanent sidebar. */
+#if defined(__ANDROID__)
+        const float game_nav_y = 4.0f, game_nav_h = 40.0f, game_label_y = 14.0f;
+        const float global_nav_y = 46.0f, global_nav_h = 39.0f, global_label_y = 56.0f;
+        const float nav_divider_y = 92.0f;
+#else
+        const float game_nav_y = 8.0f, game_nav_h = 32.0f, game_label_y = 17.0f;
+        const float global_nav_y = 48.0f, global_nav_h = 32.0f, global_label_y = 57.0f;
+        const float nav_divider_y = 90.0f;
+#endif
         float game_w = nav_w / (float)N_GAMES;
         if (game_w > 220.0f) game_w = 220.0f;
         for (int i = 0; i < N_GAMES; i++) {
             float x = nav_left + i * game_w;
-            if (tab_button(x, 8, game_w - 5, 32, tab == i, games[i].accent)) tab = i;
-            ui_text_fit(F_BOLD, 13, x + 8, 17, game_w - 20,
+            if (tab_button(x, game_nav_y, game_w - 5, game_nav_h, tab == i, games[i].accent)) tab = i;
+            ui_text_fit(F_BOLD, 13, x + 8, game_label_y, game_w - 20,
                         tab == i ? C_TEXT : C_MUTED, games[i].name);
         }
         int global_count = N_TABS - TAB_MULTIPLAYER;
@@ -2663,11 +2678,11 @@ LauncherResult launcher_frame(float dt)
         for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
             float x = nav_left + (i - TAB_MULTIPLAYER) * global_w;
             uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
-            if (tab_button(x, 48, global_w - 5, 32, tab == i, accent)) tab = i;
-            ui_text_fit(F_BOLD, 12, x + 7, 57, global_w - 17,
+            if (tab_button(x, global_nav_y, global_w - 5, global_nav_h, tab == i, accent)) tab = i;
+            ui_text_fit(F_BOLD, 12, x + 7, global_label_y, global_w - 17,
                         tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
         }
-        ui_rect(vx + 12, 90, vw - 24, 1, C_LINE);
+        ui_rect(vx + 12, nav_divider_y, vw - 24, 1, C_LINE);
     } else {
         if (brand_logo) ui_image(brand_logo, NULL, 20, 1, 170, 83);
         ui_rect(20, 90, UI_W - 40, 1, C_LINE);
