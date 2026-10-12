@@ -108,7 +108,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                             wallpaperMovie = Movie.decodeStream(in);
                         }
                     } else {
-                        wallpaperBitmap = BitmapFactory.decodeFile(next);
+                        wallpaperBitmap = decodeSampledBitmap(next);
                     }
                 } catch (Exception ex) {
                     wallpaperBitmap = null;
@@ -121,6 +121,19 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 }
             }
             invalidate();
+        }
+
+        private Bitmap decodeSampledBitmap(String path) {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeFile(path, bounds);
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null;
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = 1;
+            while (bounds.outWidth / options.inSampleSize > 2048 ||
+                   bounds.outHeight / options.inSampleSize > 2048)
+                options.inSampleSize *= 2;
+            return BitmapFactory.decodeFile(path, options);
         }
 
         private boolean sml1() { return game == 1; }
@@ -258,12 +271,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private void drawLandscape(Canvas c) {
             // Header: live game status plus a real wallpaper picker.
+            headerPlate(c, 18, 7, 265, 49);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 26, 23, 10, accent());
             text(c, title(), 25, 43, 16, ink());
             badge(c, 294, 13, 104, 42, "LIVES", String.format(Locale.US, "× %02d", lives));
             badge(c, 407, 13, 135, 42, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
             if (!wallpaperPath.isEmpty()) smallButton(c, 552, 17, 34, 34, "×", RESET_BACKGROUND);
-            button(c, 593, 13, 183, 42, "WALLPAPER", wallpaperPath.isEmpty() ? "CHOOSE PNG / GIF" : "CHANGE / RESET ×",
+            button(c, 593, 13, 183, 42, "WALLPAPER", wallpaperPath.isEmpty() ? "CHOOSE PNG / GIF" : "CHANGE PNG / GIF",
                    BACKGROUND, false);
 
             // Centerpiece: the item pocket is deliberately the largest thing on the deck.
@@ -301,6 +315,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawPortrait(Canvas c) {
+            headerPlate(c, 14, 7, 240, 43);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 20, 25, 10, accent());
             text(c, title(), 20, 43, 13, ink());
             if (!wallpaperPath.isEmpty()) smallButton(c, 260, 16, 24, 27, "×", RESET_BACKGROUND);
@@ -417,6 +432,18 @@ final class PipeCleanCompanionPresentation extends Presentation {
             } else {
                 drawPixelStar(c,x+size*.5f,y+size*.5f,size*.3f,gold());
             }
+        }
+
+        private void headerPlate(Canvas c,float x,float y,float w,float h) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0x6A000000);
+            c.drawRoundRect(x+2,y+3,x+w+2,y+h+3,13,13,p);
+            p.setColor(panel());
+            c.drawRoundRect(x,y,x+w,y+h,13,13,p);
+            p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.5f);
+            c.drawRoundRect(x+0.75f,y+0.75f,x+w-.75f,y+h-.75f,12,12,p);
+            p.setStyle(Paint.Style.FILL);
+            rect(c,x+10,y+5,w-20,2,accent());
         }
 
         private void card(Canvas c,float x,float y,float w,float h,String label) {
