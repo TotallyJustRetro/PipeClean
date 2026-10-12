@@ -63,9 +63,9 @@ static NetplayChatMessage np_chat[NP_CHAT_CAP];
 static int np_chat_head, np_chat_count;
 
 #define NP_INPUT_CAP 256
-/* Four frames (~67 ms at 60 FPS) is a smaller latency floor; any additional
- * wait should reflect actual network delay rather than a large fixed buffer. */
-#define NP_INPUT_DELAY_FRAMES 4u
+/* Eight frames (~133 ms at 60 FPS) gives remote inputs more time to arrive
+ * before lockstep consumes them, reducing stalls on jittery WAN connections. */
+#define NP_INPUT_DELAY_FRAMES 8u
 #define NP_SEND_CAP 128
 #define NP_GAME_TIMEOUT_MS 30000u
 #define NP_FRAME_TIMEOUT_MS 15000u
