@@ -53,9 +53,8 @@ static int dot, ly, mode, lcd_on, stat_line, wlc;
 static int off_cycles;
 int frame_count;
 
-/* The Homeworld's 512px source map is shown at its full native map width.
- * Move the original 160px viewport inside the 512px canvas based on its live
- * camera position, so the added view reveals both map edges without blank space. */
+/* The Homeworld's full 512x512 map is drawn as a stable overview when
+ * widescreen is enabled. Other SML2 scenes continue to use normal margins. */
 static void ppu_refresh_wide_layout(void)
 {
     int l = cfg_left, r = cfg_right;
@@ -67,7 +66,7 @@ static void ppu_refresh_wide_layout(void)
                     wide_sml2_homeworld_camera;
     if (homeworld) {
         /* Preserve the normal widescreen output size. The Homeworld itself is
-           redrawn from its complete 512x256 source map into this frame. */
+           redrawn from its complete 512x512 source map into this frame. */
         l = 0;
         r = cfg_left + cfg_right;
         ppu_homeworld_overview = 1;
@@ -283,7 +282,7 @@ void ppu_write(uint8_t r, uint8_t v)
 
 /* ------------------------------------------------------------------ */
 #define HOMEWORLD_SOURCE_WIDTH 512
-#define HOMEWORLD_SOURCE_HEIGHT 256
+#define HOMEWORLD_SOURCE_HEIGHT 512
 
 static void render_homeworld_overview_line(int y)
 {
@@ -298,26 +297,35 @@ static void render_homeworld_overview_line(int y)
     memset(ppu_bguv[y], 0, W);
     memset(ppu_spruv[y], 0, W);
 
-    /* A 512x256 map scaled by W/512 has a height of W/2. This gives the
-       complete world map a stable 2:1 aspect ratio with narrow top/bottom
-       bars inside the ordinary 160px-high Game Boy frame geometry. */
-    int map_h = (HOMEWORLD_SOURCE_HEIGHT * W + HOMEWORLD_SOURCE_WIDTH / 2) /
-                HOMEWORLD_SOURCE_WIDTH;
+    /* Homeworld is a 512x512 square assembled from four map quadrants. Fit
+       it uniformly into the play area above the HUD. The height is limiting
+       on a widescreen frame, so use side margins rather than stretching or
+       wrapping either axis. */
     int map_area_h = (wy > 0 && wy < GB_H) ? wy : GB_H;
+    int map_w = W;
+    int map_h = (HOMEWORLD_SOURCE_HEIGHT * map_w +
+                 HOMEWORLD_SOURCE_WIDTH / 2) / HOMEWORLD_SOURCE_WIDTH;
+    if (map_h > map_area_h) {
+        map_h = map_area_h;
+        map_w = (HOMEWORLD_SOURCE_WIDTH * map_h +
+                 HOMEWORLD_SOURCE_HEIGHT / 2) / HOMEWORLD_SOURCE_HEIGHT;
+    }
+    int map_left = (W - map_w) / 2;
     int map_top = (map_area_h - map_h) / 2;
     int camera_x = 0, camera_y = 0;
     int have_camera = wide_sml2_homeworld_camera &&
         wide_sml2_homeworld_camera(scx, scy, &camera_x, &camera_y);
 
     for (int x = 0; x < W; x++) {
-        int world_x = (x * HOMEWORLD_SOURCE_WIDTH) / W;
-        if (y < map_top || y >= map_top + map_h) {
+        if (x < map_left || x >= map_left + map_w ||
+            y < map_top || y >= map_top + map_h) {
             bgci[x] = 0;
             out[x] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
             rgb[x] = cgb_render_enabled ? cgb_rgb(cgb_bg_palette, 0, 0) : 0;
             continue;
         }
-        int world_y = ((y - map_top) * HOMEWORLD_SOURCE_WIDTH) / W;
+        int world_x = ((x - map_left) * HOMEWORLD_SOURCE_WIDTH) / map_w;
+        int world_y = ((y - map_top) * HOMEWORLD_SOURCE_HEIGHT) / map_h;
         uint8_t tile = 0;
         int attr = 0, tile_id = 0;
         int ci = 0;
@@ -359,7 +367,8 @@ static void render_homeworld_overview_line(int y)
         }
     }
 
-    if (!have_camera || !(lcdc & 0x02) || y >= wy) return;
+    if (!have_camera || !(lcdc & 0x02) || y >= wy ||
+        y < map_top || y >= map_top + map_h) return;
 
     /* OAM coordinates are camera-relative during gameplay. Convert each live
        sprite back to map coordinates, then draw it at the same overview scale. */
@@ -380,10 +389,9 @@ static void render_homeworld_overview_line(int y)
         };
     }
 
-    if (y < map_top || y >= map_top + map_h) return;
-    int world_y = ((y - map_top) * HOMEWORLD_SOURCE_WIDTH) / W;
-    for (int x = 0; x < W; x++) {
-        int world_x = (x * HOMEWORLD_SOURCE_WIDTH) / W;
+    int world_y = ((y - map_top) * HOMEWORLD_SOURCE_HEIGHT) / map_h;
+    for (int x = map_left; x < map_left + map_w; x++) {
+        int world_x = ((x - map_left) * HOMEWORLD_SOURCE_WIDTH) / map_w;
         int best = -1, best_priority = 0x7FFFFFFF;
         int best_ci = 0, best_addr = 0, best_row = 0, best_col = 0;
         uint8_t best_flags = 0;

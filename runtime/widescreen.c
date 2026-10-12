@@ -72,12 +72,12 @@ static int sml2_read16(uint16_t a);
 #define SML2_CAMERA_CENTRE_X 80
 #define SML2_CAMERA_CENTRE_Y 72
 
-/* The Homeworld uses a different live map: 64 columns of raw 8x8 tile IDs,
- * with each row split across $B000 and $B020. Its scroll origin is kept at
- * $A680/$A682, not in the level-camera variables above. */
+/* The Homeworld is a 64x64 grid of raw 8x8 tile IDs assembled from four
+ * 32x32 quadrants. Rows 0-31 occupy $B000-$B7FF and rows 32-63 occupy
+ * $B800-$BFFF; each row is 64 bytes wide. Its camera is at $A680/$A682. */
 #define SML2_HOME_MAP_BASE   0xB000u
 #define SML2_HOME_MAP_COLS   64
-#define SML2_HOME_MAP_ROWS   32
+#define SML2_HOME_MAP_ROWS   64
 #define SML2_HOME_MAP_WIDTH  (SML2_HOME_MAP_COLS * 8)
 #define SML2_HOME_MAP_HEIGHT (SML2_HOME_MAP_ROWS * 8)
 #define SML2_HOME_CAMERA_X   0xA680u
@@ -180,8 +180,8 @@ int wide_sml2_homeworld_camera(int scx, int scy, int *camera_x, int *camera_y)
     return 1;
 }
 
-/* Homeworld is stored as raw 8x8 tile IDs, unlike the 16x16 block map
- * used by side-scrolling levels. Do not decode those bytes through $A600. */
+/* Homeworld's full map has 64 rows of 64 tile IDs. The row stride crosses
+ * from $B000 into $B800 at row 32, covering all four 32x32 quadrants. */
 int wide_sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
 {
     if (!sml2_compositor_installed || !tile ||
@@ -209,9 +209,9 @@ void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
         left + right <= 0 || left < 0 || right < 0)
         return;
 
-    /* On the Homeworld map the game selects WX=80 and WY=136. Its source
-       tilemap is 512x256px in cartridge RAM ($B000-$B7FF), not the level's
-       4096x768px 16x16-block map. Rebuild margins from that full raw map. */
+    /* On the Homeworld map the game selects WX=80 and WY=136. Its full
+       512x512px tilemap occupies SRAM $B000-$BFFF as four 32x32 quadrants,
+       not the level's 4096x768px 16x16-block map. */
     if (wide_sml2_homeworld_active(lcdc, wx, wy)) {
         int camera_x = sml2_read16(SML2_HOME_CAMERA_X);
         int camera_y = sml2_read16(SML2_HOME_CAMERA_Y);

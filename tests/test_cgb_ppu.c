@@ -14,8 +14,8 @@ int wide_sml2_homeworld_active(int lcdc, int wx, int wy)
 int wide_sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
 {
     if (!tile || world_x < 0 || world_x >= 512 ||
-        world_y < 0 || world_y >= 256) return 0;
-    *tile = (uint8_t)((world_y >= 128 ? 3 : 1) +
+        world_y < 0 || world_y >= 512) return 0;
+    *tile = (uint8_t)((world_y >= 256 ? 3 : 1) +
                       (world_x >= 256 ? 1 : 0));
     return 1;
 }
@@ -81,8 +81,8 @@ int main(void)
     ppu_tick(252);
     assert(ppu_shade[0][0] == 1);
 
-    /* Homeworld renders the whole 512x256 source map into a widescreen
-       overview while standard levels keep their normal margin geometry. */
+    /* Homeworld renders all four quadrants of the 512x512 map uniformly
+       above the HUD; standard levels keep their normal margin geometry. */
     ppu_reset();
     ppu_set_cgb_mode(0);
     ppu_set_wide(49, 33, 0, 0, 0);
@@ -94,11 +94,14 @@ int main(void)
     assert(ppu_w == 242);
     assert(ppu_xoff == 0);
     ppu_tick(11 * 456);
-    assert(ppu_bgtile[11][0] == 257);
-    assert(ppu_bgtile[11][241] == 258);
-    ppu_tick((127 - 11) * 456);
-    assert(ppu_bgtile[127][0] == 259);
-    assert(ppu_bgtile[127][241] == 260);
+    /* The square map fits into 136x136 pixels, centred horizontally. */
+    assert(ppu_bgtile[11][52] == 0xFFFF);
+    assert(ppu_bgtile[11][53] == 257);
+    assert(ppu_bgtile[11][188] == 258);
+    assert(ppu_bgtile[11][189] == 0xFFFF);
+    ppu_tick((135 - 11) * 456);
+    assert(ppu_bgtile[135][53] == 259);
+    assert(ppu_bgtile[135][188] == 260);
 
     /* Returning to the normal SML2 window setup restores slider-controlled width. */
     ppu_write(0x4B, 7);
