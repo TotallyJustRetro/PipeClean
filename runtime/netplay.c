@@ -63,13 +63,18 @@ static NetplayChatMessage np_chat[NP_CHAT_CAP];
 static int np_chat_head, np_chat_count;
 
 #define NP_INPUT_CAP 256
-/* Buffer remote input ahead of simulation to absorb relay latency. */
-#define NP_INPUT_DELAY_FRAMES 12u
+/* Four frames (~67 ms at 60 FPS) is a smaller latency floor; any additional
+ * wait should reflect actual network delay rather than a large fixed buffer. */
+#define NP_INPUT_DELAY_FRAMES 4u
 #define NP_SEND_CAP 128
 #define NP_GAME_TIMEOUT_MS 30000u
 #define NP_FRAME_TIMEOUT_MS 15000u
+#define NP_NET_MESSAGE_CAP 12288u
+#define NP_SHARED_SAVE_MAX_BYTES 1000000u
+#define NP_SHARED_SAVE_CHUNK_RAW 8000u
+#define NP_SHARED_NAME_BYTES 32
 typedef struct { uint64_t frame; uint8_t buttons, dpad, actions; } NetInput;
-typedef struct { char data[128]; size_t length; } NetSend;
+typedef struct { char data[NP_NET_MESSAGE_CAP + 1u]; size_t length; } NetSend;
 static NetInput np_inputs[NP_INPUT_CAP];
 static NetInput np_local_inputs[NP_INPUT_CAP];
 static int np_input_head, np_input_count, np_input_overflow;
@@ -86,6 +91,34 @@ static uint32_t np_local_crc, np_remote_crc;
 static int np_game_end_received;
 static uint32_t np_wait_window_total_ms, np_wait_window_max_ms, np_wait_window_slow;
 static unsigned np_wait_window_samples;
+static char np_shared_state_path[NETPLAY_SHARED_SLOT_COUNT][1200];
+static char np_shared_marker_path[NETPLAY_SHARED_SLOT_COUNT][1200];
+static char np_shared_names[NETPLAY_SHARED_SLOT_COUNT][NP_SHARED_NAME_BYTES];
+static int np_shared_name_received[NETPLAY_SHARED_SLOT_COUNT];
+static int np_shared_local_saved[NETPLAY_SHARED_SLOT_COUNT];
+static int np_shared_peer_saved[NETPLAY_SHARED_SLOT_COUNT];
+static int np_shared_local_reported[NETPLAY_SHARED_SLOT_COUNT];
+static int np_shared_name_sent[NETPLAY_SHARED_SLOT_COUNT];
+static int np_shared_pending[NETPLAY_SHARED_SLOT_COUNT];
+static int np_shared_active_slot;
+static int np_shared_load_slot = -1;
+static int np_shared_selection_sent;
+static uint32_t np_shared_tx_next_id = 1;
+static uint32_t np_shared_tx_id, np_shared_tx_crc;
+static int np_shared_tx_slot = -1, np_shared_tx_active;
+static unsigned char *np_shared_rx_data;
+static uint32_t np_shared_rx_id, np_shared_rx_crc, np_shared_rx_size, np_shared_rx_used;
+static int np_shared_rx_slot = -1;
+
+/* Save protocol messages are handled by the network worker, before their
+ * implementations below the frame-exchange function. */
+static void np_handle_save_name(const char *line);
+static void np_handle_save_select(const char *line);
+static void np_handle_save_status(const char *line);
+static void np_handle_save_begin(const char *line);
+static void np_handle_save_chunk(const char *line);
+static void np_handle_save_end(const char *line);
+static void np_handle_save_ack(const char *line);
 
 static void np_lock(void) { if (np_mutex) SDL_LockMutex(np_mutex); }
 static void np_unlock(void) { if (np_mutex) SDL_UnlockMutex(np_mutex); }
@@ -435,14 +468,22 @@ static int np_tls_write_all_raw(NetSocket sock, const char *data, size_t length)
 
 static int np_ws_send_frame(NetSocket sock, unsigned opcode, const unsigned char *payload, size_t length)
 {
-    unsigned char frame[2 + 4 + 125];
-    if (length > 125 || (length && !payload) || !np_ws_rng_ready) return 0;
+    unsigned char frame[2 + 8 + 4 + NP_NET_MESSAGE_CAP];
+    size_t header = 2;
+    if (length > NP_NET_MESSAGE_CAP || (length && !payload) || !np_ws_rng_ready) return 0;
     frame[0] = (unsigned char)(0x80u | (opcode & 0x0fu));
-    frame[1] = (unsigned char)(0x80u | (unsigned char)length); /* Client frames must be masked. */
-    if (mbedtls_ctr_drbg_random(&np_ws_drbg, frame + 2, 4) != 0) return 0;
+    if (length <= 125u) {
+        frame[1] = (unsigned char)(0x80u | (unsigned char)length);
+    } else if (length <= 65535u) {
+        frame[1] = 0x80u | 126u;
+        frame[2] = (unsigned char)(length >> 8);
+        frame[3] = (unsigned char)length;
+        header = 4;
+    } else return 0;
+    if (mbedtls_ctr_drbg_random(&np_ws_drbg, frame + header, 4) != 0) return 0;
     for (size_t i = 0; i < length; ++i)
-        frame[6 + i] = payload[i] ^ frame[2 + (i & 3u)];
-    return np_tls_write_all_raw(sock, (const char *)frame, 6 + length);
+        frame[header + 4 + i] = payload[i] ^ frame[header + (i & 3u)];
+    return np_tls_write_all_raw(sock, (const char *)frame, header + 4 + length);
 }
 
 static int np_tls_write_all(NetSocket sock, const char *data, size_t length)
@@ -561,7 +602,7 @@ static int np_websocket_handshake(NetSocket sock, const char *host)
 static int np_ws_read_line(NetSocket sock, char *out, size_t cap)
 {
     for (;;) {
-        unsigned char header[2], extended[8], mask[4], payload[512];
+        unsigned char header[2], extended[8], mask[4], payload[NP_NET_MESSAGE_CAP];
         uint64_t length;
         unsigned opcode, fin, masked;
         int header_read = np_tls_read_exact_timeout(sock, header, sizeof header, 30000u);
@@ -617,7 +658,7 @@ static int np_write_transport(NetSocket sock, const char *data, size_t length, i
 static int np_tls_flush_outgoing(NetSocket sock)
 {
     for (;;) {
-        char message[128];
+        char message[NP_NET_MESSAGE_CAP + 1u];
         size_t length;
         np_lock();
         if (np_send_count <= 0) {
@@ -823,7 +864,8 @@ static int np_handle_join_response(const char *line)
 }
 static int SDLCALL np_worker(void *unused)
 {
-    char endpoint[160], name[32], join_code[16], host[128], port[8], line[512];
+    char endpoint[160], name[32], join_code[16], host[128], port[8],
+         line[NP_NET_MESSAGE_CAP + 2u];
     NetSocket sock;
     int is_host, use_tls;
     (void)unused;
@@ -928,6 +970,13 @@ static int SDLCALL np_worker(void *unused)
             np_set_peer(line + 12);
             np_set_status(NETPLAY_CONNECTED, "Player connected to your room");
             np_lock();
+            for (int i = 0; i < NETPLAY_SHARED_SLOT_COUNT; i++) {
+                np_shared_peer_saved[i] = -1;
+                np_shared_local_reported[i] = -1;
+                np_shared_name_sent[i] = 0;
+                np_shared_name_received[i] = 0;
+            }
+            np_shared_selection_sent = 0;
             selected = np_selected_game;
             np_unlock();
             if (is_host && (selected == GAME_SML || selected == GAME_SML2)) {
@@ -937,6 +986,14 @@ static int SDLCALL np_worker(void *unused)
         } else if (!strcmp(line, "PEER_LEFT")) {
             np_set_peer("");
             np_lock();
+            for (int i = 0; i < NETPLAY_SHARED_SLOT_COUNT; i++) {
+                np_shared_peer_saved[i] = -1;
+                np_shared_local_reported[i] = -1;
+                np_shared_name_sent[i] = 0;
+                np_shared_name_received[i] = 0;
+            }
+            np_shared_selection_sent = 0;
+            np_shared_load_slot = -1;
             np_local_rom_valid = np_remote_rom_valid = 0;
             np_local_rom_crc = np_remote_rom_crc = 0;
             np_rom_check_state = NETPLAY_ROM_UNCHECKED;
@@ -950,6 +1007,15 @@ static int SDLCALL np_worker(void *unused)
             if (selected == GAME_SML || selected == GAME_SML2) {
                 np_lock();
                 if (np_selected_game != selected) {
+                    for (int i = 0; i < NETPLAY_SHARED_SLOT_COUNT; i++) {
+                        np_shared_peer_saved[i] = -1;
+                        np_shared_local_reported[i] = -1;
+                        np_shared_name_sent[i] = 0;
+                        np_shared_name_received[i] = 0;
+                    }
+                    np_shared_selection_sent = 0;
+                    np_shared_load_slot = -1;
+                }
                     np_local_rom_valid = np_remote_rom_valid = 0;
                     np_local_rom_crc = np_remote_rom_crc = 0;
                     np_rom_check_state = NETPLAY_ROM_UNCHECKED;
@@ -988,6 +1054,20 @@ static int SDLCALL np_worker(void *unused)
             np_handle_game_end();
         } else if (!strncmp(line, "INPUT\t", 6)) {
             np_handle_input_line(line);
+        } else if (!strncmp(line, "SAVE_NAME\t", 10)) {
+            np_handle_save_name(line);
+        } else if (!strncmp(line, "SAVE_SELECT\t", 12)) {
+            np_handle_save_select(line);
+        } else if (!strncmp(line, "SAVE_STATUS\t", 12)) {
+            np_handle_save_status(line);
+        } else if (!strncmp(line, "SAVE_BEGIN\t", 11)) {
+            np_handle_save_begin(line);
+        } else if (!strncmp(line, "SAVE_CHUNK\t", 11)) {
+            np_handle_save_chunk(line);
+        } else if (!strncmp(line, "SAVE_END\t", 9)) {
+            np_handle_save_end(line);
+        } else if (!strncmp(line, "SAVE_ACK\t", 9)) {
+            np_handle_save_ack(line);
         } else if (!strncmp(line, "ERR\t", 4)) {
             np_set_status(NETPLAY_ERROR, line + 4);
             break;
@@ -1071,6 +1151,22 @@ static int netplay_start(int is_host, const char *endpoint, const char *code, co
     }
     np_start_request = -1;
     np_chat_head = np_chat_count = 0;
+    np_shared_active_slot = 0;
+    np_shared_load_slot = -1;
+    np_shared_selection_sent = 0;
+    np_shared_tx_active = 0;
+    np_shared_tx_slot = -1;
+    free(np_shared_rx_data);
+    np_shared_rx_data = NULL;
+    np_shared_rx_id = np_shared_rx_crc = np_shared_rx_size = np_shared_rx_used = 0;
+    np_shared_rx_slot = -1;
+    for (int i = 0; i < NETPLAY_SHARED_SLOT_COUNT; i++) {
+        np_shared_peer_saved[i] = -1;
+        np_shared_local_reported[i] = -1;
+        np_shared_name_sent[i] = 0;
+        np_shared_name_received[i] = 0;
+        np_shared_pending[i] = 0;
+    }
     np_rom_check_state = NETPLAY_ROM_UNCHECKED;
     np_rom_check_game = np_selected_game;
     np_local_rom_valid = np_remote_rom_valid = 0;
@@ -1418,20 +1514,25 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
             got_remote = 1;
             break;
         }
-        while (np_input_count > 0) {
-            NetInput *head = &np_inputs[np_input_head];
-            if (head->frame < frame) {
-                np_input_head = (np_input_head + 1) % NP_INPUT_CAP;
-                np_input_count--;
-                continue;
-            }
-            if (head->frame == frame) {
-                remote = *head;
-                np_input_head = (np_input_head + 1) % NP_INPUT_CAP;
+        while (np_input_count > 0 && np_inputs[np_input_head].frame < frame) {
+            np_input_head = (np_input_head + 1) % NP_INPUT_CAP;
+            np_input_count--;
+        }
+        /* Don't rely on queue head matching the current local frame. A future
+         * ID at the head used to hide a matching input stored behind it. */
+        for (int q = 0; q < np_input_count; q++) {
+            int idx = (np_input_head + q) % NP_INPUT_CAP;
+            if (np_inputs[idx].frame == frame) {
+                remote = np_inputs[idx];
+                for (int move = q; move + 1 < np_input_count; move++) {
+                    int to = (np_input_head + move) % NP_INPUT_CAP;
+                    int from = (np_input_head + move + 1) % NP_INPUT_CAP;
+                    np_inputs[to] = np_inputs[from];
+                }
                 np_input_count--;
                 got_remote = 1;
+                break;
             }
-            break;
         }
         if (got_remote) break;
         {
@@ -1487,6 +1588,470 @@ int netplay_exchange_inputs(uint64_t frame, uint8_t local_buttons, uint8_t local
     np_unlock();
     return ok ? 0 : -1;
 }
+static uint32_t np_shared_crc32(const unsigned char *data, size_t length)
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < length; i++) {
+        crc ^= data[i];
+        for (int bit = 0; bit < 8; bit++)
+            crc = (crc >> 1) ^ (0xEDB88320u & (uint32_t)-(int32_t)(crc & 1u));
+    }
+    return ~crc;
+}
+
+static int np_shared_write_atomic(const char *path, const void *data, size_t size)
+{
+    char temp[1240];
+    if (!path || !path[0] || !data || !size ||
+        snprintf(temp, sizeof temp, "%s.netplay-tmp", path) >= (int)sizeof temp) return 0;
+    FILE *file = fopen(temp, "wb");
+    if (!file) return 0;
+    size_t wrote = fwrite(data, 1, size, file);
+    int close_ok = fclose(file) == 0;
+    if (wrote != size || !close_ok) { remove(temp); return 0; }
+    remove(path);
+    if (rename(temp, path) != 0) { remove(temp); return 0; }
+    return 1;
+}
+
+static int np_shared_write_marker(const char *path)
+{
+    static const char marker[] = "PipeClean shared save v1\n";
+    return np_shared_write_atomic(path, marker, sizeof marker - 1);
+}
+
+static int np_shared_parse_u32(const char **cursor, uint32_t *value)
+{
+    const char *p = *cursor;
+    char *end = NULL;
+    unsigned long v;
+    if (!p || !*p) return 0;
+    v = strtoul(p, &end, 10);
+    if (end == p || v > UINT32_MAX || (*end != '\t' && *end != '\0')) return 0;
+    *value = (uint32_t)v;
+    *cursor = *end == '\t' ? end + 1 : end;
+    return 1;
+}
+
+static void np_handle_save_name(const char *line)
+{
+    int slot;
+    char name[NP_SHARED_NAME_BYTES], extra;
+    int parsed = sscanf(line, "SAVE_NAME\t%d\t%31[^\t\r\n]%c", &slot, name, &extra);
+    if (parsed < 2 || slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT ||
+        (parsed == 3 && extra != 0)) return;
+    for (const unsigned char *p = (const unsigned char *)name; *p; p++)
+        if (*p < 32 || *p == 127) return;
+    np_lock();
+    if (!np_is_host) {
+        snprintf(np_shared_names[slot], sizeof np_shared_names[slot], "%s", name);
+        np_shared_name_received[slot] = 1;
+    }
+    np_unlock();
+}
+
+static void np_handle_save_select(const char *line)
+{
+    int active, load;
+    char extra;
+    if (sscanf(line, "SAVE_SELECT\t%d\t%d%c", &active, &load, &extra) != 2 ||
+        active < 0 || active >= NETPLAY_SHARED_SLOT_COUNT ||
+        load < -1 || load >= NETPLAY_SHARED_SLOT_COUNT) return;
+    np_lock();
+    if (!np_is_host) {
+        np_shared_active_slot = active;
+        np_shared_load_slot = load;
+    }
+    np_unlock();
+}
+
+static void np_handle_save_status(const char *line)
+{
+    int slot, saved;
+    char extra;
+    if (sscanf(line, "SAVE_STATUS\t%d\t%d%c", &slot, &saved, &extra) != 2 ||
+        slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT || (saved != 0 && saved != 1)) return;
+    np_lock();
+    np_shared_peer_saved[slot] = saved;
+    if (np_is_host && saved == 0 && np_shared_tx_active && np_shared_tx_slot == slot) {
+        np_shared_tx_active = 0;
+        np_shared_tx_slot = -1;
+        np_shared_pending[slot] = 0;
+    }
+    np_unlock();
+}
+
+static void np_handle_save_begin(const char *line)
+{
+    unsigned id, slot, size, crc;
+    char extra;
+    if (sscanf(line, "SAVE_BEGIN\t%u\t%u\t%u\t%x%c",
+               &id, &slot, &size, &crc, &extra) != 4 ||
+        slot >= NETPLAY_SHARED_SLOT_COUNT || size == 0 || size > NP_SHARED_SAVE_MAX_BYTES) return;
+    np_lock();
+    if (np_is_host || !np_shared_state_path[slot][0] || !np_shared_marker_path[slot][0]) {
+        np_unlock();
+        return;
+    }
+    free(np_shared_rx_data);
+    np_shared_rx_data = (unsigned char *)malloc(size);
+    if (!np_shared_rx_data) {
+        np_shared_rx_id = np_shared_rx_crc = np_shared_rx_size = np_shared_rx_used = 0;
+        np_shared_rx_slot = -1;
+        np_unlock();
+        return;
+    }
+    np_shared_rx_id = id;
+    np_shared_rx_slot = (int)slot;
+    np_shared_rx_size = size;
+    np_shared_rx_crc = crc;
+    np_shared_rx_used = 0;
+    np_shared_pending[slot] = 1;
+    np_shared_local_saved[slot] = 0;
+    np_unlock();
+}
+
+static void np_handle_save_chunk(const char *line)
+{
+    const char *cursor = line + 11;
+    uint32_t id, slot, offset;
+    const char *encoded;
+    unsigned char decoded[NP_SHARED_SAVE_CHUNK_RAW];
+    size_t decoded_size = 0;
+    if (!np_shared_parse_u32(&cursor, &id) ||
+        !np_shared_parse_u32(&cursor, &slot) ||
+        !np_shared_parse_u32(&cursor, &offset) || !*cursor ||
+        slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    encoded = cursor;
+    size_t encoded_len = strlen(encoded);
+    if (!encoded_len || mbedtls_base64_decode(decoded, sizeof decoded, &decoded_size,
+                                               (const unsigned char *)encoded, encoded_len) != 0 ||
+        decoded_size == 0 || decoded_size > NP_SHARED_SAVE_CHUNK_RAW) return;
+    np_lock();
+    if (np_is_host || !np_shared_rx_data || np_shared_rx_id != id ||
+        np_shared_rx_slot != (int)slot || offset != np_shared_rx_used ||
+        (uint64_t)offset + decoded_size > np_shared_rx_size) {
+        np_unlock();
+        return;
+    }
+    memcpy(np_shared_rx_data + offset, decoded, decoded_size);
+    np_shared_rx_used += (uint32_t)decoded_size;
+    np_unlock();
+}
+
+static void np_handle_save_end(const char *line)
+{
+    unsigned id, slot, size, crc;
+    char extra, state_path[1200] = "", marker_path[1200] = "";
+    unsigned char *data = NULL;
+    int valid = 0;
+    if (sscanf(line, "SAVE_END\t%u\t%u\t%u\t%x%c",
+               &id, &slot, &size, &crc, &extra) != 4 ||
+        slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    np_lock();
+    if (!np_is_host && np_shared_rx_data && np_shared_rx_id == id &&
+        np_shared_rx_slot == (int)slot && np_shared_rx_size == size &&
+        np_shared_rx_used == size && np_shared_rx_crc == crc) {
+        data = np_shared_rx_data;
+        np_shared_rx_data = NULL;
+        snprintf(state_path, sizeof state_path, "%s", np_shared_state_path[slot]);
+        snprintf(marker_path, sizeof marker_path, "%s", np_shared_marker_path[slot]);
+    }
+    np_unlock();
+    if (data) {
+        valid = np_shared_crc32(data, size) == crc &&
+                np_shared_write_atomic(state_path, data, size) &&
+                np_shared_write_marker(marker_path);
+        free(data);
+    }
+    np_lock();
+    free(np_shared_rx_data);
+    np_shared_rx_data = NULL;
+    np_shared_rx_id = np_shared_rx_crc = np_shared_rx_size = np_shared_rx_used = 0;
+    np_shared_rx_slot = -1;
+    np_shared_pending[slot] = 0;
+    np_shared_local_saved[slot] = valid;
+    np_shared_local_reported[slot] = valid ? 1 : 0;
+    np_unlock();
+    char command[96];
+    snprintf(command, sizeof command, "SAVE_STATUS\t%u\t%d\n", slot, valid ? 1 : 0);
+    (void)np_send_current(command);
+    if (valid) {
+        snprintf(command, sizeof command, "SAVE_ACK\t%u\t%u\t%08X\n", id, slot, crc);
+        (void)np_send_current(command);
+    }
+}
+
+static void np_handle_save_ack(const char *line)
+{
+    unsigned id, slot, crc;
+    char extra, marker_path[1200] = "";
+    int accepted = 0;
+    if (sscanf(line, "SAVE_ACK\t%u\t%u\t%x%c", &id, &slot, &crc, &extra) != 3 ||
+        slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    np_lock();
+    if (np_is_host && np_shared_tx_active && np_shared_tx_id == id &&
+        np_shared_tx_slot == (int)slot && np_shared_tx_crc == crc) {
+        snprintf(marker_path, sizeof marker_path, "%s", np_shared_marker_path[slot]);
+        accepted = 1;
+    }
+    np_unlock();
+    if (!accepted) return;
+    if (!np_shared_write_marker(marker_path)) {
+        np_lock();
+        np_shared_tx_active = 0;
+        np_shared_tx_slot = -1;
+        np_shared_pending[slot] = 0;
+        np_shared_local_saved[slot] = 0;
+        np_shared_local_reported[slot] = 0;
+        np_unlock();
+        return;
+    }
+    np_lock();
+    np_shared_tx_active = 0;
+    np_shared_tx_slot = -1;
+    np_shared_pending[slot] = 0;
+    np_shared_local_saved[slot] = 1;
+    np_shared_local_reported[slot] = 1;
+    np_shared_peer_saved[slot] = 1;
+    np_unlock();
+    char command[96];
+    snprintf(command, sizeof command, "SAVE_STATUS\t%u\t1\n", slot);
+    (void)np_send_current(command);
+}
+
+void netplay_shared_slot_configure(int slot, const char *state_path,
+                                   const char *marker_path, const char *name,
+                                   int local_saved)
+{
+    char state_copy[1200] = "", marker_copy[1200] = "", clean_name[NP_SHARED_NAME_BYTES];
+    int send_name = 0, send_status = 0, send_select = 0;
+    char command[128];
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    snprintf(state_copy, sizeof state_copy, "%s", state_path ? state_path : "");
+    snprintf(marker_copy, sizeof marker_copy, "%s", marker_path ? marker_path : "");
+    snprintf(clean_name, sizeof clean_name, "%s", name && name[0] ? name : "");
+    for (unsigned char *p = (unsigned char *)clean_name; *p; p++)
+        if (*p < 32 || *p == 127 || *p == '\t') *p = '_';
+    if (!clean_name[0]) snprintf(clean_name, sizeof clean_name, "Slot %d", slot + 1);
+
+    np_lock();
+    if (strcmp(np_shared_state_path[slot], state_copy) ||
+        strcmp(np_shared_marker_path[slot], marker_copy)) {
+        snprintf(np_shared_state_path[slot], sizeof np_shared_state_path[slot], "%s", state_copy);
+        snprintf(np_shared_marker_path[slot], sizeof np_shared_marker_path[slot], "%s", marker_copy);
+        if (np_is_host || !np_shared_name_received[slot])
+            snprintf(np_shared_names[slot], sizeof np_shared_names[slot], "%s", clean_name);
+        np_shared_peer_saved[slot] = -1;
+        np_shared_local_reported[slot] = -1;
+        np_shared_name_sent[slot] = 0;
+    }
+    np_shared_local_saved[slot] = local_saved != 0;
+    if (np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] &&
+        !np_shared_name_sent[slot]) send_name = 1;
+    if (np_state == NETPLAY_CONNECTED && np_peer[0] &&
+        np_shared_local_reported[slot] != np_shared_local_saved[slot]) send_status = 1;
+    if (slot == 0 && np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] &&
+        !np_shared_selection_sent) send_select = 1;
+    np_unlock();
+
+    if (send_name) {
+        np_lock(); snprintf(clean_name, sizeof clean_name, "%s", np_shared_names[slot]); np_unlock();
+        snprintf(command, sizeof command, "SAVE_NAME\t%d\t%s\n", slot, clean_name);
+        if (np_send_current(command)) {
+            np_lock(); np_shared_name_sent[slot] = 1; np_unlock();
+        }
+    }
+    if (send_status) {
+        snprintf(command, sizeof command, "SAVE_STATUS\t%d\t%d\n", slot, local_saved ? 1 : 0);
+        if (np_send_current(command)) {
+            np_lock(); np_shared_local_reported[slot] = local_saved ? 1 : 0; np_unlock();
+        }
+    }
+    if (send_select) {
+        int active, load;
+        np_lock(); active=np_shared_active_slot; load=np_shared_load_slot; np_unlock();
+        snprintf(command, sizeof command, "SAVE_SELECT\t%d\t%d\n", active, load);
+        if (np_send_current(command)) {
+            np_lock(); np_shared_selection_sent = 1; np_unlock();
+        }
+    }
+}
+
+void netplay_shared_slot_name(int slot, char *out, size_t out_size)
+{
+    if (!out || !out_size) return;
+    out[0] = 0;
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    np_lock();
+    snprintf(out, out_size, "%s", np_shared_names[slot][0] ? np_shared_names[slot] : "Slot");
+    np_unlock();
+}
+
+void netplay_shared_slot_status(int slot, int *local_saved, int *peer_saved, int *pending)
+{
+    if (local_saved) *local_saved = 0;
+    if (peer_saved) *peer_saved = -1;
+    if (pending) *pending = 0;
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    np_lock();
+    if (local_saved) *local_saved = np_shared_local_saved[slot];
+    if (peer_saved) *peer_saved = np_shared_peer_saved[slot];
+    if (pending) *pending = np_shared_pending[slot];
+    np_unlock();
+}
+
+int netplay_shared_slot_is_synced(int slot)
+{
+    int local, peer, pending;
+    netplay_shared_slot_status(slot, &local, &peer, &pending);
+    return local == 1 && peer == 1 && !pending;
+}
+
+int netplay_shared_slot_active(void)
+{
+    int slot;
+    np_lock(); slot = np_shared_active_slot; np_unlock();
+    return slot;
+}
+
+int netplay_shared_slot_load(void)
+{
+    int slot;
+    np_lock(); slot = np_shared_load_slot; np_unlock();
+    return slot;
+}
+
+int netplay_shared_slot_select(int active_slot, int load_slot)
+{
+    char command[64];
+    int allowed;
+    if (active_slot < 0 || active_slot >= NETPLAY_SHARED_SLOT_COUNT ||
+        load_slot < -1 || load_slot >= NETPLAY_SHARED_SLOT_COUNT) return 0;
+    np_lock();
+    allowed = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] &&
+              (load_slot < 0 ||
+               (np_shared_local_saved[load_slot] == 1 &&
+                np_shared_peer_saved[load_slot] == 1 && !np_shared_pending[load_slot]));
+    if (allowed) {
+        np_shared_active_slot = active_slot;
+        np_shared_load_slot = load_slot;
+    }
+    np_unlock();
+    if (!allowed) return 0;
+    snprintf(command, sizeof command, "SAVE_SELECT\t%d\t%d\n", active_slot, load_slot);
+    if (!np_send_current(command)) return 0;
+    np_lock(); np_shared_selection_sent = 1; np_unlock();
+    return 1;
+}
+
+int netplay_shared_slot_rename(int slot, const char *name)
+{
+    char command[128], clean_name[NP_SHARED_NAME_BYTES];
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT || !name || !name[0]) return 0;
+    snprintf(clean_name, sizeof clean_name, "%s", name);
+    for (unsigned char *p = (unsigned char *)clean_name; *p; p++)
+        if (*p < 32 || *p == 127 || *p == '\t') return 0;
+    np_lock();
+    int allowed = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0];
+    if (allowed) snprintf(np_shared_names[slot], sizeof np_shared_names[slot], "%s", clean_name);
+    np_unlock();
+    if (!allowed) return 0;
+    snprintf(command, sizeof command, "SAVE_NAME\t%d\t%s\n", slot, clean_name);
+    if (!np_send_current(command)) return 0;
+    np_lock();
+    np_shared_name_sent[slot] = 1;
+    np_unlock();
+    return 1;
+}
+
+void netplay_shared_slot_mark_unsynced(int slot)
+{
+    char marker[1200], command[96];
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    np_lock();
+    snprintf(marker, sizeof marker, "%s", np_shared_marker_path[slot]);
+    np_shared_local_saved[slot] = 0;
+    np_shared_local_reported[slot] = 0;
+    np_shared_pending[slot] = 1;
+    np_unlock();
+    if (marker[0]) remove(marker);
+    snprintf(command, sizeof command, "SAVE_STATUS\t%d\t0\n", slot);
+    (void)np_send_current(command);
+}
+
+int netplay_shared_save_send_file(int slot, const char *path)
+{
+    FILE *file;
+    unsigned char *data = NULL;
+    long file_size;
+    uint32_t id, crc;
+    char message[NP_NET_MESSAGE_CAP + 1u];
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT || !path || !path[0]) return 0;
+    file = fopen(path, "rb");
+    if (!file) return 0;
+    if (fseek(file, 0, SEEK_END) != 0 || (file_size = ftell(file)) <= 0 ||
+        (unsigned long)file_size > NP_SHARED_SAVE_MAX_BYTES ||
+        fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return 0;
+    }
+    data = (unsigned char *)malloc((size_t)file_size);
+    if (!data) { fclose(file); return 0; }
+    if (fread(data, 1, (size_t)file_size, file) != (size_t)file_size) {
+        free(data); fclose(file); return 0;
+    }
+    fclose(file);
+    crc = np_shared_crc32(data, (size_t)file_size);
+    np_lock();
+    if (!np_is_host || np_state != NETPLAY_CONNECTED || !np_peer[0] ||
+        np_shared_tx_active || np_shared_state_path[slot][0] == 0) {
+        np_unlock(); free(data); return 0;
+    }
+    id = np_shared_tx_next_id++;
+    if (!id) id = np_shared_tx_next_id++;
+    np_shared_tx_id = id;
+    np_shared_tx_crc = crc;
+    np_shared_tx_slot = slot;
+    np_shared_tx_active = 1;
+    np_shared_pending[slot] = 1;
+    np_unlock();
+
+    snprintf(message, sizeof message, "SAVE_BEGIN\t%u\t%u\t%lu\t%08X\n",
+             id, (unsigned)slot, (unsigned long)file_size, crc);
+    int ok = np_send_current(message);
+    for (size_t offset = 0; ok && offset < (size_t)file_size; offset += NP_SHARED_SAVE_CHUNK_RAW) {
+        size_t raw = (size_t)file_size - offset;
+        if (raw > NP_SHARED_SAVE_CHUNK_RAW) raw = NP_SHARED_SAVE_CHUNK_RAW;
+        unsigned char encoded[NP_SHARED_SAVE_CHUNK_RAW * 4u / 3u + 8u];
+        size_t encoded_size = 0;
+        if (mbedtls_base64_encode(encoded, sizeof encoded, &encoded_size,
+                                  data + offset, raw) != 0 || encoded_size + 64 >= sizeof message) {
+            ok = 0;
+            break;
+        }
+        encoded[encoded_size] = 0;
+        int written = snprintf(message, sizeof message, "SAVE_CHUNK\t%u\t%u\t%lu\t%s\n",
+                               id, (unsigned)slot, (unsigned long)offset, encoded);
+        if (written < 0 || (size_t)written >= sizeof message) { ok = 0; break; }
+        ok = np_send_current(message);
+    }
+    if (ok) {
+        snprintf(message, sizeof message, "SAVE_END\t%u\t%u\t%lu\t%08X\n",
+                 id, (unsigned)slot, (unsigned long)file_size, crc);
+        ok = np_send_current(message);
+    }
+    free(data);
+    if (!ok) {
+        np_lock();
+        np_shared_tx_active = 0;
+        np_shared_tx_slot = -1;
+        np_shared_pending[slot] = 0;
+        np_unlock();
+    }
+    return ok;
+}
+
 void netplay_game_end(void)
 {
     if (!np_mutex) return;
