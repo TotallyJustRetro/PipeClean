@@ -120,7 +120,7 @@ int wide_sml2_homeworld_active(int lcdc, int wx, int wy)
 }
 
 /* Allocate the Homeworld's fixed extra width toward the map edges. The native
- * 160px view starts at screen_left; keep all 384 output pixels inside the
+ * 160px view starts at screen_left; keep all 512 output pixels inside the
  * 512px map whenever the camera position allows it. */
 void wide_sml2_homeworld_dims(int screen_left, int extra_total,
                               int *left, int *right)
