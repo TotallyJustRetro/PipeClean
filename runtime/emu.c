@@ -26,6 +26,7 @@ typedef struct {
 } ReserveItemState;
 
 static ReserveItemState reserve_item_state;
+static volatile int reserve_item_use_request;
 static volatile int abort_flag, paused, turbo, thread_mode, preview_target, previewing;
 static volatile uint32_t input_word;     /* buttons | dpad << 8 */
 static SDL_mutex *rewind_sync_mx;
@@ -71,6 +72,9 @@ static void abort_on_cpu_fault(uint8_t opcode, uint16_t pc)
     longjmp(stop_jmp, 4);
 }
 void emu_input(uint8_t b, uint8_t d) { input_word = (uint32_t)b | ((uint32_t)d << 8); }
+/* The Android companion posts a request; the emulation thread performs the
+ * actual game RAM mutation at a safe point. */
+void emu_reserve_item_use(void) { reserve_item_use_request = 1; }
 void emu_set_paused(int p) { paused = p; audio_game_set_paused(p); }
 void emu_set_turbo(int t) { turbo = t; }
 void emu_set_save_path(const char *p) { snprintf(save_path, sizeof save_path, "%s", p ? p : ""); }
@@ -417,20 +421,15 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     if (mp_ready || mp_active) return;
 
     /* SML2 power-up values in $A216 are 1 (mushroom), 2 (fire flower),
-     * and 3 (carrot). Preserve the current form when a new power-up is
-     * collected into an empty reserve; use the reserve when the current
-     * power-up is cleared by damage. */
+     * and 3 (carrot). Preserve the current form when a newly collected
+     * power-up goes into the empty reserve. Damage no longer consumes the
+     * reserve automatically; the player chooses when to use it. */
     if (game == GAME_SML2 && addr == 0xA216) {
         if (old_v >= 1 && old_v <= 3 && new_v >= 1 && new_v <= 3 &&
             reserve_item_state.kind == 0) {
             reserve_item_state.kind = new_v;
             reserve_item_state.spawn_pending = 0;
             gb_watch_override(addr, old_v);
-        } else if (old_v >= 1 && old_v <= 3 && new_v == 0 &&
-                   reserve_item_state.kind >= 1 && reserve_item_state.kind <= 3) {
-            uint8_t stored = reserve_item_state.kind;
-            memset(&reserve_item_state, 0, sizeof reserve_item_state);
-            gb_watch_override(addr, stored);
         }
         return;
     }
@@ -454,18 +453,38 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
                 reserve_item_state.object[0] = old_v;
             }
         }
-    } else if (addr == 0xFF99 && reserve_item_state.kind >= 1 &&
-               reserve_item_state.kind <= 2 && reserve_item_gameplay_active() &&
-               (((old_v == 1 || old_v == 2) && new_v == 3) ||
-                (old_v != 0 && new_v == 0))) {
-        /* Queue the original power-up object when SML1 loses the current form. */
+    }
+}
+
+/* Consume a requested reserve item on the emulation thread, not the Android
+ * UI thread. SML1 uses the game's original pickup object; SML2's active
+ * power-up selector is the game's native item state. */
+static void reserve_item_process_use_request(void)
+{
+    if (!reserve_item_use_request) return;
+    reserve_item_use_request = 0;
+
+    int game = rom_loaded_game();
+    if (mp_ready || mp_active || !reserve_item_state.kind) return;
+
+    if (game == GAME_SML2 && reserve_item_state.kind >= 1 &&
+        reserve_item_state.kind <= 3) {
+        uint8_t stored = reserve_item_state.kind;
+        /* Keep the reserve occupied during this write so the watcher cannot
+         * mistake an intentional use for a newly collected pickup. */
+        wr8(0xA216, stored);
+        memset(&reserve_item_state, 0, sizeof reserve_item_state);
+    } else if (game == GAME_SML && reserve_item_state.kind <= 2 &&
+               reserve_item_gameplay_active()) {
+        /* Pressing the pocket releases the stored original item into play.
+         * The item stays in reserve until its object slot is available. */
         reserve_item_state.spawn_pending = 1;
     }
 }
 
 static void reserve_item_watch_setup(void)
 {
-    static const uint16_t addresses[] = {0xD190, 0xFF99, 0xA216};
+    static const uint16_t addresses[] = {0xD190, 0xA216};
     int game = rom_loaded_game();
     if ((game == GAME_SML || game == GAME_SML2) && !mp_ready && !mp_active)
         gb_watch_set(addresses, (int)(sizeof addresses / sizeof addresses[0]), reserve_item_watch);
@@ -983,6 +1002,7 @@ int emu_mp_begin(void)
     if (thr || mp_ready || (mp_game != GAME_SML && mp_game != GAME_SML2)) return -1;
     if (!fmx) fmx = SDL_CreateMutex();
     memset(&reserve_item_state, 0, sizeof reserve_item_state);
+    reserve_item_use_request = 0;
     gb_watch_set(NULL, 0, NULL);
     gb_reset();
     if (save_path[0]) cart_load_save(save_path);
@@ -3675,6 +3695,7 @@ void emu_mp_end(void)
     if (mp_ready && save_path[0]) cart_write_save(save_path);
     gb_watch_set(NULL, 0, NULL);
     memset(&reserve_item_state, 0, sizeof reserve_item_state);
+    reserve_item_use_request = 0;
     gb_set_instruction_hook(NULL);
     gb_set_timing_suppressed(0);
     mp_active = 0;
@@ -4251,7 +4272,10 @@ void frame_hook(void)
         SDL_Delay(8);
         return;
     }
-    if (!mp_ready) reserve_item_try_spawn();
+    if (!mp_ready) {
+        reserve_item_process_use_request();
+        reserve_item_try_spawn();
+    }
     rewind_capture_if_due();
     publish();
     events_frame();
@@ -4284,6 +4308,7 @@ static int emu_start_internal(int force_interp, int reset)
     force_interp_flag = force_interp;
     core_faulted = 0; core_fault_opcode = 0; core_fault_pc = 0;
     abort_flag = 0; paused = 0; turbo = 0; save_tick = 0; pace_next = 0;
+    reserve_item_use_request = 0;
     if (reset) {
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
         gb_watch_set(NULL, 0, NULL);
