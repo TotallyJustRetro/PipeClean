@@ -282,6 +282,9 @@ void ppu_write(uint8_t r, uint8_t v)
 }
 
 /* ------------------------------------------------------------------ */
+#define HOMEWORLD_SOURCE_WIDTH 512
+#define HOMEWORLD_SOURCE_HEIGHT 256
+
 static void render_homeworld_overview_line(int y)
 {
     const int W = ppu_w;
@@ -298,22 +301,22 @@ static void render_homeworld_overview_line(int y)
     /* A 512x256 map scaled by W/512 has a height of W/2. This gives the
        complete world map a stable 2:1 aspect ratio with narrow top/bottom
        bars inside the ordinary 160px-high Game Boy frame geometry. */
-    int map_h = (SML2_HOME_MAP_HEIGHT * W + SML2_HOME_MAP_WIDTH / 2) /
-                SML2_HOME_MAP_WIDTH;
+    int map_h = (HOMEWORLD_SOURCE_HEIGHT * W + HOMEWORLD_SOURCE_WIDTH / 2) /
+                HOMEWORLD_SOURCE_WIDTH;
     int map_top = (GB_H - map_h) / 2;
     int camera_x = 0, camera_y = 0;
     int have_camera = wide_sml2_homeworld_camera &&
         wide_sml2_homeworld_camera(scx, scy, &camera_x, &camera_y);
 
     for (int x = 0; x < W; x++) {
-        int world_x = (x * SML2_HOME_MAP_WIDTH) / W;
+        int world_x = (x * HOMEWORLD_SOURCE_WIDTH) / W;
         if (y < map_top || y >= map_top + map_h) {
             bgci[x] = 0;
             out[x] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
             rgb[x] = cgb_render_enabled ? cgb_rgb(cgb_bg_palette, 0, 0) : 0;
             continue;
         }
-        int world_y = ((y - map_top) * SML2_HOME_MAP_WIDTH) / W;
+        int world_y = ((y - map_top) * HOMEWORLD_SOURCE_WIDTH) / W;
         uint8_t tile = 0;
         int attr = 0, tile_id = 0;
         int ci = 0;
@@ -330,7 +333,30 @@ static void render_homeworld_overview_line(int y)
         ppu_bguv[y][x] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
     }
 
-    if (!have_camera || !(lcdc & 0x02)) return;
+    /* Preserve the native Homeworld status/window strip at the bottom. It
+       remains UI, not part of the scaled world map, and is centred over the
+       overview instead of being drawn at the old left margin. */
+    if (y >= wy && (lcdc & 0x20) &&
+        (cgb_render_enabled || (lcdc & 0x01)) && wx <= 166) {
+        int map_off = (lcdc & 0x40) ? 0x1C00 : 0x1800;
+        int native_offset = (W - GB_W) / 2;
+        int window_x0 = wx - 7 + native_offset;
+        int window_y = y - wy;
+        for (int x = window_x0 < 0 ? 0 : window_x0; x < W; x++) {
+            int px = x - window_x0, attr = 0, tile_id = 0;
+            int ci = tile_pixel(map_off, px, window_y, &attr, &tile_id);
+            bgci[x] = (uint8_t)ci;
+            out[x] = cgb_render_enabled ? (uint8_t)ci :
+                     (uint8_t)((bgp >> (ci * 2)) & 3);
+            rgb[x] = cgb_render_enabled ?
+                     cgb_rgb(cgb_bg_palette, (unsigned)(attr & 7),
+                             (unsigned)ci) : 0;
+            ppu_bgtile[y][x] = (uint16_t)tile_id;
+            ppu_bguv[y][x] = (uint8_t)(((window_y & 7) << 3) | (px & 7));
+        }
+    }
+
+    if (!have_camera || !(lcdc & 0x02) || y >= wy) return;
 
     /* OAM coordinates are camera-relative during gameplay. Convert each live
        sprite back to map coordinates, then draw it at the same overview scale. */
@@ -352,9 +378,9 @@ static void render_homeworld_overview_line(int y)
     }
 
     if (y < map_top || y >= map_top + map_h) return;
-    int world_y = ((y - map_top) * SML2_HOME_MAP_WIDTH) / W;
+    int world_y = ((y - map_top) * HOMEWORLD_SOURCE_WIDTH) / W;
     for (int x = 0; x < W; x++) {
-        int world_x = (x * SML2_HOME_MAP_WIDTH) / W;
+        int world_x = (x * HOMEWORLD_SOURCE_WIDTH) / W;
         int best = -1, best_priority = 0x7FFFFFFF;
         int best_ci = 0, best_addr = 0, best_row = 0, best_col = 0;
         uint8_t best_flags = 0;
