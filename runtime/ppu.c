@@ -59,8 +59,10 @@ int frame_count;
 static void ppu_refresh_wide_layout(void)
 {
     int l = cfg_left, r = cfg_right;
-    if (wide_on && cfg_left + cfg_right > 0 && wide_sml2_homeworld_active &&
-        wide_sml2_homeworld_active(lcdc, wx, wy)) {
+    int homeworld = wide_on && cfg_left + cfg_right > 0 &&
+                    wide_sml2_homeworld_active &&
+                    wide_sml2_homeworld_active(lcdc, wx, wy);
+    if (homeworld) {
         int map_screen_left = rd8(SML2_HOME_CAMERA_X) |
                               (rd8(SML2_HOME_CAMERA_X + 1) << 8);
         map_screen_left += (int8_t)(uint8_t)(scx - (map_screen_left & 0xFF));
@@ -80,7 +82,10 @@ static void ppu_refresh_wide_layout(void)
     hud_lines = (l + r) ? cfg_hud : 0;
     hud_shift = (r - l) / 2;
     win_centre = (l + r) ? cfg_win : 0;
-    sprite_neg = l > 8 ? 256 - (l - 8) : 256;
+    /* The standard OAM path uses modulo-X corrections based on the left
+       margin. A Homeworld left margin can exceed 160px; keep native OAM
+       coordinates intact there so map icons do not wrap out of the centre. */
+    sprite_neg = homeworld ? 256 : (l > 8 ? 256 - (l - 8) : 256);
 }
 
 void ppu_reset(void)
