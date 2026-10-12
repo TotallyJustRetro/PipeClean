@@ -122,6 +122,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
             return "ITEM";
         }
+        private String actionHint() {
+            if (item == 0) return "Find a power-up";
+            return sml1() ? "Tap to release" : "Tap to activate";
+        }
         private String paletteText() { return PALETTES[Math.max(0, Math.min(PALETTES.length - 1, palette))]; }
         private String filterText() { return FILTERS[Math.max(0, Math.min(FILTERS.length - 1, filter))]; }
 
@@ -254,7 +258,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             textFit(c, item == 0 ? "EMPTY POCKET" : itemName(), tx,
                     y+(portrait ? 86 : 63), max, portrait ? 18 : 13,
                     item == 0 ? muted() : ink());
-            text(c, item == 0 ? "Find a power-up" : "Tap to activate",
+            text(c, actionHint(),
                     tx, y+(portrait ? 108 : 82), portrait ? 11 : 10,
                     item == 0 ? muted() : accent());
             float py = y + h - 10;
