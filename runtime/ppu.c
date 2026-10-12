@@ -342,8 +342,10 @@ static void render_homeworld_overview_line(int y)
         int map_off = (lcdc & 0x40) ? 0x1C00 : 0x1800;
         int native_offset = (W - GB_W) / 2;
         int window_x0 = wx - 7 + native_offset;
+        int window_x1 = native_offset + GB_W;
         int window_y = y - wy;
-        for (int x = window_x0 < 0 ? 0 : window_x0; x < W; x++) {
+        for (int x = window_x0 < 0 ? 0 : window_x0;
+             x < W && x < window_x1; x++) {
             int px = x - window_x0, attr = 0, tile_id = 0;
             int ci = tile_pixel(map_off, px, window_y, &attr, &tile_id);
             bgci[x] = (uint8_t)ci;
