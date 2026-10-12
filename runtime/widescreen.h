@@ -21,8 +21,10 @@ uint8_t wide_read_sml2(uint16_t address, uint8_t value);
 void wide_state_reset(void);
 /* Live block-map helpers used to build seamless Super Mario Land 2 margins. */
 int wide_sml2_tile_at(int world_x, int world_y, uint8_t *tile);
-/* Scene check used to give the Homeworld map a wider output canvas than levels. */
+/* Scene check and map-edge-aware margin allocation for the wider Homeworld canvas. */
 int wide_sml2_homeworld_active(int lcdc, int wx, int wy);
+void wide_sml2_homeworld_dims(int screen_left, int extra_total,
+                              int *left, int *right);
 void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
                              int lcdc, int wx, int wy, const uint8_t *tilemap);
 int wide_sml2_margin_tile(int screen_x, int screen_y, uint8_t *tile,
