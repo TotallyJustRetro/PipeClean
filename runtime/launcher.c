@@ -66,6 +66,9 @@ static int mp_controller_view = 0; /* 0 = bindings, 1 = character sounds */
 static int mp_config_game = GAME_SML;
 static int mp_color_selected; /* 0=P2, 1=P3, 2=P4 in the wheel editor */
 static int online_name_editing, online_code_editing, online_server_editing, online_chat_editing;
+static int online_save_name_editing, online_save_name_slot = -1;
+static char online_save_name_buffer[32];
+static int online_lobby_panel; /* 0 = session chat, 1 = shared save slots */
 static int online_mode_menu;
 static char online_join_code[9];
 static char online_chat_buffer[96];
@@ -309,7 +312,97 @@ void launcher_game_file_id(int g, char *out, size_t n)
     }
 }
 
-static void ensure_pack(int g)
+static void shared_slot_name_path(int game, int slot, char *out, size_t out_size)
+{
+    char id[128];
+    if (!out || !out_size) return;
+    out[0] = 0;
+    if (game < 0 || game >= N_GAMES || slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    launcher_game_file_id(game, id, sizeof id);
+    char dir[1200];
+    snprintf(dir, sizeof dir, "%sstates/", settings_dir());
+    mkdir_u(dir);
+    snprintf(out, out_size, "%s%s.slot%d.name", dir, id, slot);
+}
+
+void launcher_shared_slot_paths(int game, int slot,
+                                char *state_path, size_t state_size,
+                                char *marker_path, size_t marker_size)
+{
+    char id[128], dir[1200];
+    if (state_path && state_size) state_path[0] = 0;
+    if (marker_path && marker_size) marker_path[0] = 0;
+    if (game < 0 || game >= N_GAMES || slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    snprintf(dir, sizeof dir, "%sstates/", settings_dir());
+    mkdir_u(dir);
+    launcher_game_file_id(game, id, sizeof id);
+    if (state_path && state_size) snprintf(state_path, state_size, "%s%s.slot%d.pcs", dir, id, slot);
+    if (marker_path && marker_size) snprintf(marker_path, marker_size, "%s%s.slot%d.shared", dir, id, slot);
+}
+
+int launcher_shared_slot_is_saved(int game, int slot)
+{
+    char state[1200], marker[1200];
+    launcher_shared_slot_paths(game, slot, state, sizeof state, marker, sizeof marker);
+    return state[0] && marker[0] && file_exists(state) && file_exists(marker);
+}
+
+void launcher_shared_slot_name_get(int game, int slot, char *out, size_t out_size)
+{
+    char path[1200], default_name[32], line[64];
+    if (!out || !out_size) return;
+    snprintf(default_name, sizeof default_name, "Slot %d", slot + 1);
+    snprintf(out, out_size, "%s", default_name);
+    shared_slot_name_path(game, slot, path, sizeof path);
+    if (!path[0]) return;
+    FILE *file = fopen(path, "rb");
+    if (!file) return;
+    if (fgets(line, sizeof line, file)) {
+        line[strcspn(line, "\r\n")] = 0;
+        if (line[0]) {
+            size_t j = 0;
+            for (const unsigned char *p = (const unsigned char *)line; *p && j + 1 < out_size; p++) {
+                unsigned char ch = *p;
+                if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+                    (ch >= '0' && ch <= '9') || ch == ' ' || ch == '_' || ch == '-')
+                    out[j++] = (char)ch;
+            }
+            out[j] = 0;
+            if (!out[0]) snprintf(out, out_size, "%s", default_name);
+        }
+    }
+    fclose(file);
+}
+
+int launcher_shared_slot_name_set(int game, int slot, const char *name)
+{
+    char path[1200], temp[1240], clean[32];
+    size_t used = 0;
+    if (game < 0 || game >= N_GAMES || slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT || !name) return 0;
+    for (const unsigned char *p = (const unsigned char *)name; *p && used + 1 < sizeof clean; p++) {
+        unsigned char ch = *p;
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') || ch == ' ' || ch == '_' || ch == '-')
+            clean[used++] = (char)ch;
+    }
+    while (used && clean[used - 1] == ' ') used--;
+    clean[used] = 0;
+    if (!used) return 0;
+    shared_slot_name_path(game, slot, path, sizeof path);
+    if (!path[0] || snprintf(temp, sizeof temp, "%s.tmp", path) >= (int)sizeof temp) return 0;
+    FILE *file = fopen(temp, "wb");
+    if (!file) return 0;
+    size_t length = strlen(clean);
+    int ok = fwrite(clean, 1, length, file) == length &&
+             fwrite("\n", 1, 1, file) == 1;
+    if (fclose(file) != 0) ok = 0;
+    if (!ok) { remove(temp); return 0; }
+    remove(path);
+    if (rename(temp, path) != 0) { remove(temp); return 0; }
+    return 1;
+}
+
+static void ensure_pack(int g)static void ensure_pack(int g)
 {
     GameCfg *c = &settings.g[g];
     const char *want = c->tex_on ? c->tex_path : "";
@@ -1987,6 +2080,16 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
 {
     const int connected = np->state == NETPLAY_CONNECTED && np->peer[0];
     const int selected_game = netplay_lobby_get_game();
+    if (selected_game == GAME_SML || selected_game == GAME_SML2) {
+        for (int slot = 0; slot < NETPLAY_SHARED_SLOT_COUNT; slot++) {
+            char state_path[1200], marker_path[1200], name[32];
+            launcher_shared_slot_paths(selected_game, slot, state_path, sizeof state_path,
+                                       marker_path, sizeof marker_path);
+            launcher_shared_slot_name_get(selected_game, slot, name, sizeof name);
+            netplay_shared_slot_configure(slot, state_path, marker_path, name,
+                                          launcher_shared_slot_is_saved(selected_game, slot));
+        }
+    }
     NetplayChatMessage messages[7];
     int message_count = netplay_chat_snapshot(messages, 7);
     char host_name[32], guest_name[32], line[128];
