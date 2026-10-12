@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
+import android.widget.Toast;
 
 import org.libsdl.app.SDLActivity;
 
@@ -23,6 +24,9 @@ import java.io.OutputStream;
 public final class PipeCleanActivity extends SDLActivity {
     private static final int PICK_DOCUMENT = 0x5043;
     private static final int PICK_TREE = 0x5044;
+    private static final int PICK_COMPANION_BACKGROUND = 0x5045;
+    private static final String COMPANION_PREFS = "PipeCleanCompanion";
+    private static final String COMPANION_BACKGROUND_KEY = "background_path";
     private static volatile int pendingKind;
     private DisplayManager companionDisplayManager;
     private PipeCleanCompanionPresentation companionPresentation;
@@ -113,6 +117,84 @@ public final class PipeCleanActivity extends SDLActivity {
         companionPresentation = null;
     }
 
+    /** Open Android's document picker for a custom second-screen wallpaper. */
+    public void openCompanionBackgroundPicker() {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("image/*");
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {"image/png", "image/gif"});
+                intent.putExtra(Intent.EXTRA_TITLE, "Choose a PNG or GIF wallpaper");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivityForResult(intent, PICK_COMPANION_BACKGROUND);
+            } catch (Exception ex) {
+                Toast.makeText(this, "Couldn't open the wallpaper picker.", Toast.LENGTH_SHORT).show();
+                android.util.Log.w("PipeClean", "Couldn't open companion wallpaper picker.", ex);
+            }
+        });
+    }
+
+    /** Restore the game's built-in artwork and forget the custom wallpaper. */
+    public void resetCompanionBackground() {
+        runOnUiThread(() -> {
+            String previous = getSharedPreferences(COMPANION_PREFS, MODE_PRIVATE)
+                .getString(COMPANION_BACKGROUND_KEY, "");
+            getSharedPreferences(COMPANION_PREFS, MODE_PRIVATE).edit()
+                .remove(COMPANION_BACKGROUND_KEY).apply();
+            if (companionPresentation != null) companionPresentation.setBackgroundFile("");
+            if (previous != null && !previous.isEmpty()) {
+                try { new File(previous).delete(); } catch (Exception ignored) {}
+            }
+            Toast.makeText(this, "Default companion artwork restored.", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private String copyCompanionBackground(Uri uri) {
+        if (uri == null) return "";
+        String name = documentName(uri).toLowerCase(java.util.Locale.US);
+        String mime = getContentResolver().getType(uri);
+        boolean gif = name.endsWith(".gif") || "image/gif".equalsIgnoreCase(mime);
+        boolean png = name.endsWith(".png") || "image/png".equalsIgnoreCase(mime);
+        if (!gif && !png) {
+            Toast.makeText(this, "Please choose a PNG or GIF image.", Toast.LENGTH_LONG).show();
+            return "";
+        }
+        File folder = new File(getFilesDir(), "PipeCleanCompanion");
+        if (!folder.exists() && !folder.mkdirs()) {
+            Toast.makeText(this, "Couldn't create the wallpaper folder.", Toast.LENGTH_SHORT).show();
+            return "";
+        }
+        String extension = gif ? ".gif" : ".png";
+        File target = new File(folder, "wallpaper-" + System.currentTimeMillis() + extension);
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             OutputStream out = new FileOutputStream(target)) {
+            if (in == null) throw new Exception("No input stream");
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = in.read(buffer)) >= 0) out.write(buffer, 0, count);
+            if (target.length() == 0) throw new Exception("Empty wallpaper");
+        } catch (Exception ex) {
+            try { target.delete(); } catch (Exception ignored) {}
+            Toast.makeText(this, "Couldn't read that wallpaper.", Toast.LENGTH_LONG).show();
+            android.util.Log.w("PipeClean", "Couldn't copy companion wallpaper.", ex);
+            return "";
+        }
+
+        String previous = getSharedPreferences(COMPANION_PREFS, MODE_PRIVATE)
+            .getString(COMPANION_BACKGROUND_KEY, "");
+        getSharedPreferences(COMPANION_PREFS, MODE_PRIVATE).edit()
+            .putString(COMPANION_BACKGROUND_KEY, target.getAbsolutePath()).apply();
+        if (companionPresentation != null)
+            companionPresentation.setBackgroundFile(target.getAbsolutePath());
+        if (previous != null && !previous.isEmpty() && !previous.equals(target.getAbsolutePath())) {
+            try { new File(previous).delete(); } catch (Exception ignored) {}
+        }
+        Toast.makeText(this, gif ? "Animated GIF wallpaper applied." : "PNG wallpaper applied.",
+                       Toast.LENGTH_SHORT).show();
+        return target.getAbsolutePath();
+    }
+
     /** Native game-loop status bridge; UI work is moved onto Android's main thread. */
     public void updateCompanionState(int game, int lives, int stage, int world,
                                      int paused, int slot, int palette, int filter,
@@ -174,6 +256,11 @@ public final class PipeCleanActivity extends SDLActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_COMPANION_BACKGROUND) {
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null)
+                copyCompanionBackground(data.getData());
+            return;
+        }
         if (requestCode != PICK_DOCUMENT && requestCode != PICK_TREE) return;
         String result = "";
         if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
