@@ -46,7 +46,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private static final String[] PALETTES = {
             "Classic Green", "Original DMG", "Pocket", "Black & White", "Ice Blue",
             "Cherry", "Gold", "Grape", "Mint", "Sepia", "Sunset", "Midnight",
-            "Classic Color", "Arcade Color", "Candy Color", "Ocean Color"
+            "Classic (color)", "Arcade (color)", "Candy (color)", "Ocean (color)"
         };
         private static final String[] FILTERS = {"None", "Game Boy LCD", "Pocket", "CRT TV", "Bloom", "HDR"};
 
