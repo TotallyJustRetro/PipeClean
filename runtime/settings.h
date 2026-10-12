@@ -19,7 +19,8 @@ extern const int n_palettes;
 #include "games.h"
 
 enum { ASPECT_ORIGINAL, ASPECT_4_3, ASPECT_16_9, N_ASPECT };
-enum { SCALE_PIXEL, SCALE_SMOOTH, SCALE_STRETCH, N_SCALE };
+/* Preserve existing persisted values; append new modes only. */
+enum { SCALE_PIXEL, SCALE_SMOOTH, SCALE_STRETCH, SCALE_PIXEL_STRETCH, N_SCALE };
 enum { SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_FULLSCREEN, N_SIZE };
 enum { BTN_A, BTN_B, BTN_SELECT, BTN_START, BTN_RIGHT, BTN_LEFT, BTN_UP, BTN_DOWN, N_BTN };
 enum { LED_OFF, LED_PALETTE, LED_CUSTOM, LED_SCREEN, N_LED };
