@@ -1,158 +1,158 @@
 # PipeClean
 
-**A source-first Game Boy recompilation project with modern widescreen support.**
+![PipeClean logo](assets/pipeclean-logo.svg)
+
+**An independent Game Boy runtime and recompilation project focused on native-scale widescreen, modern controls, and game-specific compatibility work.**
 
 [![Regression Tests](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml/badge.svg)](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml)
+[![Developer Builds](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml/badge.svg)](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml)
+[![Android APK](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/android-build.yml/badge.svg)](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/android-build.yml)
 
-PipeClean is an independent project exploring static recompilation and a lightweight native runtime for classic Game Boy software.
+PipeClean brings classic Game Boy games into a modern runtime with configurable display options, per-game controls, save states, rewind, ROM-hack profiles, and ongoing widescreen work.
 
-The current focus is bringing **Super Mario Land 2: 6 Golden Coins** to a modern PC presentation while preserving the original game's behavior as closely as possible.
+> **Project status:** Active development. Some games and features are experimental, and platform support varies by game. This is not yet a polished one-click release.
 
-> **Status:** 🛠️ Active development
+## Games
 
-## ✨ What is PipeClean?
+PipeClean now has seven game profiles across the Dr. Mario, Super Mario Land, and Wario Land series.
 
-PipeClean combines static recompilation tools, a native Game Boy runtime, modern PC rendering/input, widescreen presentation work, and targeted compatibility fixes for larger banked ROMs.
-
-The goal is not to rewrite the original games. The runtime is designed around the original machine behavior, with carefully guarded fixes where modern presentation requires them.
-
-## 🎯 Current focus — Super Mario Land 2
-
-SML2 is the primary widescreen target.
-
-Its larger **MBC1 banked ROM** uses an interpreter-compatible execution path. The widescreen implementation also adjusts the game's right-side object-activation boundary, so the additional visible area can actually participate in gameplay instead of being purely stretched graphics.
-
-## 🕹️ Supported / planned
-
-| Game | Status |
+| Game | Current support |
 | --- | --- |
-| Super Mario Land 2: 6 Golden Coins | 🛠️ Active |
-| Super Mario Land | ✅ Widescreen implemented |
-| Dr. Mario | 🔬 Development |
+| **Dr. Mario** | Core runtime support, game profile, controller settings, and save-state features. The native recompilation path is used when the verified base ROM matches the build; modified game code can require the interpreter/compatibility path. |
+| **Super Mario Land** | Widescreen rendering and expanded view, configurable controls, save states, rewind, and suspend. Local co-op is experimental. |
+| **Super Mario Land 2: 6 Golden Coins** | MBC1-aware execution for the larger banked ROM, widescreen rendering, and gameplay-aware side-margin composition. The Homeworld has been adjusted to preserve native pixel scale instead of shrinking the full map into a tiny overview. Local and online co-op are experimental. |
+| **Wario Land: Super Mario Land 3** | Added as a separate game profile; runs in the external `gbrecomp` compatibility player. |
+| **Wario Land II (Game Boy)** | Added as a separate monochrome Game Boy profile. |
+| **Wario Land II (Game Boy Color)** | Separate GBC profile; cartridge identification distinguishes it from the original Game Boy release. |
+| **Wario Land 3 (Game Boy Color)** | Added as a separate GBC profile. |
 
-## 📁 Project layout
+### A note about the Wario Land games
 
-| Path | Purpose |
-| --- | --- |
-| `runtime/` | Native Game Boy runtime |
-| `tools/` | Recompiler, disassembler and analysis tools |
-| `tests/` | Regression tests |
-| `docs/` | Technical documentation |
-| `roms/` | Local ROM location — ROMs are not included |
-| `CMakeLists.txt` | CMake build |
-| `Makefile` | Make build |
+The four Wario Land profiles currently launch through a separate `gbrecomp` compatibility player while game-specific compatibility is being worked on. PipeClean's own rendering filters, save-state slots, and per-game controller-binding UI do **not** apply to that separate player window yet. The player currently uses standard keyboard/controller mappings and writes battery saves beside the selected ROM.
 
-## 🚀 Getting started
+## Highlights
 
-PipeClean is currently a **developer/test build**, not a finished one-click release.
+### Native-scale widescreen
 
-See **[Installation & Build](INSTALL.md)**.
+Widescreen is more than stretching the original image. PipeClean keeps the original Game Boy picture at native pixel scale and reconstructs supported extra background areas from live game data.
 
-You'll need:
+- **Super Mario Land:** expanded view with compatibility hooks for the game's edge-sensitive object handling.
+- **Super Mario Land 2:** the native 160-pixel center stays intact while extra level margins are composed from the live decompressed block map.
+- **Homeworld:** the wider view no longer scales the entire 512×512 map down into a tiny overview. The map remains at native pixel scale, so widescreen reveals a broader area without making the artwork microscopic.
+- **Guarded compatibility:** widescreen hooks check expected game code and map data. If a layout is not recognized, PipeClean can fall back to the normal view rather than blindly applying an unsafe patch.
 
-- Python 3
-- A C compiler
-- CMake or Make
-- SDL2 **development** files
-- A ROM you are legally permitted to use
+The widescreen implementation changes runtime behavior; it does not rewrite your original commercial ROM file.
 
-**Commercial ROMs are not distributed by this repository.**
+### Launcher and per-game settings
 
-## 🖥️ Widescreen
+The launcher has a separate profile for each game, along with shared platform settings. Depending on the game, options include:
 
-The original Game Boy display is **160 pixels wide**.
+- Aspect ratio, window size, scaling mode, widescreen amount, palette/color options, and rendering filters.
+- Controller selection and per-player bindings, plus configurable emulator shortcuts.
+- Save-state slots, load-state support, rewind, and suspend/resume for the built-in runtime.
+- Game-specific background artwork and texture-pack support where supported by the built-in renderer.
+- A ROM Hacks library that keeps patched variants as separate profiles instead of replacing the original ROM.
 
-For Super Mario Land 2, PipeClean keeps those 160 native pixels intact and rebuilds the extra background margins from the live decompressed level block map, rather than repeating the PPU's 256-pixel scroll ring. The compositor validates that the decoded level matches the native tilemap before drawing margins, and stays off on unsupported menus or minigame scenes. The runtime also extends enemy activation/culling bounds and ramps the widened spawn-scanner edge in 8-pixel steps so spawn-list entries are not skipped.
+ROM hacks can depend on a specific base-ROM revision. If a patch requires a particular revision, PipeClean reports a compatibility error rather than silently assuming it is the right source.
 
-The hook is tightly guarded and does not modify the commercial ROM file.
+### Android and the dual-screen companion deck
 
-## 🪟 Windows build
+An Android project and debug APK build are included. The launcher has touch support and an opt-in second-screen companion deck for **Super Mario Land** and **Super Mario Land 2**, designed for devices with a second display such as the AYN Thor.
 
-GitHub Actions produces a Windows x64 test build artifact from the same source tree. The ZIP contains the PipeClean executable, its runtime DLL dependencies, the PipeClean icon/assets, and the project documentation.
+The companion deck includes a large, tappable item circle with a gold pixel ring and a press animation, plus quick actions for save, load, pause/resume, and rewind. Its Background control can load a custom PNG or animated GIF, and the deck also has a Close Game control.
 
-The artifact is built and smoke-tested against a synthetic test cartridge. No commercial ROM is included. To run a real game, supply a ROM you are legally permitted to use.
+**Android status:** CI can build the debug APK, but installation, lifecycle behavior, and real-device gameplay still need hands-on verification. Treat Android as a development build for now.
 
-## 🐧 Linux build
+### Local co-op and experimental online co-op
 
-GitHub Actions produces a **Linux x86-64 runtime build**. Open a successful [Regression Tests workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml) run and download the `PipeClean-Linux-x64` artifact. Extract the `.tar.gz`, install the SDL2 and SDL2_image runtime libraries if they are missing, and launch `./PipeClean` from the extracted folder.
+- Local multiplayer foundations are present for Super Mario Land and Super Mario Land 2, with separate player/controller settings. Gameplay and edge cases are still being tuned; consider co-op experimental.
+- The development branch contains an experimental relay-based online path for SML1 and SML2. It uses invite codes and checks that both players use the same game and ROM checksum.
+- The public relay is not deployed by this repository, and complete Windows-to-Android gameplay has not been verified. Online co-op is not a stable or guaranteed public service.
 
-The build is smoke-tested on Ubuntu 24.04 and includes the executable, PipeClean assets, and documentation. It does not include a commercial ROM. Linux runtime requirements and full extraction instructions are in [INSTALL.md](INSTALL.md). CI artifacts expire after 30 days; this is not a permanent GitHub Release.
+See [Online Co-op & Relay Setup](docs/ONLINE_NETWORKING.md) for self-hosted/local relay instructions and limitations.
 
-A separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml) produces a Linux developer build with the multiplayer diagnostics window.
+## Downloads
 
-## 🧪 Testing
+Successful GitHub Actions runs publish test-build artifacts. They are temporary CI artifacts—not permanent GitHub Releases—and they do not include commercial ROMs.
 
-Run the focused SML2 widescreen regression test:
+| Platform | Where to get it | Notes |
+| --- | --- | --- |
+| **Windows x64** | [Regression Tests / runtime build](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml) | ZIP package with the runtime, required DLLs, assets, and docs. |
+| **Linux x86-64** | [Regression Tests / runtime build](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml) | `.tar.gz` package; SDL2 and SDL2_image runtime libraries may need to be installed. |
+| **Windows / Linux Dev** | [PipeClean Dev Build](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml) | Developer package with additional local-multiplayer diagnostics. |
+| **Android debug APK** | [Android APK workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/android-build.yml) | Debug APK for testing, not a store-ready release. Real-device testing is still needed. |
 
-```bash
+To download an artifact, open a successful workflow run, scroll to **Artifacts**, and download the package for your platform. CI artifacts expire: the standard Windows/Linux packages are retained for 30 days, Dev diagnostics/builds have their own shorter retention, and the Android APK artifact is retained for 14 days.
+
+## Getting started
+
+PipeClean needs a Game Boy or Game Boy Color ROM that you are legally entitled to use. **ROM images are not included in this repository.**
+
+The easiest path is to download a successful build artifact above, extract it, and launch PipeClean. Choose a ROM from its game's launcher profile. PipeClean identifies the cartridge/game from the ROM header and may require a supported ROM revision for specific hacks or compatibility hooks.
+
+For source builds, requirements and full platform instructions are in **[Installation & Build](INSTALL.md)**.
+
+### Build with CMake
+
+Install Python 3, a C compiler, CMake, and the SDL2 / SDL2_image development packages first. Then from the repository root:
+
+```sh
+cmake -S . -B build -DROM="/path/to/your/game.gb"
+cmake --build build --config Release
+```
+
+Or use Make:
+
+```sh
+make ROM=roms/your_game.gb
+make run ROM=roms/your_game.gb
+```
+
+See [INSTALL.md](INSTALL.md) for Windows/Linux dependencies, headless runs, troubleshooting, and additional developer options.
+
+## Tests and developer diagnostics
+
+PipeClean has focused regression tests for the widescreen hooks, cartridge banking, and PPU rendering. The CI regression workflow also checks the relay/WebSocket bridge, validates Python tools, builds the runtime against synthetic test ROMs, and runs headless smoke tests.
+
+Run the focused tests locally:
+
+```sh
 make test-sml2-wide
-```
-
-Expected result:
-
-```
-SML2 widescreen hook: PASS
-```
-
-The repository also has dedicated SML1 and MBC1 regressions:
-
-```bash
 make test-sml-wide
 make test-cart-mbc1
 ```
 
-Expected result:
+Expected key messages include `SML2 widescreen hook: PASS` and `MBC1 mapper: PASS`.
 
-```
-MBC1 mapper: PASS
-```
+### PipeClean Dev diagnostics
 
-GitHub Actions runs the regressions, validates the Python tools, builds the full native runtime against synthetic ROMs, and runs headless smoke tests without shipping any game ROM.
+The Windows and Linux **PipeClean Dev** builds can open a diagnostics window during local multiplayer. They record frame-by-frame input, player positions, camera/level values, sprite counts, hashes, and noteworthy gameplay events. Screenshots and related memory snapshots help investigate visual glitches, player-spawn issues, camera behavior, or multiplayer regressions. Press **F10** during a session to request an immediate diagnostic snapshot.
 
-### PipeClean Dev multiplayer diagnostics
+Diagnostics are written locally beside the executable under `logs/`. The regular build does not open the developer window or collect the extra multiplayer diagnostics.
 
-The **PipeClean Dev** builds for Windows and Linux open a live diagnostics window whenever local multiplayer starts. It records per-frame inputs, player positions, camera/level state, sprite counts, coins, tilemap/world-memory hashes and a rendered-frame hash. Events such as lives changes, spawn changes, likely movement stalls and sprite-list warnings are recorded too. Closing only the diagnostics window hides it but keeps logging; leaving the multiplayer session finalizes the log.
+For a scripted SML2 multiplayer replay and its limitations, see [Architecture](docs/ARCHITECTURE.md) and `tests/scenarios/sml2_gameplay_template.txt`.
 
-The Dev build saves a screenshot of the first gameplay frame, then PNG screenshots every 300 gameplay frames (about five seconds) and when important anomalies occur (player spawn changes, lives changes, movement stalls, level changes, and co-op tether activation). Each incident snapshot adds raw SML2 player RAM (`A200–A2DF`), world/object RAM (`A800–BFFF`), the background tilemap, VRAM tile data, player OAM data, and Luigi's captured sprite-tile graphics where available. Press **F10** during multiplayer to request an immediate screenshot and matching memory snapshot. The JSONL file records each screenshot's filename and frame number; image names include the frame and trigger. This makes it possible to pair the exact screen corruption with the game state that produced it. Incident dumps can be larger than the previous log format.
+## Project layout
 
-Logs and screenshots are written beside the executable in the `logs` folder. Session logs use names like `PipeClean-dev-multiplayer-YYYYMMDD-HHMMSS-*.jsonl`; screenshots use names like `PipeClean-screen-001234-PLAYER-2-NOT-SPAWNED.png`. The regular PipeClean build does not open this developer window, capture diagnostic screenshots, or dump diagnostic RAM. Download **PipeClean-Dev-Windows-x64** or **PipeClean-Dev-Linux-x64** from the separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml).
+| Path | Purpose |
+| --- | --- |
+| `runtime/` | Game Boy execution, cartridge/mapper handling, PPU/APU, input, rendering, and launcher |
+| `tools/` | Disassembly, instruction analysis, and recompilation utilities |
+| `tests/` | Widescreen, cartridge, PPU, networking, and replay regressions |
+| `docs/` | Architecture and experimental online-networking documentation |
+| `android/` | Android Studio project, setup scripts, and native build integration |
+| `server/` | Experimental TCP relay and WebSocket bridge |
+| `roms/` | Suggested local location for your own ROMs; no ROMs are shipped |
+| `INSTALL.md` | Build and installation instructions |
+| `LEGAL.md` | Legal and project policy |
+| `THIRD_PARTY.md` | Third-party notices |
 
-### Scripted multiplayer replay test
+## Legal
 
-The headless test runner can execute repeatable two-player SML2 input sequences and write a JSONL diagnostic record for every logical frame. Each record includes player coordinates/grounding, camera and level values, sprite counts, tilemap/world-memory hashes, and a render hash. The wrapper replays the same inputs twice and fails if the recorded frames differ.
+PipeClean is an independent project and is **not affiliated with, sponsored by, authorized by, or endorsed by Nintendo** or the owners of the games mentioned here.
 
-With a local SML2 ROM, build PipeClean and run:
-
-```bash
-cmake -S . -B build -DROM="path/to/your/Super Mario Land 2.gb"
-cmake --build build --target PipeClean
-python3 tools/mp_test.py \
-  --binary build/PipeClean \
-  --rom "path/to/your/Super Mario Land 2.gb" \
-  --script tests/scenarios/sml2_gameplay_template.txt \
-  --frames 1800 \
-  --report-dir test-results/sml2-coop
-```
-
-Edit the script's frame timings to reach the level and reproduce the interaction you want to test. Input masks are hexadecimal: A=01, B=02, Select=04, Start=08, Right=10, Left=20, Up=40, Down=80. You can add assertions when the scenario is expected to reach gameplay, for example `--require-p2-spawn --require-p1-movement --require-p2-movement --require-camera-scroll`; use `--require-block-patch` to require that the runtime recorded a tile change, or `--require-actor-region-change` to detect activity in the actor-related RAM range. These are useful checks, not proof by themselves that the underlying game behavior is correct. Reports are saved locally and are not uploaded by the test tool. The CI runner uses a synthetic cartridge only to validate scripted stepping and deterministic replay; it does **not** prove that collisions, blocks, or enemy behavior are correct in the commercial game.
-
-See **[Architecture](docs/ARCHITECTURE.md)** for technical details.
-
-## ⚖️ Legal
-
-PipeClean is independent and is **not affiliated with, sponsored by, authorized by, or endorsed by Nintendo**.
-
-No commercial ROMs or proprietary game assets are included. Users are responsible for obtaining and using ROMs lawfully.
-
-See **[Legal & Project Policy](LEGAL.md)**.
-
-## 🤝 Contributing
-
-Code, testing, reverse-engineering notes, bug reports and compatibility improvements are welcome.
-
-Read **[Contributing](CONTRIBUTING.md)** before submitting changes.
+No commercial ROMs or proprietary game assets are distributed by this repository. You are responsible for obtaining and using game images lawfully. See [Legal & Project Policy](LEGAL.md) and [Third-Party Notices](THIRD_PARTY.md).
 
 ---
 
-**PipeClean**  
-*Classic Game Boy behavior. Modern runtime.*
+**PipeClean — classic Game Boy behavior, modern runtime.**
