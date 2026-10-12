@@ -267,10 +267,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                    BACKGROUND, false);
 
             // Centerpiece: the item pocket is deliberately the largest thing on the deck.
-            text(c, "✦  ITEM POCKET  ✦", 400, 83, 13, gold(), true);
-            drawHeroItem(c, 400, 191, 86, item);
-            textFit(c, itemName(), 400, 292, 250, 15, ink(), true);
-            textFit(c, actionHint(), 400, 312, 330, 9, muted(), true);
+            text(c, "✦  ITEM POCKET  ✦", 400, 75, 13, gold(), true);
+            drawHeroItem(c, 400, 202, 86, item);
+            textFit(c, itemName(), 400, 337, 250, 15, ink(), true);
+            textFit(c, actionHint(), 400, 350, 330, 8.5f, muted(), true);
 
             // Slot and state badges are secondary so they don't compete with the hero item.
             card(c, 36, 117, 152, 145, "SAVE SLOT");
@@ -310,9 +310,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
             badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
 
             text(c, "✦  ITEM POCKET  ✦", 225, 137, 13, gold(), true);
-            drawHeroItem(c, 225, 275, 100, item);
-            textFit(c, itemName(), 225, 399, 380, 16, ink(), true);
-            textFit(c, actionHint(), 225, 421, 400, 9, muted(), true);
+            drawHeroItem(c, 225, 275, 90, item);
+            textFit(c, itemName(), 225, 416, 380, 16, ink(), true);
+            textFit(c, actionHint(), 225, 432, 400, 8.5f, muted(), true);
 
             card(c, 35, 439, 380, 70, "QUICK SAVE SLOT");
             smallButton(c, 47, 460, 65, 34, "−", SLOT_PREV);
@@ -562,7 +562,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,232,594,198,58)) return REWIND;
                 if(inside(x,y,20,661,198,58)) return PALETTE;
                 if(inside(x,y,232,661,198,58)) return FILTER;
-                if(inside(x,y,85,143,280,277)) return ITEM_USE;
+                if(inside(x,y,85,143,280,288)) return ITEM_USE;
             } else {
                 if(inside(x,y,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(x,y,593,13,183,42)) return BACKGROUND;
@@ -576,7 +576,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,400,354,118,66)) return REWIND;
                 if(inside(x,y,524,354,118,66)) return PALETTE;
                 if(inside(x,y,648,354,118,66)) return FILTER;
-                if(inside(x,y,264,72,272,245)) return ITEM_USE;
+                if(inside(x,y,264,78,272,270)) return ITEM_USE;
             }
             return 0;
         }
