@@ -108,6 +108,19 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (sml2()) return String.format(Locale.US, "STAGE %02d", stage);
             return "—";
         }
+        private String itemName() {
+            if (item == 0) return "EMPTY";
+            if (sml1()) {
+                if (item == 1) return "MUSHROOM";
+                if (item == 2) return "SUPERBALL FLOWER";
+            }
+            if (sml2()) {
+                if (item == 1) return "MUSHROOM";
+                if (item == 2) return "FIRE FLOWER";
+                if (item == 3) return "CARROT";
+            }
+            return "ITEM";
+        }
         private String paletteText() { return PALETTES[Math.max(0, Math.min(PALETTES.length - 1, palette))]; }
         private String filterText() { return FILTERS[Math.max(0, Math.min(FILTERS.length - 1, filter))]; }
 
@@ -123,8 +136,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, "LIVE GAME DATA", 279, 153, 10, muted());
             card(c, 523, 58, 253, 112, "RESERVE ITEM");
             drawItem(c, 543, 85, 77, item);
-            text(c, item == 0 ? "EMPTY" : "MUSHROOM", 634, 112, item == 0 ? 20 : 17, item == 0 ? muted() : ink());
-            text(c, item == 0 ? "Nothing stored" : "Reserve ready", 634, 136, 10, muted());
+            textFit(c, itemName(), 634, 112, 132, item == 0 ? 20 : 14, item == 0 ? muted() : ink());
+            text(c, item == 0 ? "Nothing stored" : "Power-up reserve", 634, 136, 10, muted());
 
             float x = 24, y = 190, w = 179, h = 94, gap = 12;
             button(c, x, y, w, h, "SAVE STATE", "WRITE SLOT " + (slot + 1), SAVE, false);
@@ -155,8 +168,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, "LIVE DATA", 239, 145, 9, muted());
             card(c, 20, 179, 410, 140, "RESERVE ITEM");
             drawItem(c, 38, 220, 80, item);
-            text(c, item == 0 ? "EMPTY" : "MUSHROOM", 140, 255, item == 0 ? 23 : 19, item == 0 ? muted() : ink());
-            text(c, item == 0 ? "No stored item" : "Stored for recovery", 140, 280, 11, muted());
+            textFit(c, itemName(), 140, 255, 275, item == 0 ? 23 : 18, item == 0 ? muted() : ink());
+            text(c, item == 0 ? "No stored item" : "Power-up reserve", 140, 280, 11, muted());
             button(c, 20, 339, 195, 88, "SAVE STATE", "WRITE SLOT " + (slot + 1), SAVE, false);
             button(c, 225, 339, 205, 88, "LOAD STATE", "RESTORE SLOT", LOAD, false);
             button(c, 20, 437, 195, 88, paused ? "RESUME" : "PAUSE",
@@ -231,15 +244,41 @@ final class PipeCleanCompanionPresentation extends Presentation {
             p.setColor(bg()); c.drawRect(x,y,x+size,y+size,p);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
             c.drawRect(x+1,y+1,x+size-1,y+size-1,p); p.setStyle(Paint.Style.FILL);
-            if (itemId != 1) return;
-            // Original pixel-art item icon, not a game sprite.
+            if (itemId == 0) return;
+            // Original pixel-art power-up icons, not extracted game sprites.
             float u=size/10f;
-            p.setColor(sml1()?0xFFDCE6D1:0xFFFFF0C9);
-            c.drawRect(x+4*u,y+5*u,x+6*u,y+8*u,p); c.drawRect(x+3*u,y+7*u,x+7*u,y+8*u,p);
-            p.setColor(sml1()?0xFF698D55:0xFFE5523C);
-            c.drawRect(x+2*u,y+3*u,x+8*u,y+5*u,p); c.drawRect(x+3*u,y+2*u,x+7*u,y+3*u,p);
-            p.setColor(sml1()?0xFFF3F6E7:0xFFFFEAB5);
-            c.drawRect(x+3*u,y+3*u,x+4*u,y+4*u,p); c.drawRect(x+6*u,y+3*u,x+7*u,y+4*u,p);
+            if (itemId == 1) {
+                // Mushroom
+                p.setColor(sml1()?0xFFDCE6D1:0xFFFFF0C9);
+                c.drawRect(x+4*u,y+5*u,x+6*u,y+8*u,p);
+                c.drawRect(x+3*u,y+7*u,x+7*u,y+8*u,p);
+                p.setColor(sml1()?0xFF698D55:0xFFE5523C);
+                c.drawRect(x+2*u,y+3*u,x+8*u,y+5*u,p);
+                c.drawRect(x+3*u,y+2*u,x+7*u,y+3*u,p);
+                p.setColor(sml1()?0xFFF3F6E7:0xFFFFEAB5);
+                c.drawRect(x+3*u,y+3*u,x+4*u,y+4*u,p);
+                c.drawRect(x+6*u,y+3*u,x+7*u,y+4*u,p);
+            } else if (itemId == 2) {
+                // Superball Flower in SML1; Fire Flower in SML2.
+                p.setColor(sml1()?0xFFDDEAD4:0xFF6FC86B);
+                c.drawRect(x+4*u,y+5*u,x+6*u,y+9*u,p);
+                c.drawRect(x+2*u,y+7*u,x+5*u,y+8*u,p);
+                p.setColor(sml1()?0xFFCBDAC5:0xFFE84A3F);
+                c.drawRect(x+3*u,y+2*u,x+7*u,y+4*u,p);
+                c.drawRect(x+2*u,y+3*u,x+8*u,y+6*u,p);
+                p.setColor(sml1()?0xFFF3F6E7:0xFFFFE28A);
+                c.drawRect(x+4*u,y+3*u,x+6*u,y+5*u,p);
+            } else if (itemId == 3 && sml2()) {
+                // Carrot power-up
+                p.setColor(0xFFFFA348);
+                c.drawRect(x+3*u,y+3*u,x+7*u,y+4*u,p);
+                c.drawRect(x+4*u,y+4*u,x+7*u,y+6*u,p);
+                c.drawRect(x+5*u,y+6*u,x+6*u,y+8*u,p);
+                p.setColor(0xFF69C56B);
+                c.drawRect(x+3*u,y+1*u,x+5*u,y+3*u,p);
+                c.drawRect(x+5*u,y+1*u,x+7*u,y+3*u,p);
+                c.drawRect(x+4*u,y+2*u,x+6*u,y+4*u,p);
+            }
         }
 
         private void rect(Canvas c,float x,float y,float w,float h,int color) {
