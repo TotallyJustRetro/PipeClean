@@ -1016,7 +1016,6 @@ static int SDLCALL np_worker(void *unused)
                     }
                     np_shared_selection_sent = 0;
                     np_shared_load_slot = -1;
-                }
                     np_local_rom_valid = np_remote_rom_valid = 0;
                     np_local_rom_crc = np_remote_rom_crc = 0;
                     np_rom_check_state = NETPLAY_ROM_UNCHECKED;
