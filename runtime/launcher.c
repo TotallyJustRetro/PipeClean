@@ -273,7 +273,12 @@ int launcher_prepare(int g, char *err, size_t n)
     }
     int wl, wr;
     wide_dims(g, c->wide, &wl, &wr);
-    if (wl + wr > 0 && !wide_install(g, wl, wr)) { wl = wr = 0; wide_note[g] = 1; } else wide_note[g] = 0;
+    /* Always call wide_install, including when the requested width is zero.
+     * It clears runtime SML/SML2 hooks left by a previous game/session before
+     * the native-width PPU setup. Skipping it at 0% can leave widened spawn
+     * and cull bounds active even though the picture is back to 160 pixels. */
+    int wide_ready = wide_install(g, wl, wr);
+    if (wl + wr > 0 && !wide_ready) { wl = wr = 0; wide_note[g] = 1; } else wide_note[g] = 0;
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
 }
