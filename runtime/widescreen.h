@@ -27,6 +27,9 @@ void wide_sml2_homeworld_dims(int screen_left, int extra_total,
                               int *left, int *right);
 void wide_sml2_homeworld_dims_from_camera(int scx, int extra_total,
                                           int *left, int *right);
+/* Full-map Homeworld overview source and live camera origin. */
+int wide_sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile);
+int wide_sml2_homeworld_camera(int scx, int scy, int *camera_x, int *camera_y);
 void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
                              int lcdc, int wx, int wy, const uint8_t *tilemap);
 int wide_sml2_margin_tile(int screen_x, int screen_y, uint8_t *tile,
