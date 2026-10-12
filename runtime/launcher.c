@@ -2145,6 +2145,8 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     if (ui_button(x + 680, y + 43, 92, 30, "Disconnect", B_GHOST, 1)) {
         netplay_disconnect();
         online_chat_editing = 0;
+        online_save_name_editing = 0;
+        online_save_name_slot = -1;
         SDL_StopTextInput();
         launcher_toast("Disconnected from the online session.");
         return;
@@ -2890,6 +2892,48 @@ void launcher_event(const SDL_Event *e)
         } else {
             return;
         }
+    }
+    if (online_save_name_editing) {
+        if (e->type == SDL_TEXTINPUT) {
+            size_t have = strlen(online_save_name_buffer);
+            for (const unsigned char *p = (const unsigned char *)e->text.text; *p; p++) {
+                unsigned char ch = *p;
+                if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+                      (ch >= '0' && ch <= '9') || ch == ' ' || ch == '_' || ch == '-'))
+                    continue;
+                if (have + 1 >= sizeof online_save_name_buffer) break;
+                online_save_name_buffer[have++] = (char)ch;
+                online_save_name_buffer[have] = 0;
+            }
+            return;
+        }
+        if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+            SDL_Keycode key = e->key.keysym.sym;
+            if (key == SDLK_ESCAPE) {
+                online_save_name_editing = 0;
+                online_save_name_slot = -1;
+                SDL_StopTextInput();
+                return;
+            }
+            if (key == SDLK_RETURN || key == SDLK_KP_ENTER || key == SDLK_TAB) {
+                online_commit_shared_name();
+                return;
+            }
+            if (key == SDLK_BACKSPACE || key == SDLK_DELETE) {
+                size_t length = strlen(online_save_name_buffer);
+                if (length) online_save_name_buffer[length - 1] = 0;
+                return;
+            }
+            if ((e->key.keysym.mod & KMOD_CTRL) && key == SDLK_a) {
+                online_save_name_buffer[0] = 0;
+                return;
+            }
+        }
+        if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
+            e->type == SDL_MOUSEBUTTONDOWN) {
+            online_commit_shared_name();
+        }
+        return;
     }
     if (online_name_editing || online_code_editing || online_server_editing || online_chat_editing) {
         int editing_name = online_name_editing;
