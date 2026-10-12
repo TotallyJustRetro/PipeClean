@@ -40,6 +40,8 @@ static SDL_Window *win;
 static SDL_Renderer *ren;
 static int win_w = 1100, win_h = 720;
 static int companion_rewind_held;
+static int companion_pipe_swap_active;
+static Uint32 companion_last_frame_tick;
 #define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
 #define PIPECLEAN_COMPANION_SAVE 1
 #define PIPECLEAN_COMPANION_LOAD 2
@@ -123,9 +125,105 @@ static void companion_set_display_enabled(int enabled)
     }
     (*env)->DeleteLocalRef(env, cls);
 }
+
+static void companion_set_pipe_swap(int enabled)
+{
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "setCompanionPipeSwapMode", "(Z)V");
+    if (method) {
+        (*env)->CallVoidMethod(env, activity, method, enabled ? JNI_TRUE : JNI_FALSE);
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+
+static void companion_publish_game_frame(void)
+{
+    if (!companion_pipe_swap_active) return;
+    /* Read the filtered CPU frame, not the SDL backbuffer, to avoid a GPU readback. */
+    Uint32 now = SDL_GetTicks();
+    if ((Uint32)(now - companion_last_frame_tick) < 33) return;
+    companion_last_frame_tick = now;
+
+    const uint32_t *pixels = NULL;
+    int w = 0, h = 0;
+    if (!render_pixels(&pixels, &w, &h) || !pixels ||
+        w <= 0 || h <= 0 || w > 2048 || h > 512 ||
+        (size_t)w * (size_t)h > 1048576u) return;
+
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionGameFrame", "(II[I)V");
+    if (method) {
+        jsize count = (jsize)(w * h);
+        jintArray frame = (*env)->NewIntArray(env, count);
+        if (frame) {
+            (*env)->SetIntArrayRegion(env, frame, 0, count, (const jint *)pixels);
+            if (!(*env)->ExceptionCheck(env))
+                (*env)->CallVoidMethod(env, activity, method, (jint)w, (jint)h, frame);
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+            (*env)->DeleteLocalRef(env, frame);
+        } else if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+        }
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+
 #else
 static void companion_set_display_enabled(int enabled) { (void)enabled; }
+static void companion_set_pipe_swap(int enabled) { (void)enabled; }
+static void companion_publish_game_frame(void) {}
 #endif
+
+static void companion_update_pipe_swap(int game, const Frame *frame, int enabled)
+{
+#if defined(__ANDROID__)
+    int next = companion_pipe_swap_active;
+    if (!enabled || game != GAME_SML) {
+        next = 0;
+    } else if (frame) {
+        const uint8_t state = frame->game_state;
+        /* SML1 HRAM states: 09=down pipe, 0A=warp underground, 0C=up out;
+           12..1A cover entering/playing/leaving the pipe bonus room. */
+        if (state == 0x09 || state == 0x0A || (state >= 0x12 && state <= 0x1A)) {
+            next = 1;
+        } else if (state == 0x0C || state == 0x1B ||
+                   state == 0x06 || state == 0x07 || state == 0x08 ||
+                   state == 0x0E || state == 0x0F || state == 0x11) {
+            next = 0;
+        }
+    }
+    if (next != companion_pipe_swap_active) {
+        companion_pipe_swap_active = next;
+        companion_last_frame_tick = 0;
+        companion_set_pipe_swap(next);
+        dev_diag_event(next ? "ANDROID_PIPE_SCREEN_SWAP_ON" : "ANDROID_PIPE_SCREEN_SWAP_OFF");
+    }
+#else
+    (void)game; (void)frame; (void)enabled;
+    companion_pipe_swap_active = 0;
+#endif
+}
+
+static void companion_reset_pipe_swap(void)
+{
+    companion_pipe_swap_active = 0;
+    companion_last_frame_tick = 0;
+    companion_set_pipe_swap(0);
+}
+
 static SDL_FingerID launcher_touch_finger;
 static int launcher_touch_active, launcher_touch_pointer;
 
@@ -994,12 +1092,52 @@ static void draw_coop_hud(int game, const Frame *f)
     }
 }
 
+/* In pipe-swap mode the primary display becomes a compact status deck while
+ * the live filtered game frame is shown by Android's secondary Presentation. */
+static void draw_pipe_swap_deck(int game, const Frame *f)
+{
+    float vx = ui_view_x0(), vy = ui_view_y0();
+    float vw = ui_view_w(), vh = ui_view_h();
+    float cx = vx + vw * 0.5f, cy = vy + vh * 0.5f;
+    float pw = fminf(760.0f, vw - 32.0f);
+    float ph = fminf(460.0f, vh - 32.0f);
+    if (pw < 220.0f) pw = vw - 12.0f;
+    if (ph < 200.0f) ph = vh - 12.0f;
+    float px = cx - pw * 0.5f, py = cy - ph * 0.5f;
+
+    ui_rect(vx, vy, vw, vh, HEX(0x0C1320));
+    ui_rrect(px, py, pw, ph, 22.0f, HEX(0x18263A));
+    ui_stroke(px, py, pw, ph, 22.0f, 2.0f, HEX(0x4C8DFF));
+    ui_text_c(F_BOLD, 14.0f, cx, py + 28.0f, HEX(0x8FB8FF), "PIPECLEAN  //  DUAL SCREEN");
+    ui_text_c(F_BOLD, 30.0f, cx, py + 82.0f, HEX(0xF3F7FF), "UNDERGROUND MODE");
+    ui_text_c(F_REG, 15.0f, cx, py + 112.0f, HEX(0xAABAD3), "Gameplay is now on the second display");
+
+    int lives = f ? sml1_bcd_to_int(f->p1_lives) : 0;
+    char stage[64], life_text[40];
+    if (f && f->level_bank != 0xFF && f->level_id != 0xFF)
+        snprintf(stage, sizeof stage, "WORLD %u  -  LEVEL %u",
+                 (unsigned)(f->level_bank & 0x0F), (unsigned)(f->level_id & 0x0F));
+    else snprintf(stage, sizeof stage, "WORLD / LEVEL");
+    snprintf(life_text, sizeof life_text, "MARIO LIVES   x %d", lives);
+
+    ui_rrect(cx - pw * 0.34f, py + 150.0f, pw * 0.68f, 54.0f, 12.0f, HEX(0x263A55));
+    ui_text_c(F_BOLD, 16.0f, cx, py + 168.0f, HEX(0xFFE08A), stage);
+    ui_text_c(F_BOLD, 16.0f, cx, py + 190.0f, HEX(0xF3F7FF), life_text);
+
+    ui_line(px + 28.0f, py + ph - 88.0f, px + pw - 28.0f, py + ph - 88.0f,
+            1.0f, HEX(0x354964));
+    ui_text_c(F_BOLD, 14.0f, cx, py + ph - 62.0f, HEX(0x8DE3B0), "PHYSICAL CONTROLS STAY ACTIVE");
+    ui_text_c(F_REG, 12.0f, cx, py + ph - 38.0f, HEX(0xAABAD3),
+              game == GAME_SML ? "Pipe / bonus-room screen swap is enabled" : "Companion display active");
+}
+
 /* Local SML1 multiplayer: Mario owns the shared world; up to three extra
  * characters each run through an isolated clone of the original SML1 logic. */
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer(int g)
 {
     touch_reset_all();
+    companion_reset_pipe_swap();
     companion_rewind_held = 0;
     ds_menu_close();
     GameCfg *c = &settings.g[g];
@@ -1377,8 +1515,10 @@ static int play_multiplayer(int g)
         SDL_Rect game_rect = {0, 0, 0, 0};
         if (have) {
             render_build(f, g, 1);
+            companion_update_pipe_swap(g, f, c->dual_screen && c->pipe_screen_swap);
+            companion_publish_game_frame();
             render_fit(W, H, c->aspect, c->scaling, &game_rect);
-            render_draw(&game_rect, c->scaling);
+            if (!companion_pipe_swap_active) render_draw(&game_rect, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
 
@@ -1386,13 +1526,17 @@ static int play_multiplayer(int g)
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (have) {
-            sml1_draw_player_tag(f, f->mp_player_oam[0], &game_rect, "Mario", C_ACCENT);
-            for (int player = 1; player < player_count; player++) {
-                if (!f->mp_player_visible[player] || f->mp_player_blink_hidden[player]) continue;
-                sml1_draw_player_tag(f, f->mp_player_oam[player], &game_rect,
-                                    mp_player_name(g, player), render_sml1_mp_player_color(player));
+            if (companion_pipe_swap_active) {
+                draw_pipe_swap_deck(g, f);
+            } else {
+                sml1_draw_player_tag(f, f->mp_player_oam[0], &game_rect, "Mario", C_ACCENT);
+                for (int player = 1; player < player_count; player++) {
+                    if (!f->mp_player_visible[player] || f->mp_player_blink_hidden[player]) continue;
+                    sml1_draw_player_tag(f, f->mp_player_oam[player], &game_rect,
+                                        mp_player_name(g, player), render_sml1_mp_player_color(player));
+                }
+                draw_coop_hud(g, f);
             }
-            draw_coop_hud(g, f);
         }
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
@@ -1422,6 +1566,7 @@ static int play_multiplayer(int g)
         SDL_RenderPresent(ren);
     }
 
+    companion_reset_pipe_swap();
     companion_set_display_enabled(0);
     touch_reset_game(g);
     if (online) netplay_game_end();
@@ -1547,6 +1692,7 @@ static int play_external_game(int g)
 static int play(int g)
 {
     touch_reset_all();
+    companion_reset_pipe_swap();
     companion_rewind_held = 0;
     ds_menu_close();
     if (g < 0 || g >= N_GAMES) return 0;
@@ -1695,14 +1841,17 @@ static int play(int g)
         bg_update(dt);
         if (have) {
             render_build(f, g, 1);
+            companion_update_pipe_swap(g, f, c->dual_screen && c->pipe_screen_swap);
+            companion_publish_game_frame();
             SDL_Rect r;
             render_fit(W, H, c->aspect, c->scaling, &r);
-            render_draw(&r, c->scaling);
+            if (!companion_pipe_swap_active) render_draw(&r, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
         companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
+        if (have && companion_pipe_swap_active) draw_pipe_swap_deck(g, f);
         if (paused) {
             ui_rect(ui_view_x0(), ui_view_y0(), ui_view_w(), ui_view_h(), RGBA(0, 0, 0, 120));
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
@@ -1721,6 +1870,7 @@ static int play(int g)
                              char p[1200]; snprintf(p, sizeof p, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks()); SDL_SaveBMP(s, p); SDL_FreeSurface(s); } }
         SDL_RenderPresent(ren);
     }
+    companion_reset_pipe_swap();
     companion_set_display_enabled(0);
     touch_reset_game(g);
     emu_stop();
