@@ -405,7 +405,7 @@ void render_build(const Frame *f, int game, int live)
 /* ------------------------------------------------------------------ placement */
 void render_fit(int W, int H, int aspect, int scaling, SDL_Rect *r)
 {
-    if (scaling == SCALE_STRETCH) { r->x = 0; r->y = 0; r->w = W; r->h = H; return; }
+    if (scaling == SCALE_STRETCH || scaling == SCALE_PIXEL_STRETCH) { r->x = 0; r->y = 0; r->w = W; r->h = H; return; }
     double ar = aspect == ASPECT_4_3 ? 4.0 / 3.0 : (aspect == ASPECT_16_9 ? 16.0 / 9.0 : (double)gw / 144.0);
     double scale = H / 144.0;
     if (144.0 * scale * ar > W) scale = W / (144.0 * ar);
@@ -527,7 +527,7 @@ void render_draw(const SDL_Rect *r, int scaling)
     if (!tex_game || r->w < 4 || r->h < 4) return;
     const FilterCfg *f = &cur_f;
     if (f->curve) { SDL_SetRenderDrawColor(ren, 0, 0, 0, 255); SDL_RenderFillRect(ren, r); }
-    SDL_SetTextureScaleMode(tex_game, scaling == SCALE_PIXEL ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+    SDL_SetTextureScaleMode(tex_game, (scaling == SCALE_PIXEL || scaling == SCALE_PIXEL_STRETCH) ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
     SDL_SetTextureBlendMode(tex_game, SDL_BLENDMODE_NONE);
     draw_quad(tex_game, r, f->curve);
 
