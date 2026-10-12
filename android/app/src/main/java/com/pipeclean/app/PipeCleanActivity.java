@@ -228,6 +228,16 @@ public final class PipeCleanActivity extends SDLActivity {
         });
     }
 
+    /** Publish save-state paths for the Companion Deck timeline. */
+    public void updateCompanionSaveSlots(int game, int selectedSlot,
+                                         String[] statePaths, String[] thumbnailPaths) {
+        if (statePaths == null || thumbnailPaths == null) return;
+        runOnUiThread(() -> {
+            if (companionPresentation != null)
+                companionPresentation.updateSaveSlots(game, selectedSlot, statePaths, thumbnailPaths);
+        });
+    }
+
     /** Swap the two display roles while SML1 is traversing a pipe/bonus room. */
     public void setCompanionPipeSwapMode(boolean enabled) {
         runOnUiThread(() -> {
