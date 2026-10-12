@@ -41,6 +41,7 @@ static SDL_Renderer *ren;
 static int win_w = 1100, win_h = 720;
 static int companion_rewind_held;
 static int companion_pipe_swap_active;
+static int companion_pipe_swap_exit_pending;
 static Uint32 companion_last_frame_tick;
 #define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
 #define PIPECLEAN_COMPANION_SAVE 1
@@ -193,16 +194,25 @@ static void companion_update_pipe_swap(int game, const Frame *frame, int enabled
     int next = companion_pipe_swap_active;
     if (!enabled || game != GAME_SML) {
         next = 0;
+        companion_pipe_swap_exit_pending = 0;
     } else if (frame) {
         const uint8_t state = frame->game_state;
         /* SML1 HRAM states: 09=down pipe, 0A=warp underground, 0C=up out;
            12..1A cover entering/playing/leaving the pipe bonus room. */
         if (state == 0x09 || state == 0x0A || (state >= 0x12 && state <= 0x1A)) {
             next = 1;
-        } else if (state == 0x0C || state == 0x1B ||
-                   state == 0x06 || state == 0x07 || state == 0x08 ||
-                   state == 0x0E || state == 0x0F || state == 0x11) {
+            companion_pipe_swap_exit_pending = 0;
+        } else if (state == 0x0C) {
+            /* Keep the game on the secondary screen throughout the climb out.
+               The normal gameplay state (00) marks the completed return. */
+            if (next) companion_pipe_swap_exit_pending = 1;
+        } else if (state == 0x00 && companion_pipe_swap_exit_pending) {
             next = 0;
+            companion_pipe_swap_exit_pending = 0;
+        } else if (state == 0x1B || state == 0x06 || state == 0x07 ||
+                   state == 0x08 || state == 0x0E || state == 0x0F || state == 0x11) {
+            next = 0;
+            companion_pipe_swap_exit_pending = 0;
         }
     }
     if (next != companion_pipe_swap_active) {
@@ -220,6 +230,7 @@ static void companion_update_pipe_swap(int game, const Frame *frame, int enabled
 static void companion_reset_pipe_swap(void)
 {
     companion_pipe_swap_active = 0;
+    companion_pipe_swap_exit_pending = 0;
     companion_last_frame_tick = 0;
     companion_set_pipe_swap(0);
 }
