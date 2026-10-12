@@ -44,6 +44,7 @@ static int companion_pipe_swap_active;
 static int companion_pipe_swap_exit_pending;
 static SDL_atomic_t companion_display_available;
 static Uint32 companion_last_frame_tick;
+static int companion_slots_dirty = 1;
 #define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
 #define PIPECLEAN_COMPANION_SAVE 1
 #define PIPECLEAN_COMPANION_LOAD 2
@@ -55,6 +56,7 @@ static Uint32 companion_last_frame_tick;
 #define PIPECLEAN_COMPANION_SLOT_NEXT 8
 #define PIPECLEAN_COMPANION_ITEM_USE 9
 #define PIPECLEAN_COMPANION_CLOSE_GAME 12
+#define PIPECLEAN_COMPANION_SLOT_SELECT_BASE 20
 
 #if defined(__ANDROID__)
 JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionAction(
@@ -105,6 +107,60 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             (jint)settings.g[game].palette, (jint)settings.flt.preset,
             (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen);
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+        /* Send save-state paths, not pixel buffers. Java caches thumbnails and
+         * decodes again only after a state file or thumbnail changes. */
+        static unsigned slot_refresh_tick;
+        static int last_slot_game = -1, last_selected_slot = -1;
+        int selected_slot = settings.g[game].state_slot;
+        if (dual_screen) slot_refresh_tick++;
+        int publish_slots = dual_screen &&
+            (companion_slots_dirty || game != last_slot_game ||
+             selected_slot != last_selected_slot || slot_refresh_tick >= 20);
+        if (publish_slots) {
+            slot_refresh_tick = 0;
+            jmethodID slots_method = (*env)->GetMethodID(
+                env, cls, "updateCompanionSaveSlots",
+                "(II[Ljava/lang/String;[Ljava/lang/String;)V");
+            if (slots_method) {
+                jclass string_class = (*env)->FindClass(env, "java/lang/String");
+                jobjectArray state_paths = string_class
+                    ? (*env)->NewObjectArray(env, 10, string_class, NULL) : NULL;
+                jobjectArray thumb_paths = string_class
+                    ? (*env)->NewObjectArray(env, 10, string_class, NULL) : NULL;
+                char game_id[128], state_dir[1200], state_file[1200], thumb_file[1200];
+                launcher_game_file_id(game, game_id, sizeof game_id);
+                snprintf(state_dir, sizeof state_dir, "%sstates/", settings_dir());
+                (void)mkdir_u(state_dir);
+                if (state_paths && thumb_paths) {
+                    for (int slot_i = 0; slot_i < 10; slot_i++) {
+                        snprintf(state_file, sizeof state_file, "%s%s.slot%d.pcs",
+                                 state_dir, game_id, slot_i);
+                        snprintf(thumb_file, sizeof thumb_file, "%s%s.slot%d.thumb.png",
+                                 state_dir, game_id, slot_i);
+                        jstring state_string = (*env)->NewStringUTF(env, state_file);
+                        jstring thumb_string = (*env)->NewStringUTF(env, thumb_file);
+                        if (state_string)
+                            (*env)->SetObjectArrayElement(env, state_paths, slot_i, state_string);
+                        if (thumb_string)
+                            (*env)->SetObjectArrayElement(env, thumb_paths, slot_i, thumb_string);
+                        if (state_string) (*env)->DeleteLocalRef(env, state_string);
+                        if (thumb_string) (*env)->DeleteLocalRef(env, thumb_string);
+                    }
+                    (void)(*env)->CallVoidMethod(env, activity, slots_method,
+                        (jint)game, (jint)selected_slot, state_paths, thumb_paths);
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                    last_slot_game = game;
+                    last_selected_slot = selected_slot;
+                    companion_slots_dirty = 0;
+                }
+                if (state_paths) (*env)->DeleteLocalRef(env, state_paths);
+                if (thumb_paths) (*env)->DeleteLocalRef(env, thumb_paths);
+                if (string_class) (*env)->DeleteLocalRef(env, string_class);
+            } else if ((*env)->ExceptionCheck(env)) {
+                (*env)->ExceptionClear(env);
+            }
+        }
     } else if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
     }
@@ -498,7 +554,7 @@ static void state_thumb_path(int g, int slot, char *out, size_t n)
     snprintf(dir, sizeof dir, "%sstates/", settings_dir());
     mkdir_u(dir);
     launcher_game_file_id(g, id, sizeof id);
-    snprintf(out, n, "%s%s.slot%d.thumb.bmp", dir, id, slot);
+    snprintf(out, n, "%s%s.slot%d.thumb.png", dir, id, slot);
 }
 
 static void queue_state_thumbnail(int g, int slot)
@@ -535,7 +591,7 @@ static void capture_pending_state_thumbnail(void)
         SDL_BlitScaled(src, NULL, dst, &dr);
         char path[1200];
         state_thumb_path(thumb_pending_game, thumb_pending_slot, path, sizeof path);
-        SDL_SaveBMP(dst, path);
+        if (IMG_SavePNG(dst, path) == 0) companion_slots_dirty = 1;
     }
     SDL_FreeSurface(src);
     SDL_FreeSurface(dst);
@@ -572,6 +628,7 @@ static int game_state_save(int g, int paused)
         return -1;
     }
     queue_state_thumbnail(g, settings.g[g].state_slot);
+    companion_slots_dirty = 1;
     emu_set_paused(paused);
     char msg[96];
     snprintf(msg, sizeof msg, "State saved — Slot %d", settings.g[g].state_slot + 1);
@@ -739,6 +796,14 @@ static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *q
         return 1;
     }
     if (!pressed) return 1;
+    if (action >= PIPECLEAN_COMPANION_SLOT_SELECT_BASE &&
+        action < PIPECLEAN_COMPANION_SLOT_SELECT_BASE + 10) {
+        settings.g[g].state_slot = action - PIPECLEAN_COMPANION_SLOT_SELECT_BASE;
+        companion_slots_dirty = 1;
+        settings_save();
+        game_notice("Save slot selected.");
+        return 1;
+    }
     switch (action) {
     case PIPECLEAN_COMPANION_SAVE:
         if (netplay_is_connected()) game_notice("Save from the second screen is disabled during online co-op.");
@@ -766,10 +831,12 @@ static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *q
         break;
     case PIPECLEAN_COMPANION_SLOT_PREV:
         settings.g[g].state_slot = (settings.g[g].state_slot + 9) % 10;
+        companion_slots_dirty = 1;
         settings_save(); game_notice("Previous save slot selected.");
         break;
     case PIPECLEAN_COMPANION_SLOT_NEXT:
         settings.g[g].state_slot = (settings.g[g].state_slot + 1) % 10;
+        companion_slots_dirty = 1;
         settings_save(); game_notice("Next save slot selected.");
         break;
     case PIPECLEAN_COMPANION_ITEM_USE:
