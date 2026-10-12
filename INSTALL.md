@@ -40,17 +40,19 @@ For development builds, use the normal CMake instructions below.
 
 ## Linux CI build
 
-The [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml) produces a `PipeClean-Dev-Linux-x64.tar.gz` artifact. Open a successful workflow run and download its `PipeClean-Dev-Linux-x64` artifact. It contains the native `PipeClean` executable, required project assets and documentation; it does not include a game ROM.
+The regular Linux x86-64 runtime is produced by the [Regression Tests workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml). Open a successful run and download the `PipeClean-Linux-x64` artifact. It contains the native `PipeClean` executable, project assets and documentation; it does not include a game ROM.
 
 Extract it, install the runtime dependencies listed above, then launch from the extracted directory:
 
 ```bash
-tar -xzf PipeClean-Dev-Linux-x64.tar.gz
-cd PipeClean-Dev-Linux-x64
+tar -xzf PipeClean-Linux-x64.tar.gz
+cd PipeClean-Linux-x64
 ./PipeClean
 ```
 
-The Linux package targets x86-64 Linux and is built on Ubuntu 24.04. Other distributions may require installing equivalent SDL2 runtime packages. These are development/test artifacts, not versioned GitHub Releases, and workflow artifacts expire after 30 days.
+The regular package targets x86-64 Linux and is built on Ubuntu 24.04. Other distributions may require installing equivalent SDL2 runtime packages. CI artifacts expire after 30 days; they are not permanent GitHub Releases.
+
+A separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml) also produces `PipeClean-Dev-Linux-x64`, which includes the live multiplayer diagnostics build rather than the regular runtime.
 
 ## Build with CMake
 
