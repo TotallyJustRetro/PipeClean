@@ -72,6 +72,12 @@ GitHub Actions produces a Windows x64 test build artifact from the same source t
 
 The artifact is built and smoke-tested against a synthetic test cartridge. No commercial ROM is included. To run a real game, supply a ROM you are legally permitted to use.
 
+## 🐧 Linux build
+
+GitHub Actions also produces a **Linux x86-64 development build**. Open the [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml), choose a successful run, and download the `PipeClean-Dev-Linux-x64` artifact. Extract the `.tar.gz`, install the SDL2 and SDL2_image runtime libraries if they are missing, and launch `./PipeClean` from the extracted folder.
+
+The build is smoke-tested on Ubuntu 24.04 and includes the executable, PipeClean assets, and documentation. It does not include a commercial ROM. Linux runtime requirements and full extraction instructions are in [INSTALL.md](INSTALL.md). Workflow artifacts expire after 30 days; this is a CI artifact rather than a permanent GitHub Release.
+
 ## 🧪 Testing
 
 Run the focused SML2 widescreen regression test:
@@ -103,11 +109,11 @@ GitHub Actions runs the regressions, validates the Python tools, builds the full
 
 ### PipeClean Dev multiplayer diagnostics
 
-The separate **PipeClean Dev** Windows build opens a live diagnostics window whenever local multiplayer starts. It records per-frame inputs, player positions, camera/level state, sprite counts, coins, tilemap/world-memory hashes and a rendered-frame hash. Events such as lives changes, spawn changes, likely movement stalls and sprite-list warnings are recorded too. Closing only the diagnostics window hides it but keeps logging; leaving the multiplayer session finalizes the log.
+The **PipeClean Dev** builds for Windows and Linux open a live diagnostics window whenever local multiplayer starts. It records per-frame inputs, player positions, camera/level state, sprite counts, coins, tilemap/world-memory hashes and a rendered-frame hash. Events such as lives changes, spawn changes, likely movement stalls and sprite-list warnings are recorded too. Closing only the diagnostics window hides it but keeps logging; leaving the multiplayer session finalizes the log.
 
 The Dev build saves a screenshot of the first gameplay frame, then PNG screenshots every 300 gameplay frames (about five seconds) and when important anomalies occur (player spawn changes, lives changes, movement stalls, level changes, and co-op tether activation). Each incident snapshot adds raw SML2 player RAM (`A200–A2DF`), world/object RAM (`A800–BFFF`), the background tilemap, VRAM tile data, player OAM data, and Luigi's captured sprite-tile graphics where available. Press **F10** during multiplayer to request an immediate screenshot and matching memory snapshot. The JSONL file records each screenshot's filename and frame number; image names include the frame and trigger. This makes it possible to pair the exact screen corruption with the game state that produced it. Incident dumps can be larger than the previous log format.
 
-Logs and screenshots are written beside the executable in the `logs` folder. Session logs use names like `PipeClean-dev-multiplayer-YYYYMMDD-HHMMSS-*.jsonl`; screenshots use names like `PipeClean-screen-001234-PLAYER-2-NOT-SPAWNED.png`. The regular PipeClean build does not open this developer window, capture diagnostic screenshots, or dump diagnostic RAM. Download **PipeClean-Dev-Windows-x64** from the separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml).
+Logs and screenshots are written beside the executable in the `logs` folder. Session logs use names like `PipeClean-dev-multiplayer-YYYYMMDD-HHMMSS-*.jsonl`; screenshots use names like `PipeClean-screen-001234-PLAYER-2-NOT-SPAWNED.png`. The regular PipeClean build does not open this developer window, capture diagnostic screenshots, or dump diagnostic RAM. Download **PipeClean-Dev-Windows-x64** or **PipeClean-Dev-Linux-x64** from the separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml).
 
 ### Scripted multiplayer replay test
 
