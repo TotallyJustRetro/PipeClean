@@ -184,7 +184,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawCornerGems(c, w, h);
             c.restore();
             // The gold ring and power-up breathe; GIF wallpapers advance at about 30 fps.
-            postInvalidateDelayed((wallpaperMovie != null || item != 0) ? 33 : 80);
+            postInvalidateDelayed(33);
         }
 
         private void drawWallpaper(Canvas c, float w, float h) {
@@ -538,6 +538,16 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c,s,x,y,size,color);
         }
 
+        private void textFit(Canvas c,String s,float x,float y,float max,float size,int color,
+                             boolean centered) {
+            p.setTextSize(size);
+            while(p.measureText(s)>max && size>6) { size-=0.5f; p.setTextSize(size); }
+            p.setColor(color);
+            p.setTextAlign(centered ? Paint.Align.CENTER : Paint.Align.LEFT);
+            c.drawText(s,x,y,p);
+            p.setTextAlign(Paint.Align.LEFT);
+        }
+
         private int hitTest(float x,float y) {
             if(getHeight()>getWidth()) {
                 if(inside(x,y,260,16,24,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
@@ -552,7 +562,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,232,594,198,58)) return REWIND;
                 if(inside(x,y,20,661,198,58)) return PALETTE;
                 if(inside(x,y,232,661,198,58)) return FILTER;
-                if(inside(x,y,125,145,200,300)) return ITEM_USE;
+                if(inside(x,y,85,143,280,277)) return ITEM_USE;
             } else {
                 if(inside(x,y,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(x,y,593,13,183,42)) return BACKGROUND;
@@ -566,7 +576,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,400,354,118,66)) return REWIND;
                 if(inside(x,y,524,354,118,66)) return PALETTE;
                 if(inside(x,y,648,354,118,66)) return FILTER;
-                if(inside(x,y,300,91,200,207)) return ITEM_USE;
+                if(inside(x,y,264,72,272,245)) return ITEM_USE;
             }
             return 0;
         }
