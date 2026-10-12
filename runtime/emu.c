@@ -91,6 +91,7 @@ static void publish(void)
     pub.player_x = rd8(0xC202); pub.player_y = rd8(0xC201);
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
     pub.level_id = 0xFF; pub.level_bank = 0xFF; pub.p1_lives = 0;
+    pub.reserve_item = (uint8_t)((rom_loaded_game() == GAME_SML && !mp_active && !mp_ready) ? reserve_item_state.kind : 0);
     int active_game = rom_loaded_game();
     if (active_game == GAME_SML) {
         uint8_t world_level = rd8(0xFFB4); /* Packed BCD: high nibble world, low nibble level. */
@@ -393,8 +394,83 @@ typedef struct {
 } MpStateExtraV5;
 
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
-#define EMU_STATE_VERSION 9u
+#define EMU_STATE_VERSION 10u
 #define EMU_STATE_FLAG_MP 1u
+
+typedef struct {
+    uint8_t kind;          /* 0 = empty; 1 = reserved mushroom. */
+    uint8_t spawn_pending; /* Preserve deferred spawns across save-state and rewind. */
+    uint8_t object[16];    /* Captured SML1 mushroom object at D190-D19F. */
+} ReserveItemState;
+
+static ReserveItemState reserve_item_state;
+
+static int reserve_item_gameplay_active(void)
+{
+    uint8_t state = rd8(0xFFB3);
+    return state <= 0x0D && state != 3 && state != 4;
+}
+
+static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
+{
+    if (rom_loaded_game() != GAME_SML || mp_ready || mp_active) return;
+    if (addr == 0xD190 && old_v == 0x29 && new_v == 0xFF &&
+        reserve_item_state.kind == 0 && reserve_item_gameplay_active() &&
+        rd8(0xFFFB) == 0x29 && rd8(0xFF99) != 0) {
+        int dx = (int)rd8(0xD193) - (int)rd8(0xC202);
+        int dy = (int)rd8(0xD192) - (int)rd8(0xC201);
+        if (dx < 0) dx = -dx;
+        if (dx > 128) dx = 256 - dx;
+        if (dy < 0) dy = -dy;
+        /* Ignore mushrooms that disappear off-screen; only reserve a pickup
+         * whose object overlapped Mario during the live collision pass. */
+        if (dx <= 18 && dy <= 16) {
+            reserve_item_state.kind = 1;
+            reserve_item_state.spawn_pending = 0;
+            for (int i = 0; i < 16; i++)
+                reserve_item_state.object[i] = rd8((uint16_t)(0xD190 + i));
+            reserve_item_state.object[0] = 0x29;
+        }
+    } else if (addr == 0xFF99 && old_v != 0 && new_v == 0 &&
+               reserve_item_state.kind == 1 && reserve_item_gameplay_active()) {
+        /* Queue an item spawn when powered-up Mario becomes small. */
+        reserve_item_state.spawn_pending = 1;
+    }
+}
+
+static void reserve_item_watch_setup(void)
+{
+    static const uint16_t addresses[] = {0xD190, 0xFF99};
+    if (rom_loaded_game() == GAME_SML && !mp_ready && !mp_active)
+        gb_watch_set(addresses, (int)(sizeof addresses / sizeof addresses[0]), reserve_item_watch);
+    else
+        gb_watch_set(NULL, 0, NULL);
+}
+
+static void reserve_item_try_spawn(void)
+{
+    if (!reserve_item_state.kind || !reserve_item_state.spawn_pending ||
+        rom_loaded_game() != GAME_SML || mp_ready || mp_active ||
+        !reserve_item_gameplay_active() || rd8(0xD190) != 0xFF) return;
+
+    uint8_t object[16];
+    memcpy(object, reserve_item_state.object, sizeof object);
+    int mario_x = rd8(0xC202);
+    int item_x = mario_x + 12;
+    if (item_x > 0xA0) item_x = mario_x > 12 ? mario_x - 12 : mario_x + 20;
+    object[0] = 0x29;
+    object[2] = rd8(0xC201);
+    object[3] = (uint8_t)item_x;
+    object[4] = 0; /* Reset the object's per-frame state. */
+    object[8] = 0;
+    object[9] = 0;
+
+    /* Clear reserve state first; publish the live object marker last. */
+    memset(&reserve_item_state, 0, sizeof reserve_item_state);
+    for (int i = 1; i < 16; i++)
+        wr8((uint16_t)(0xD190 + i), object[i]);
+    wr8(0xD190, object[0]);
+}
 
 static uint8_t *rewind_data;
 static size_t rewind_stride;
@@ -880,6 +956,8 @@ int emu_mp_begin(void)
     mp_game = rom_loaded_game();
     if (thr || mp_ready || (mp_game != GAME_SML && mp_game != GAME_SML2)) return -1;
     if (!fmx) fmx = SDL_CreateMutex();
+    memset(&reserve_item_state, 0, sizeof reserve_item_state);
+    gb_watch_set(NULL, 0, NULL);
     gb_reset();
     if (save_path[0]) cart_load_save(save_path);
     if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
@@ -3569,6 +3647,8 @@ void emu_mp_request_respawn(int player)
 void emu_mp_end(void)
 {
     if (mp_ready && save_path[0]) cart_write_save(save_path);
+    gb_watch_set(NULL, 0, NULL);
+    memset(&reserve_item_state, 0, sizeof reserve_item_state);
     gb_set_instruction_hook(NULL);
     gb_set_timing_suppressed(0);
     mp_active = 0;
@@ -3690,7 +3770,8 @@ static void pace_without_audio(void)
 
 static size_t emu_state_blob_size(void)
 {
-    return sizeof(EmuStateHeader) + gb_state_data_size() + ((mp_ready || mp_active) ? sizeof(MpStateExtra) : 0);
+    return sizeof(EmuStateHeader) + gb_state_data_size() +
+           ((mp_ready || mp_active) ? sizeof(MpStateExtra) : 0) + sizeof(ReserveItemState);
 }
 
 static int emu_state_save_blob(void *dst, size_t n)
@@ -3699,7 +3780,7 @@ static int emu_state_save_blob(void *dst, size_t n)
     int mp_context = mp_ready || mp_active;
     EmuStateHeader h = {EMU_STATE_MAGIC, EMU_STATE_VERSION, mp_context ? EMU_STATE_FLAG_MP : 0u,
                         (uint32_t)rom_loaded_game(), (uint32_t)gb_state_data_size(),
-                        mp_context ? (uint32_t)sizeof(MpStateExtra) : 0u};
+                        (uint32_t)((mp_context ? sizeof(MpStateExtra) : 0) + sizeof(ReserveItemState))};
     memcpy(dst, &h, sizeof h);
     if (gb_state_save((uint8_t *)dst + sizeof h, n - sizeof h)) return -1;
     if (mp_context) {
@@ -3718,6 +3799,8 @@ static int emu_state_save_blob(void *dst, size_t n)
         x.sml2_initialized = (uint8_t)mp_sml2_initialized;
         memcpy((uint8_t *)dst + sizeof h + h.core_bytes, &x, sizeof x);
     }
+    memcpy((uint8_t *)dst + sizeof h + h.core_bytes +
+           (mp_context ? sizeof(MpStateExtra) : 0), &reserve_item_state, sizeof reserve_item_state);
     return 0;
 }
 
@@ -3726,19 +3809,21 @@ static int emu_state_load_blob(const void *src, size_t n)
     if (!src || n < sizeof(EmuStateHeader)) return -1;
     EmuStateHeader h;
     memcpy(&h, src, sizeof h);
-    if (h.magic != EMU_STATE_MAGIC || (h.version != EMU_STATE_VERSION && h.version != 8u && h.version != 7u && h.version != 6u && h.version != 5u)) return -1;
+    if (h.magic != EMU_STATE_MAGIC || (h.version != EMU_STATE_VERSION && h.version != 9u && h.version != 8u && h.version != 7u && h.version != 6u && h.version != 5u)) return -1;
     if ((int)h.game_id != rom_loaded_game()) return -1;
     int mp_context = mp_ready || mp_active;
     if (((h.flags & EMU_STATE_FLAG_MP) != 0) != (mp_context != 0)) return -1;
-    if (h.core_bytes != gb_state_data_size() || h.extra_bytes > sizeof(MpStateExtra)) return -1;
+    if (h.core_bytes != gb_state_data_size() ||
+        h.extra_bytes > sizeof(MpStateExtra) + sizeof(ReserveItemState)) return -1;
     if (sizeof h + h.core_bytes + h.extra_bytes > n) return -1;
     if (mp_context) {
         size_t expected = h.version == 5u ? sizeof(MpStateExtraV5) :
                            (h.version == 6u ? sizeof(MpStateExtraV6) :
                             (h.version == 7u ? sizeof(MpStateExtraV7) :
                              (h.version == 8u ? sizeof(MpStateExtraV8) : sizeof(MpStateExtra))));
+        if (h.version >= 10u) expected += sizeof(ReserveItemState);
         if (h.extra_bytes != expected) return -1;
-    } else if (h.extra_bytes != 0) return -1;
+    } else if (h.extra_bytes != (h.version >= 10u ? sizeof(ReserveItemState) : 0)) return -1;
     if (gb_state_load((const uint8_t *)src + sizeof h, h.core_bytes)) return -1;
     if (mp_context) {
         if (h.version == 5u) {
@@ -3872,6 +3957,13 @@ static int emu_state_load_blob(const void *src, size_t n)
         mp_vblank_waiting = 0;
         gb_mp_vblank_watch = 0;
         if (gb_state_save(mp_state, GB_STATE_BYTES)) return -1;
+    }
+    if (h.version >= 10u) {
+        const uint8_t *extra = (const uint8_t *)src + sizeof h + h.core_bytes +
+                               (mp_context ? sizeof(MpStateExtra) : 0);
+        memcpy(&reserve_item_state, extra, sizeof reserve_item_state);
+    } else {
+        memset(&reserve_item_state, 0, sizeof reserve_item_state);
     }
     return 0;
 }
@@ -4133,6 +4225,7 @@ void frame_hook(void)
         SDL_Delay(8);
         return;
     }
+    if (!mp_ready) reserve_item_try_spawn();
     rewind_capture_if_due();
     publish();
     events_frame();
@@ -4166,9 +4259,12 @@ static int emu_start_internal(int force_interp, int reset)
     core_faulted = 0; core_fault_opcode = 0; core_fault_pc = 0;
     abort_flag = 0; paused = 0; turbo = 0; save_tick = 0; pace_next = 0;
     if (reset) {
+        memset(&reserve_item_state, 0, sizeof reserve_item_state);
+        gb_watch_set(NULL, 0, NULL);
         gb_reset();
         if (save_path[0]) cart_load_save(save_path);
     }
+    reserve_item_watch_setup();
     memset(&pub, 0, sizeof pub);
     apu_set_volume(settings.volume / 100.0f);
     audio_game_begin();

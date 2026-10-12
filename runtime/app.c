@@ -87,7 +87,8 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
         (void)(*env)->CallVoidMethod(env, activity, method,
             (jint)game, (jint)lives, (jint)stage, (jint)world,
             (jint)paused, (jint)settings.g[game].state_slot,
-            (jint)settings.g[game].palette, (jint)settings.flt.preset, (jint)0);
+            (jint)settings.g[game].palette, (jint)settings.flt.preset,
+            (jint)(frame ? frame->reserve_item : 0));
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
     } else if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
