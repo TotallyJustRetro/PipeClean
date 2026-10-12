@@ -674,11 +674,30 @@ static void pad_rumble_device(int device, int pct, int ms)
     if (pct <= 0 || device < 0 || device >= n_pads) return;
     if (pct > 100) pct = 100;
     Pad *p = &pads[device];
+    Uint16 lo = (Uint16)(pct * 655);
+    Uint16 hi = (Uint16)(pct * 655 * 0.8f);
+
+    /* Prefer SDL's mapped game-controller API, but do not silently exclude
+       generic/unmapped joysticks: SDL exposes rumble for those directly too. */
     if (p->mapped && SDL_GameControllerHasRumble(p->gc)) {
-        Uint16 lo = (Uint16)(pct * 655);
-        Uint16 hi = (Uint16)(pct * 655 * 0.8f);
-        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms);
+        if (SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms)) return;
     }
+
+    SDL_Joystick *j = joystick_for_device(device);
+    if (j && SDL_JoystickIsHaptic(j)) {
+        /* Some devices expose only a haptic interface; handled below when the
+           joystick rumble API is unavailable or reports no support. */
+        SDL_Haptic *h = SDL_HapticOpenFromJoystick(j);
+        if (h) {
+            if (SDL_HapticRumbleSupported(h) && SDL_HapticRumbleInit(h)) {
+                SDL_HapticRumblePlay(h, pct / 100.0f, (Uint32)ms);
+                SDL_HapticClose(h);
+                return;
+            }
+            SDL_HapticClose(h);
+        }
+    }
+    if (j) SDL_JoystickRumble(j, lo, hi, (Uint32)ms);
 }
 
 void pad_rumble(int pct, int ms)
