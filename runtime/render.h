@@ -21,5 +21,7 @@ void render_fit(int W, int H, int aspect, int scaling, SDL_Rect *out);
 /* Draw the picture (with the screen filters) into r. */
 void render_draw(const SDL_Rect *r, int scaling);
 uint32_t render_avg_color(void);                           /* 0xRRGGBB of the current picture */
+/* Read-only pointer to the current filtered frame; valid until the next render_build/reset. */
+int render_pixels(const uint32_t **pixels, int *w, int *h);
 void frame_from_ppu(Frame *f);
 int render_width(void);                                    /* width of the last built picture */                             /* snapshot of the PPU (after a preview run) */
