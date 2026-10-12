@@ -29,6 +29,7 @@
 #include "util.h"
 #include "branding.h"
 #include "dev_diag.h"
+#include "widescreen.h"
 #include <SDL_image.h>
 
 static SDL_Window *win;
@@ -1192,7 +1193,29 @@ static int play(int g)
     char err[256];
     GameCfg *c = &settings.g[g];
     load_state_request_app[g] = 0;
-    if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
+
+    /* SML/SML2 widen the ROM's entity activation/culling limits as part of
+     * widescreen setup. Different per-PC widths can therefore make identical
+     * online inputs evolve into different worlds. Install one canonical maximum
+     * simulation width, then restore the user's preferred render width below. */
+    int local_wide_l = 0, local_wide_r = 0;
+    int sim_wide_l = 0, sim_wide_r = 0;
+    int saved_wide = c->wide;
+    if (online) {
+        wide_dims(g, saved_wide, &local_wide_l, &local_wide_r);
+        wide_dims(g, 100, &sim_wide_l, &sim_wide_r);
+        c->wide = 100;
+    }
+    int prepare_failed = launcher_prepare(g, err, sizeof err);
+    if (online) {
+        c->wide = saved_wide;
+        /* Keep each player's preferred visible width. Only ROM-side activation
+         * hooks stay canonical, so host and guest simulate the same entities. */
+        if (!prepare_failed && ppu_w == GB_W + sim_wide_l + sim_wide_r)
+            ppu_set_wide(local_wide_l, local_wide_r,
+                         games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
+    }
+    if (prepare_failed) { launcher_toast(err); return 0; }
     if (online) {
         const CartInfo *ci = cart_info();
         if (!ci || netplay_game_begin(g, ci->crc) != 0) {

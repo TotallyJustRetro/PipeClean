@@ -2250,7 +2250,18 @@ static void mp_sml2_direct_collision_update(void)
             wr8(0xA2CE, shared_sound_disabled);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
-            longjmp(stop_jmp, 4);
+            /* A secondary-player collision/capture failure must not abort the
+             * authoritative Mario frame (or disconnect the online session).
+             * Keep the failed player hidden and request a safe respawn. */
+            p->spawned = 0;
+            p->respawn_requested = (uint8_t)(mp_sml2_bcd_to_int(p->lives) > 0);
+            p->ram[0x24] = 0;
+            p->ram[0x2C] = p->lives;
+            mp_sml2_render_oam_count[player] = 0;
+            memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+            mp_sml2_death_logged[player] = 0;
+            dev_diag_event("LUIGI COLLISION PASS FAILED; SAFE RESPAWN QUEUED");
+            continue;
         }
 
         mp_sml2_queue_native_sfx(shared_sfx_command, rd8(0xA460));
@@ -2413,7 +2424,20 @@ static void mp_sml2_instruction_hook(uint16_t pc)
                 wr8(0xA2CE, shared_sound_disabled);
                 mp_sml2_load_player(&p1_restore);
                 cpu = p1_cpu;
-                longjmp(stop_jmp, 4);
+                /* Do not let a failed secondary death animation abort the shared
+                 * game. The life is already charged above; hide Luigi and let
+                 * the safe-spawn logic recover him if lives remain. */
+                p->ram[0x24] = 0;
+                p->ram[0x2C] = p->lives;
+                p->spawned = 0;
+                p->respawn_requested = (uint8_t)(mp_sml2_bcd_to_int(p->lives) > 0);
+                mp_sml2_death_logged[player] = 0;
+                mp_sml2_render_oam_count[player] = 0;
+                memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+                dev_diag_event(p->respawn_requested
+                    ? "LUIGI DEATH CAPTURE FAILED; SAFE RESPAWN QUEUED"
+                    : "LUIGI DEATH CAPTURE FAILED; NO LIVES REMAIN");
+                continue;
             }
             mp_sml2_queue_native_sfx(shared_sfx_command, death_native_sfx_command);
             /* The stock death routine advances the character's HRAM position.
@@ -2489,11 +2513,22 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA221, shared_pipe_transition);
             wr8(0xA20E, shared_level_transition);
             mp_sml2_player_scratch_restore(movement_scratch_saved);
+            wr8(0xA460, shared_sfx_command);
+            wr8(0xA468, shared_music_command);
+            wr8(0xA469, shared_current_song);
+            wr8(0xA50D, shared_fast_music);
             mp_sml2_sound_ram_restore(shared_sound_state);
             wr8(0xA2CE, shared_sound_disabled);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
-            longjmp(stop_jmp, 4);
+            p->spawned = 0;
+            p->respawn_requested = (uint8_t)(mp_sml2_bcd_to_int(p->lives) > 0);
+            p->ram[0x24] = 0;
+            p->ram[0x2C] = p->lives;
+            mp_sml2_render_oam_count[player] = 0;
+            memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+            dev_diag_event("LUIGI MOVEMENT PASS FAILED; SAFE RESPAWN QUEUED");
+            continue;
         }
 
         /* Resolve any missed coin while the movement routine's collision
@@ -2517,7 +2552,14 @@ static void mp_sml2_instruction_hook(uint16_t pc)
             wr8(0xA2CE, shared_sound_disabled);
             mp_sml2_load_player(&p1_restore);
             cpu = p1_cpu;
-            longjmp(stop_jmp, 4);
+            p->spawned = 0;
+            p->respawn_requested = (uint8_t)(mp_sml2_bcd_to_int(p->lives) > 0);
+            p->ram[0x24] = 0;
+            p->ram[0x2C] = p->lives;
+            mp_sml2_render_oam_count[player] = 0;
+            memset(mp_sml2_render_oam[player], 0, sizeof mp_sml2_render_oam[player]);
+            dev_diag_event("LUIGI SPRITE CAPTURE FAILED; SAFE RESPAWN QUEUED");
+            continue;
         }
         const uint8_t p2_native_sfx_command = rd8(0xA460);
 
