@@ -416,7 +416,8 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     if (rom_loaded_game() != GAME_SML || mp_ready || mp_active) return;
     if (addr == 0xD190 && old_v == 0x29 && new_v == 0xFF &&
         reserve_item_state.kind == 0 && reserve_item_gameplay_active() &&
-        rd8(0xFFFB) == 0x29 && rd8(0xFF99) != 0) {
+        rd8(0xFFFB) == 0x29 &&
+        (rd8(0xFF99) == 1 || rd8(0xFF99) == 2)) {
         int dx = (int)rd8(0xD193) - (int)rd8(0xC202);
         int dy = (int)rd8(0xD192) - (int)rd8(0xC201);
         if (dx < 0) dx = -dx;
@@ -431,9 +432,12 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
                 reserve_item_state.object[i] = rd8((uint16_t)(0xD190 + i));
             reserve_item_state.object[0] = 0x29;
         }
-    } else if (addr == 0xFF99 && old_v != 0 && new_v == 0 &&
-               reserve_item_state.kind == 1 && reserve_item_gameplay_active()) {
-        /* Queue an item spawn when powered-up Mario becomes small. */
+    } else if (addr == 0xFF99 && reserve_item_state.kind == 1 &&
+               reserve_item_gameplay_active() &&
+               (((old_v == 1 || old_v == 2) && new_v == 3) ||
+                (old_v != 0 && new_v == 0))) {
+        /* SML1 marks the hit/injury transition by writing status 3. Queue the
+         * reserve item on impact instead of waiting for the blink timer to end. */
         reserve_item_state.spawn_pending = 1;
     }
 }
@@ -456,8 +460,8 @@ static void reserve_item_try_spawn(void)
     uint8_t object[16];
     memcpy(object, reserve_item_state.object, sizeof object);
     int mario_x = rd8(0xC202);
-    int item_x = mario_x + 12;
-    if (item_x > 0xA0) item_x = mario_x > 12 ? mario_x - 12 : mario_x + 20;
+    int item_x = mario_x + 20;
+    if (item_x > 0xA0) item_x = mario_x > 20 ? mario_x - 20 : mario_x + 24;
     object[0] = 0x29;
     object[2] = rd8(0xC201);
     object[3] = (uint8_t)item_x;
