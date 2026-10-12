@@ -15,7 +15,7 @@ extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
 extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern int wide_sml2_homeworld_active(int, int, int) __attribute__((weak));
-extern void wide_sml2_homeworld_dims(int, int, int *, int *) __attribute__((weak));
+extern void wide_sml2_homeworld_dims_from_camera(int, int, int *, int *) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -32,7 +32,6 @@ uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
-#define SML2_HOME_CAMERA_X  0xA680u
 #define SML2_HOME_WIDE_LEFT  112
 #define SML2_HOME_WIDE_RIGHT 112
 void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
@@ -63,13 +62,9 @@ static void ppu_refresh_wide_layout(void)
                     wide_sml2_homeworld_active &&
                     wide_sml2_homeworld_active(lcdc, wx, wy);
     if (homeworld) {
-        int map_screen_left = rd8(SML2_HOME_CAMERA_X) |
-                              (rd8(SML2_HOME_CAMERA_X + 1) << 8);
-        map_screen_left += (int8_t)(uint8_t)(scx - (map_screen_left & 0xFF));
-        if (wide_sml2_homeworld_dims) {
-            wide_sml2_homeworld_dims(map_screen_left,
-                                     SML2_HOME_WIDE_LEFT + SML2_HOME_WIDE_RIGHT,
-                                     &l, &r);
+        if (wide_sml2_homeworld_dims_from_camera) {
+            wide_sml2_homeworld_dims_from_camera(
+                scx, SML2_HOME_WIDE_LEFT + SML2_HOME_WIDE_RIGHT, &l, &r);
         } else {
             l = SML2_HOME_WIDE_LEFT;
             r = SML2_HOME_WIDE_RIGHT;
