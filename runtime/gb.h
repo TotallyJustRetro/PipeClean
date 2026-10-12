@@ -10,7 +10,7 @@
 
 #define GB_W 160
 #define GB_H 144
-#define GB_WMAX 384            /* supports the ultra-wide SML2 Homeworld map view */
+#define GB_WMAX 512            /* fits the full-width SML2 Homeworld map */
 #define CYCLES_PER_FRAME 70224
 #define CPU_HZ 4194304
 
@@ -69,7 +69,7 @@ void gb_mp_vblank_arm(void);
 void gb_mp_vblank_done(void);
 
 /* Reentrant-state support used by local multiplayer. */
-#define GB_STATE_BYTES (1000000u) /* headroom for the 384px PPU and full APU state */
+#define GB_STATE_BYTES (1250000u) /* headroom for 512px PPU, APU, and cartridge state */
 size_t gb_state_size(void);
 size_t gb_state_data_size(void);
 int gb_state_save(void *dst, size_t n);
