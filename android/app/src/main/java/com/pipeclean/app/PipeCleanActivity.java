@@ -31,6 +31,7 @@ public final class PipeCleanActivity extends SDLActivity {
     private DisplayManager companionDisplayManager;
     private PipeCleanCompanionPresentation companionPresentation;
     private boolean companionEnabled;
+    private boolean companionPipeSwapMode;
 
     private final DisplayManager.DisplayListener companionDisplayListener =
         new DisplayManager.DisplayListener() {
@@ -105,6 +106,7 @@ public final class PipeCleanActivity extends SDLActivity {
         try {
             companionPresentation = new PipeCleanCompanionPresentation(this, target);
             companionPresentation.show();
+            companionPresentation.setPipeSwapMode(companionPipeSwapMode);
         } catch (Exception ex) {
             dismissCompanionDisplay();
             android.util.Log.w("PipeClean", "Couldn't open the companion display.", ex);
@@ -206,7 +208,27 @@ public final class PipeCleanActivity extends SDLActivity {
             if (companionPresentation != null) {
                 companionPresentation.updateState(game, lives, stage, world,
                     paused != 0, slot, palette, filter, item);
+                companionPresentation.setPipeSwapMode(companionPipeSwapMode);
             }
+        });
+    }
+
+    /** Swap the two display roles while SML1 is traversing a pipe/bonus room. */
+    public void setCompanionPipeSwapMode(boolean enabled) {
+        runOnUiThread(() -> {
+            companionPipeSwapMode = enabled;
+            if (companionPresentation != null)
+                companionPresentation.setPipeSwapMode(companionPipeSwapMode);
+        });
+    }
+
+    /** Push a filtered emulator frame to the secondary display at a capped rate. */
+    public void updateCompanionGameFrame(int width, int height, int[] pixels) {
+        if (width <= 0 || height <= 0 || pixels == null ||
+            (long)width * (long)height != pixels.length) return;
+        runOnUiThread(() -> {
+            if (companionPipeSwapMode && companionPresentation != null)
+                companionPresentation.updateGameFrame(width, height, pixels);
         });
     }
 
