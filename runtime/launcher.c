@@ -2076,6 +2076,39 @@ static void online_report_local_rom(int game)
     launcher_toast("ROM checksum sent. Waiting for the other player to finish checking.");
 }
 
+static void online_commit_shared_name(void)
+{
+    int game = netplay_lobby_get_game();
+    int slot = online_save_name_slot;
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT ||
+        (game != GAME_SML && game != GAME_SML2) || !online_save_name_buffer[0]) {
+        online_save_name_editing = 0;
+        online_save_name_slot = -1;
+        SDL_StopTextInput();
+        return;
+    }
+    if (!launcher_shared_slot_name_set(game, slot, online_save_name_buffer)) {
+        launcher_toast("That save-slot name is invalid.");
+    } else if (!netplay_shared_slot_rename(slot, online_save_name_buffer)) {
+        launcher_toast("Name saved locally, but couldn't sync it to the player.");
+    } else {
+        launcher_toast("Shared save-slot name updated.");
+    }
+    online_save_name_editing = 0;
+    online_save_name_slot = -1;
+    SDL_StopTextInput();
+}
+
+static void online_begin_shared_name_edit(int game, int slot)
+{
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT || !netplay_is_host()) return;
+    online_save_name_slot = slot;
+    netplay_shared_slot_name(slot, online_save_name_buffer, sizeof online_save_name_buffer);
+    online_save_name_editing = 1;
+    online_name_editing = online_code_editing = online_server_editing = online_chat_editing = 0;
+    SDL_StartTextInput();
+}
+
 static void tab_online_lobby(float x, float y, const NetplayInfo *np)
 {
     const int connected = np->state == NETPLAY_CONNECTED && np->peer[0];
@@ -2163,38 +2196,107 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     }
 
     ui_rrect(x + 374, y + 82, 416, 328, 12, C_PANEL);
-    ui_text(F_BOLD, 13, x + 390, y + 94, C_TEXT, "SESSION CHAT");
-    if (message_count == 0) {
-        ui_text_fit(F_REG, 11, x + 390, y + 124, 380, C_DIM,
-                    connected ? "No messages yet. Say hello!" : "Chat becomes available when a player joins.");
-    } else {
-        float row_y = y + 121 + (7 - message_count) * 27.0f;
-        for (int i = 0; i < message_count; i++) {
-            snprintf(line, sizeof line, "%.22s: %.80s", messages[i].name, messages[i].text);
-            ui_text_fit(F_REG, 11, x + 390, row_y + i * 27.0f, 380, C_TEXT, line);
+    if (ui_button(x + 390, y + 108, 82, 26, "Chat",
+                  online_lobby_panel == 0 ? B_PRIMARY : B_GHOST, 1))
+        online_lobby_panel = 0;
+    if (ui_button(x + 480, y + 108, 120, 26, "Shared Saves",
+                  online_lobby_panel == 1 ? B_PRIMARY : B_GHOST, connected))
+        online_lobby_panel = 1;
+
+    if (online_lobby_panel == 0) {
+        ui_text(F_BOLD, 13, x + 390, y + 94, C_TEXT, "SESSION CHAT");
+        if (message_count == 0) {
+            ui_text_fit(F_REG, 11, x + 390, y + 153, 380, C_DIM,
+                        connected ? "No messages yet. Say hello!" : "Chat becomes available when a player joins.");
+        } else {
+            float row_y = y + 151 + (7 - message_count) * 25.0f;
+            for (int i = 0; i < message_count; i++) {
+                snprintf(line, sizeof line, "%.22s: %.80s", messages[i].name, messages[i].text);
+                ui_text_fit(F_REG, 11, x + 390, row_y + i * 25.0f, 380, C_TEXT, line);
+            }
         }
-    }
-    int chat_over = 0;
-    int chat_clicked = connected ? clickable(x + 390, y + 365, 286, 32, &chat_over) : 0;
-    ui_rrect(x + 390, y + 365, 286, 32, 7,
-             online_chat_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
-             (chat_over ? C_BTN_H : C_BTN));
-    const char *chat_value = online_chat_buffer[0] ? online_chat_buffer :
-                             (online_chat_editing ? "Type a message…" : "Message (Enter to send)");
-    ui_text_fit(F_REG, 11, x + 401, y + 374, 264,
-                online_chat_buffer[0] ? C_TEXT : C_DIM, chat_value);
-    if (chat_clicked) {
-        online_name_editing = online_code_editing = online_server_editing = 0;
-        online_chat_editing = 1;
-        SDL_StartTextInput();
-    }
-    if (ui_button(x + 686, y + 365, 88, 32, "Send", B_NORMAL,
-                  connected && online_chat_buffer[0])) {
-        if (netplay_chat_send(online_chat_buffer)) {
-            online_chat_buffer[0] = 0;
-            online_chat_editing = 0;
-            SDL_StopTextInput();
-        } else launcher_toast("Couldn't send that chat message.");
+        int chat_over = 0;
+        int chat_clicked = connected ? clickable(x + 390, y + 365, 286, 32, &chat_over) : 0;
+        ui_rrect(x + 390, y + 365, 286, 32, 7,
+                 online_chat_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
+                 (chat_over ? C_BTN_H : C_BTN));
+        const char *chat_value = online_chat_buffer[0] ? online_chat_buffer :
+                                 (online_chat_editing ? "Type a message…" : "Message (Enter to send)");
+        ui_text_fit(F_REG, 11, x + 401, y + 374, 264,
+                    online_chat_buffer[0] ? C_TEXT : C_DIM, chat_value);
+        if (chat_clicked) {
+            online_name_editing = online_code_editing = online_server_editing = 0;
+            online_save_name_editing = 0;
+            online_chat_editing = 1;
+            SDL_StartTextInput();
+        }
+        if (ui_button(x + 686, y + 365, 88, 32, "Send", B_NORMAL,
+                      connected && online_chat_buffer[0])) {
+            if (netplay_chat_send(online_chat_buffer)) {
+                online_chat_buffer[0] = 0;
+                online_chat_editing = 0;
+                SDL_StopTextInput();
+            } else launcher_toast("Couldn't send that chat message.");
+        }
+    } else {
+        ui_text(F_BOLD, 13, x + 390, y + 94, C_TEXT, "SHARED SAVE SLOTS");
+        ui_text_fit(F_REG, 10, x + 390, y + 139, 380, C_DIM,
+                    np->is_host
+                      ? "Choose a save slot. Load on Start restores the same state for both players."
+                      : "The host manages slots. Save/Load State bindings sync through the active slot.");
+        int active_slot = netplay_shared_slot_active();
+        int load_slot = netplay_shared_slot_load();
+        for (int slot = 0; slot < NETPLAY_SHARED_SLOT_COUNT; slot++) {
+            float row_y = y + 158 + slot * 21.0f;
+            char slot_name[32], status_text[20];
+            int local_saved = 0, peer_saved = -1, pending = 0;
+            netplay_shared_slot_name(slot, slot_name, sizeof slot_name);
+            netplay_shared_slot_status(slot, &local_saved, &peer_saved, &pending);
+            uint32_t status_color = C_MUTED;
+            if (pending) { snprintf(status_text, sizeof status_text, "SYNCING"); status_color = C_WARN; }
+            else if (local_saved && peer_saved == 1) { snprintf(status_text, sizeof status_text, "SYNCED"); status_color = C_OK; }
+            else if (peer_saved < 0) { snprintf(status_text, sizeof status_text, local_saved ? "CHECKING" : "EMPTY"); }
+            else if (local_saved || peer_saved) { snprintf(status_text, sizeof status_text, "UNSYNCED"); status_color = C_WARN; }
+            else { snprintf(status_text, sizeof status_text, "EMPTY"); }
+
+            ui_text_fit(F_REG, 10, x + 390, row_y + 4, 98,
+                        slot == active_slot ? HEX(ui_accent) : C_TEXT, slot_name);
+            ui_text_fit(F_REG, 9, x + 488, row_y + 5, 63, status_color, status_text);
+            if (ui_button(x + 554, row_y, 52, 19,
+                          slot == active_slot ? "Active" : "Use",
+                          slot == active_slot ? B_PRIMARY : B_GHOST,
+                          connected && np->is_host)) {
+                if (!netplay_shared_slot_select(slot, -1))
+                    launcher_toast("Couldn't select that shared save slot.");
+            }
+            if (ui_button(x + 610, row_y, 58, 19,
+                          slot == load_slot ? "On Start" : "Load",
+                          slot == load_slot ? B_PRIMARY : B_GHOST,
+                          connected && np->is_host && netplay_shared_slot_is_synced(slot))) {
+                if (!netplay_shared_slot_select(slot, slot))
+                    launcher_toast("That shared slot is not synchronized yet.");
+            }
+        }
+        ui_text_fit(F_REG, 9, x + 390, y + 371, 112, C_DIM, "Rename active slot");
+        int name_over = 0;
+        int name_clicked = clickable(x + 500, y + 368, 177, 27, &name_over);
+        ui_rrect(x + 500, y + 368, 177, 27, 6,
+                 online_save_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
+                 (name_over ? C_BTN_H : C_BTN));
+        char current_name[32];
+        netplay_shared_slot_name(active_slot, current_name, sizeof current_name);
+        const char *shown_name = online_save_name_editing
+            ? online_save_name_buffer : current_name;
+        ui_text_fit(F_REG, 10, x + 508, y + 376, 161, C_TEXT,
+                    shown_name[0] ? shown_name : "Slot name");
+        if (name_clicked && connected && np->is_host && !online_save_name_editing)
+            online_begin_shared_name_edit(selected_game, active_slot);
+        if (ui_button(x + 682, y + 368, 92, 27,
+                      online_save_name_editing ? "Editing…" : "Rename",
+                      B_GHOST, connected && np->is_host && !online_save_name_editing))
+            online_begin_shared_name_edit(selected_game, active_slot);
+        if (online_save_name_editing)
+            ui_text_fit(F_REG, 9, x + 500, y + 397, 260, C_DIM, "Enter saves · Esc cancels");
     }
 
     ui_text_fit(F_REG, 11, x + 24, y + 426, 540, C_DIM,
