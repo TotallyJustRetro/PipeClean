@@ -56,7 +56,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
-        private boolean paused;
+        private boolean paused, itemPressed;
+        private long itemPressStart, itemReleaseStart;
         private Bitmap wallpaperBitmap;
         private Movie wallpaperMovie;
         private String wallpaperPath = "";
@@ -348,6 +349,14 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawHeroItem(Canvas c, float cx, float cy, float radius, int itemId) {
             float t = SystemClock.uptimeMillis() / 1000f;
             float pulse = 1.0f + (float)Math.sin(t*3.1f)*0.025f;
+            long now = SystemClock.uptimeMillis();
+            if (itemPressed) {
+                float held = Math.min(1f, (now - itemPressStart) / 75f);
+                pulse *= 1f - 0.13f * held;
+            } else if (itemReleaseStart > 0 && now - itemReleaseStart < 220) {
+                float u = (now - itemReleaseStart) / 220f;
+                pulse *= 0.87f + 0.13f * (1f - (1f-u)*(1f-u));
+            }
             // Soft gold aura, layered discs and a pixelated gold orbit.
             p.setStyle(Paint.Style.FILL);
             p.setColor(0x28FFD86A);
@@ -576,8 +585,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private int hitTest(float x,float y) {
             if(getHeight()>getWidth()) {
-                if(inside(x,y,260,16,24,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
-                if(inside(x,y,290,12,140,37)) return BACKGROUND;
+                if(inside(x,y,238,16,20,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
+                if(inside(x,y,262,12,87,37)) return BACKGROUND;
+                if(inside(x,y,355,12,75,37)) return CLOSE_GAME;
                 if(inside(x,y,35,439,380,70)) {
                     if(inside(x,y,47,460,65,34)) return SLOT_PREV;
                     if(inside(x,y,338,460,65,34)) return SLOT_NEXT;
@@ -586,12 +596,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,232,527,198,58)) return LOAD;
                 if(inside(x,y,20,594,198,58)) return PAUSE;
                 if(inside(x,y,232,594,198,58)) return REWIND;
-                if(inside(x,y,20,661,198,58)) return PALETTE;
-                if(inside(x,y,232,661,198,58)) return FILTER;
-                if(inside(x,y,85,143,280,288)) return ITEM_USE;
+                if(inside(x,y,20,661,198,58)) return BACKGROUND;
+                if(inside(x,y,232,661,198,58)) return CLOSE_GAME;
+                if(inside(x,y,112,160,226,230)) return ITEM_USE;
             } else {
                 if(inside(x,y,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
-                if(inside(x,y,593,13,183,42)) return BACKGROUND;
+                if(inside(x,y,593,13,105,42)) return BACKGROUND;
+                if(inside(x,y,704,13,72,42)) return CLOSE_GAME;
                 if(inside(x,y,36,117,152,145)) {
                     if(inside(x,y,48,214,55,35)) return SLOT_PREV;
                     if(inside(x,y,121,214,55,35)) return SLOT_NEXT;
@@ -600,9 +611,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,152,354,118,66)) return LOAD;
                 if(inside(x,y,276,354,118,66)) return PAUSE;
                 if(inside(x,y,400,354,118,66)) return REWIND;
-                if(inside(x,y,524,354,118,66)) return PALETTE;
-                if(inside(x,y,648,354,118,66)) return FILTER;
-                if(inside(x,y,264,78,272,270)) return ITEM_USE;
+                if(inside(x,y,94,354,145,66)) return SAVE;
+                if(inside(x,y,247,354,145,66)) return LOAD;
+                if(inside(x,y,400,354,145,66)) return PAUSE;
+                if(inside(x,y,553,354,153,66)) return REWIND;
+                if(inside(x,y,290,93,220,245)) return ITEM_USE;
             }
             return 0;
         }
@@ -618,6 +631,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             } else if(action==RESET_BACKGROUND) {
                 if(getContext() instanceof PipeCleanActivity)
                     ((PipeCleanActivity)getContext()).resetCompanionBackground();
+            } else if(action==CLOSE_GAME) {
+                if(game>=0) PipeCleanActivity.nativeCompanionAction(CLOSE_GAME,1);
             } else if(action!=0 && game>=0) {
                 PipeCleanActivity.nativeCompanionAction(action,pressed);
             }
@@ -631,6 +646,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float x=(e.getX()-ox)/scale, y=(e.getY()-oy)/scale;
             if(e.getActionMasked()==MotionEvent.ACTION_DOWN) {
                 downAction=hitTest(x,y);
+                if(downAction==ITEM_USE) { itemPressed=true; itemPressStart=SystemClock.uptimeMillis(); }
                 if(downAction==REWIND) send(REWIND,1);
                 invalidate();
                 return true;
@@ -639,6 +655,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 int up=hitTest(x,y);
                 if(downAction==REWIND) send(REWIND,0);
                 else if(up!=0 && up==downAction) send(up,1);
+                if(downAction==ITEM_USE) { itemPressed=false; itemReleaseStart=SystemClock.uptimeMillis(); }
                 downAction=0;
                 invalidate();
                 performClick();
@@ -646,6 +663,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
             if(e.getActionMasked()==MotionEvent.ACTION_CANCEL) {
                 if(downAction==REWIND) send(REWIND,0);
+                if(downAction==ITEM_USE) { itemPressed=false; itemReleaseStart=SystemClock.uptimeMillis(); }
                 downAction=0; invalidate(); return true;
             }
             return true;
