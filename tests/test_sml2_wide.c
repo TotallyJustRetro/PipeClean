@@ -227,15 +227,16 @@ int main(void)
     if (!wide_sml2_homeworld_active(0xE3, 80, 0x88) ||
         wide_sml2_homeworld_active(0xE3, 7, 0x88) ||
         wide_sml2_homeworld_active(0xE3, 80, 0x87)) return 43;
-    /* The Homeworld path supports a much wider symmetric margin than regular stages. */
-    wide_sml2_prepare_frame(80, 80, 64, 32, 0xE3, 80, 0x88, vram);
+    /* Homeworld now renders a 384px-wide view with 112px of live-map margin
+       on each side. It must still leave the native centre untouched. */
+    wide_sml2_prepare_frame(112, 112, 64, 32, 0xE3, 80, 0x88, vram);
     if (!wide_sml2_world_origin(&world_x, &world_y) ||
-        world_x != 240 || world_y != 32) return 39;
+        world_x != 208 || world_y != 32) return 39;
     if (!wide_sml2_margin_tile(0, 0, &resolved_tile, &world_x, &world_y) ||
-        world_x != 240 || world_y != 32 || resolved_tile != 43) return 40;
-    if (!wide_sml2_margin_tile(240, 0, &resolved_tile, &world_x, &world_y) ||
+        world_x != 208 || world_y != 32 || resolved_tile != 39) return 40;
+    if (!wide_sml2_margin_tile(272, 0, &resolved_tile, &world_x, &world_y) ||
         world_x != 480 || world_y != 32 || resolved_tile != 73) return 41;
-    if (wide_sml2_margin_tile(80, 0, &resolved_tile, &world_x, &world_y)) return 42;
+    if (wide_sml2_margin_tile(112, 0, &resolved_tile, &world_x, &world_y)) return 42;
 
     /* Switching back to native width must clear the hooks from the prior
        widescreen session, so they do not keep changing SML2 spawn/cull reads. */
