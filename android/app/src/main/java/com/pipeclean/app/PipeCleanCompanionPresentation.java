@@ -48,6 +48,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
     }
 
     void setBackgroundFile(String path) { deck.setBackgroundFile(path); }
+    void setPipeSwapMode(boolean enabled) { deck.setPipeSwapMode(enabled); }
+    void updateGameFrame(int width, int height, int[] pixels) {
+        deck.updateGameFrame(width, height, pixels);
+    }
 
     private static final class DeckView extends View {
         private static final int SAVE = 1, LOAD = 2, PAUSE = 3, REWIND = 4;
@@ -55,6 +59,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private static final int ITEM_USE = 9, BACKGROUND = 10, RESET_BACKGROUND = 11, CLOSE_GAME = 12;
 
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint gameFramePaint = new Paint();
+        private Bitmap gameFrame;
+        private boolean pipeSwapMode;
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
         private boolean paused, itemPressed;
         private long itemPressStart, itemReleaseStart;
@@ -90,6 +97,28 @@ final class PipeCleanCompanionPresentation extends Presentation {
             this.filter = Math.max(0, Math.min(FILTERS.length - 1, filter));
             this.item = item;
             postInvalidate();
+        }
+
+        void setPipeSwapMode(boolean enabled) {
+            if (pipeSwapMode == enabled) return;
+            pipeSwapMode = enabled;
+            if (!enabled && gameFrame != null) {
+                gameFrame.recycle();
+                gameFrame = null;
+            }
+            postInvalidate();
+        }
+
+        void updateGameFrame(int width, int height, int[] pixels) {
+            if (width <= 0 || height <= 0 || pixels == null ||
+                (long)width * (long)height != pixels.length) return;
+            if (gameFrame == null || gameFrame.isRecycled() ||
+                gameFrame.getWidth() != width || gameFrame.getHeight() != height) {
+                if (gameFrame != null && !gameFrame.isRecycled()) gameFrame.recycle();
+                gameFrame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            }
+            gameFrame.setPixels(pixels, 0, width, 0, 0, width, height);
+            if (pipeSwapMode) postInvalidateOnAnimation();
         }
 
         void setBackgroundFile(String path) {
@@ -187,6 +216,24 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
+            if (pipeSwapMode) {
+                c.drawColor(0xFF07111F);
+                if (gameFrame != null && !gameFrame.isRecycled()) {
+                    gameFramePaint.setFilterBitmap(false);
+                    gameFramePaint.setAntiAlias(false);
+                    c.drawBitmap(gameFrame, null, new RectF(0, 0, getWidth(), getHeight()),
+                                 gameFramePaint);
+                } else {
+                    p.setColor(0xFFFFFFFF);
+                    p.setTextSize(16f);
+                    p.setTextAlign(Paint.Align.CENTER);
+                    c.drawText("Waiting for gameplay frame…", getWidth() * 0.5f,
+                               getHeight() * 0.5f, p);
+                    p.setTextAlign(Paint.Align.LEFT);
+                }
+                postInvalidateDelayed(33);
+                return;
+            }
             boolean portrait = getHeight() > getWidth();
             float w = portrait ? 450f : 800f, h = portrait ? 800f : 450f;
             float scale = Math.min(getWidth() / w, getHeight() / h);
