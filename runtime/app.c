@@ -42,6 +42,7 @@ static int win_w = 1100, win_h = 720;
 static int companion_rewind_held;
 static int companion_pipe_swap_active;
 static int companion_pipe_swap_exit_pending;
+static volatile int companion_display_available;
 static Uint32 companion_last_frame_tick;
 #define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
 #define PIPECLEAN_COMPANION_SAVE 1
@@ -67,6 +68,13 @@ JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionA
     event.user.data1 = (void *)(intptr_t)action;
     event.user.data2 = (void *)(intptr_t)pressed;
     (void)SDL_PushEvent(&event);
+}
+
+JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionDisplayAvailable(
+    JNIEnv *env, jclass cls, jint available)
+{
+    (void)env; (void)cls;
+    companion_display_available = available ? 1 : 0;
 }
 
 static void companion_publish_state(int game, const Frame *frame, int paused)
@@ -146,7 +154,7 @@ static void companion_set_pipe_swap(int enabled)
 
 static void companion_publish_game_frame(void)
 {
-    if (!companion_pipe_swap_active) return;
+    if (!companion_pipe_swap_active || !companion_display_available) return;
     /* Read the filtered CPU frame, not the SDL backbuffer, to avoid a GPU readback. */
     Uint32 now = SDL_GetTicks();
     if ((Uint32)(now - companion_last_frame_tick) < 33) return;
@@ -192,7 +200,7 @@ static void companion_update_pipe_swap(int game, const Frame *frame, int enabled
 {
 #if defined(__ANDROID__)
     int next = companion_pipe_swap_active;
-    if (!enabled || game != GAME_SML) {
+    if (!enabled || !companion_display_available || game != GAME_SML) {
         next = 0;
         companion_pipe_swap_exit_pending = 0;
     } else if (frame) {
