@@ -684,19 +684,6 @@ static void pad_rumble_device(int device, int pct, int ms)
     }
 
     SDL_Joystick *j = joystick_for_device(device);
-    if (j && SDL_JoystickIsHaptic(j)) {
-        /* Some devices expose only a haptic interface; handled below when the
-           joystick rumble API is unavailable or reports no support. */
-        SDL_Haptic *h = SDL_HapticOpenFromJoystick(j);
-        if (h) {
-            if (SDL_HapticRumbleSupported(h) && SDL_HapticRumbleInit(h)) {
-                SDL_HapticRumblePlay(h, pct / 100.0f, (Uint32)ms);
-                SDL_HapticClose(h);
-                return;
-            }
-            SDL_HapticClose(h);
-        }
-    }
     if (j) SDL_JoystickRumble(j, lo, hi, (Uint32)ms);
 }
 
