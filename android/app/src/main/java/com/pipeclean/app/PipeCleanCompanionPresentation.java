@@ -40,6 +40,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
     private static final class DeckView extends View {
         private static final int SAVE = 1, LOAD = 2, PAUSE = 3, REWIND = 4;
         private static final int PALETTE = 5, FILTER = 6, SLOT_PREV = 7, SLOT_NEXT = 8;
+        private static final int ITEM_USE = 9;
         private final Paint p = new Paint();
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
         private boolean paused;
@@ -54,7 +55,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             super(context);
             setFocusable(true);
             setClickable(true);
-            p.setAntiAlias(false);
+            p.setAntiAlias(true);
             p.setTypeface(Typeface.create("monospace", Typeface.BOLD));
             setContentDescription("PipeClean game status and utility controls");
         }
@@ -124,7 +125,49 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String paletteText() { return PALETTES[Math.max(0, Math.min(PALETTES.length - 1, palette))]; }
         private String filterText() { return FILTERS[Math.max(0, Math.min(FILTERS.length - 1, filter))]; }
 
+        private void drawScenery(Canvas c, float w, float h) {
+            // Decorative original pixel landscapes: DMG hills for SML1 and
+            // moonlit golden stars for SML2. These are UI motifs, not game art.
+            if (sml1()) {
+                p.setColor(0xFF1B3025);
+                c.drawRoundRect(-30, h-78, w*0.48f, h+22, 35, 35, p);
+                c.drawRoundRect(w*0.25f, h-55, w*0.78f, h+28, 30, 30, p);
+                c.drawRoundRect(w*0.62f, h-88, w+32, h+25, 42, 42, p);
+                pixelCloud(c, 48, 50, 5, 0xFF344B37);
+                pixelCloud(c, w-130, 122, 4, 0xFF304732);
+                for (int i=0;i<9;i++) {
+                    rect(c, 22+i*31, h-14, 3, 3, 0xFF526C48);
+                }
+            } else if (sml2()) {
+                p.setColor(0xFF302239);
+                c.drawRoundRect(-20, h-54, w*0.55f, h+20, 24, 24, p);
+                c.drawRoundRect(w*0.42f, h-79, w+20, h+20, 34, 34, p);
+                for (int i=0;i<24;i++) {
+                    float sx = (i*71 + 23) % w;
+                    float sy = (i*47 + 19) % Math.max(1, h-32);
+                    rect(c, sx, sy, (i%4==0)?4:2, (i%4==0)?4:2,
+                        (i%3==0)?0xFF9D7E5E:0xFF655277);
+                }
+                pixelCloud(c, w-100, 66, 3, 0xFF54405B);
+                p.setColor(0xFFFFCF74);
+                c.drawCircle(w-54, 50, 11, p);
+                p.setColor(bg());
+                c.drawCircle(w-49, 45, 10, p);
+            } else {
+                for (int i=0;i<18;i++) {
+                    rect(c, (i*43+17)%w, (i*37+11)%h, 3, 3, edge());
+                }
+            }
+        }
+
+        private void pixelCloud(Canvas c, float x, float y, float unit, int color) {
+            rect(c, x+unit, y, 4*unit, 2*unit, color);
+            rect(c, x, y+unit, 6*unit, 2*unit, color);
+            rect(c, x+2*unit, y+2*unit, 3*unit, unit, color);
+        }
+
         private void drawLandscape(Canvas c) {
+            drawScenery(c, 800, 450);
             text(c, "PIPECLEAN  /  " + title(), 24, 34, 18, accent());
             textRight(c, "SECOND-SCREEN DECK", 776, 32, 10, muted());
             rect(c, 24, 44, 752, 5, accent());
@@ -134,10 +177,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             card(c, 261, 58, 250, 112, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE");
             text(c, stageText(), 279, 132, 25, ink());
             text(c, "LIVE GAME DATA", 279, 153, 10, muted());
-            card(c, 523, 58, 253, 112, "RESERVE ITEM");
-            drawItem(c, 543, 85, 77, item);
-            textFit(c, itemName(), 634, 112, 132, item == 0 ? 20 : 14, item == 0 ? muted() : ink());
-            text(c, item == 0 ? "Nothing stored" : "Power-up reserve", 634, 136, 10, muted());
+            drawReserveCard(c, 523, 58, 253, 112, false);
 
             float x = 24, y = 190, w = 179, h = 94, gap = 12;
             button(c, x, y, w, h, "SAVE STATE", "WRITE SLOT " + (slot + 1), SAVE, false);
@@ -157,6 +197,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawPortrait(Canvas c) {
+            drawScenery(c, 450, 800);
             text(c, "PIPECLEAN", 20, 28, 17, accent());
             textRight(c, title(), 430, 27, 9, muted());
             rect(c, 20, 39, 410, 5, accent());
@@ -166,10 +207,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             card(c, 225, 55, 205, 112, sml1() ? "WORLD / LEVEL" : "STAGE");
             text(c, stageText(), 239, 123, sml2() ? 17 : 26, ink());
             text(c, "LIVE DATA", 239, 145, 9, muted());
-            card(c, 20, 179, 410, 140, "RESERVE ITEM");
-            drawItem(c, 38, 220, 80, item);
-            textFit(c, itemName(), 140, 255, 275, item == 0 ? 23 : 18, item == 0 ? muted() : ink());
-            text(c, item == 0 ? "No stored item" : "Power-up reserve", 140, 280, 11, muted());
+            drawReserveCard(c, 20, 179, 410, 140, true);
             button(c, 20, 339, 195, 88, "SAVE STATE", "WRITE SLOT " + (slot + 1), SAVE, false);
             button(c, 225, 339, 205, 88, "LOAD STATE", "RESTORE SLOT", LOAD, false);
             button(c, 20, 437, 195, 88, paused ? "RESUME" : "PAUSE",
@@ -186,20 +224,59 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void card(Canvas c, float x, float y, float w, float h, String label) {
-            p.setColor(panel()); c.drawRect(x, y, x+w, y+h, p);
+            // Soft raised panels instead of hard rectangular dashboard tiles.
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0x66000000);
+            c.drawRoundRect(x+3, y+4, x+w+3, y+h+4, 13, 13, p);
+            p.setColor(panel());
+            c.drawRoundRect(x, y, x+w, y+h, 13, 13, p);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
-            c.drawRect(x+1, y+1, x+w-1, y+h-1, p); p.setStyle(Paint.Style.FILL);
-            rect(c, x+9, y+9, w-18, 2, accent());
+            c.drawRoundRect(x+1, y+1, x+w-1, y+h-1, 12, 12, p);
+            p.setStyle(Paint.Style.FILL);
+            rect(c, x+12, y+8, w-24, 3, accent());
             text(c, label, x+12, y+28, 10, muted());
+        }
+
+        private void drawReserveCard(Canvas c, float x, float y, float w, float h,
+                                    boolean portrait) {
+            card(c, x, y, w, h, "ITEM POCKET  /  TOUCH TO USE");
+            if (downAction == ITEM_USE) {
+                p.setColor(accent()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(3);
+                c.drawRoundRect(x+2, y+2, x+w-2, y+h-2, 13, 13, p);
+                p.setStyle(Paint.Style.FILL);
+            }
+            float iconSize = portrait ? 80 : 70;
+            float ix = x + (portrait ? 18 : 20);
+            float iy = y + (portrait ? 43 : 38);
+            drawItem(c, ix, iy, iconSize, item);
+            float tx = portrait ? x+132 : x+106;
+            float max = portrait ? w-148 : w-122;
+            textFit(c, item == 0 ? "EMPTY POCKET" : itemName(), tx,
+                    y+(portrait ? 86 : 63), max, portrait ? 18 : 13,
+                    item == 0 ? muted() : ink());
+            text(c, item == 0 ? "Find a power-up" : "Tap to activate",
+                    tx, y+(portrait ? 108 : 82), portrait ? 11 : 10,
+                    item == 0 ? muted() : accent());
+            float py = y + h - 10;
+            float px = portrait ? x+w-99 : x+w-91;
+            p.setColor(item == 0 ? edge() : accent());
+            c.drawRoundRect(px, py-12, px+(portrait?82:76), py+5, 8, 8, p);
+            text(c, item == 0 ? "EMPTY" : "USE ITEM", px+8, py, portrait ? 8 : 7,
+                 item == 0 ? ink() : bg());
         }
 
         private void button(Canvas c, float x, float y, float w, float h,
                             String label, String sub, int action, boolean hold) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0x55000000);
+            c.drawRoundRect(x+3,y+4,x+w+3,y+h+4,12,12,p);
             p.setColor(action == downAction ? accent() : panel());
-            c.drawRect(x,y,x+w,y+h,p);
+            c.drawRoundRect(x,y,x+w,y+h,12,12,p);
             p.setColor(action == downAction ? ink() : edge());
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
-            c.drawRect(x+1,y+1,x+w-1,y+h-1,p); p.setStyle(Paint.Style.FILL);
+            c.drawRoundRect(x+1,y+1,x+w-1,y+h-1,11,11,p);
+            p.setStyle(Paint.Style.FILL);
+            rect(c,x+10,y+7,w-20,2,action==downAction?ink():accent());
             drawIcon(c, x+12, y+h*0.5f-10, action);
             textFit(c, label, x+45, y+h*0.5f-1, w-48, 13, ink());
             textFit(c, sub, x+45, y+h*0.5f+21, w-48, 8, muted());
@@ -301,6 +378,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private int hitTest(float x,float y) {
             if(getHeight()>getWidth()) {
+                if(inside(x,y,20,179,410,140)) return ITEM_USE;
                 if(inside(x,y,20,339,195,88)) return SAVE;
                 if(inside(x,y,225,339,205,88)) return LOAD;
                 if(inside(x,y,20,437,195,88)) return PAUSE;
@@ -310,6 +388,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,20,625,205,78)) return SLOT_PREV;
                 if(inside(x,y,225,625,205,78)) return SLOT_NEXT;
             } else {
+                if(inside(x,y,523,58,253,112)) return ITEM_USE;
                 if(inside(x,y,24,190,179,94)) return SAVE;
                 if(inside(x,y,215,190,179,94)) return LOAD;
                 if(inside(x,y,406,190,179,94)) return PAUSE;
