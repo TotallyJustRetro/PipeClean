@@ -237,6 +237,8 @@ int main(void)
     if (home_left != 112 || home_right != 112) return 45;
     wide_sml2_homeworld_dims(320, 224, &home_left, &home_right);
     if (home_left != 192 || home_right != 32) return 46;
+    wide_sml2_homeworld_dims_from_camera(64, 224, &home_left, &home_right);
+    if (home_left != 192 || home_right != 32) return 48;
     wide_sml2_homeworld_dims(352, 224, &home_left, &home_right);
     if (home_left != 224 || home_right != 0) return 47;
 
