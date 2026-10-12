@@ -220,7 +220,7 @@ int main(void)
             unsigned col = (unsigned)(test_world_x + sx) >> 3;
             unsigned row = (unsigned)(test_world_y + sy) >> 3;
             unsigned src = row * 0x40u + col;
-            unsigned dst = 0x1C00u + (row & 31u) * 32u + (col & 31u);
+            unsigned dst = 0x1800u + (row & 31u) * 32u + (col & 31u);
             vram[dst] = test_level_map[src];
         }
     }
