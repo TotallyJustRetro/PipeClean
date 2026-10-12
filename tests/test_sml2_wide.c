@@ -16,12 +16,14 @@ static uint8_t test_level_map[0x3000];
 static uint8_t test_block_defs[0x200];
 static uint8_t test_hram[0x80];
 static uint16_t test_camera_x = 640;
+static uint8_t test_scx;
 
 uint8_t rd8(uint16_t a)
 {
     /* Camera X defaults to 640, camera Y = 72 (native view begins at world Y=0). */
     if (a == 0xFFCA) return (uint8_t)test_camera_x;
     if (a == 0xFFCB) return (uint8_t)(test_camera_x >> 8);
+    if (a == 0xFF43) return test_scx;
     if (a == 0xFFC8) return 0x48;
     if (a == 0xFFC9) return 0;
     if (a == 0xFF9B) return 0x04; /* SML2 scrolling gameplay */
@@ -161,7 +163,7 @@ int main(void)
     test_hram[0xFFD3 - 0xFF80] = 0x00; /* actor Y = 72 */
     test_hram[0xFFD4 - 0xFF80] = 0x48;
     test_hram[0xFFDB - 0xFF80] = 0;
-    test_hram[0xFF43 - 0xFF80] = 0x30; /* SCX aligned with camera X = $0280 */
+    test_scx = 0x30; /* SCX aligned with camera X = $0280 */
     test_hram[0xFFE2 - 0xFF80] = 0;
 
     /* Widened actors beyond the native strip must not wrap into its centre:
