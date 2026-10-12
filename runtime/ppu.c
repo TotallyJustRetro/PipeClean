@@ -303,7 +303,8 @@ static void render_homeworld_overview_line(int y)
        bars inside the ordinary 160px-high Game Boy frame geometry. */
     int map_h = (HOMEWORLD_SOURCE_HEIGHT * W + HOMEWORLD_SOURCE_WIDTH / 2) /
                 HOMEWORLD_SOURCE_WIDTH;
-    int map_top = (GB_H - map_h) / 2;
+    int map_area_h = (wy > 0 && wy < GB_H) ? wy : GB_H;
+    int map_top = (map_area_h - map_h) / 2;
     int camera_x = 0, camera_y = 0;
     int have_camera = wide_sml2_homeworld_camera &&
         wide_sml2_homeworld_camera(scx, scy, &camera_x, &camera_y);
