@@ -18,6 +18,14 @@ static jmp_buf stop_jmp;
 static SDL_Thread *thr;
 static SDL_mutex *fmx;
 static Frame pub;                         /* latest published frame */
+
+typedef struct {
+    uint8_t kind;          /* 0 = empty; 1 = reserved mushroom. */
+    uint8_t spawn_pending; /* Preserve deferred spawns across save-state and rewind. */
+    uint8_t object[16];    /* Captured SML1 mushroom object at D190-D19F. */
+} ReserveItemState;
+
+static ReserveItemState reserve_item_state;
 static volatile int abort_flag, paused, turbo, thread_mode, preview_target, previewing;
 static volatile uint32_t input_word;     /* buttons | dpad << 8 */
 static SDL_mutex *rewind_sync_mx;
@@ -91,7 +99,7 @@ static void publish(void)
     pub.player_x = rd8(0xC202); pub.player_y = rd8(0xC201);
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
     pub.level_id = 0xFF; pub.level_bank = 0xFF; pub.p1_lives = 0;
-    pub.reserve_item = (uint8_t)((rom_loaded_game() == GAME_SML && !mp_active && !mp_ready) ? reserve_item_state.kind : 0);
+    pub.reserve_item = (uint8_t)(rom_loaded_game() == GAME_SML ? reserve_item_state.kind : 0);
     int active_game = rom_loaded_game();
     if (active_game == GAME_SML) {
         uint8_t world_level = rd8(0xFFB4); /* Packed BCD: high nibble world, low nibble level. */
@@ -396,14 +404,6 @@ typedef struct {
 #define EMU_STATE_MAGIC 0x50534353u /* "PCSS" */
 #define EMU_STATE_VERSION 10u
 #define EMU_STATE_FLAG_MP 1u
-
-typedef struct {
-    uint8_t kind;          /* 0 = empty; 1 = reserved mushroom. */
-    uint8_t spawn_pending; /* Preserve deferred spawns across save-state and rewind. */
-    uint8_t object[16];    /* Captured SML1 mushroom object at D190-D19F. */
-} ReserveItemState;
-
-static ReserveItemState reserve_item_state;
 
 static int reserve_item_gameplay_active(void)
 {
