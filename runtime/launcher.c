@@ -402,7 +402,7 @@ int launcher_shared_slot_name_set(int game, int slot, const char *name)
     return 1;
 }
 
-static void ensure_pack(int g)static void ensure_pack(int g)
+static void ensure_pack(int g)
 {
     GameCfg *c = &settings.g[g];
     const char *want = c->tex_on ? c->tex_path : "";
