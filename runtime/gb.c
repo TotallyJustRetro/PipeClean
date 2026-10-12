@@ -419,7 +419,7 @@ int gb_state_load(const void *src, size_t n)
     memcpy(&s,p,sizeof s);
     if (s.magic != GB_STATE_MAGIC || s.version != GB_STATE_VERSION) return -1;
     size_t off = sizeof s;
-    if (s.ppu_n != ppu_state_size() || s.apu_n != apu_state_size() ||
+    if (!ppu_state_size_compatible(s.ppu_n) || s.apu_n != apu_state_size() ||
         s.cart_n != cart_state_size() || s.cart_n > sizeof s.cart_state ||
         s.cart_ram_n != cart_ram_state_size() ||
         off + s.ppu_n + s.apu_n + s.cart_ram_n > n) return -1;

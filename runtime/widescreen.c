@@ -112,6 +112,13 @@ int wide_sml2_tile_at(int world_x, int world_y, uint8_t *tile)
     return 1;
 }
 
+/* This exact LCDC/window setup is used by SML2's Homeworld world map. */
+int wide_sml2_homeworld_active(int lcdc, int wx, int wy)
+{
+    return sml2_compositor_installed && lcdc == 0xE3 &&
+           wx == SML2_HOME_HUD_WX && wy == SML2_HUD_WY;
+}
+
 /* Homeworld is stored as raw 8x8 tile IDs, unlike the 16x16 block map
  * used by side-scrolling levels. Do not decode those bytes through $A600. */
 static int sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
@@ -144,7 +151,7 @@ void wide_sml2_prepare_frame(int left, int right, int scx, int scy,
     /* On the Homeworld map the game selects WX=80 and WY=136. Its source
        tilemap is 512x256px in cartridge RAM ($B000-$B7FF), not the level's
        4096x768px 16x16-block map. Rebuild margins from that full raw map. */
-    if (lcdc == 0xE3 && wx == SML2_HOME_HUD_WX && wy == SML2_HUD_WY) {
+    if (wide_sml2_homeworld_active(lcdc, wx, wy)) {
         int camera_x = sml2_read16(SML2_HOME_CAMERA_X);
         int camera_y = sml2_read16(SML2_HOME_CAMERA_Y);
         int screen_left = camera_x;

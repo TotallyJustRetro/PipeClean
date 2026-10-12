@@ -10,7 +10,7 @@
 
 #define GB_W 160
 #define GB_H 144
-#define GB_WMAX 256            /* widest picture the PPU can produce (widescreen mode) */
+#define GB_WMAX 320            /* supports the extra-wide SML2 Homeworld map view */
 #define CYCLES_PER_FRAME 70224
 #define CPU_HZ 4194304
 
@@ -75,6 +75,8 @@ size_t gb_state_data_size(void);
 int gb_state_save(void *dst, size_t n);
 int gb_state_load(const void *src, size_t n);
 size_t ppu_state_size(void);
+/* Accept the previous 256px-wide PPU state layout when loading existing saves. */
+int ppu_state_size_compatible(size_t n);
 int ppu_state_save(void *dst, size_t n);
 int ppu_state_load(const void *src, size_t n);
 size_t apu_state_size(void);

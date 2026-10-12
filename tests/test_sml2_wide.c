@@ -224,14 +224,18 @@ int main(void)
             vram[dst] = test_level_map[src];
         }
     }
-    wide_sml2_prepare_frame(l, r, 64, 32, 0xE3, 80, 0x88, vram);
+    if (!wide_sml2_homeworld_active(0xE3, 80, 0x88) ||
+        wide_sml2_homeworld_active(0xE3, 7, 0x88) ||
+        wide_sml2_homeworld_active(0xE3, 80, 0x87)) return 43;
+    /* The Homeworld path supports a much wider symmetric margin than regular stages. */
+    wide_sml2_prepare_frame(80, 80, 64, 32, 0xE3, 80, 0x88, vram);
     if (!wide_sml2_world_origin(&world_x, &world_y) ||
-        world_x != 271 || world_y != 32) return 39;
+        world_x != 240 || world_y != 32) return 39;
     if (!wide_sml2_margin_tile(0, 0, &resolved_tile, &world_x, &world_y) ||
-        world_x != 271 || world_y != 32 || resolved_tile != 46) return 40;
-    if (!wide_sml2_margin_tile(l + 160, 0, &resolved_tile, &world_x, &world_y) ||
+        world_x != 240 || world_y != 32 || resolved_tile != 43) return 40;
+    if (!wide_sml2_margin_tile(240, 0, &resolved_tile, &world_x, &world_y) ||
         world_x != 480 || world_y != 32 || resolved_tile != 73) return 41;
-    if (wide_sml2_margin_tile(l, 0, &resolved_tile, &world_x, &world_y)) return 42;
+    if (wide_sml2_margin_tile(80, 0, &resolved_tile, &world_x, &world_y)) return 42;
 
     /* Switching back to native width must clear the hooks from the prior
        widescreen session, so they do not keep changing SML2 spawn/cull reads. */
