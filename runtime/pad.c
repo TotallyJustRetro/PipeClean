@@ -11,6 +11,8 @@ static Pad pads[MAXPADS];
 static int n_pads;
 static SDL_JoystickID assigned_instance[N_GAMES][MAX_MP_PLAYERS];
 static int sync_initialized;
+static uint8_t touch_buttons[N_GAMES][MAX_MP_PLAYERS];
+static uint8_t touch_dpad[N_GAMES][MAX_MP_PLAYERS];
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
 static int pad_instance_device(SDL_JoystickID which);
 static SDL_Joystick *joystick_for_device(int device)
@@ -384,6 +386,13 @@ static int pad_down(int device, int code)
     return code >= 0 && code < SDL_JoystickNumButtons(p->joy) && SDL_JoystickGetButton(p->joy, code) != 0;
 }
 
+void pad_set_touch_input(int game, int player, uint8_t buttons, uint8_t dpad)
+{
+    if (game < 0 || game >= N_GAMES || player < 0 || player >= MAX_MP_PLAYERS) return;
+    touch_buttons[game][player] = buttons & 0x0Fu;
+    touch_dpad[game][player] = dpad & 0x0Fu;
+}
+
 static void pad_poll_one(int game, const GameCfg *c, int player, uint8_t *b, uint8_t *d)
 {
     const Uint8 *ks = SDL_GetKeyboardState(NULL);
@@ -428,6 +437,15 @@ static void pad_poll_one(int game, const GameCfg *c, int player, uint8_t *b, uin
             if (hat & SDL_HAT_DOWN) bits[BTN_DOWN] = 1;
         }
     }
+    uint8_t tb = touch_buttons[game][player], td = touch_dpad[game][player];
+    bits[BTN_A] |= (tb & 0x01u) != 0;
+    bits[BTN_B] |= (tb & 0x02u) != 0;
+    bits[BTN_SELECT] |= (tb & 0x04u) != 0;
+    bits[BTN_START] |= (tb & 0x08u) != 0;
+    bits[BTN_RIGHT] |= (td & 0x01u) != 0;
+    bits[BTN_LEFT] |= (td & 0x02u) != 0;
+    bits[BTN_UP] |= (td & 0x04u) != 0;
+    bits[BTN_DOWN] |= (td & 0x08u) != 0;
     *b = (uint8_t)(bits[BTN_A] | bits[BTN_B] << 1 | bits[BTN_SELECT] << 2 | bits[BTN_START] << 3);
     *d = (uint8_t)(bits[BTN_RIGHT] | bits[BTN_LEFT] << 1 | bits[BTN_UP] << 2 | bits[BTN_DOWN] << 3);
 }

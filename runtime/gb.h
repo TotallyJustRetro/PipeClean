@@ -10,7 +10,7 @@
 
 #define GB_W 160
 #define GB_H 144
-#define GB_WMAX 256            /* widest picture the PPU can produce (widescreen mode) */
+#define GB_WMAX 512            /* fits the full-width SML2 Homeworld map */
 #define CYCLES_PER_FRAME 70224
 #define CPU_HZ 4194304
 
@@ -33,6 +33,7 @@ uint8_t rd8(uint16_t a);
 void wr8(uint16_t a, uint8_t v);
 void gb_watch_range(uint16_t lo, uint16_t hi, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
 void gb_watch_set(const uint16_t *addrs, int n, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
+void gb_watch_override(uint16_t addr, uint8_t value); /* Replace the value for the active watched write. */
 
 /* ---- core ---- */
 void gb_reset(void);
@@ -69,12 +70,14 @@ void gb_mp_vblank_arm(void);
 void gb_mp_vblank_done(void);
 
 /* Reentrant-state support used by local multiplayer. */
-#define GB_STATE_BYTES (800000u)
+#define GB_STATE_BYTES (1250000u) /* headroom for 512px PPU, APU, and cartridge state */
 size_t gb_state_size(void);
 size_t gb_state_data_size(void);
 int gb_state_save(void *dst, size_t n);
 int gb_state_load(const void *src, size_t n);
 size_t ppu_state_size(void);
+/* Accept the previous 256px-wide PPU state layout when loading existing saves. */
+int ppu_state_size_compatible(size_t n);
 int ppu_state_save(void *dst, size_t n);
 int ppu_state_load(const void *src, size_t n);
 size_t apu_state_size(void);

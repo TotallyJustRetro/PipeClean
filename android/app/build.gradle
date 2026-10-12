@@ -1,0 +1,86 @@
+plugins {
+    id "com.android.application"
+}
+
+def sdl2Dir = new File(rootProject.projectDir, "deps/SDL")
+def sdl2ImageDir = new File(rootProject.projectDir, "deps/SDL_image")
+def mbedtlsDir = new File(rootProject.projectDir, "deps/mbedtls")
+
+android {
+    namespace "com.pipeclean.app"
+    compileSdk 35
+    ndkVersion "28.2.13676358"
+
+    defaultConfig {
+        applicationId "com.pipeclean.app"
+        minSdk 21
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0-dev"
+
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a"
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DPIPECLEAN_SDL2_SOURCE_DIR=" + sdl2Dir.absolutePath,
+                          "-DPIPECLEAN_SDL2_IMAGE_SOURCE_DIR=" + sdl2ImageDir.absolutePath,
+                          "-DPIPECLEAN_MBEDTLS_SOURCE_DIR=" + mbedtlsDir.absolutePath,
+                          "-DANDROID_STL=c++_static"
+                targets "main"
+            }
+        }
+    }
+
+    sourceSets {
+        main {
+            // SDLActivity and its helpers come from the pinned SDL2 checkout.
+            java.srcDirs += [new File(sdl2Dir, "android-project/app/src/main/java")]
+            assets.srcDirs = [new File(rootProject.projectDir, "app/build/generated/pipeCleanAssets")]
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("../../CMakeLists.txt")
+            version "3.22.1"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+tasks.register("stagePipeCleanAssets", Copy) {
+    from(new File(rootProject.projectDir, "../assets")) {
+        into "assets"
+    }
+    into new File(project.buildDir, "generated/pipeCleanAssets")
+}
+
+tasks.register("verifyPipeCleanAndroidDeps") {
+    doLast {
+        if (!new File(sdl2Dir, "CMakeLists.txt").exists()) {
+            throw new GradleException("Missing SDL2. Run android/setup-android.ps1 or android/setup-android.sh.")
+        }
+        if (!new File(sdl2ImageDir, "CMakeLists.txt").exists()) {
+            throw new GradleException("Missing SDL2_image. Run android/setup-android.ps1 or android/setup-android.sh.")
+        }
+        if (!new File(mbedtlsDir, "CMakeLists.txt").exists()) {
+            throw new GradleException("Missing mbedTLS. Run android/setup-android.ps1 or android/setup-android.sh.")
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn("stagePipeCleanAssets", "verifyPipeCleanAndroidDeps")
+}

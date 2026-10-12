@@ -34,7 +34,7 @@ enum { SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X
 #endif
 
 const char *aspect_names[] = {"Original (10:9)", "4:3", "16:9"};
-const char *scale_names[] = {"Pixel-perfect", "Smooth", "Stretch"};
+const char *scale_names[] = {"Pixel-perfect", "Smooth", "Stretch", "Pixel stretch"};
 const char *size_names[] = {"Small", "Medium", "Large", "Fullscreen"};
 const char *btn_names[] = {"A", "B", "Select", "Start", "Right", "Left", "Up", "Down"};
 const char *action_names[] = {"Save state", "Load state", "Rewind", "Suspend", "Next state slot"};
@@ -156,9 +156,9 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->state_slot = 0;
     c->romhack_count = 0;
     c->romhack_selected = -1; /* The unmodified game is the default profile. */
-    c->p2_color = LUIGI_GREEN;
-    c->p3_color = LUIGI_BLUE;
-    c->p4_color = LUIGI_YELLOW;
+    c->p2_color = LUIGI_GREEN; c->p2_rgb = 0x2CA83D;
+    c->p3_color = LUIGI_BLUE; c->p3_rgb = 0x2676D9;
+    c->p4_color = LUIGI_YELLOW; c->p4_rgb = 0xD8B51A;
     c->multiplayer_players = 2;
     if (game == GAME_SML || game == GAME_SML2) {
         snprintf(c->p2_name, sizeof c->p2_name, "Luigi");
@@ -181,6 +181,14 @@ void settings_defaults(Settings *s)
     s->pad_deadzone = 35;
     s->menu_music = 1; s->menu_music_vol = 55;
     s->ui_sfx = 1; s->ui_sfx_vol = 70;
+    snprintf(s->online_name, sizeof s->online_name, "Player");
+    snprintf(s->online_server, sizeof s->online_server, "%s", PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
+    s->online_connection_mode = 1; /* traversal server by default */
+    s->online_color = 0x2CA83D;
+    s->touch_controls = 1;
+    s->launcher_ui_scale = 100;
+    s->launcher_window_size = 1;
+    s->launcher_fullscreen = 0;
     for (int i = 0; i < N_GAMES; i++) game_cfg_defaults(&s->g[i], i);
 }
 
@@ -189,6 +197,17 @@ const char *settings_dir(void)
     static char dir[1024];
     if (dir[0]) return dir;
 #ifdef USE_SDL
+#ifdef __ANDROID__
+    /* Android's packaged application directory is not writable; keep settings
+       and save files in SDL's app-private persistent preference directory. */
+    char *p = SDL_GetPrefPath("TotallyJustRetro", "PipeClean");
+    if (p) {
+        snprintf(dir, sizeof dir, "%s", p);
+        SDL_free(p);
+        (void)mkdir_u(dir);
+        return dir;
+    }
+#endif
     char *b = SDL_GetBasePath();
     if (b) { snprintf(dir, sizeof dir, "%s", b); SDL_free(b); return dir; }
 #endif
@@ -217,6 +236,11 @@ static int field_table(Field *t, int cap)
     static char names[N_UI_SFX][24];
     for (int i = 0; i < N_UI_SFX; i++) { snprintf(names[i], sizeof names[i], "ui_sfx_path%d", i); S(names[i], s->ui_sfx_path[i]); }
     I("last_tab", s->last_tab, 0, 20); I("show_stats", s->show_stats, 0, 1);
+    I("launcher_ui_scale", s->launcher_ui_scale, 75, 125);
+    I("launcher_window_size", s->launcher_window_size, 0, 2);
+    I("launcher_fullscreen", s->launcher_fullscreen, 0, 1);
+    S("online_name", s->online_name); S("online_server", s->online_server); I("online_connection_mode", s->online_connection_mode, 0, 1); I("online_color", s->online_color, 0, 0xFFFFFF);
+    I("touch_controls", s->touch_controls, 0, 1);
     FilterCfg *f = &s->flt;
     I("f_grid", f->lcd_grid, 0, 100); I("f_ghost", f->ghost, 0, 100); I("f_scan", f->scanlines, 0, 100);
     I("f_mask", f->mask, 0, 100); I("f_curve", f->curve, 0, 100); I("f_bloom", f->bloom, 0, 100);
@@ -236,21 +260,21 @@ static int field_table(Field *t, int cap)
         GS("p2_sfx_jump", c->p2_sfx_path[P2_SFX_JUMP]); GS("p2_sfx_fireball", c->p2_sfx_path[P2_SFX_FIREBALL]);
         GS("p2_sfx_power_up", c->p2_sfx_path[P2_SFX_POWER_UP]); GS("p2_sfx_power_down", c->p2_sfx_path[P2_SFX_POWER_DOWN]);
         GS("p2_sfx_die", c->p2_sfx_path[P2_SFX_DIE]); GS("p2_sfx_respawn", c->p2_sfx_path[P2_SFX_RESPAWN]); GS("p2_sfx_coin", c->p2_sfx_path[P2_SFX_COIN]);
-        GI("p2_color", c->p2_color, 0, N_LUIGI_COLORS - 1);
+        GI("p2_color", c->p2_color, 0, N_LUIGI_COLORS - 1); GI("p2_rgb", c->p2_rgb, 0, 0xFFFFFF); GI("p2_custom", c->p2_custom, 0, 1);
         GS("p3_name", c->p3_name);
         GS("p3_sfx_jump", c->p3_sfx_path[P2_SFX_JUMP]); GS("p3_sfx_fireball", c->p3_sfx_path[P2_SFX_FIREBALL]);
         GS("p3_sfx_power_up", c->p3_sfx_path[P2_SFX_POWER_UP]); GS("p3_sfx_power_down", c->p3_sfx_path[P2_SFX_POWER_DOWN]);
         GS("p3_sfx_die", c->p3_sfx_path[P2_SFX_DIE]); GS("p3_sfx_respawn", c->p3_sfx_path[P2_SFX_RESPAWN]); GS("p3_sfx_coin", c->p3_sfx_path[P2_SFX_COIN]);
-        GI("p3_color", c->p3_color, 0, N_LUIGI_COLORS - 1);
+        GI("p3_color", c->p3_color, 0, N_LUIGI_COLORS - 1); GI("p3_rgb", c->p3_rgb, 0, 0xFFFFFF); GI("p3_custom", c->p3_custom, 0, 1);
         GS("p4_name", c->p4_name);
         GS("p4_sfx_jump", c->p4_sfx_path[P2_SFX_JUMP]); GS("p4_sfx_fireball", c->p4_sfx_path[P2_SFX_FIREBALL]);
         GS("p4_sfx_power_up", c->p4_sfx_path[P2_SFX_POWER_UP]); GS("p4_sfx_power_down", c->p4_sfx_path[P2_SFX_POWER_DOWN]);
         GS("p4_sfx_die", c->p4_sfx_path[P2_SFX_DIE]); GS("p4_sfx_respawn", c->p4_sfx_path[P2_SFX_RESPAWN]); GS("p4_sfx_coin", c->p4_sfx_path[P2_SFX_COIN]);
-        GI("p4_color", c->p4_color, 0, N_LUIGI_COLORS - 1);
+        GI("p4_color", c->p4_color, 0, N_LUIGI_COLORS - 1); GI("p4_rgb", c->p4_rgb, 0, 0xFFFFFF); GI("p4_custom", c->p4_custom, 0, 1);
         GI("multiplayer_players", c->multiplayer_players, 2, MAX_MP_PLAYERS);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
-        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1);
+        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1); GI("dual_screen", c->dual_screen, 0, 1);
         GI("p2_respawn_key", c->p2_respawn_key, 0, 0x7FFFFFFF); GI("p2_respawn_pad", c->p2_respawn_pad, -1, PAD_AXIS_BASE + 1);
         GI("p3_respawn_key", c->p3_respawn_key, 0, 0x7FFFFFFF); GI("p3_respawn_pad", c->p3_respawn_pad, -1, PAD_AXIS_BASE + 1);
         GI("p4_respawn_key", c->p4_respawn_key, 0, 0x7FFFFFFF); GI("p4_respawn_pad", c->p4_respawn_pad, -1, PAD_AXIS_BASE + 1);
@@ -277,8 +301,8 @@ void settings_load(void)
     FILE *f = fopen(path, "r");
     if (!f) { legacy_ini_path(path, sizeof path); f = fopen(path, "r"); }
     if (!f) return;
-    Field tab[600];
-    int nf = field_table(tab, 400);
+    Field tab[800];
+    int nf = field_table(tab, 800);
     char line[700];
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -326,7 +350,16 @@ void settings_load(void)
         if (c->romhack_selected < -1 || c->romhack_selected >= c->romhack_count)
             c->romhack_selected = -1;
     }
-    if (settings.last_tab > N_GAMES + 3) settings.last_tab = 0;
+    if (settings.last_tab > N_GAMES + 5) settings.last_tab = 0;
+
+    /* Migrate the prior local-only default to the deployed traversal endpoint.
+       If the user explicitly configured another address, leave it untouched. */
+    if (strcmp(settings.online_server, "127.0.0.1:27800") == 0 &&
+        strcmp(PIPECLEAN_DEFAULT_RELAY_ENDPOINT, "127.0.0.1:27800") != 0) {
+        snprintf(settings.online_server, sizeof settings.online_server, "%s",
+                 PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
+        settings_save();
+    }
 }
 
 void settings_save(void)
@@ -335,8 +368,8 @@ void settings_save(void)
     ini_path(path, sizeof path);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    Field tab[600];
-    int nf = field_table(tab, 400);
+    Field tab[800];
+    int nf = field_table(tab, 800);
     for (int i = 0; i < nf; i++) {
         if (tab[i].ip) fprintf(f, "%s=%d\n", tab[i].name, *tab[i].ip);
         else fprintf(f, "%s=%s\n", tab[i].name, tab[i].sp);

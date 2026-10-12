@@ -23,6 +23,7 @@ typedef struct {
 } UiMouse;
 extern UiMouse ui_mouse;
 extern float ui_scale;          /* pixels per dp */
+void ui_set_scale_preference(int percent); /* 75..125 percent, launcher UI zoom */
 extern float ui_dt;             /* seconds since last frame */
 extern void (*ui_sfx_cb)(int);  /* hover / click sounds (SFX_*) */
 
@@ -33,6 +34,8 @@ void ui_begin(int pw, int ph, float dt);
 void ui_end(void);
 /* mouse in window units -> dp; ww/wh = window size in window units */
 void ui_set_mouse(int wx, int wy, int ww, int wh);
+/* SDL normalized touch coordinates (0..1) mapped to the UI design space. */
+void ui_touch_to_dp(float nx, float ny, float *x, float *y);
 void ui_mouse_button(int down);                 /* left button */
 void ui_hint(const char *s);                    /* shown in the footer while hovering */
 const char *ui_hint_text(void);
@@ -50,6 +53,8 @@ void ui_shadow(float x, float y, float w, float h, float r, float spread, uint32
 void ui_clip(float x, float y, float w, float h);
 void ui_unclip(void);
 void ui_image(SDL_Texture *t, const SDL_Rect *src, float x, float y, float w, float h);
+/* Interactive-ready HSV hue/saturation wheel (selection marker uses 0xRRGGBB). */
+void ui_color_wheel(float cx, float cy, float radius, uint32_t selected_rgb);
 
 void  ui_text(int font, float size, float x, float y, uint32_t c, const char *s);        /* y = top of the line box */
 float ui_text_w(int font, float size, const char *s);

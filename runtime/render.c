@@ -15,14 +15,32 @@ static int gacc_valid;
 static uint32_t avg_rgb;
 static FilterCfg cur_f; /* filters used for the current picture */
 
+static LuigiColor custom_mp_colors[MAX_MP_PLAYERS - 1];
+
 static const LuigiColor *active_mp_player_color(int player)
 {
     const GameCfg *c = &settings.g[mp_color_game];
     int index = player == 1 ? c->p2_color :
                 (player == 2 ? c->p3_color : c->p4_color);
+    int custom = player == 1 ? c->p2_custom :
+                 (player == 2 ? c->p3_custom : c->p4_custom);
+    int rgb = player == 1 ? c->p2_rgb :
+              (player == 2 ? c->p3_rgb : c->p4_rgb);
     if (index < 0 || index >= N_LUIGI_COLORS)
         index = player == 1 ? LUIGI_GREEN : (player == 2 ? LUIGI_BLUE : LUIGI_YELLOW);
-    return &luigi_colors[index];
+    if (!custom) return &luigi_colors[index];
+
+    /* Build a shaded sprite palette from the user's wheel-picked RGB value. */
+    if (player < 1 || player >= MAX_MP_PLAYERS) player = 1;
+    uint32_t base = (uint32_t)rgb & 0xFFFFFFu;
+    unsigned r = (base >> 16) & 255u, g = (base >> 8) & 255u, b = base & 255u;
+    uint32_t light = ((((r + (255u - r) * 52u / 100u) & 255u) << 16) |
+                      (((g + (255u - g) * 52u / 100u) & 255u) << 8) |
+                       (b + (255u - b) * 52u / 100u));
+    uint32_t dark = ((r * 46u / 100u) << 16) |
+                    ((g * 46u / 100u) << 8) | (b * 46u / 100u);
+    custom_mp_colors[player - 1] = (LuigiColor){"Custom", base, light, base, dark};
+    return &custom_mp_colors[player - 1];
 }
 
 static uint32_t luigi_overlay_pixel(int ci, int player)
@@ -387,7 +405,7 @@ void render_build(const Frame *f, int game, int live)
 /* ------------------------------------------------------------------ placement */
 void render_fit(int W, int H, int aspect, int scaling, SDL_Rect *r)
 {
-    if (scaling == SCALE_STRETCH) { r->x = 0; r->y = 0; r->w = W; r->h = H; return; }
+    if (scaling == SCALE_STRETCH || scaling == SCALE_PIXEL_STRETCH) { r->x = 0; r->y = 0; r->w = W; r->h = H; return; }
     double ar = aspect == ASPECT_4_3 ? 4.0 / 3.0 : (aspect == ASPECT_16_9 ? 16.0 / 9.0 : (double)gw / 144.0);
     double scale = H / 144.0;
     if (144.0 * scale * ar > W) scale = W / (144.0 * ar);
@@ -509,7 +527,7 @@ void render_draw(const SDL_Rect *r, int scaling)
     if (!tex_game || r->w < 4 || r->h < 4) return;
     const FilterCfg *f = &cur_f;
     if (f->curve) { SDL_SetRenderDrawColor(ren, 0, 0, 0, 255); SDL_RenderFillRect(ren, r); }
-    SDL_SetTextureScaleMode(tex_game, scaling == SCALE_PIXEL ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+    SDL_SetTextureScaleMode(tex_game, (scaling == SCALE_PIXEL || scaling == SCALE_PIXEL_STRETCH) ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
     SDL_SetTextureBlendMode(tex_game, SDL_BLENDMODE_NONE);
     draw_quad(tex_game, r, f->curve);
 

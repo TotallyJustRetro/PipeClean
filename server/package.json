@@ -1,0 +1,17 @@
+{
+  "name": "pipeclean-render-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Render WebSocket edge bridge for the PipeClean TCP room relay",
+  "main": "render-server.js",
+  "scripts": {
+    "start": "node render-server.js",
+    "check": "node --check render-server.js && node --check relay.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

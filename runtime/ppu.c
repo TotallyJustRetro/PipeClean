@@ -3,6 +3,18 @@
  * so per-line raster effects (SCX/SCY/palette changes in an HBlank/LYC
  * handler) work. */
 #include "gb.h"
+#include "widescreen.h"
+
+/* ppu.c is also compiled alone by the CGB renderer unit test. Keep the
+ * compositor an optional link-time feature for that target. */
+#if defined(__GNUC__) || defined(__clang__)
+extern void wide_sml2_prepare_frame(int, int, int, int, int, int, int,
+                                    const uint8_t *) __attribute__((weak));
+extern int wide_sml2_margin_tile(int, int, uint8_t *, int *, int *) __attribute__((weak));
+extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
+extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
+extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
+#endif
 
 uint8_t vram[0x2000], oam[0xA0];
 static uint8_t vram_cgb1[0x2000];
@@ -17,22 +29,46 @@ uint16_t ppu_bgtile[GB_H][GB_WMAX], ppu_sprtile[GB_H][GB_WMAX];   /* tile number
 uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
+static int cfg_left, cfg_right;
 void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
 {
     if (l < 0) l = 0;
     if (r < 0) r = 0;
     if (l + r > GB_WMAX - GB_W) r = GB_WMAX - GB_W - l;
+    cfg_left = l; cfg_right = r;
     ppu_xoff = l; wide_r = r; ppu_w = GB_W + l + r;
     hud_lines = (l + r) ? hud : 0; hud_shift = (r - l) / 2;
     win_centre = (l + r) ? centre_win : 0;
     cfg_hud = hud_lines; cfg_win = win_centre; wide_gate = gate; wide_on = 1;
-    sprite_neg = l > 8 ? 256 - (l - 8) : 256;       /* OAM X bytes this high are sprites left of the screen */
+    sprite_neg = l > 8 ? 256 - (l - 8) : 256;
 }       /* (v << 3) | u inside the tile as stored (before flips) */
 
 static uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
 static int dot, ly, mode, lcd_on, stat_line, wlc;
 static int off_cycles;
 int frame_count;
+
+/* The Homeworld's full 512x512 map is drawn as a stable overview when
+ * widescreen is enabled. Other SML2 scenes continue to use normal margins. */
+static void ppu_refresh_wide_layout(void)
+{
+    int l = cfg_left, r = cfg_right;
+    if (l < 0) l = 0;
+    if (r < 0) r = 0;
+    if (l + r > GB_WMAX - GB_W) r = GB_WMAX - GB_W - l;
+
+    /* Keep every SML2 scene, including the Homeworld, at native pixel scale.
+       The Homeworld's map is much larger than the viewport; its margins are
+       reconstructed from the live map by wide_sml2_prepare_frame instead of
+       shrinking the entire 512x512 map into the space above the HUD. */
+    ppu_xoff = l;
+    wide_r = r;
+    ppu_w = GB_W + l + r;
+    hud_lines = (l + r) ? cfg_hud : 0;
+    hud_shift = (r - l) / 2;
+    win_centre = (l + r) ? cfg_win : 0;
+    sprite_neg = l > 8 ? 256 - (l - 8) : 256;
+}
 
 void ppu_reset(void)
 {
@@ -106,12 +142,11 @@ void ppu_cgb_obj_palette_copy(uint32_t out[32])
             out[pal * 4 + ci] = cgb_rgb(cgb_obj_palette, pal, ci);
 }
 
-/* Resolve one BG/window pixel, including CGB tile attributes. */
-static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *tile_out)
+/* Resolve a pixel from a tile index and attribute. Coordinates are pixel
+ * coordinates in the source tile/world, not the 256x256 VRAM map ring. */
+static int tile_pixel_data(uint8_t tile, uint8_t attr, int map_x, int map_y,
+                           int *attr_out, int *tile_out)
 {
-    unsigned map_index = (unsigned)map_off + (unsigned)((map_y >> 3) & 31) * 32u + (unsigned)((map_x >> 3) & 31);
-    uint8_t tile = vram[map_index];
-    uint8_t attr = cgb_render_enabled ? vram_cgb1[map_index] : 0;
     int row = map_y & 7, col = map_x & 7;
     if (attr & 0x40) row = 7 - row;
     if (attr & 0x20) col = 7 - col;
@@ -123,6 +158,16 @@ static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *til
     if (attr_out) *attr_out = attr;
     if (tile_out) *tile_out = addr >> 4;
     return ci;
+}
+
+/* Resolve one BG/window pixel from the native 256x256 tilemap ring. */
+static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *tile_out)
+{
+    unsigned map_index = (unsigned)map_off + (unsigned)((map_y >> 3) & 31) * 32u +
+                         (unsigned)((map_x >> 3) & 31);
+    uint8_t tile = vram[map_index];
+    uint8_t attr = cgb_render_enabled ? vram_cgb1[map_index] : 0;
+    return tile_pixel_data(tile, attr, map_x, map_y, attr_out, tile_out);
 }
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
@@ -225,8 +270,21 @@ void ppu_write(uint8_t r, uint8_t v)
 /* ------------------------------------------------------------------ */
 static void render_line(int y)
 {
+    if (y == 0) ppu_refresh_wide_layout();
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
+    if (y == 0 && ppu_w > GB_W) {
+        /* Captures were collected during the preceding game update. Snapshot
+           them before starting the next frame's margin rendering. */
+        if (wide_sml2_snapshot_actors) wide_sml2_snapshot_actors();
+        if (wide_sml2_prepare_frame)
+            wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
+    }
+    int sml2_margin_mode = 0;
+    if (wide_on && ppu_w > GB_W && wide_sml2_world_origin) {
+        int origin_x, origin_y;
+        sml2_margin_mode = wide_sml2_world_origin(&origin_x, &origin_y);
+    }
     uint8_t *out = ppu_shade[y];
     uint32_t *rgb = ppu_rgb[y];
     memset(ppu_layer[y], 0, W);
@@ -256,6 +314,42 @@ static void render_line(int y)
         memset(rgb, 0, W * sizeof rgb[0]);
     }
 
+    /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
+       only the margins from the live 16x16 block map, leaving the original
+       160 columns untouched. Sprites and the native window keep their PPU path. */
+    if (wide_on && W > GB_W && y < wy && wide_sml2_margin_tile) {
+        for (int X = 0; X < W; X++) {
+            if (X >= L && X < L + GB_W) continue;
+            uint8_t tile = 0;
+            int world_x = 0, world_y = 0;
+            int margin = wide_sml2_margin_tile(X, y, &tile, &world_x, &world_y);
+            if (margin == 0) continue;
+            if (margin < 0) {
+                bgci[X] = 0;
+                bgattr[X] = 0;
+                out[X] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
+                if (cgb_render_enabled) rgb[X] = cgb_rgb(cgb_bg_palette, 0, 0);
+                ppu_bgtile[y][X] = 0xFFFF;
+                ppu_bguv[y][X] = 0;
+                continue;
+            }
+            int attr_map = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+            unsigned attr_index = (unsigned)attr_map +
+                (unsigned)(((world_y >> 3) & 31) * 32) +
+                (unsigned)((world_x >> 3) & 31);
+            uint8_t world_attr = cgb_render_enabled ? vram_cgb1[attr_index] : 0;
+            int attr = 0, tile_id = 0;
+            int ci = tile_pixel_data(tile, world_attr, world_x, world_y, &attr, &tile_id);
+            bgci[X] = (uint8_t)ci;
+            bgattr[X] = (uint8_t)attr;
+            out[X] = cgb_render_enabled ? (uint8_t)ci : (uint8_t)((bgp >> (ci * 2)) & 3);
+            if (cgb_render_enabled)
+                rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr & 7), (unsigned)ci);
+            ppu_bgtile[y][X] = (uint16_t)tile_id;
+            ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+        }
+    }
+
     if ((lcdc & 0x20) && (cgb_render_enabled || (lcdc & 0x01)) && y >= wy && wx <= 166) {
         int map_off = (lcdc & 0x40) ? 0x1C00 : 0x1800;
         int x0 = wx - 7 + L + (win_centre ? hud_shift : 0), drew = 0;
@@ -272,6 +366,53 @@ static void render_line(int y)
             drew = 1;
         }
         if (drew) wlc++;
+    }
+
+    /* The ROM clips many SML2 metasprites at the native 160px edge. Paint
+       only their out-of-centre pieces from the captured world-space list.
+       The original PPU remains authoritative for every centre pixel. */
+    if (wide_on && W > GB_W && y < wy &&
+        wide_sml2_actor_sprites && wide_sml2_world_origin) {
+        int count = 0, world_left = 0, world_top = 0;
+        const WideSml2Sprite *sprites = wide_sml2_actor_sprites(&count);
+        if (sprites && count > 0 && wide_sml2_world_origin(&world_left, &world_top)) {
+            int h = (lcdc & 0x04) ? 16 : 8;
+            for (int i = count - 1; i >= 0; i--) {
+                const WideSml2Sprite *sp = &sprites[i];
+                int sx = (int)sp->x - world_left;
+                int sy = (int)sp->y - world_top;
+                int row = y - sy;
+                if (row < 0 || row >= h) continue;
+                uint8_t fl = sp->attr;
+                if (fl & 0x40) row = h - 1 - row;
+                uint8_t tile = h == 16 ? (uint8_t)(sp->tile & 0xFEu) : sp->tile;
+                int addr = ((int)tile + (row >> 3)) * 16 + (row & 7) * 2;
+                const uint8_t *tiles = (cgb_render_enabled && (fl & 0x08)) ? vram_cgb1 : vram;
+                uint8_t pal = (fl & 0x10) ? obp1 : obp0;
+                for (int px = 0; px < 8; px++) {
+                    int x = sx + px;
+                    if (x < 0 || x >= W || (x >= L && x < L + GB_W)) continue;
+                    int bit = (fl & 0x20) ? px : 7 - px;
+                    int ci = (((tiles[addr + 1] >> bit) & 1) << 1) |
+                             ((tiles[addr] >> bit) & 1);
+                    if (ci == 0) continue;
+                    if (cgb_render_enabled) {
+                        if ((lcdc & 0x01) && bgci[x] != 0 &&
+                            ((bgattr[x] & 0x80) || (fl & 0x80))) continue;
+                        out[x] = (uint8_t)ci;
+                        rgb[x] = cgb_rgb(cgb_obj_palette, (unsigned)(fl & 7), (unsigned)ci);
+                    } else {
+                        if ((fl & 0x80) && bgci[x] != 0) continue;
+                        out[x] = (uint8_t)((pal >> (ci * 2)) & 3);
+                    }
+                    ppu_layer[y][x] = (fl & 0x10) ? 2 : 1;
+                    ppu_sprtile[y][x] = (uint16_t)(addr >> 4);
+                    ppu_spruv[y][x] = (uint8_t)(((row & 7) << 3) | (7 - bit) |
+                                                 ((fl & 0x20) ? 0x40 : 0) |
+                                                 ((fl & 0x40) ? 0x80 : 0));
+                }
+            }
+        }
     }
 
     if (lcdc & 0x02) {
@@ -307,6 +448,9 @@ static void render_line(int y)
             for (int px = 0; px < 8; px++) {
                 int x = sx + px;
                 if (x < 0 || x >= W) continue;
+                /* Wrapped OAM coordinates are not authoritative outside the
+                   native strip; true-world captures above supply those pixels. */
+                if (sml2_margin_mode && (x < L || x >= L + GB_W)) continue;
                 int bit = (fl & 0x20) ? px : 7 - px;
                 int ci = (((tiles[addr + 1] >> bit) & 1) << 1) | ((tiles[addr] >> bit) & 1);
                 if (ci == 0) continue;
@@ -368,6 +512,9 @@ void ppu_tick(int n)
     }
 }
 
+#define GB_WMAX_LEGACY 256
+#define GB_WMAX_PREVIOUS 320
+#define GB_WMAX_384 384
 typedef struct {
     uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
     uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
@@ -378,11 +525,65 @@ typedef struct {
     uint8_t bguv[GB_H][GB_WMAX], spruv[GB_H][GB_WMAX];
     int ppu_w, ppu_xoff;
     int hud_lines, hud_shift, wide_r, sprite_neg, win_centre, wide_gate, wide_on, cfg_hud, cfg_win;
+    int cfg_left, cfg_right;
     uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
     int dot, ly, mode, lcd_on, stat_line, wlc, off_cycles, frame_count;
 } PPUState;
 
+/* Exact layout used by the 384px-wide Homeworld build for old save states. */
+typedef struct {
+    uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
+    uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
+    uint8_t shade[GB_H][GB_WMAX_384], layer[GB_H][GB_WMAX_384];
+    uint32_t rgb[GB_H][GB_WMAX_384];
+    int cgb_render_enabled;
+    uint16_t bgtile[GB_H][GB_WMAX_384], sprtile[GB_H][GB_WMAX_384];
+    uint8_t bguv[GB_H][GB_WMAX_384], spruv[GB_H][GB_WMAX_384];
+    int ppu_w, ppu_xoff;
+    int hud_lines, hud_shift, wide_r, sprite_neg, win_centre, wide_gate, wide_on, cfg_hud, cfg_win;
+    int cfg_left, cfg_right;
+    uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
+    int dot, ly, mode, lcd_on, stat_line, wlc, off_cycles, frame_count;
+} PPUState384;
+
+/* Exact layout used by the 320px-wide Homeworld build for old save states. */
+typedef struct {
+    uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
+    uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
+    uint8_t shade[GB_H][GB_WMAX_PREVIOUS], layer[GB_H][GB_WMAX_PREVIOUS];
+    uint32_t rgb[GB_H][GB_WMAX_PREVIOUS];
+    int cgb_render_enabled;
+    uint16_t bgtile[GB_H][GB_WMAX_PREVIOUS], sprtile[GB_H][GB_WMAX_PREVIOUS];
+    uint8_t bguv[GB_H][GB_WMAX_PREVIOUS], spruv[GB_H][GB_WMAX_PREVIOUS];
+    int ppu_w, ppu_xoff;
+    int hud_lines, hud_shift, wide_r, sprite_neg, win_centre, wide_gate, wide_on, cfg_hud, cfg_win;
+    int cfg_left, cfg_right;
+    uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
+    int dot, ly, mode, lcd_on, stat_line, wlc, off_cycles, frame_count;
+} PPUStatePrevious;
+
+
+/* Exact layout used while GB_WMAX was 256, for loading existing save states. */
+typedef struct {
+    uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
+    uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
+    uint8_t shade[GB_H][GB_WMAX_LEGACY], layer[GB_H][GB_WMAX_LEGACY];
+    uint32_t rgb[GB_H][GB_WMAX_LEGACY];
+    int cgb_render_enabled;
+    uint16_t bgtile[GB_H][GB_WMAX_LEGACY], sprtile[GB_H][GB_WMAX_LEGACY];
+    uint8_t bguv[GB_H][GB_WMAX_LEGACY], spruv[GB_H][GB_WMAX_LEGACY];
+    int ppu_w, ppu_xoff;
+    int hud_lines, hud_shift, wide_r, sprite_neg, win_centre, wide_gate, wide_on, cfg_hud, cfg_win;
+    uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
+    int dot, ly, mode, lcd_on, stat_line, wlc, off_cycles, frame_count;
+} PPUStateLegacy;
+
 size_t ppu_state_size(void) { return sizeof(PPUState); }
+int ppu_state_size_compatible(size_t n)
+{
+    return n == sizeof(PPUState) || n == sizeof(PPUState384) ||
+           n == sizeof(PPUStatePrevious) || n == sizeof(PPUStateLegacy);
+}
 int ppu_state_save(void *dst, size_t n)
 {
     if (!dst || n < sizeof(PPUState)) return -1;
@@ -393,13 +594,123 @@ int ppu_state_save(void *dst, size_t n)
     memcpy(s->bguv,ppu_bguv,sizeof ppu_bguv); memcpy(s->spruv,ppu_spruv,sizeof ppu_spruv);
     s->ppu_w=ppu_w; s->ppu_xoff=ppu_xoff; s->hud_lines=hud_lines; s->hud_shift=hud_shift; s->wide_r=wide_r; s->sprite_neg=sprite_neg;
     s->win_centre=win_centre; s->wide_gate=wide_gate; s->wide_on=wide_on; s->cfg_hud=cfg_hud; s->cfg_win=cfg_win;
+    s->cfg_left=cfg_left; s->cfg_right=cfg_right;
     s->lcdc=lcdc; s->stat_sel=stat_sel; s->scy=scy; s->scx=scx; s->lyc=lyc; s->bgp=bgp; s->obp0=obp0; s->obp1=obp1; s->wy=wy; s->wx=wx;
     s->dot=dot; s->ly=ly; s->mode=mode; s->lcd_on=lcd_on; s->stat_line=stat_line; s->wlc=wlc; s->off_cycles=off_cycles; s->frame_count=frame_count;
     return 0;
 }
 int ppu_state_load(const void *src, size_t n)
 {
-    if (!src || n < sizeof(PPUState)) return -1;
+    if (!src) return -1;
+    if (n == sizeof(PPUState384)) {
+        const PPUState384 *old = (const PPUState384 *)src;
+        memcpy(vram, old->vram, sizeof vram);
+        memcpy(vram_cgb1, old->vram_cgb1, sizeof vram_cgb1);
+        vram_bank = old->vram_bank & 1; memcpy(oam, old->oam, sizeof oam);
+        memcpy(cgb_bg_palette, old->cgb_bg_palette, sizeof cgb_bg_palette);
+        memcpy(cgb_obj_palette, old->cgb_obj_palette, sizeof cgb_obj_palette);
+        cgb_bgpi=old->cgb_bgpi; cgb_obpi=old->cgb_obpi; cgb_opri=old->cgb_opri;
+        for (int y=0; y<GB_H; y++) {
+            memcpy(ppu_shade[y], old->shade[y], GB_WMAX_384);
+            memset(ppu_shade[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+            memcpy(ppu_layer[y], old->layer[y], GB_WMAX_384);
+            memset(ppu_layer[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+            memcpy(ppu_rgb[y], old->rgb[y], GB_WMAX_384*sizeof old->rgb[y][0]);
+            memset(ppu_rgb[y]+GB_WMAX_384, 0, (GB_WMAX-GB_WMAX_384)*sizeof ppu_rgb[y][0]);
+            memcpy(ppu_bgtile[y], old->bgtile[y], GB_WMAX_384*sizeof old->bgtile[y][0]);
+            memset(ppu_bgtile[y]+GB_WMAX_384, 0xFF, (GB_WMAX-GB_WMAX_384)*sizeof ppu_bgtile[y][0]);
+            memcpy(ppu_sprtile[y], old->sprtile[y], GB_WMAX_384*sizeof old->sprtile[y][0]);
+            memset(ppu_sprtile[y]+GB_WMAX_384, 0xFF, (GB_WMAX-GB_WMAX_384)*sizeof ppu_sprtile[y][0]);
+            memcpy(ppu_bguv[y], old->bguv[y], GB_WMAX_384);
+            memset(ppu_bguv[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+            memcpy(ppu_spruv[y], old->spruv[y], GB_WMAX_384);
+            memset(ppu_spruv[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+        }
+        cgb_render_enabled=old->cgb_render_enabled!=0;
+        ppu_w=old->ppu_w; ppu_xoff=old->ppu_xoff; hud_lines=old->hud_lines;
+        hud_shift=old->hud_shift; wide_r=old->wide_r; sprite_neg=old->sprite_neg;
+        win_centre=old->win_centre; wide_gate=old->wide_gate; wide_on=old->wide_on;
+        cfg_hud=old->cfg_hud; cfg_win=old->cfg_win;
+        cfg_left=old->cfg_left; cfg_right=old->cfg_right;
+        lcdc=old->lcdc; stat_sel=old->stat_sel; scy=old->scy; scx=old->scx; lyc=old->lyc;
+        bgp=old->bgp; obp0=old->obp0; obp1=old->obp1; wy=old->wy; wx=old->wx;
+        dot=old->dot; ly=old->ly; mode=old->mode; lcd_on=old->lcd_on; stat_line=old->stat_line;
+        wlc=old->wlc; off_cycles=old->off_cycles; frame_count=old->frame_count;
+        return 0;
+    }
+    if (n == sizeof(PPUStatePrevious)) {
+        const PPUStatePrevious *old = (const PPUStatePrevious *)src;
+        memcpy(vram, old->vram, sizeof vram);
+        memcpy(vram_cgb1, old->vram_cgb1, sizeof vram_cgb1);
+        vram_bank = old->vram_bank & 1; memcpy(oam, old->oam, sizeof oam);
+        memcpy(cgb_bg_palette, old->cgb_bg_palette, sizeof cgb_bg_palette);
+        memcpy(cgb_obj_palette, old->cgb_obj_palette, sizeof cgb_obj_palette);
+        cgb_bgpi=old->cgb_bgpi; cgb_obpi=old->cgb_obpi; cgb_opri=old->cgb_opri;
+        for (int y=0; y<GB_H; y++) {
+            memcpy(ppu_shade[y], old->shade[y], GB_WMAX_PREVIOUS);
+            memset(ppu_shade[y]+GB_WMAX_PREVIOUS, 0, GB_WMAX-GB_WMAX_PREVIOUS);
+            memcpy(ppu_layer[y], old->layer[y], GB_WMAX_PREVIOUS);
+            memset(ppu_layer[y]+GB_WMAX_PREVIOUS, 0, GB_WMAX-GB_WMAX_PREVIOUS);
+            memcpy(ppu_rgb[y], old->rgb[y], GB_WMAX_PREVIOUS*sizeof old->rgb[y][0]);
+            memset(ppu_rgb[y]+GB_WMAX_PREVIOUS, 0, (GB_WMAX-GB_WMAX_PREVIOUS)*sizeof ppu_rgb[y][0]);
+            memcpy(ppu_bgtile[y], old->bgtile[y], GB_WMAX_PREVIOUS*sizeof old->bgtile[y][0]);
+            memset(ppu_bgtile[y]+GB_WMAX_PREVIOUS, 0xFF, (GB_WMAX-GB_WMAX_PREVIOUS)*sizeof ppu_bgtile[y][0]);
+            memcpy(ppu_sprtile[y], old->sprtile[y], GB_WMAX_PREVIOUS*sizeof old->sprtile[y][0]);
+            memset(ppu_sprtile[y]+GB_WMAX_PREVIOUS, 0xFF, (GB_WMAX-GB_WMAX_PREVIOUS)*sizeof ppu_sprtile[y][0]);
+            memcpy(ppu_bguv[y], old->bguv[y], GB_WMAX_PREVIOUS);
+            memset(ppu_bguv[y]+GB_WMAX_PREVIOUS, 0, GB_WMAX-GB_WMAX_PREVIOUS);
+            memcpy(ppu_spruv[y], old->spruv[y], GB_WMAX_PREVIOUS);
+            memset(ppu_spruv[y]+GB_WMAX_PREVIOUS, 0, GB_WMAX-GB_WMAX_PREVIOUS);
+        }
+        cgb_render_enabled=old->cgb_render_enabled!=0;
+        ppu_w=old->ppu_w; ppu_xoff=old->ppu_xoff; hud_lines=old->hud_lines;
+        hud_shift=old->hud_shift; wide_r=old->wide_r; sprite_neg=old->sprite_neg;
+        win_centre=old->win_centre; wide_gate=old->wide_gate; wide_on=old->wide_on;
+        cfg_hud=old->cfg_hud; cfg_win=old->cfg_win;
+        cfg_left=old->cfg_left; cfg_right=old->cfg_right;
+        lcdc=old->lcdc; stat_sel=old->stat_sel; scy=old->scy; scx=old->scx; lyc=old->lyc;
+        bgp=old->bgp; obp0=old->obp0; obp1=old->obp1; wy=old->wy; wx=old->wx;
+        dot=old->dot; ly=old->ly; mode=old->mode; lcd_on=old->lcd_on; stat_line=old->stat_line;
+        wlc=old->wlc; off_cycles=old->off_cycles; frame_count=old->frame_count;
+        return 0;
+    }
+    if (n == sizeof(PPUStateLegacy)) {
+        const PPUStateLegacy *old = (const PPUStateLegacy *)src;
+        memcpy(vram, old->vram, sizeof vram);
+        memcpy(vram_cgb1, old->vram_cgb1, sizeof vram_cgb1);
+        vram_bank = old->vram_bank & 1; memcpy(oam, old->oam, sizeof oam);
+        memcpy(cgb_bg_palette, old->cgb_bg_palette, sizeof cgb_bg_palette);
+        memcpy(cgb_obj_palette, old->cgb_obj_palette, sizeof cgb_obj_palette);
+        cgb_bgpi=old->cgb_bgpi; cgb_obpi=old->cgb_obpi; cgb_opri=old->cgb_opri;
+        for (int y=0; y<GB_H; y++) {
+            memcpy(ppu_shade[y], old->shade[y], GB_WMAX_LEGACY);
+            memset(ppu_shade[y]+GB_WMAX_LEGACY, 0, GB_WMAX-GB_WMAX_LEGACY);
+            memcpy(ppu_layer[y], old->layer[y], GB_WMAX_LEGACY);
+            memset(ppu_layer[y]+GB_WMAX_LEGACY, 0, GB_WMAX-GB_WMAX_LEGACY);
+            memcpy(ppu_rgb[y], old->rgb[y], GB_WMAX_LEGACY*sizeof old->rgb[y][0]);
+            memset(ppu_rgb[y]+GB_WMAX_LEGACY, 0, (GB_WMAX-GB_WMAX_LEGACY)*sizeof ppu_rgb[y][0]);
+            memcpy(ppu_bgtile[y], old->bgtile[y], GB_WMAX_LEGACY*sizeof old->bgtile[y][0]);
+            memset(ppu_bgtile[y]+GB_WMAX_LEGACY, 0xFF, (GB_WMAX-GB_WMAX_LEGACY)*sizeof ppu_bgtile[y][0]);
+            memcpy(ppu_sprtile[y], old->sprtile[y], GB_WMAX_LEGACY*sizeof old->sprtile[y][0]);
+            memset(ppu_sprtile[y]+GB_WMAX_LEGACY, 0xFF, (GB_WMAX-GB_WMAX_LEGACY)*sizeof ppu_sprtile[y][0]);
+            memcpy(ppu_bguv[y], old->bguv[y], GB_WMAX_LEGACY);
+            memset(ppu_bguv[y]+GB_WMAX_LEGACY, 0, GB_WMAX-GB_WMAX_LEGACY);
+            memcpy(ppu_spruv[y], old->spruv[y], GB_WMAX_LEGACY);
+            memset(ppu_spruv[y]+GB_WMAX_LEGACY, 0, GB_WMAX-GB_WMAX_LEGACY);
+        }
+        cgb_render_enabled=old->cgb_render_enabled!=0;
+        ppu_w=old->ppu_w; ppu_xoff=old->ppu_xoff; hud_lines=old->hud_lines;
+        hud_shift=old->hud_shift; wide_r=old->wide_r; sprite_neg=old->sprite_neg;
+        win_centre=old->win_centre; wide_gate=old->wide_gate; wide_on=old->wide_on;
+        cfg_hud=old->cfg_hud; cfg_win=old->cfg_win;
+        cfg_left=old->ppu_xoff; cfg_right=old->wide_r;
+        lcdc=old->lcdc; stat_sel=old->stat_sel; scy=old->scy; scx=old->scx; lyc=old->lyc;
+        bgp=old->bgp; obp0=old->obp0; obp1=old->obp1; wy=old->wy; wx=old->wx;
+        dot=old->dot; ly=old->ly; mode=old->mode; lcd_on=old->lcd_on; stat_line=old->stat_line;
+        wlc=old->wlc; off_cycles=old->off_cycles; frame_count=old->frame_count;
+        return 0;
+    }
+    if (n < sizeof(PPUState)) return -1;
     const PPUState *s = (const PPUState *)src;
     memcpy(vram,s->vram,sizeof vram); memcpy(vram_cgb1,s->vram_cgb1,sizeof vram_cgb1); vram_bank=s->vram_bank & 1; memcpy(cgb_bg_palette,s->cgb_bg_palette,sizeof cgb_bg_palette); memcpy(cgb_obj_palette,s->cgb_obj_palette,sizeof cgb_obj_palette); cgb_bgpi=s->cgb_bgpi; cgb_obpi=s->cgb_obpi; cgb_opri=s->cgb_opri; memcpy(oam,s->oam,sizeof oam);
     memcpy(ppu_shade,s->shade,sizeof ppu_shade); memcpy(ppu_rgb,s->rgb,sizeof ppu_rgb); cgb_render_enabled=s->cgb_render_enabled != 0; memcpy(ppu_layer,s->layer,sizeof ppu_layer);
@@ -407,6 +718,7 @@ int ppu_state_load(const void *src, size_t n)
     memcpy(ppu_bguv,s->bguv,sizeof ppu_bguv); memcpy(ppu_spruv,s->spruv,sizeof ppu_spruv);
     ppu_w=s->ppu_w; ppu_xoff=s->ppu_xoff; hud_lines=s->hud_lines; hud_shift=s->hud_shift; wide_r=s->wide_r; sprite_neg=s->sprite_neg;
     win_centre=s->win_centre; wide_gate=s->wide_gate; wide_on=s->wide_on; cfg_hud=s->cfg_hud; cfg_win=s->cfg_win;
+    cfg_left=s->cfg_left; cfg_right=s->cfg_right;
     lcdc=s->lcdc; stat_sel=s->stat_sel; scy=s->scy; scx=s->scx; lyc=s->lyc; bgp=s->bgp; obp0=s->obp0; obp1=s->obp1; wy=s->wy; wx=s->wx;
     dot=s->dot; ly=s->ly; mode=s->mode; lcd_on=s->lcd_on; stat_line=s->stat_line; wlc=s->wlc; off_cycles=s->off_cycles; frame_count=s->frame_count;
     return 0;

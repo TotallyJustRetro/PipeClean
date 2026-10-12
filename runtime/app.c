@@ -17,7 +17,9 @@
 #include "ui.h"
 #include "settings.h"
 #include "rom.h"
+#include "cart.h"
 #include "emu.h"
+#include "netplay.h"
 #include "render.h"
 #include "bgimg.h"
 #include "texpack.h"
@@ -27,11 +29,130 @@
 #include "util.h"
 #include "branding.h"
 #include "dev_diag.h"
+#include "widescreen.h"
 #include <SDL_image.h>
+#if defined(__ANDROID__)
+#include <jni.h>
+#include <SDL_system.h>
+#endif
 
 static SDL_Window *win;
 static SDL_Renderer *ren;
 static int win_w = 1100, win_h = 720;
+static int companion_rewind_held;
+#define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
+#define PIPECLEAN_COMPANION_SAVE 1
+#define PIPECLEAN_COMPANION_LOAD 2
+#define PIPECLEAN_COMPANION_PAUSE 3
+#define PIPECLEAN_COMPANION_REWIND 4
+#define PIPECLEAN_COMPANION_PALETTE 5
+#define PIPECLEAN_COMPANION_FILTER 6
+#define PIPECLEAN_COMPANION_SLOT_PREV 7
+#define PIPECLEAN_COMPANION_SLOT_NEXT 8
+#define PIPECLEAN_COMPANION_ITEM_USE 9
+#define PIPECLEAN_COMPANION_CLOSE_GAME 12
+
+#if defined(__ANDROID__)
+JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionAction(
+    JNIEnv *env, jclass cls, jint action, jint pressed)
+{
+    (void)env; (void)cls;
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_USEREVENT;
+    event.user.code = PIPECLEAN_COMPANION_EVENT_CODE;
+    event.user.data1 = (void *)(intptr_t)action;
+    event.user.data2 = (void *)(intptr_t)pressed;
+    (void)SDL_PushEvent(&event);
+}
+
+static void companion_publish_state(int game, const Frame *frame, int paused)
+{
+    static unsigned tick;
+    if (++tick < 6) return;
+    tick = 0;
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIII)V");
+    if (method) {
+        int lives = 0, stage = -1, world = -1;
+        int dual_screen = (game == GAME_SML || game == GAME_SML2)
+            ? settings.g[game].dual_screen : 0;
+        if (frame && (game == GAME_SML || game == GAME_SML2)) {
+            uint8_t bcd = frame->p1_lives;
+            int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
+            lives = (tens <= 9 && ones <= 9) ? tens * 10 + ones : bcd;
+            if (frame->level_id != 0xFF) stage = frame->level_id;
+            if (game == GAME_SML && frame->level_bank != 0xFF) world = frame->level_bank;
+        }
+        (void)(*env)->CallVoidMethod(env, activity, method,
+            (jint)game, (jint)lives, (jint)stage, (jint)world,
+            (jint)paused, (jint)settings.g[game].state_slot,
+            (jint)settings.g[game].palette, (jint)settings.flt.preset,
+            (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen);
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+#else
+static void companion_publish_state(int game, const Frame *frame, int paused)
+{
+    (void)game; (void)frame; (void)paused;
+}
+#endif
+
+#if defined(__ANDROID__)
+static void companion_set_display_enabled(int enabled)
+{
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "setCompanionEnabled", "(Z)V");
+    if (method) {
+        (*env)->CallVoidMethod(env, activity, method, enabled ? JNI_TRUE : JNI_FALSE);
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+#else
+static void companion_set_display_enabled(int enabled) { (void)enabled; }
+#endif
+static SDL_FingerID launcher_touch_finger;
+static int launcher_touch_active, launcher_touch_pointer;
+
+static void launcher_touch_event(const SDL_Event *e)
+{
+    if (!e) return;
+    if (e->type == SDL_FINGERDOWN && !launcher_touch_active) {
+        launcher_touch_active = 1;
+        launcher_touch_pointer = 1;
+        launcher_touch_finger = e->tfinger.fingerId;
+        ui_touch_to_dp(e->tfinger.x, e->tfinger.y, &ui_mouse.x, &ui_mouse.y);
+        ui_mouse.inside = 1;
+        ui_mouse_button(1);
+    } else if ((e->type == SDL_FINGERMOTION || e->type == SDL_FINGERUP) &&
+               launcher_touch_active && e->tfinger.fingerId == launcher_touch_finger) {
+        launcher_touch_pointer = 1;
+        ui_touch_to_dp(e->tfinger.x, e->tfinger.y, &ui_mouse.x, &ui_mouse.y);
+        ui_mouse.inside = 1;
+        if (e->type == SDL_FINGERUP) {
+            ui_mouse_button(0);
+            launcher_touch_active = 0;
+        }
+    } else if (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN ||
+               e->type == SDL_MOUSEBUTTONUP) {
+        launcher_touch_pointer = 0;
+    }
+}
 
 static void sfx(int w) { audio_sfx(w); }
 
@@ -55,6 +176,181 @@ static void game_notice_draw(float dt)
     ui_shadow(x, y, w, 34, 10, 6, RGBA(0, 0, 0, (int)(100 * a)));
     ui_rrect(x, y, w, 34, 10, RGBA(36, 42, 60, (int)(245 * a)));
     ui_text_c(F_BOLD, 13, UI_W * 0.5f, y + 8, RGBA(245, 247, 252, (int)(255 * a)), game_notice_text);
+}
+
+typedef struct {
+    float x, y, w, h;
+    uint8_t buttons, dpad;
+    const char *label;
+} TouchRegion;
+
+typedef struct {
+    SDL_FingerID id;
+    int active;
+    int region;
+} TouchFinger;
+
+static TouchFinger touch_fingers[10];
+
+/* Android's smaller landscape displays need larger touch targets than the
+ * desktop overlay. Keep each hit region identical to its drawn button. */
+#if defined(__ANDROID__)
+static const TouchRegion touch_regions[] = {
+    {80, UI_H - 230, 60, 60, 0, 0x04, "UP"},
+    {80, UI_H - 110, 60, 60, 0, 0x08, "DN"},
+    {20, UI_H - 170, 60, 60, 0, 0x02, "LT"},
+    {140, UI_H - 170, 60, 60, 0, 0x01, "RT"},
+    {UI_W - 148, UI_H - 218, 64, 64, 0x01, 0, "A"},
+    {UI_W - 230, UI_H - 144, 64, 64, 0x02, 0, "B"},
+    {UI_W - 340, UI_H - 66, 70, 50, 0x04, 0, "SEL"},
+    {UI_W - 260, UI_H - 66, 80, 50, 0x08, 0, "START"}
+};
+#else
+static const TouchRegion touch_regions[] = {
+    {74, UI_H - 206, 46, 46, 0, 0x04, "UP"},
+    {74, UI_H - 110, 46, 46, 0, 0x08, "DN"},
+    {26, UI_H - 158, 46, 46, 0, 0x02, "LT"},
+    {122, UI_H - 158, 46, 46, 0, 0x01, "RT"},
+    {UI_W - 130, UI_H - 188, 56, 56, 0x01, 0, "A"},
+    {UI_W - 205, UI_H - 131, 56, 56, 0x02, 0, "B"},
+    {UI_W - 315, UI_H - 72, 45, 34, 0x04, 0, "SEL"},
+    {UI_W - 258, UI_H - 72, 54, 34, 0x08, 0, "START"}
+};
+#endif
+
+static void touch_reset_all(void)
+{
+    memset(touch_fingers, 0, sizeof touch_fingers);
+    for (int g = 0; g < N_GAMES; g++)
+        for (int player = 0; player < MAX_MP_PLAYERS; player++)
+            pad_set_touch_input(g, player, 0, 0);
+}
+
+static int touch_overlay_visible(void)
+{
+#if defined(__ANDROID__)
+    /* Handheld Android devices such as the AYN Thor have physical controls.
+     * Keep the game view clean; the secondary display is reserved for the
+     * companion status / utility deck rather than duplicate virtual buttons. */
+    return 0;
+#else
+    if (!settings.touch_controls) return 0;
+    return SDL_GetNumTouchDevices() > 0;
+#endif
+}
+
+static int touch_finger_slot(SDL_FingerID id)
+{
+    for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++)
+        if (touch_fingers[i].active && touch_fingers[i].id == id) return i;
+    return -1;
+}
+
+static int touch_region_at(float x, float y)
+{
+    for (int i = 0; i < (int)(sizeof touch_regions / sizeof touch_regions[0]); i++) {
+        const TouchRegion *r = &touch_regions[i];
+        if (x >= r->x && x < r->x + r->w && y >= r->y && y < r->y + r->h)
+            return i;
+    }
+    return -1;
+}
+
+static void touch_handle_event(const SDL_Event *e)
+{
+#if defined(__ANDROID__)
+    /* Do not let invisible virtual-button hit regions intercept touch on
+     * Android handhelds with physical controls. */
+    (void)e;
+    return;
+#endif
+    if (!e) return;
+
+    /* Android can suspend or defocus SDL without delivering FINGERUP for
+       every held contact. Release all virtual buttons on those transitions. */
+    if ((e->type == SDL_WINDOWEVENT &&
+         (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+          e->window.event == SDL_WINDOWEVENT_MINIMIZED)) ||
+        e->type == SDL_APP_WILLENTERBACKGROUND ||
+        e->type == SDL_APP_DIDENTERBACKGROUND ||
+        e->type == SDL_APP_TERMINATING) {
+        touch_reset_all();
+        return;
+    }
+
+    if (e->type != SDL_FINGERDOWN && e->type != SDL_FINGERMOTION &&
+        e->type != SDL_FINGERUP) return;
+    if (!settings.touch_controls) {
+        touch_reset_all();
+        return;
+    }
+    SDL_FingerID id = e->tfinger.fingerId;
+    int slot = touch_finger_slot(id);
+    if (e->type == SDL_FINGERUP) {
+        if (slot >= 0) {
+            touch_fingers[slot].active = 0;
+            touch_fingers[slot].region = -1;
+        }
+        return;
+    }
+    if (slot < 0 && e->type == SDL_FINGERDOWN) {
+        for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++) {
+            if (!touch_fingers[i].active) { slot = i; break; }
+        }
+        if (slot >= 0) {
+            touch_fingers[slot].id = id;
+            touch_fingers[slot].active = 1;
+            touch_fingers[slot].region = -1;
+        }
+    }
+    if (slot < 0) return;
+    float x, y;
+    ui_touch_to_dp(e->tfinger.x, e->tfinger.y, &x, &y);
+    touch_fingers[slot].region = touch_region_at(x, y);
+}
+
+static int touch_region_held(int region)
+{
+    for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++)
+        if (touch_fingers[i].active && touch_fingers[i].region == region) return 1;
+    return 0;
+}
+
+static void touch_apply_inputs(int game, int paused)
+{
+    uint8_t buttons = 0, dpad = 0;
+    if (settings.touch_controls && !paused) {
+        for (int i = 0; i < (int)(sizeof touch_fingers / sizeof touch_fingers[0]); i++) {
+            if (!touch_fingers[i].active || touch_fingers[i].region < 0 ||
+                touch_fingers[i].region >= (int)(sizeof touch_regions / sizeof touch_regions[0])) continue;
+            buttons |= touch_regions[touch_fingers[i].region].buttons;
+            dpad |= touch_regions[touch_fingers[i].region].dpad;
+        }
+    }
+    pad_set_touch_input(game, 0, buttons, dpad);
+}
+
+static void touch_reset_game(int game)
+{
+    touch_reset_all();
+    if (game >= 0 && game < N_GAMES)
+        pad_set_touch_input(game, 0, 0, 0);
+}
+
+static void touch_draw_overlay(int paused)
+{
+    if (!touch_overlay_visible() || paused) return;
+    for (int i = 0; i < (int)(sizeof touch_regions / sizeof touch_regions[0]); i++) {
+        const TouchRegion *r = &touch_regions[i];
+        int held = touch_region_held(i);
+        uint32_t fill = held ? RGBA(76, 141, 255, 190) : RGBA(14, 18, 29, 112);
+        uint32_t edge = held ? RGBA(225, 237, 255, 235) : RGBA(205, 216, 240, 125);
+        ui_rrect(r->x, r->y, r->w, r->h, 10, fill);
+        ui_stroke(r->x, r->y, r->w, r->h, 10, 1, edge);
+        ui_text_c(F_BOLD, 11, r->x + r->w * 0.5f,
+                  r->y + (r->h - ui_line_h(11)) * 0.5f,
+                  RGBA(255, 255, 255, held ? 255 : 220), r->label);
+    }
 }
 
 static int app_key_down(int key)
@@ -202,6 +498,72 @@ static int game_suspend(int g)
     return 0;
 }
 
+static int game_shared_state_save(int g)
+{
+    int slot = netplay_shared_slot_active();
+    char path[1200], marker[1200];
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) {
+        game_notice("Choose a shared save slot in the Netplay lobby first.");
+        return -1;
+    }
+    launcher_shared_slot_paths(g, slot, path, sizeof path, marker, sizeof marker);
+    if (!path[0] || !marker[0]) {
+        game_notice("Couldn't prepare the shared save slot.");
+        return -1;
+    }
+    settings.g[g].state_slot = slot;
+    netplay_shared_slot_mark_unsynced(slot);
+    if (!netplay_is_host()) {
+        queue_state_thumbnail(g, slot);
+        game_notice("Shared save requested — waiting for the host to sync it.");
+        return 0;
+    }
+    if (emu_state_save_file(path, 0) != 0) {
+        game_notice("Couldn't create the shared save.");
+        return -1;
+    }
+    queue_state_thumbnail(g, slot);
+    if (!netplay_shared_save_send_file(slot, path)) {
+        game_notice("Couldn't send the shared save to the other player.");
+        return -1;
+    }
+    char msg[96];
+    snprintf(msg, sizeof msg, "Syncing shared save — Slot %d", slot + 1);
+    game_notice(msg);
+    return 0;
+}
+
+static int game_shared_state_load(int g, int slot)
+{
+    char path[1200], marker[1200];
+    int left = 0, right = 0;
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT ||
+        !netplay_shared_slot_is_synced(slot)) {
+        game_notice("That shared slot isn't synchronized on both players.");
+        return -1;
+    }
+    launcher_shared_slot_paths(g, slot, path, sizeof path, marker, sizeof marker);
+    if (!state_file_exists(path) || !state_file_exists(marker)) {
+        game_notice("The shared save file is missing on this device.");
+        return -1;
+    }
+    if (emu_rewind_available()) emu_rewind_end();
+    if (emu_state_load_file(path, 0) != 0) {
+        game_notice("Couldn't load the shared save. The session was not changed.");
+        return -1;
+    }
+    /* Core state is shared, but each player's preferred PPU output width is local. */
+    wide_dims(g, settings.g[g].wide, &left, &right);
+    ppu_set_wide(left, right, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
+    render_reset();
+    settings.g[g].state_slot = slot;
+    char msg[96];
+    snprintf(msg, sizeof msg, "Loaded shared state — Slot %d", slot + 1);
+    game_notice(msg);
+    dev_diag_event("ONLINE_SHARED_STATE_LOADED");
+    return 0;
+}
+
 static int game_action_key_match(int g, int action, const SDL_Event *e)
 {
     if (!e || e->type != SDL_KEYDOWN || e->key.repeat || action < 0 || action >= N_ACTION) return 0;
@@ -245,6 +607,65 @@ static int app_rewind_held(int g)
     if (g < 0 || g >= N_GAMES) return 0;
     return app_key_down(settings.g[g].action_key[ACT_REWIND]) ||
            pad_binding_down(g, ACT_REWIND);
+}
+
+static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *quit)
+{
+    if (!e || e->type != SDL_USEREVENT || e->user.code != PIPECLEAN_COMPANION_EVENT_CODE)
+        return 0;
+    int action = (int)(intptr_t)e->user.data1;
+    int pressed = (int)(intptr_t)e->user.data2;
+    if (g < 0 || g >= N_GAMES) return 1;
+    if (action == PIPECLEAN_COMPANION_REWIND) {
+        companion_rewind_held = pressed != 0;
+        return 1;
+    }
+    if (!pressed) return 1;
+    switch (action) {
+    case PIPECLEAN_COMPANION_SAVE:
+        if (netplay_is_connected()) game_notice("Save from the second screen is disabled during online co-op.");
+        else (void)game_state_save(g, paused ? *paused : 0);
+        break;
+    case PIPECLEAN_COMPANION_LOAD:
+        if (netplay_is_connected()) game_notice("Load from the second screen is disabled during online co-op.");
+        else load_state_request_app[g] = 1;
+        break;
+    case PIPECLEAN_COMPANION_PAUSE:
+        if (netplay_is_connected()) game_notice("Pause is disabled during online co-op.");
+        else if (paused) {
+            *paused = !*paused;
+            emu_set_paused(*paused);
+            game_notice(*paused ? "Game paused." : "Game resumed.");
+        }
+        break;
+    case PIPECLEAN_COMPANION_PALETTE:
+        settings.g[g].palette = (settings.g[g].palette + 1) % n_palettes;
+        render_reset(); settings_save();
+        break;
+    case PIPECLEAN_COMPANION_FILTER:
+        filter_preset(&settings.flt, (settings.flt.preset + 1) % n_filter_presets);
+        render_reset(); settings_save();
+        break;
+    case PIPECLEAN_COMPANION_SLOT_PREV:
+        settings.g[g].state_slot = (settings.g[g].state_slot + 9) % 10;
+        settings_save(); game_notice("Previous save slot selected.");
+        break;
+    case PIPECLEAN_COMPANION_SLOT_NEXT:
+        settings.g[g].state_slot = (settings.g[g].state_slot + 1) % 10;
+        settings_save(); game_notice("Next save slot selected.");
+        break;
+    case PIPECLEAN_COMPANION_ITEM_USE:
+        /* The emulation thread applies the stored power-up using the game's
+         * own item state/object mechanics. Empty slots safely do nothing. */
+        emu_reserve_item_use();
+        break;
+    case PIPECLEAN_COMPANION_CLOSE_GAME:
+        if (quit) *quit = 1;
+        break;
+    default: break;
+    }
+    (void)quit;
+    return 1;
 }
 
 enum {
@@ -387,6 +808,47 @@ static void mouse_sync(void)
     SDL_GetMouseState(&mx, &my);
     SDL_GetWindowSize(win, &ww, &wh);
     ui_set_mouse(mx, my, ww, wh);
+}
+
+static int launcher_applied_scale = -1;
+static int launcher_applied_window_size = -1;
+static int launcher_applied_fullscreen = -1;
+
+static void launcher_display_cache_reset(void)
+{
+    launcher_applied_scale = -1;
+    launcher_applied_window_size = -1;
+    launcher_applied_fullscreen = -1;
+}
+
+static void apply_launcher_display_preferences(void)
+{
+    if (launcher_applied_scale != settings.launcher_ui_scale) {
+        ui_set_scale_preference(settings.launcher_ui_scale);
+        launcher_applied_scale = settings.launcher_ui_scale;
+    }
+#if !defined(__ANDROID__)
+    int width = 1100, height = 720;
+    if (settings.launcher_window_size == 0) { width = 900; height = 580; }
+    else if (settings.launcher_window_size == 2) { width = 1440; height = 900; }
+
+    int fullscreen_changed = launcher_applied_fullscreen != settings.launcher_fullscreen;
+    int size_changed = launcher_applied_window_size != settings.launcher_window_size;
+    if (fullscreen_changed) {
+        SDL_SetWindowFullscreen(win, settings.launcher_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        launcher_applied_fullscreen = settings.launcher_fullscreen;
+        if (!settings.launcher_fullscreen) size_changed = 1;
+    }
+    if (size_changed) {
+        if (!settings.launcher_fullscreen) {
+            win_w = width;
+            win_h = height;
+            SDL_SetWindowSize(win, win_w, win_h);
+            SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        }
+        launcher_applied_window_size = settings.launcher_window_size;
+    }
+#endif
 }
 
 static void set_game_window(int g)
@@ -537,9 +999,14 @@ static void draw_coop_hud(int game, const Frame *f)
 /* Local SML1 multiplayer: one shared world with two real SML1 player states. */
 static int play_multiplayer(int g)
 {
+    touch_reset_all();
+    companion_rewind_held = 0;
     ds_menu_close();
     GameCfg *c = &settings.g[g];
-    int player_count = c->multiplayer_players;
+    int online = netplay_is_connected();
+    int online_display_left = 0, online_display_right = 0;
+    if (online) wide_dims(g, c->wide, &online_display_left, &online_display_right);
+    int player_count = online ? 2 : c->multiplayer_players;
     if (player_count < 2) player_count = c->multiplayer_players = 2;
     if (player_count > MAX_MP_PLAYERS) player_count = c->multiplayer_players = MAX_MP_PLAYERS;
 
@@ -548,7 +1015,7 @@ static int play_multiplayer(int g)
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     mkdir_u(sp);
     snprintf(sp, sizeof sp, "%ssaves/%s.sav", settings_dir(), save_id);
-    emu_set_save_path(sp);
+    emu_set_save_path(online ? "" : sp);
 
     bg_load(c->bg_path);
     texpack_load(c->tex_on ? c->tex_path : "");
@@ -558,15 +1025,42 @@ static int play_multiplayer(int g)
     set_game_window(g);
 
     int requested_load = launcher_take_load_state(g);
+    if (online) requested_load = -1;
     char suspended[1200];
     suspend_path(g, suspended, sizeof suspended);
-    int has_suspend = state_file_exists(suspended);
+    int has_suspend = !online && state_file_exists(suspended);
     render_set_mp_game(g);
     audio_mp_set_game(g);
     audio_menu_apply();
-    if (emu_mp_begin()) {
+    int saved_player_count = c->multiplayer_players;
+    if (online) c->multiplayer_players = 2;
+    int mp_begin_result = emu_mp_begin();
+    if (online) c->multiplayer_players = saved_player_count;
+    if (mp_begin_result) {
+        if (online) netplay_game_end();
         launcher_toast("Couldn't start multiplayer.");
         return 0;
+    }
+    int initial_shared_load = online ? netplay_shared_slot_load() : -1;
+    if (online && initial_shared_load >= 0) {
+        char shared_path[1200], marker_path[1200];
+        launcher_shared_slot_paths(g, initial_shared_load,
+                                   shared_path, sizeof shared_path,
+                                   marker_path, sizeof marker_path);
+        if (!netplay_shared_slot_is_synced(initial_shared_load) ||
+            !state_file_exists(shared_path) || !state_file_exists(marker_path) ||
+            emu_state_load_file(shared_path, 0) != 0) {
+            emu_mp_end();
+            netplay_game_end();
+            tex_collect_save();
+            pad_set_context(g, 0);
+            launcher_toast("Couldn't load the shared starting save. Check both players' slots.");
+            return 0;
+        }
+        ppu_set_wide(online_display_left, online_display_right,
+                     games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
+        settings.g[g].state_slot = initial_shared_load;
+        render_reset();
     }
     if (requested_load >= 0) {
         c->state_slot = requested_load;
@@ -590,6 +1084,7 @@ static int play_multiplayer(int g)
         for (int i = 0; i < MAX_MP_PLAYERS - 1; i++) free(player_frames[i]);
         audio_game_end();
         emu_mp_end();
+        if (online) netplay_game_end();
         tex_collect_save();
         pad_set_context(g, 0);
         launcher_toast("Not enough memory for multiplayer.");
@@ -600,12 +1095,15 @@ static int play_multiplayer(int g)
     int rewind_held = 0;
     uint8_t buttons[MAX_MP_PLAYERS] = {0, 0, 0, 0};
     uint8_t dpad[MAX_MP_PLAYERS] = {0, 0, 0, 0};
+    uint8_t online_actions = 0;
+    uint64_t online_frame = 0;
     Uint64 last = SDL_GetPerformanceCounter();
     dev_diag_begin(g, player_count, win);
 
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (companion_handle_event(g, &e, &paused, &quit)) continue;
             if (dev_diag_handle_event(&e)) continue;
             if (e.type == SDL_WINDOWEVENT &&
                 e.window.event == SDL_WINDOWEVENT_CLOSE &&
@@ -613,15 +1111,17 @@ static int play_multiplayer(int g)
                 quit = 2;
                 continue;
             }
+            touch_handle_event(&e);
             pad_event(&e);
-            int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
+            int ds_consumed = online ? 0 : ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
 
             if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 for (int player = 1; player < player_count; player++) {
                     int key = mp_respawn_key(c, player);
                     if (key && e.key.keysym.sym == key) {
-                        emu_mp_request_respawn(player);
+                        if (online) online_actions |= NETPLAY_ACTION_RESPAWN_P2;
+                        else emu_mp_request_respawn(player);
                         {
                             char diagnostic[96];
                             snprintf(diagnostic, sizeof diagnostic, "%s RESPAWN REQUESTED", mp_player_name(g, player));
@@ -635,10 +1135,11 @@ static int play_multiplayer(int g)
             }
             for (int player = 1; player < player_count; player++) {
                 int binding = mp_respawn_pad(c, player);
-                int device = c->pad_device[player];
+                int device = c->pad_device[online ? 0 : player];
                 if (binding >= 0 && device >= 0 && device < pad_count() &&
                     pad_capture(device, &e) == binding) {
-                    emu_mp_request_respawn(player);
+                    if (online) online_actions |= NETPLAY_ACTION_RESPAWN_P2;
+                    else emu_mp_request_respawn(player);
                     {
                         char diagnostic[96];
                         snprintf(diagnostic, sizeof diagnostic, "%s RESPAWN REQUESTED", mp_player_name(g, player));
@@ -650,7 +1151,20 @@ static int play_multiplayer(int g)
                 }
             }
 
-            int action = app_handle_action_event(g, &e, &paused, &quit);
+            int action = 0;
+            if (online) {
+                for (int a = ACT_SAVE_STATE; a <= ACT_LOAD_STATE; a++) {
+                    if (!game_action_key_match(g, a, &e) && !pad_binding_event(g, a, &e)) continue;
+                    online_actions |= (uint8_t)(a == ACT_SAVE_STATE
+                        ? NETPLAY_ACTION_SAVE_STATE : NETPLAY_ACTION_LOAD_STATE);
+                    action = a + 1;
+                    game_notice(a == ACT_SAVE_STATE
+                        ? "Shared save requested…" : "Shared state load requested…");
+                    break;
+                }
+            } else {
+                action = app_handle_action_event(g, &e, &paused, &quit);
+            }
             if (e.type == SDL_QUIT) quit = 2;
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 switch (e.key.keysym.sym) {
@@ -659,17 +1173,19 @@ static int play_multiplayer(int g)
                     SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                     break;
                 case SDLK_p:
-                    paused = !paused;
-                    dev_diag_event(paused ? "GAME PAUSED" : "GAME RESUMED");
+                    if (!online) {
+                        paused = !paused;
+                        dev_diag_event(paused ? "GAME PAUSED" : "GAME RESUMED");
+                    } else game_notice("Pause is disabled during online co-op.");
                     break;
-                case SDLK_TAB: emu_set_turbo(1); break;
+                case SDLK_TAB: if (!online) emu_set_turbo(1); break;
                 case SDLK_F10:
                     dev_diag_request_screenshot("manual F10");
                     game_notice("Diagnostic screenshot queued in the logs folder.");
                     break;
                 case SDLK_F12: shot = 1; break;
                 }
-            } else if (e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
+            } else if (!online && e.type == SDL_KEYUP && e.key.keysym.sym == SDLK_TAB) {
                 emu_set_turbo(0);
             } else if (e.type == SDL_CONTROLLERBUTTONDOWN &&
                        e.cbutton.button == SDL_CONTROLLER_BUTTON_GUIDE &&
@@ -680,13 +1196,15 @@ static int play_multiplayer(int g)
 
         if (load_state_request_app[g]) {
             load_state_request_app[g] = 0;
-            game_state_load(g, paused);
-            f->seq = UINT64_MAX;
-            have = 0;
+            if (!online) {
+                game_state_load(g, paused);
+                f->seq = UINT64_MAX;
+                have = 0;
+            }
         }
 
-        int ds_rewinding = ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND;
-        int now_rewind = app_rewind_held(g) && !paused;
+        int ds_rewinding = !online && ds_menu.open && ds_menu.touch_active && ds_menu.selected == DS_MENU_REWIND;
+        int now_rewind = !online && (app_rewind_held(g) || companion_rewind_held) && !paused;
         if (ds_rewinding) {
             emu_rewind_step();
             emu_mp_frame_refresh(f);
@@ -708,8 +1226,45 @@ static int play_multiplayer(int g)
                 rewind_held = 0;
             }
             if (!paused) {
-                for (int player = 0; player < player_count; player++)
-                    pad_poll_player(g, player, &buttons[player], &dpad[player]);
+                uint8_t synchronized_actions = 0;
+                touch_apply_inputs(g, paused);
+                if (online) {
+                    /* Host owns Mario/P1; joining client owns Luigi/P2 on both replicas. */
+                    pad_poll_player(g, 0, &buttons[0], &dpad[0]);
+                    uint8_t p1b = 0, p1d = 0, p1a = 0, p2b = 0, p2d = 0, p2a = 0;
+                    Uint64 exchange_started = SDL_GetPerformanceCounter();
+                    int exchange_result = netplay_exchange_inputs(
+                        online_frame, buttons[0], dpad[0], online_actions,
+                        &p1b, &p1d, &p1a, &p2b, &p2d, &p2a);
+                    Uint64 exchange_ticks = SDL_GetPerformanceCounter() - exchange_started;
+                    Uint64 exchange_freq = SDL_GetPerformanceFrequency();
+                    double exchange_ms = exchange_freq
+                        ? (double)exchange_ticks * 1000.0 / (double)exchange_freq : 0.0;
+                    if (exchange_ms >= 100.0) {
+                        char perf_msg[160];
+                        snprintf(perf_msg, sizeof perf_msg,
+                                 "ONLINE_INPUT_WAIT frame=%llu ms=%.1f role=%s result=%d",
+                                 (unsigned long long)online_frame, exchange_ms,
+                                 netplay_is_host() ? "host" : "guest", exchange_result);
+                        dev_diag_event(perf_msg);
+                        fprintf(stderr, "[netplay] %s\n", perf_msg);
+                    }
+                    if (exchange_result != 0) {
+                        quit = 1;
+                        game_notice("Online session ended or input timed out.");
+                    } else {
+                        buttons[0] = p1b; dpad[0] = p1d;
+                        buttons[1] = p2b; dpad[1] = p2d;
+                        synchronized_actions = (uint8_t)(p1a | p2a);
+                        online_actions = 0;
+                        online_frame++;
+                        if (p2a & NETPLAY_ACTION_RESPAWN_P2) emu_mp_request_respawn(1);
+                    }
+                } else {
+                    for (int player = 0; player < player_count; player++)
+                        pad_poll_player(g, player, &buttons[player], &dpad[player]);
+                }
+                if (!quit) {
                 /* SML2's shared-world mode advances secondary characters from
                  * inside the original Player 1 frame, so inputs must be ready
                  * before the authoritative game update starts. */
@@ -717,14 +1272,39 @@ static int play_multiplayer(int g)
                     for (int player = 1; player < player_count; player++)
                         emu_mp_set_player_input(player, buttons[player], dpad[player]);
 
+                Uint64 p1_step_start = SDL_GetPerformanceCounter();
                 int n0 = emu_mp_step(0, buttons[0], dpad[0], f, a0, 4096);
+                Uint64 p1_step_ticks = SDL_GetPerformanceCounter() - p1_step_start;
+                Uint64 step_freq = SDL_GetPerformanceFrequency();
+                double p1_step_ms = step_freq
+                    ? (double)p1_step_ticks * 1000.0 / (double)step_freq : 0.0;
+                if (online && p1_step_ms >= 50.0) {
+                    char perf_msg[160];
+                    snprintf(perf_msg, sizeof perf_msg,
+                             "ONLINE_SIM_SLOW player=1 frame=%llu ms=%.1f",
+                             (unsigned long long)online_frame, p1_step_ms);
+                    dev_diag_event(perf_msg);
+                    fprintf(stderr, "[netplay] %s\n", perf_msg);
+                }
                 if (n0 < 0) {
                     quit = 1;
                 } else {
                     int failed = 0;
                     for (int player = 1; player < player_count; player++) {
                         Frame *pf = player_frames[player - 1];
+                        Uint64 p_step_start = SDL_GetPerformanceCounter();
                         int result = emu_mp_step(player, buttons[player], dpad[player], pf, NULL, 0);
+                        Uint64 p_step_ticks = SDL_GetPerformanceCounter() - p_step_start;
+                        double p_step_ms = step_freq
+                            ? (double)p_step_ticks * 1000.0 / (double)step_freq : 0.0;
+                        if (online && p_step_ms >= 50.0) {
+                            char perf_msg[160];
+                            snprintf(perf_msg, sizeof perf_msg,
+                                     "ONLINE_SIM_SLOW player=%d frame=%llu ms=%.1f",
+                                     player + 1, (unsigned long long)online_frame, p_step_ms);
+                            dev_diag_event(perf_msg);
+                            fprintf(stderr, "[netplay] %s\n", perf_msg);
+                        }
                         if (result < 0) { failed = 1; break; }
                         /* SML2 shares one APU between all characters. Luigi's
                          * private movement pass restores shared sound-engine RAM,
@@ -748,6 +1328,19 @@ static int play_multiplayer(int g)
                         }
                         emu_rewind_capture();
 
+                        /* Both replicas consume the same action bits on this
+                         * frame. The host authors shared save bytes; the relay
+                         * transfers that exact state to the joining player. */
+                        if (online && (synchronized_actions & NETPLAY_ACTION_LOAD_STATE)) {
+                            if (game_shared_state_load(g, netplay_shared_slot_active()) == 0) {
+                                emu_mp_frame_refresh(f);
+                                render_reset();
+                                have = 1;
+                            }
+                        } else if (online && (synchronized_actions & NETPLAY_ACTION_SAVE_STATE)) {
+                            (void)game_shared_state_save(g);
+                        }
+
                         if (g == GAME_SML2 || f->game_state == 0) {
                             for (int player = 1; player < player_count; player++) {
                                 if (!f->mp_player_visible[player]) continue;
@@ -763,6 +1356,7 @@ static int play_multiplayer(int g)
                         if (n0 > 0) audio_game_push(a0, n0);
                         if (audio_ok()) audio_game_wait(audio_game_target());
                     }
+                }
                 }
             }
         }
@@ -788,6 +1382,7 @@ static int play_multiplayer(int g)
             pad_set_screen_color(render_avg_color());
         }
 
+        companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (have) {
@@ -804,6 +1399,7 @@ static int play_multiplayer(int g)
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
         }
         game_notice_draw(dt);
+        touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
         pad_frame(dt);
@@ -826,6 +1422,9 @@ static int play_multiplayer(int g)
         SDL_RenderPresent(ren);
     }
 
+    companion_set_display_enabled(0);
+    touch_reset_game(g);
+    if (online) netplay_game_end();
     dev_diag_end(quit == 2 ? "main window closed" : "multiplayer exited");
     emu_set_turbo(0);
     audio_game_end();
@@ -947,15 +1546,54 @@ static int play_external_game(int g)
 /* returns 0 = back to launcher, 1 = quit */
 static int play(int g)
 {
+    touch_reset_all();
+    companion_rewind_held = 0;
     ds_menu_close();
     if (g < 0 || g >= N_GAMES) return 0;
+    int online = netplay_is_connected();
+    if (online && g != GAME_SML && g != GAME_SML2) {
+        launcher_toast("Online co-op currently supports Super Mario Land and Super Mario Land 2.");
+        return 0;
+    }
     if (games[g].external_player) return play_external_game(g);
     char err[256];
     GameCfg *c = &settings.g[g];
     load_state_request_app[g] = 0;
-    if (launcher_prepare(g, err, sizeof err)) { launcher_toast(err); return 0; }
+
+    /* SML/SML2 widen the ROM's entity activation/culling limits as part of
+     * widescreen setup. Different per-PC widths can therefore make identical
+     * online inputs evolve into different worlds. Install one canonical maximum
+     * simulation width, then restore the user's preferred render width below. */
+    int local_wide_l = 0, local_wide_r = 0;
+    int sim_wide_l = 0, sim_wide_r = 0;
+    int saved_wide = c->wide;
+    if (online) {
+        wide_dims(g, saved_wide, &local_wide_l, &local_wide_r);
+        wide_dims(g, 100, &sim_wide_l, &sim_wide_r);
+        c->wide = 100;
+    }
+    int prepare_failed = launcher_prepare(g, err, sizeof err);
+    if (online) {
+        c->wide = saved_wide;
+        /* Keep each player's preferred visible width. Only ROM-side activation
+         * hooks stay canonical, so host and guest simulate the same entities. */
+        if (!prepare_failed && ppu_w == GB_W + sim_wide_l + sim_wide_r)
+            ppu_set_wide(local_wide_l, local_wide_r,
+                         games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
+    }
+    if (prepare_failed) { launcher_toast(err); return 0; }
+    if (online) {
+        const CartInfo *ci = cart_info();
+        if (!ci || netplay_game_begin(g, ci->crc) != 0) {
+            NetplayInfo info;
+            netplay_get_info(&info);
+            launcher_toast(info.status[0] ? info.status : "Both players must start the same game ROM.");
+            netplay_game_end();
+            return 0;
+        }
+    }
     audio_menu_music(0);
-    if ((g == GAME_SML || g == GAME_SML2) && c->multiplayer) return play_multiplayer(g);
+    if ((g == GAME_SML || g == GAME_SML2) && (c->multiplayer || online)) return play_multiplayer(g);
     char sp[1200], save_id[128];
     launcher_game_file_id(g, save_id, sizeof save_id);
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
@@ -989,6 +1627,8 @@ static int play(int g)
         if (emu_cpu_faulted()) { quit = 1; break; }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (companion_handle_event(g, &e, &paused, &quit)) continue;
+            touch_handle_event(&e);
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
             if (ds_consumed) continue;
@@ -1015,7 +1655,7 @@ static int play(int g)
             emu_rewind_step();
             if (emu_frame_get(f)) have = 1;
         }
-        int now_rewind = app_rewind_held(g) && !paused;
+        int now_rewind = (app_rewind_held(g) || companion_rewind_held) && !paused;
         if (now_rewind) {
             if (!rewind_held) {
                 if (emu_rewind_available()) {
@@ -1036,6 +1676,7 @@ static int play(int g)
             render_reset();
             rewind_held = 0;
         }
+        touch_apply_inputs(g, paused);
         uint8_t b, d;
         pad_poll(g, &b, &d);
         emu_input(rewind_held ? 0 : b, rewind_held ? 0 : d);
@@ -1059,6 +1700,7 @@ static int play(int g)
             render_draw(&r, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
+        companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (paused) {
@@ -1070,6 +1712,7 @@ static int play(int g)
             ui_text_c(F_BOLD, 13, UI_W / 2, 26, C_TEXT, "REWIND");
         }
         game_notice_draw(dt);
+        touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
         pad_frame(dt);
@@ -1078,6 +1721,8 @@ static int play(int g)
                              char p[1200]; snprintf(p, sizeof p, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks()); SDL_SaveBMP(s, p); SDL_FreeSurface(s); } }
         SDL_RenderPresent(ren);
     }
+    companion_set_display_enabled(0);
+    touch_reset_game(g);
     emu_stop();
     if (emu_cpu_faulted()) {
         uint8_t opcode = 0; uint16_t pc = 0; char msg[144];
@@ -1104,6 +1749,9 @@ int app_run(const char *autorun, const char *hack)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+    /* Finger events drive the touch overlay directly. Prevent SDL's synthetic
+       touch-as-mouse events from leaving the launcher pointer in a held state. */
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_EVENTS)) {
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
@@ -1113,6 +1761,10 @@ int app_run(const char *autorun, const char *hack)
         fprintf(stderr, "SDL_image: %s\\n", IMG_GetError());
     }
     settings_load();
+#if !defined(__ANDROID__)
+    if (settings.launcher_window_size == 0) { win_w = 900; win_h = 580; }
+    else if (settings.launcher_window_size == 2) { win_w = 1440; win_h = 900; }
+#endif
     win = SDL_CreateWindow("PipeClean", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, win_w, win_h,
                            SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!win) { fprintf(stderr, "window: %s\n", SDL_GetError()); return 1; }
@@ -1137,12 +1789,18 @@ int app_run(const char *autorun, const char *hack)
     int quit = 0;
     if (autorun) {
         int id = rom_identify_file(autorun);
-        if (id >= 0) { snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", autorun); quit = play(id); launcher_enter(); }
+        if (id >= 0) {
+            snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", autorun);
+            quit = play(id);
+            launcher_enter();
+            launcher_display_cache_reset();
+        }
     }
     Uint64 last = SDL_GetPerformanceCounter();
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            launcher_touch_event(&e);
             pad_event(&e);
             launcher_event(&e);
             switch (e.type) {
@@ -1156,10 +1814,11 @@ int app_run(const char *autorun, const char *hack)
                 break;
             }
         }
-        mouse_sync();
+        if (!launcher_touch_pointer) mouse_sync();
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
         last = now;
+        apply_launcher_display_preferences();
         int W, H;
         out_size(&W, &H);
         SDL_SetRenderDrawColor(ren, 14, 16, 22, 255);
@@ -1184,6 +1843,7 @@ int app_run(const char *autorun, const char *hack)
             settings_save();
             quit = play(r.play);
             launcher_enter();
+            launcher_display_cache_reset();
             memset(&ui_mouse, 0, sizeof ui_mouse);
         }
         if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_SHOWN)) SDL_Delay(30);

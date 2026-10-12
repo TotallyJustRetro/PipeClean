@@ -175,7 +175,10 @@ uint8_t rd8(uint16_t a)
         if (a < 0xFF00) return 0xFF;
         if (a < 0xFF80) return io_read((uint8_t)(a & 0x7F));
         if (a == 0xFFFF) return io_ie;
-        return hram[a & 0x7F];
+        {
+            uint8_t value = hram[a & 0x7F];
+            return wide_sml2_read_tap(a, value);
+        }
     }
 }
 
@@ -184,9 +187,20 @@ uint8_t rd8(uint16_t a)
 static uint16_t watch_lo[MAX_WATCH], watch_hi[MAX_WATCH];
 static int watch_n;
 static void (*watch_cb)(uint16_t, uint8_t, uint8_t);
+static int watch_override_pending;
+static uint16_t watch_override_addr;
+static uint8_t watch_override_value;
+
+void gb_watch_override(uint16_t addr, uint8_t value)
+{
+    watch_override_addr = addr;
+    watch_override_value = value;
+    watch_override_pending = 1;
+}
 
 void gb_watch_set(const uint16_t *addrs, int n, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v))
 {
+    watch_override_pending = 0;
     watch_n = n > MAX_WATCH ? MAX_WATCH : n;
     for (int i = 0; i < watch_n; i++) watch_lo[i] = watch_hi[i] = addrs[i];
     watch_cb = cb;
@@ -212,6 +226,10 @@ void wr8(uint16_t a, uint8_t v)
     if (sml2_clone_global_writes_suppressed &&
         (a == 0xA468 || a == 0xA2CE || a == 0xFF9B)) return;
     if (UNLIKELY(watch_n)) watch_check(a, v);
+    if (watch_override_pending && watch_override_addr == a) {
+        v = watch_override_value;
+        watch_override_pending = 0;
+    }
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
     case 4: case 5: case 6: case 7: cart_write_ctrl(a, v); return;     /* mapper registers */
@@ -416,7 +434,7 @@ int gb_state_load(const void *src, size_t n)
     memcpy(&s,p,sizeof s);
     if (s.magic != GB_STATE_MAGIC || s.version != GB_STATE_VERSION) return -1;
     size_t off = sizeof s;
-    if (s.ppu_n != ppu_state_size() || s.apu_n != apu_state_size() ||
+    if (!ppu_state_size_compatible(s.ppu_n) || s.apu_n != apu_state_size() ||
         s.cart_n != cart_state_size() || s.cart_n > sizeof s.cart_state ||
         s.cart_ram_n != cart_ram_state_size() ||
         off + s.ppu_n + s.apu_n + s.cart_ram_n > n) return -1;

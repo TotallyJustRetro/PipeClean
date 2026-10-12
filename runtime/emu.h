@@ -20,6 +20,8 @@ typedef struct {
     int w, xoff;
     int player_x, player_y;
     uint8_t scroll_x, game_state;
+    uint8_t level_id, level_bank; /* Current stage; SML1 level_bank carries the world nibble. */
+    uint8_t reserve_item;       /* 0 = empty; 1 = reserved mushroom. */
     uint8_t obp0, obp1, sprite_size16;
     uint8_t mario_oam[16];      /* Player 1 Mario OAM */
     uint8_t mario_oam2[16];     /* Player 2 OAM in local multiplayer */
@@ -58,6 +60,7 @@ void emu_stop(void);
 int  emu_running(void);
 int  emu_frame_get(Frame *f);
 void emu_input(uint8_t buttons, uint8_t dpad);
+void emu_reserve_item_use(void);
 void emu_set_paused(int p);
 void emu_set_turbo(int t);
 void emu_set_save_path(const char *path);

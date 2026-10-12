@@ -14,5 +14,11 @@ int  launcher_take_load_state(int game);
 int  launcher_prepare(int game, char *err, size_t n);
 /* Stable per-profile key used to keep save states and battery saves separate. */
 void launcher_game_file_id(int game, char *out, size_t n);
+void launcher_shared_slot_paths(int game, int slot,
+                                char *state_path, size_t state_size,
+                                char *marker_path, size_t marker_size);
+int launcher_shared_slot_is_saved(int game, int slot);
+void launcher_shared_slot_name_get(int game, int slot, char *out, size_t out_size);
+int launcher_shared_slot_name_set(int game, int slot, const char *name);
 void launcher_shutdown(void);
 void launcher_set_renderer(SDL_Renderer *r);

@@ -1,4 +1,6 @@
+#ifndef __ANDROID__
 #define SDL_MAIN_HANDLED
+#endif
 #include <SDL.h>
 #include <stdarg.h>
 #include <ctype.h>

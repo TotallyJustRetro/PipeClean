@@ -56,5 +56,31 @@ int main(void)
     ppu_write(0x40, 0x91);
     ppu_tick(252);
     assert(ppu_shade[0][0] == 1);
+
+    /* Homeworld must keep the same native-scale viewport as regular SML2
+       gameplay. Widescreen adds side margins; it must not shrink the 512px map
+       into a tiny overview above the HUD when WX/WY identify the Homeworld. */
+    ppu_reset();
+    ppu_set_cgb_mode(0);
+    ppu_set_wide(49, 33, 0, 0, 0);
+    ppu_write(0x43, 64);   /* SCX */
+    ppu_write(0x4A, 136);  /* WY */
+    ppu_write(0x4B, 80);   /* WX */
+    ppu_write(0x40, 0xE3); /* Homeworld LCDC/window setup */
+    ppu_tick(252);
+    assert(ppu_w == 242);
+    assert(ppu_xoff == 49);
+    ppu_tick(11 * 456);
+    assert(ppu_w == 242);
+    assert(ppu_xoff == 49);
+    ppu_tick((135 - 11) * 456);
+    assert(ppu_w == 242);
+    assert(ppu_xoff == 49);
+
+    /* Returning to SML2's regular window layout keeps the configured width. */
+    ppu_write(0x4B, 7);
+    ppu_tick(70224);
+    assert(ppu_w == 242);
+    assert(ppu_xoff == 49);
     return 0;
 }

@@ -39,3 +39,14 @@ __pycache__/
 *.user
 .DS_Store
 Thumbs.db
+
+# Android/Gradle generated files
+android/deps/
+android/.gradle/
+android/local.properties
+android/.idea/
+android/app/build/
+android/build/
+
+# Downloaded build-time CA trust bundle
+assets/cacert.pem

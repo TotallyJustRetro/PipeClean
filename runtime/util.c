@@ -1,5 +1,11 @@
 #include <errno.h>
 #include "util.h"
+#ifdef __ANDROID__
+#include <SDL.h>
+#include <SDL_system.h>
+#include <jni.h>
+#include <pthread.h>
+#endif
 #undef fopen
 #include <string.h>
 #include <stdlib.h>
@@ -88,6 +94,71 @@ void open_folder(const char *path)
     wchar_t wp[2048];
     if (to_w(path, wp, 2048)) ShellExecuteW(NULL, L"open", wp, NULL, NULL, SW_SHOWNORMAL);
 }
+#elif defined(__ANDROID__)
+static pthread_mutex_t android_picker_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t android_picker_cond = PTHREAD_COND_INITIALIZER;
+static int android_picker_done;
+static char android_picker_result[4096];
+
+JNIEXPORT void JNICALL
+Java_com_pipeclean_app_PipeCleanActivity_nativeDocumentPicked(JNIEnv *env, jclass cls, jstring path)
+{
+    (void)cls;
+    const char *utf = path ? (*env)->GetStringUTFChars(env, path, NULL) : NULL;
+    pthread_mutex_lock(&android_picker_mutex);
+    if (utf) {
+        snprintf(android_picker_result, sizeof android_picker_result, "%s", utf);
+        (*env)->ReleaseStringUTFChars(env, path, utf);
+    } else {
+        android_picker_result[0] = 0;
+    }
+    android_picker_done = 1;
+    pthread_cond_signal(&android_picker_cond);
+    pthread_mutex_unlock(&android_picker_mutex);
+}
+
+int dlg_pick(int kind, const char *title, char *out, size_t n)
+{
+    if (!out || !n) return 0;
+    out[0] = 0;
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return 0;
+
+    pthread_mutex_lock(&android_picker_mutex);
+    android_picker_done = 0;
+    android_picker_result[0] = 0;
+    pthread_mutex_unlock(&android_picker_mutex);
+
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "openPipeCleanDocumentPicker",
+                                                   "(ILjava/lang/String;)V") : NULL;
+    jstring jtitle = (*env)->NewStringUTF(env, title ? title : "Choose a file");
+    if (!method || !jtitle) {
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        if (jtitle) (*env)->DeleteLocalRef(env, jtitle);
+        if (cls) (*env)->DeleteLocalRef(env, cls);
+        return 0;
+    }
+    (*env)->CallVoidMethod(env, activity, method, (jint)kind, jtitle);
+    (*env)->DeleteLocalRef(env, jtitle);
+    (*env)->DeleteLocalRef(env, cls);
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+        pthread_mutex_lock(&android_picker_mutex);
+        android_picker_done = 1;
+        android_picker_result[0] = 0;
+        pthread_mutex_unlock(&android_picker_mutex);
+    }
+
+    pthread_mutex_lock(&android_picker_mutex);
+    while (!android_picker_done) pthread_cond_wait(&android_picker_cond, &android_picker_mutex);
+    snprintf(out, n, "%s", android_picker_result);
+    pthread_mutex_unlock(&android_picker_mutex);
+    return out[0] != 0;
+}
+
+void open_folder(const char *path) { (void)path; }
 #else
 int dlg_pick(int kind, const char *title, char *out, size_t n)
 {

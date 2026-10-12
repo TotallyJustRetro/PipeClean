@@ -2,6 +2,11 @@
 #include <stdint.h>
 #include "util.h"
 
+/* Deployment workflow replaces this with the project's public TLS relay. */
+#ifndef PIPECLEAN_DEFAULT_RELAY_ENDPOINT
+#define PIPECLEAN_DEFAULT_RELAY_ENDPOINT "wss://pipeclean.onrender.com"
+#endif
+
 typedef struct {
     const char *name;
     uint32_t bg[4], ob0[4], ob1[4];     /* 0xRRGGBB, lightest -> darkest */
@@ -14,7 +19,8 @@ extern const int n_palettes;
 #include "games.h"
 
 enum { ASPECT_ORIGINAL, ASPECT_4_3, ASPECT_16_9, N_ASPECT };
-enum { SCALE_PIXEL, SCALE_SMOOTH, SCALE_STRETCH, N_SCALE };
+/* Preserve existing persisted values; append new modes only. */
+enum { SCALE_PIXEL, SCALE_SMOOTH, SCALE_STRETCH, SCALE_PIXEL_STRETCH, N_SCALE };
 enum { SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_FULLSCREEN, N_SIZE };
 enum { BTN_A, BTN_B, BTN_SELECT, BTN_START, BTN_RIGHT, BTN_LEFT, BTN_UP, BTN_DOWN, N_BTN };
 enum { LED_OFF, LED_PALETTE, LED_CUSTOM, LED_SCREEN, N_LED };
@@ -50,18 +56,25 @@ typedef struct {
     int bg_dim;                         /* 0..80 percent darkening of the background image */
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
+    int dual_screen;                    /* Show the Android second-screen deck for this game. */
     int multiplayer;                    /* local multiplayer mode; default off */
     int multiplayer_players;             /* selected player count, clamped to 2..4 */
     char p2_name[32];                    /* Player 2 default name: Luigi */
     int p2_color;
+    int p2_rgb;                     /* custom character colour, 0xRRGGBB */
+    int p2_custom;                        /* use p2_rgb instead of the legacy preset */
     int p2_respawn_key, p2_respawn_pad;
     char p2_sfx_path[N_P2_SFX][512];
     char p3_name[32];                    /* Player 3 default name: Bunzo */
     int p3_color;
+    int p3_rgb;
+    int p3_custom;
     int p3_respawn_key, p3_respawn_pad;
     char p3_sfx_path[N_P2_SFX][512];
     char p4_name[32];                    /* Player 4 default name: Florbo */
     int p4_color;
+    int p4_rgb;
+    int p4_custom;
     int p4_respawn_key, p4_respawn_pad;
     char p4_sfx_path[N_P2_SFX][512];
     int state_slot;                      /* save-state slot 0..9 */
@@ -91,6 +104,14 @@ typedef struct {
     int menu_music, menu_music_vol, ui_sfx, ui_sfx_vol;
     char menu_music_path[512], ui_sfx_path[N_UI_SFX][512];
     int last_tab, show_stats;
+    int launcher_ui_scale;              /* 75..125 percent, persisted UI zoom */
+    int launcher_window_size;           /* 0 = compact, 1 = default, 2 = large */
+    int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
+    char online_name[32];
+    char online_server[160];          /* direct peer or traversal host:port */
+    int online_connection_mode;          /* 0 = direct connection, 1 = traversal server */
+    int online_color;                /* default profile colour, 0xRRGGBB */
+    int touch_controls;                   /* on-screen controls are enabled */
     FilterCfg flt;
     GameCfg g[N_GAMES];
 } Settings;

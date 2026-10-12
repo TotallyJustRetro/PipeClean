@@ -53,6 +53,19 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Iruntime tests/test_cgb_ppu.c runtime/ppu.c -o test_cgb_ppu
           ./test_cgb_ppu
 
+      - name: Validate relay and Render bridge syntax
+        run: |
+          node --check server/relay.js
+          node --check server/render-server.js
+
+      - name: Test TCP relay room creation and message forwarding
+        run: node tests/test_relay.js
+
+      - name: Test Render WebSocket relay bridge
+        run: |
+          npm install --prefix server --no-audit --no-fund
+          node tests/test_render_bridge.js
+
       - name: Validate Python tools
         run: |
           python3 -m py_compile \
@@ -155,7 +168,7 @@ jobs:
 
       - name: Configure full runtime
         run: |
-          cmake -S . -B build-ci -DROM="$GITHUB_WORKSPACE/ci/sml2_smoke.gb"
+          cmake -S . -B build-ci -DROM="$GITHUB_WORKSPACE/ci/sml2_smoke.gb" -DCMAKE_BUILD_TYPE=Release
 
       - name: Build full runtime and test target
         run: |
@@ -204,6 +217,43 @@ jobs:
           path: ci/mp-test-report/*.jsonl
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Stage Linux runtime artifact
+        run: |
+          mkdir -p dist/PipeClean-Linux-x64/assets
+          cp build-ci/PipeClean dist/PipeClean-Linux-x64/PipeClean
+          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Linux-x64/assets/
+          cp README.md INSTALL.md LEGAL.md THIRD_PARTY.md dist/PipeClean-Linux-x64/
+          cat > dist/PipeClean-Linux-x64/README-Linux.txt <<'EOF'
+          PipeClean Linux x86-64 build
+
+          Requires SDL2 2.x and SDL2_image runtime libraries.
+          On Ubuntu/Debian, install them with:
+            sudo apt install libsdl2-2.0-0 libsdl2-image-2.0-0
+
+          Run from this directory with:
+            ./PipeClean
+
+          Use a ROM you are legally entitled to use. No game ROM is included.
+          EOF
+          if ldd dist/PipeClean-Linux-x64/PipeClean | grep -q "not found"; then
+            ldd dist/PipeClean-Linux-x64/PipeClean
+            exit 1
+          fi
+          test -s dist/PipeClean-Linux-x64/assets/pipeclean-icon.svg
+          test -s dist/PipeClean-Linux-x64/assets/pipeclean-logo.webp
+          test -s dist/PipeClean-Linux-x64/assets/cacert.pem
+
+      - name: Package Linux runtime artifact
+        run: tar -czf PipeClean-Linux-x64.tar.gz -C dist PipeClean-Linux-x64
+
+      - name: Upload Linux runtime
+        uses: actions/upload-artifact@v7
+        with:
+          name: PipeClean-Linux-x64
+          path: PipeClean-Linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Configure PipeClean Dev build
         run: |
@@ -271,7 +321,7 @@ jobs:
         run: |
           mkdir -p dist/PipeClean-Windows-x64/assets
           cp build-windows/PipeClean.exe dist/PipeClean-Windows-x64/PipeClean.exe
-          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp dist/PipeClean-Windows-x64/assets/
+          cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Windows-x64/assets/
           {
             ldd build-windows/PipeClean.exe
             ldd /ucrt64/bin/SDL2.dll
@@ -280,6 +330,7 @@ jobs:
           done
           test -s dist/PipeClean-Windows-x64/assets/pipeclean-icon.svg
           test -s dist/PipeClean-Windows-x64/assets/pipeclean-logo.svg
+          test -s dist/PipeClean-Windows-x64/assets/cacert.pem
           test -s assets/pipeclean-logo.webp
           test -s dist/PipeClean-Windows-x64/assets/pipeclean-logo.webp
 
