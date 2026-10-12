@@ -356,6 +356,72 @@ static int game_suspend(int g)
     return 0;
 }
 
+static int game_shared_state_save(int g)
+{
+    int slot = netplay_shared_slot_active();
+    char path[1200], marker[1200];
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT) {
+        game_notice("Choose a shared save slot in the Netplay lobby first.");
+        return -1;
+    }
+    launcher_shared_slot_paths(g, slot, path, sizeof path, marker, sizeof marker);
+    if (!path[0] || !marker[0]) {
+        game_notice("Couldn't prepare the shared save slot.");
+        return -1;
+    }
+    settings.g[g].state_slot = slot;
+    netplay_shared_slot_mark_unsynced(slot);
+    if (!netplay_is_host()) {
+        queue_state_thumbnail(g, slot);
+        game_notice("Shared save requested — waiting for the host to sync it.");
+        return 0;
+    }
+    if (emu_state_save_file(path, 0) != 0) {
+        game_notice("Couldn't create the shared save.");
+        return -1;
+    }
+    queue_state_thumbnail(g, slot);
+    if (!netplay_shared_save_send_file(slot, path)) {
+        game_notice("Couldn't send the shared save to the other player.");
+        return -1;
+    }
+    char msg[96];
+    snprintf(msg, sizeof msg, "Syncing shared save — Slot %d", slot + 1);
+    game_notice(msg);
+    return 0;
+}
+
+static int game_shared_state_load(int g, int slot)
+{
+    char path[1200], marker[1200];
+    int left = 0, right = 0;
+    if (slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT ||
+        !netplay_shared_slot_is_synced(slot)) {
+        game_notice("That shared slot isn't synchronized on both players.");
+        return -1;
+    }
+    launcher_shared_slot_paths(g, slot, path, sizeof path, marker, sizeof marker);
+    if (!state_file_exists(path) || !state_file_exists(marker)) {
+        game_notice("The shared save file is missing on this device.");
+        return -1;
+    }
+    if (emu_rewind_available()) emu_rewind_end();
+    if (emu_state_load_file(path, 0) != 0) {
+        game_notice("Couldn't load the shared save. The session was not changed.");
+        return -1;
+    }
+    /* Core state is shared, but each player's preferred PPU output width is local. */
+    wide_dims(g, settings.g[g].wide, &left, &right);
+    ppu_set_wide(left, right, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
+    render_reset();
+    settings.g[g].state_slot = slot;
+    char msg[96];
+    snprintf(msg, sizeof msg, "Loaded shared state — Slot %d", slot + 1);
+    game_notice(msg);
+    dev_diag_event("ONLINE_SHARED_STATE_LOADED");
+    return 0;
+}
+
 static int game_action_key_match(int g, int action, const SDL_Event *e)
 {
     if (!e || e->type != SDL_KEYDOWN || e->key.repeat || action < 0 || action >= N_ACTION) return 0;
@@ -735,6 +801,8 @@ static int play_multiplayer(int g)
     ds_menu_close();
     GameCfg *c = &settings.g[g];
     int online = netplay_is_connected();
+    int online_display_left = 0, online_display_right = 0;
+    if (online) wide_dims(g, c->wide, &online_display_left, &online_display_right);
     int player_count = online ? 2 : c->multiplayer_players;
     if (player_count < 2) player_count = c->multiplayer_players = 2;
     if (player_count > MAX_MP_PLAYERS) player_count = c->multiplayer_players = MAX_MP_PLAYERS;
@@ -769,6 +837,27 @@ static int play_multiplayer(int g)
         if (online) netplay_game_end();
         launcher_toast("Couldn't start multiplayer.");
         return 0;
+    }
+    int initial_shared_load = online ? netplay_shared_slot_load() : -1;
+    if (online && initial_shared_load >= 0) {
+        char shared_path[1200], marker_path[1200];
+        launcher_shared_slot_paths(g, initial_shared_load,
+                                   shared_path, sizeof shared_path,
+                                   marker_path, sizeof marker_path);
+        if (!netplay_shared_slot_is_synced(initial_shared_load) ||
+            !state_file_exists(shared_path) || !state_file_exists(marker_path) ||
+            emu_state_load_file(shared_path, 0) != 0) {
+            emu_mp_end();
+            netplay_game_end();
+            tex_collect_save();
+            pad_set_context(g, 0);
+            launcher_toast("Couldn't load the shared starting save. Check both players' slots.");
+            return 0;
+        }
+        ppu_set_wide(online_display_left, online_display_right,
+                     games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
+        settings.g[g].state_slot = initial_shared_load;
+        render_reset();
     }
     if (requested_load >= 0) {
         c->state_slot = requested_load;
@@ -858,7 +947,20 @@ static int play_multiplayer(int g)
                 }
             }
 
-            int action = online ? 0 : app_handle_action_event(g, &e, &paused, &quit);
+            int action = 0;
+            if (online) {
+                for (int a = ACT_SAVE_STATE; a <= ACT_LOAD_STATE; a++) {
+                    if (!game_action_key_match(g, a, &e) && !pad_binding_event(g, a, &e)) continue;
+                    online_actions |= (uint8_t)(a == ACT_SAVE_STATE
+                        ? NETPLAY_ACTION_SAVE_STATE : NETPLAY_ACTION_LOAD_STATE);
+                    action = a + 1;
+                    game_notice(a == ACT_SAVE_STATE
+                        ? "Shared save requested…" : "Shared state load requested…");
+                    break;
+                }
+            } else {
+                action = app_handle_action_event(g, &e, &paused, &quit);
+            }
             if (e.type == SDL_QUIT) quit = 2;
             else if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                 switch (e.key.keysym.sym) {
@@ -920,6 +1022,7 @@ static int play_multiplayer(int g)
                 rewind_held = 0;
             }
             if (!paused) {
+                uint8_t synchronized_actions = 0;
                 touch_apply_inputs(g, paused);
                 if (online) {
                     /* Host owns Mario/P1; joining client owns Luigi/P2 on both replicas. */
@@ -948,6 +1051,7 @@ static int play_multiplayer(int g)
                     } else {
                         buttons[0] = p1b; dpad[0] = p1d;
                         buttons[1] = p2b; dpad[1] = p2d;
+                        synchronized_actions = (uint8_t)(p1a | p2a);
                         online_actions = 0;
                         online_frame++;
                         if (p2a & NETPLAY_ACTION_RESPAWN_P2) emu_mp_request_respawn(1);
@@ -1019,6 +1123,19 @@ static int play_multiplayer(int g)
                             }
                         }
                         emu_rewind_capture();
+
+                        /* Both replicas consume the same action bits on this
+                         * frame. The host authors shared save bytes; the relay
+                         * transfers that exact state to the joining player. */
+                        if (online && (synchronized_actions & NETPLAY_ACTION_LOAD_STATE)) {
+                            if (game_shared_state_load(g, netplay_shared_slot_active()) == 0) {
+                                emu_mp_frame_refresh(f);
+                                render_reset();
+                                have = 1;
+                            }
+                        } else if (online && (synchronized_actions & NETPLAY_ACTION_SAVE_STATE)) {
+                            (void)game_shared_state_save(g);
+                        }
 
                         if (g == GAME_SML2 || f->game_state == 0) {
                             for (int player = 1; player < player_count; player++) {
