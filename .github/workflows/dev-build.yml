@@ -2,9 +2,9 @@ name: PipeClean Dev Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/online-android-foundation]
   pull_request:
-    branches: [main, fix/sml-dx-widescreen-revision]
+    branches: [main, fix/sml-dx-widescreen-revision, feature/online-android-foundation]
   workflow_dispatch:
 
 permissions:
@@ -68,16 +68,16 @@ jobs:
           cp build-dev/PipeClean dist/PipeClean-Dev-Linux-x64/PipeClean
           cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Dev-Linux-x64/assets/
           cp README.md INSTALL.md LEGAL.md THIRD_PARTY.md dist/PipeClean-Dev-Linux-x64/
-          printf '%s\n' \
-            'PipeClean Linux dependencies:' \
-            '  - SDL2 runtime (SDL2 2.x)' \
-            '  - SDL2_image runtime' \
-            '  - Python 3 is not required to run the packaged native runtime.' \
-            '' \
-            'On Ubuntu/Debian, install missing runtime libraries with:' \
-            '  sudo apt install libsdl2-2.0-0 libsdl2-image-2.0-0' \
-            '' \
-            'Run from this directory with: ./PipeClean' \
+          printf '%s\\n' \\
+            'PipeClean Linux dependencies:' \\
+            '  - SDL2 runtime (SDL2 2.x)' \\
+            '  - SDL2_image runtime' \\
+            '  - Python 3 is not required to run the packaged native runtime.' \\
+            '' \\
+            'On Ubuntu/Debian, install missing runtime libraries with:' \\
+            '  sudo apt install libsdl2-2.0-0 libsdl2-image-2.0-0' \\
+            '' \\
+            'Run from this directory with: ./PipeClean' \\
             > dist/PipeClean-Dev-Linux-x64/README-Linux.txt
           if ldd dist/PipeClean-Dev-Linux-x64/PipeClean | grep -q "not found"; then
             ldd dist/PipeClean-Dev-Linux-x64/PipeClean
@@ -133,7 +133,7 @@ jobs:
           $rom[0x149] = 0x00
           $rom[0x801C] = 0x19
           New-Item -ItemType Directory -Force ci | Out-Null
-          [IO.File]::WriteAllBytes("$PWD\ci\sml2_smoke.gb", $rom)
+          [IO.File]::WriteAllBytes("$PWD\\ci\\sml2_smoke.gb", $rom)
 
       - name: Configure PipeClean Dev
         shell: msys2 {0}
@@ -159,7 +159,7 @@ jobs:
           {
             ldd build-dev/PipeClean.exe
             ldd /ucrt64/bin/SDL2.dll
-          } | awk '/=> \/ucrt64\// {print $3}' | sort -u | while read -r dll; do
+          } | awk '/=> \\/ucrt64\\// {print $3}' | sort -u | while read -r dll; do
             cp "$dll" dist/PipeClean-Dev-Windows-x64/
           done
           test -s dist/PipeClean-Dev-Windows-x64/assets/pipeclean-icon.svg
@@ -170,8 +170,8 @@ jobs:
       - name: Package PipeClean Dev artifact
         shell: pwsh
         run: |
-          Copy-Item README.md, INSTALL.md, LEGAL.md, THIRD_PARTY.md dist\PipeClean-Dev-Windows-x64\
-          Compress-Archive -Path dist\PipeClean-Dev-Windows-x64 -DestinationPath PipeClean-Dev-Windows-x64.zip -Force
+          Copy-Item README.md, INSTALL.md, LEGAL.md, THIRD_PARTY.md dist\\PipeClean-Dev-Windows-x64\\
+          Compress-Archive -Path dist\\PipeClean-Dev-Windows-x64 -DestinationPath PipeClean-Dev-Windows-x64.zip -Force
 
       - name: Upload Dev build
         uses: actions/upload-artifact@v7
