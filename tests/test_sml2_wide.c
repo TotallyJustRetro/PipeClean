@@ -227,16 +227,27 @@ int main(void)
     if (!wide_sml2_homeworld_active(0xE3, 80, 0x88) ||
         wide_sml2_homeworld_active(0xE3, 7, 0x88) ||
         wide_sml2_homeworld_active(0xE3, 80, 0x87)) return 43;
-    /* Homeworld now renders a 384px-wide view with 112px of live-map margin
-       on each side. It must still leave the native centre untouched. */
-    wide_sml2_prepare_frame(112, 112, 64, 32, 0xE3, 80, 0x88, vram);
+    /* Fit the whole 384px canvas inside the 512px map. At camera X=320,
+       use 192px on the left and 32px on the right instead of wasting pixels
+       beyond the right map edge. Other positions should remain balanced. */
+    int home_left = 0, home_right = 0;
+    wide_sml2_homeworld_dims(0, 224, &home_left, &home_right);
+    if (home_left != 0 || home_right != 224) return 44;
+    wide_sml2_homeworld_dims(176, 224, &home_left, &home_right);
+    if (home_left != 112 || home_right != 112) return 45;
+    wide_sml2_homeworld_dims(320, 224, &home_left, &home_right);
+    if (home_left != 192 || home_right != 32) return 46;
+    wide_sml2_homeworld_dims(352, 224, &home_left, &home_right);
+    if (home_left != 224 || home_right != 0) return 47;
+
+    wide_sml2_prepare_frame(192, 32, 64, 32, 0xE3, 80, 0x88, vram);
     if (!wide_sml2_world_origin(&world_x, &world_y) ||
-        world_x != 208 || world_y != 32) return 39;
+        world_x != 128 || world_y != 32) return 39;
     if (!wide_sml2_margin_tile(0, 0, &resolved_tile, &world_x, &world_y) ||
-        world_x != 208 || world_y != 32 || resolved_tile != 39) return 40;
-    if (!wide_sml2_margin_tile(272, 0, &resolved_tile, &world_x, &world_y) ||
+        world_x != 128 || world_y != 32 || resolved_tile != 29) return 40;
+    if (!wide_sml2_margin_tile(352, 0, &resolved_tile, &world_x, &world_y) ||
         world_x != 480 || world_y != 32 || resolved_tile != 73) return 41;
-    if (wide_sml2_margin_tile(112, 0, &resolved_tile, &world_x, &world_y)) return 42;
+    if (wide_sml2_margin_tile(192, 0, &resolved_tile, &world_x, &world_y)) return 42;
 
     /* Switching back to native width must clear the hooks from the prior
        widescreen session, so they do not keep changing SML2 spawn/cull reads. */
