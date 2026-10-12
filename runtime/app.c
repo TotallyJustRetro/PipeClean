@@ -137,10 +137,13 @@ static void touch_reset_all(void)
 
 static int touch_overlay_visible(void)
 {
-    if (!settings.touch_controls) return 0;
 #if defined(__ANDROID__)
-    return 1;
+    /* Handheld Android devices such as the AYN Thor have physical controls.
+     * Keep the game view clean; the secondary display is reserved for the
+     * companion status / utility deck rather than duplicate virtual buttons. */
+    return 0;
 #else
+    if (!settings.touch_controls) return 0;
     return SDL_GetNumTouchDevices() > 0;
 #endif
 }
@@ -164,6 +167,12 @@ static int touch_region_at(float x, float y)
 
 static void touch_handle_event(const SDL_Event *e)
 {
+#if defined(__ANDROID__)
+    /* Do not let invisible virtual-button hit regions intercept touch on
+     * Android handhelds with physical controls. */
+    (void)e;
+    return;
+#endif
     if (!e) return;
 
     /* Android can suspend or defocus SDL without delivering FINGERUP for
