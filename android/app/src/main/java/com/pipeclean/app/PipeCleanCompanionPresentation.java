@@ -338,8 +338,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
             button(c,232,527,198,58,"LOAD","RESTORE",LOAD,false);
             button(c,20,594,198,58,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
             button(c,232,594,198,58,"REWIND","HOLD TO REWIND",REWIND,true);
-            button(c,20,661,198,58,"BACKGROUND","CHANGE PNG / GIF",BACKGROUND,false);
-            button(c,232,661,198,58,"CLOSE GAME","EXIT TO MENU",CLOSE_GAME,false);
 
             text(c, paused ? "GAME PAUSED" : "READY WHEN YOU ARE", 225, 757, 10, accent(), true);
             text(c, wallpaperPath.isEmpty() ? "DEFAULT ARTWORK" : "CUSTOM WALLPAPER ACTIVE",
@@ -596,8 +594,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,232,527,198,58)) return LOAD;
                 if(inside(x,y,20,594,198,58)) return PAUSE;
                 if(inside(x,y,232,594,198,58)) return REWIND;
-                if(inside(x,y,20,661,198,58)) return BACKGROUND;
-                if(inside(x,y,232,661,198,58)) return CLOSE_GAME;
                 if(inside(x,y,112,160,226,230)) return ITEM_USE;
             } else {
                 if(inside(x,y,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
@@ -607,10 +603,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     if(inside(x,y,48,214,55,35)) return SLOT_PREV;
                     if(inside(x,y,121,214,55,35)) return SLOT_NEXT;
                 }
-                if(inside(x,y,28,354,118,66)) return SAVE;
-                if(inside(x,y,152,354,118,66)) return LOAD;
-                if(inside(x,y,276,354,118,66)) return PAUSE;
-                if(inside(x,y,400,354,118,66)) return REWIND;
                 if(inside(x,y,94,354,145,66)) return SAVE;
                 if(inside(x,y,247,354,145,66)) return LOAD;
                 if(inside(x,y,400,354,145,66)) return PAUSE;
