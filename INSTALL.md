@@ -1,6 +1,6 @@
 # Installation & Build
 
-PipeClean is currently a development project. A tested Windows x64 build is also produced by GitHub Actions, but PipeClean is not yet a polished one-click release.
+PipeClean is currently a development project. GitHub Actions produces Windows x64 and Linux x64 test-build artifacts, but PipeClean is not yet a polished one-click release.
 
 ## Requirements
 
@@ -14,10 +14,19 @@ PipeClean is currently a development project. A tested Windows x64 build is also
 
 ### Linux
 
-- Python 3
-- GCC or Clang
-- CMake or GNU Make
-- SDL2 development package
+For running a prebuilt Linux artifact:
+
+- 64-bit x86 Linux
+- SDL2 2.x runtime
+- SDL2_image runtime
+
+On Ubuntu/Debian, install the runtime libraries with:
+
+```bash
+sudo apt install libsdl2-2.0-0 libsdl2-image-2.0-0
+```
+
+For compiling from source, install Python 3, GCC or Clang, CMake or GNU Make, and the SDL2 / SDL2_image **development** packages (for Ubuntu/Debian: `build-essential cmake python3 libsdl2-dev libsdl2-image-dev`). `zenity` or `kdialog` provides native-style file selection when available.
 
 ### SDL2 note
 
@@ -28,6 +37,20 @@ A runtime `SDL2.dll` is **not** enough to compile PipeClean. You need the SDL2 d
 Each successful GitHub Actions run produces a PipeClean-Windows-x64 artifact. It contains PipeClean.exe, the Windows runtime DLLs used by the build, the PipeClean icon/assets, and the project documentation. The CI package uses a synthetic test cartridge only; commercial ROMs are never included.
 
 For development builds, use the normal CMake instructions below.
+
+## Linux CI build
+
+The [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml) produces a `PipeClean-Dev-Linux-x64.tar.gz` artifact. Open a successful workflow run and download its `PipeClean-Dev-Linux-x64` artifact. It contains the native `PipeClean` executable, required project assets and documentation; it does not include a game ROM.
+
+Extract it, install the runtime dependencies listed above, then launch from the extracted directory:
+
+```bash
+tar -xzf PipeClean-Dev-Linux-x64.tar.gz
+cd PipeClean-Dev-Linux-x64
+./PipeClean
+```
+
+The Linux package targets x86-64 Linux and is built on Ubuntu 24.04. Other distributions may require installing equivalent SDL2 runtime packages. These are development/test artifacts, not versioned GitHub Releases, and workflow artifacts expire after 30 days.
 
 ## Build with CMake
 
