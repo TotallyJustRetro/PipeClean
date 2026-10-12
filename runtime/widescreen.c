@@ -364,7 +364,29 @@ static int sml2_scan_value(int side)
  * toward the widened target by at most one 8 px quantum per scan. */
 uint8_t wide_read_sml2(uint16_t address, uint8_t value)
 {
-    if (!sml2_right_extra && !sml2_left_extra) return value;
+    if ((!sml2_right_extra && !sml2_left_extra) || !rom || !cart_hi)
+        return value;
+
+    /* Widened activation keeps actors alive outside the native 160px strip.
+     * The stock draw routine computes screen X modulo 256, so an actor beyond
+     * that strip can wrap back into the centre as a ghost. At the verified
+     * $409B/$409E read of $A2B1, give that routine a scroll shadow that makes
+     * its own whole-actor cull reject only actors the native strip cannot see.
+     * Their separately captured world-space sprites are still drawn in margins. */
+    if (address == 0xA2B1u && sml2_is_actor_bank(sml2_mapped_bank()) &&
+        (cpu.pc == 0x409Bu || cpu.pc == 0x409Eu)) {
+        int actor_x = (rd8(0xFFD0u) << 8) | rd8(0xFFD1u);
+        int cam_x = sml2_read16(SML2_CAMERA_X);
+        int native_left = cam_x - SML2_CAMERA_CENTRE_X;
+        int scx = rd8(0xFF43u);
+        native_left += (int8_t)(uint8_t)(scx - (native_left & 0xFF));
+        int rel = actor_x - native_left;
+        if (rel < -8 || rel >= 176)
+            return (uint8_t)((rd8(0xFFD1u) + 8u - 0xB8u) & 0xFFu);
+    }
+
+    /* The activation/cull/scanner hooks below target the bank-2 world builder.
+     * Do not apply those overrides while a different ROM bank is mapped. */
     if (cart_hi != rom + 0x8000) return value;
 
     /* The entity-loader rebuilds both its activation and cull windows from
