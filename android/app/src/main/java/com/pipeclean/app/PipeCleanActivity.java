@@ -122,7 +122,13 @@ public final class PipeCleanActivity extends SDLActivity {
 
     private void dismissCompanionDisplay() {
         if (companionPresentation != null) {
-            try { companionPresentation.dismiss(); } catch (Exception ignored) {}
+            try {
+                // The shared deck View may currently be overlaid on the primary
+                // SDL surface. Return it to the Presentation before dismissing so
+                // it cannot remain as a stale full-screen overlay.
+                companionPresentation.setPipeSwapMode(false);
+                companionPresentation.dismiss();
+            } catch (Exception ignored) {}
             companionPresentation = null;
         }
         nativeCompanionDisplayAvailable(0);
