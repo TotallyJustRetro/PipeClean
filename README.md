@@ -74,9 +74,11 @@ The artifact is built and smoke-tested against a synthetic test cartridge. No co
 
 ## 🐧 Linux build
 
-GitHub Actions also produces a **Linux x86-64 development build**. Open the [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml), choose a successful run, and download the `PipeClean-Dev-Linux-x64` artifact. Extract the `.tar.gz`, install the SDL2 and SDL2_image runtime libraries if they are missing, and launch `./PipeClean` from the extracted folder.
+GitHub Actions produces a **Linux x86-64 runtime build**. Open a successful [Regression Tests workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/regression.yml) run and download the `PipeClean-Linux-x64` artifact. Extract the `.tar.gz`, install the SDL2 and SDL2_image runtime libraries if they are missing, and launch `./PipeClean` from the extracted folder.
 
-The build is smoke-tested on Ubuntu 24.04 and includes the executable, PipeClean assets, and documentation. It does not include a commercial ROM. Linux runtime requirements and full extraction instructions are in [INSTALL.md](INSTALL.md). Workflow artifacts expire after 30 days; this is a CI artifact rather than a permanent GitHub Release.
+The build is smoke-tested on Ubuntu 24.04 and includes the executable, PipeClean assets, and documentation. It does not include a commercial ROM. Linux runtime requirements and full extraction instructions are in [INSTALL.md](INSTALL.md). CI artifacts expire after 30 days; this is not a permanent GitHub Release.
+
+A separate [PipeClean Dev Build workflow](https://github.com/TotallyJustRetro/PipeClean/actions/workflows/dev-build.yml) produces a Linux developer build with the multiplayer diagnostics window.
 
 ## 🧪 Testing
 
