@@ -2242,12 +2242,19 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         }
     } else {
         ui_text(F_BOLD, 13, x + 390, y + 94, C_TEXT, "SHARED SAVE SLOTS");
-        ui_text_fit(F_REG, 10, x + 390, y + 139, 380, C_DIM,
-                    np->is_host
-                      ? "Choose a save slot. Load on Start restores the same state for both players."
-                      : "The host manages slots. Save/Load State bindings sync through the active slot.");
         int active_slot = netplay_shared_slot_active();
         int load_slot = netplay_shared_slot_load();
+        ui_text_fit(F_REG, 10, x + 390, y + 139, 278, C_DIM,
+                    np->is_host
+                      ? "Choose a slot. Load on Start restores the same state."
+                      : "Host manages slots; in-game Save/Load syncs the active slot.");
+        if (ui_button(x + 677, y + 136, 97, 22, "Start Fresh", B_GHOST,
+                      connected && np->is_host && load_slot >= 0)) {
+            if (!netplay_shared_slot_select(active_slot, -1))
+                launcher_toast("Couldn't clear the starting save selection.");
+            else
+                launcher_toast("Next session will start a new game.");
+        }
         for (int slot = 0; slot < NETPLAY_SHARED_SLOT_COUNT; slot++) {
             float row_y = y + 158 + slot * 21.0f;
             char slot_name[32], status_text[20];
@@ -2304,9 +2311,11 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     ui_text_fit(F_REG, 11, x + 24, y + 426, 540, C_DIM,
                 np->status[0] ? np->status : "Connected to the PipeClean relay.");
     if (np->is_host) {
+        int load_slot = netplay_shared_slot_load();
         int can_play = connected &&
             (selected_game == GAME_SML || selected_game == GAME_SML2) &&
-            np->rom_check_state == NETPLAY_ROM_MATCH;
+            np->rom_check_state == NETPLAY_ROM_MATCH &&
+            (load_slot < 0 || netplay_shared_slot_is_synced(load_slot));
         if (ui_button(x + 592, y + 428, 180, 44, "Play for Everyone",
                       B_PRIMARY, can_play)) {
             if (!netplay_lobby_start_game(selected_game))

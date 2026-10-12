@@ -1359,7 +1359,12 @@ int netplay_lobby_start_game(int game)
     np_lock();
     valid = np_is_host && np_state == NETPLAY_CONNECTED && np_peer[0] != 0 &&
             np_selected_game == game && (game == GAME_SML || game == GAME_SML2) &&
-            np_rom_check_state == NETPLAY_ROM_MATCH;
+            np_rom_check_state == NETPLAY_ROM_MATCH &&
+            (np_shared_load_slot < 0 ||
+             (np_shared_load_slot < NETPLAY_SHARED_SLOT_COUNT &&
+              np_shared_local_saved[np_shared_load_slot] == 1 &&
+              np_shared_peer_saved[np_shared_load_slot] == 1 &&
+              !np_shared_pending[np_shared_load_slot]));
     np_unlock();
     if (!valid) return 0;
     snprintf(command, sizeof command, "START_GAME\t%d\n", game);
@@ -1991,7 +1996,10 @@ void netplay_shared_slot_mark_unsynced(int slot)
     snprintf(marker, sizeof marker, "%s", np_shared_marker_path[slot]);
     np_shared_local_saved[slot] = 0;
     np_shared_local_reported[slot] = 0;
-    np_shared_pending[slot] = 1;
+    /* A pending transfer starts only after the host sends SAVE_BEGIN (or the
+     * guest receives it). If making the snapshot fails, don't strand the UI
+     * in SYNCING forever. */
+    np_shared_pending[slot] = 0;
     np_unlock();
     if (marker[0]) remove(marker);
     snprintf(command, sizeof command, "SAVE_STATUS\t%d\t0\n", slot);
