@@ -34,7 +34,7 @@ enum { SDL_CONTROLLER_BUTTON_A, SDL_CONTROLLER_BUTTON_B, SDL_CONTROLLER_BUTTON_X
 #endif
 
 const char *aspect_names[] = {"Original (10:9)", "4:3", "16:9"};
-const char *scale_names[] = {"Pixel-perfect", "Smooth", "Stretch", "Pixel-perfect stretch"};
+const char *scale_names[] = {"Pixel-perfect", "Smooth", "Stretch", "Pixel stretch"};
 const char *size_names[] = {"Small", "Medium", "Large", "Fullscreen"};
 const char *btn_names[] = {"A", "B", "Select", "Start", "Right", "Left", "Up", "Down"};
 const char *action_names[] = {"Save state", "Load state", "Rewind", "Suspend", "Next state slot"};
