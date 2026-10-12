@@ -397,13 +397,18 @@ uint8_t wide_read_sml2(uint16_t address, uint8_t value)
      * bounds the hardware logic uses. */
     if (cpu.pc == 0x3CAA || cpu.pc == 0x3CAB) {
         int cam = sml2_read16(0xFFCA);
-        unsigned upper = (unsigned)(cam + 0x60 + sml2_right_extra);
-        unsigned lower = (unsigned)(cam - 0x60 - sml2_left_extra);
+        int upper = cam + 0x60 + sml2_right_extra;
+        int lower = cam - 0x60 - sml2_left_extra;
         int cull = address >= 0xAF1A && address <= 0xAF1D;
         if (cull) {
-            upper = (unsigned)(cam + 0xA0 + sml2_right_extra);
-            lower = (unsigned)(cam - 0xA0 - sml2_left_extra);
+            upper = cam + 0xA0 + sml2_right_extra;
+            lower = cam - 0xA0 - sml2_left_extra;
         }
+        /* Bounds are unsigned 16-bit world coordinates, but the beginning/end
+         * of a level is not a wraparound point. Saturate rather than letting a
+         * negative left bound become $FFxx and make nearby actors look culled. */
+        if (lower < 0) lower = 0;
+        if (upper > 0xFFFF) upper = 0xFFFF;
         if (address == 0xAF0A || address == 0xAF1A) return (uint8_t)(upper >> 8);
         if (address == 0xAF0B || address == 0xAF1B) return (uint8_t)upper;
         if (address == 0xAF0C || address == 0xAF1C) return (uint8_t)(lower >> 8);
