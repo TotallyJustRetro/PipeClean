@@ -52,7 +52,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
     private static final class DeckView extends View {
         private static final int SAVE = 1, LOAD = 2, PAUSE = 3, REWIND = 4;
         private static final int PALETTE = 5, FILTER = 6, SLOT_PREV = 7, SLOT_NEXT = 8;
-        private static final int ITEM_USE = 9, BACKGROUND = 10, RESET_BACKGROUND = 11;
+        private static final int ITEM_USE = 9, BACKGROUND = 10, RESET_BACKGROUND = 11, CLOSE_GAME = 12;
 
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
@@ -74,7 +74,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             setFocusable(true);
             setClickable(true);
             p.setTypeface(Typeface.create("monospace", Typeface.BOLD));
-            setContentDescription("PipeClean companion deck: item pocket, save states, pause, rewind, color, filter and wallpaper");
+            setContentDescription("PipeClean companion deck: item button, save states, pause, rewind, wallpaper and close game");
         }
 
         void setState(int game, int lives, int stage, int world, boolean paused,
@@ -279,12 +279,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
             badge(c, 294, 13, 104, 42, "LIVES", String.format(Locale.US, "× %02d", lives));
             badge(c, 407, 13, 135, 42, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
             if (!wallpaperPath.isEmpty()) smallButton(c, 552, 17, 34, 34, "×", RESET_BACKGROUND);
-            button(c, 593, 13, 183, 42, "WALLPAPER", wallpaperPath.isEmpty() ? "CHOOSE PNG / GIF" : "CHANGE PNG / GIF",
-                   BACKGROUND, false);
+            button(c, 593, 13, 105, 42, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
 
             // Centerpiece: the item pocket is deliberately the largest thing on the deck.
-            text(c, "✦  ITEM POCKET  ✦", 400, 75, 13, gold(), true);
-            drawHeroItem(c, 400, 202, 86, item);
+            drawHeroItem(c, 400, 204, 98, item);
             textFit(c, itemName(), 400, 337, 250, 15, ink(), true);
             textFit(c, actionHint(), 400, 350, 330, 8.5f, muted(), true);
 
@@ -308,26 +307,24 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private void drawDockLandscape(Canvas c) {
             float x0=28, y=354, w=118, h=66, step=124;
-            button(c,x0+step*0,y,w,h,"SAVE","SNAPSHOT",SAVE,false);
-            button(c,x0+step*1,y,w,h,"LOAD","RESTORE",LOAD,false);
-            button(c,x0+step*2,y,w,h,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,x0+step*3,y,w,h,"REWIND","HOLD TO REWIND",REWIND,true);
-            button(c,x0+step*4,y,w,h,"COLOR",paletteText(),PALETTE,false);
-            button(c,x0+step*5,y,w,h,"FILTER",filterText(),FILTER,false);
+            button(c,94,y,145,h,"SAVE","SNAPSHOT",SAVE,false);
+            button(c,247,y,145,h,"LOAD","RESTORE",LOAD,false);
+            button(c,400,y,145,h,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
+            button(c,553,y,153,h,"REWIND","HOLD TO REWIND",REWIND,true);
         }
 
         private void drawPortrait(Canvas c) {
-            headerPlate(c, 14, 7, 240, 43);
+            headerPlate(c, 14, 7, 220, 43);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 20, 25, 10, accent());
             text(c, title(), 20, 43, 13, ink());
-            if (!wallpaperPath.isEmpty()) smallButton(c, 260, 16, 24, 27, "×", RESET_BACKGROUND);
-            button(c, 290, 12, 140, 37, "WALLPAPER", "PNG / GIF", BACKGROUND, false);
+            if (!wallpaperPath.isEmpty()) smallButton(c, 238, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
 
             badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", lives));
             badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
 
-            text(c, "✦  ITEM POCKET  ✦", 225, 137, 13, gold(), true);
-            drawHeroItem(c, 225, 275, 90, item);
+            drawHeroItem(c, 225, 275, 103, item);
             textFit(c, itemName(), 225, 416, 380, 16, ink(), true);
             textFit(c, actionHint(), 225, 432, 400, 8.5f, muted(), true);
 
@@ -340,8 +337,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             button(c,232,527,198,58,"LOAD","RESTORE",LOAD,false);
             button(c,20,594,198,58,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
             button(c,232,594,198,58,"REWIND","HOLD TO REWIND",REWIND,true);
-            button(c,20,661,198,58,"COLOR",paletteText(),PALETTE,false);
-            button(c,232,661,198,58,"FILTER",filterText(),FILTER,false);
+            button(c,20,661,198,58,"BACKGROUND","CHANGE PNG / GIF",BACKGROUND,false);
+            button(c,232,661,198,58,"CLOSE GAME","EXIT TO MENU",CLOSE_GAME,false);
 
             text(c, paused ? "GAME PAUSED" : "READY WHEN YOU ARE", 225, 757, 10, accent(), true);
             text(c, wallpaperPath.isEmpty() ? "DEFAULT ARTWORK" : "CUSTOM WALLPAPER ACTIVE",
