@@ -32,8 +32,8 @@ uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
-#define SML2_HOME_WIDE_LEFT  112
-#define SML2_HOME_WIDE_RIGHT 112
+#define SML2_HOME_WIDE_LEFT  176
+#define SML2_HOME_WIDE_RIGHT 176
 void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
 {
     if (l < 0) l = 0;
@@ -52,9 +52,9 @@ static int dot, ly, mode, lcd_on, stat_line, wlc;
 static int off_cycles;
 int frame_count;
 
-/* The Homeworld has a 512px source map. Give it a 384px output canvas, then
- * shift the extra 224 pixels toward whichever map edge has more room. This
- * avoids wasting half the added view off-map near either end of the world. */
+/* The Homeworld's 512px source map is shown at its full native map width.
+ * Move the original 160px viewport inside the 512px canvas based on its live
+ * camera position, so the added view reveals both map edges without blank space. */
 static void ppu_refresh_wide_layout(void)
 {
     int l = cfg_left, r = cfg_right;
@@ -527,6 +527,7 @@ void ppu_tick(int n)
 
 #define GB_WMAX_LEGACY 256
 #define GB_WMAX_PREVIOUS 320
+#define GB_WMAX_384 384
 typedef struct {
     uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
     uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
@@ -541,6 +542,22 @@ typedef struct {
     uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
     int dot, ly, mode, lcd_on, stat_line, wlc, off_cycles, frame_count;
 } PPUState;
+
+/* Exact layout used by the 384px-wide Homeworld build for old save states. */
+typedef struct {
+    uint8_t vram[0x2000], vram_cgb1[0x2000], vram_bank, oam[0xA0];
+    uint8_t cgb_bg_palette[64], cgb_obj_palette[64], cgb_bgpi, cgb_obpi, cgb_opri;
+    uint8_t shade[GB_H][GB_WMAX_384], layer[GB_H][GB_WMAX_384];
+    uint32_t rgb[GB_H][GB_WMAX_384];
+    int cgb_render_enabled;
+    uint16_t bgtile[GB_H][GB_WMAX_384], sprtile[GB_H][GB_WMAX_384];
+    uint8_t bguv[GB_H][GB_WMAX_384], spruv[GB_H][GB_WMAX_384];
+    int ppu_w, ppu_xoff;
+    int hud_lines, hud_shift, wide_r, sprite_neg, win_centre, wide_gate, wide_on, cfg_hud, cfg_win;
+    int cfg_left, cfg_right;
+    uint8_t lcdc, stat_sel, scy, scx, lyc, bgp, obp0, obp1, wy, wx;
+    int dot, ly, mode, lcd_on, stat_line, wlc, off_cycles, frame_count;
+} PPUState384;
 
 /* Exact layout used by the 320px-wide Homeworld build for old save states. */
 typedef struct {
@@ -577,8 +594,8 @@ typedef struct {
 size_t ppu_state_size(void) { return sizeof(PPUState); }
 int ppu_state_size_compatible(size_t n)
 {
-    return n == sizeof(PPUState) || n == sizeof(PPUStatePrevious) ||
-           n == sizeof(PPUStateLegacy);
+    return n == sizeof(PPUState) || n == sizeof(PPUState384) ||
+           n == sizeof(PPUStatePrevious) || n == sizeof(PPUStateLegacy);
 }
 int ppu_state_save(void *dst, size_t n)
 {
@@ -598,6 +615,42 @@ int ppu_state_save(void *dst, size_t n)
 int ppu_state_load(const void *src, size_t n)
 {
     if (!src) return -1;
+    if (n == sizeof(PPUState384)) {
+        const PPUState384 *old = (const PPUState384 *)src;
+        memcpy(vram, old->vram, sizeof vram);
+        memcpy(vram_cgb1, old->vram_cgb1, sizeof vram_cgb1);
+        vram_bank = old->vram_bank & 1; memcpy(oam, old->oam, sizeof oam);
+        memcpy(cgb_bg_palette, old->cgb_bg_palette, sizeof cgb_bg_palette);
+        memcpy(cgb_obj_palette, old->cgb_obj_palette, sizeof cgb_obj_palette);
+        cgb_bgpi=old->cgb_bgpi; cgb_obpi=old->cgb_obpi; cgb_opri=old->cgb_opri;
+        for (int y=0; y<GB_H; y++) {
+            memcpy(ppu_shade[y], old->shade[y], GB_WMAX_384);
+            memset(ppu_shade[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+            memcpy(ppu_layer[y], old->layer[y], GB_WMAX_384);
+            memset(ppu_layer[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+            memcpy(ppu_rgb[y], old->rgb[y], GB_WMAX_384*sizeof old->rgb[y][0]);
+            memset(ppu_rgb[y]+GB_WMAX_384, 0, (GB_WMAX-GB_WMAX_384)*sizeof ppu_rgb[y][0]);
+            memcpy(ppu_bgtile[y], old->bgtile[y], GB_WMAX_384*sizeof old->bgtile[y][0]);
+            memset(ppu_bgtile[y]+GB_WMAX_384, 0xFF, (GB_WMAX-GB_WMAX_384)*sizeof ppu_bgtile[y][0]);
+            memcpy(ppu_sprtile[y], old->sprtile[y], GB_WMAX_384*sizeof old->sprtile[y][0]);
+            memset(ppu_sprtile[y]+GB_WMAX_384, 0xFF, (GB_WMAX-GB_WMAX_384)*sizeof ppu_sprtile[y][0]);
+            memcpy(ppu_bguv[y], old->bguv[y], GB_WMAX_384);
+            memset(ppu_bguv[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+            memcpy(ppu_spruv[y], old->spruv[y], GB_WMAX_384);
+            memset(ppu_spruv[y]+GB_WMAX_384, 0, GB_WMAX-GB_WMAX_384);
+        }
+        cgb_render_enabled=old->cgb_render_enabled!=0;
+        ppu_w=old->ppu_w; ppu_xoff=old->ppu_xoff; hud_lines=old->hud_lines;
+        hud_shift=old->hud_shift; wide_r=old->wide_r; sprite_neg=old->sprite_neg;
+        win_centre=old->win_centre; wide_gate=old->wide_gate; wide_on=old->wide_on;
+        cfg_hud=old->cfg_hud; cfg_win=old->cfg_win;
+        cfg_left=old->cfg_left; cfg_right=old->cfg_right;
+        lcdc=old->lcdc; stat_sel=old->stat_sel; scy=old->scy; scx=old->scx; lyc=old->lyc;
+        bgp=old->bgp; obp0=old->obp0; obp1=old->obp1; wy=old->wy; wx=old->wx;
+        dot=old->dot; ly=old->ly; mode=old->mode; lcd_on=old->lcd_on; stat_line=old->stat_line;
+        wlc=old->wlc; off_cycles=old->off_cycles; frame_count=old->frame_count;
+        return 0;
+    }
     if (n == sizeof(PPUStatePrevious)) {
         const PPUStatePrevious *old = (const PPUStatePrevious *)src;
         memcpy(vram, old->vram, sizeof vram);
