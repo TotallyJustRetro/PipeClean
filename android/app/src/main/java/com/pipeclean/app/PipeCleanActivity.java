@@ -1,10 +1,14 @@
 package com.pipeclean.app;
 
 import android.app.Activity;
+import android.hardware.display.DisplayManager;
+import android.view.Display;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 
@@ -20,8 +24,101 @@ public final class PipeCleanActivity extends SDLActivity {
     private static final int PICK_DOCUMENT = 0x5043;
     private static final int PICK_TREE = 0x5044;
     private static volatile int pendingKind;
+    private DisplayManager companionDisplayManager;
+    private PipeCleanCompanionPresentation companionPresentation;
+
+    private final DisplayManager.DisplayListener companionDisplayListener =
+        new DisplayManager.DisplayListener() {
+            @Override public void onDisplayAdded(int displayId) {
+                runOnUiThread(PipeCleanActivity.this::showCompanionDisplay);
+            }
+            @Override public void onDisplayRemoved(int displayId) {
+                runOnUiThread(PipeCleanActivity.this::showCompanionDisplay);
+            }
+            @Override public void onDisplayChanged(int displayId) {
+                runOnUiThread(PipeCleanActivity.this::showCompanionDisplay);
+            }
+        };
 
     public static native void nativeDocumentPicked(String path);
+    public static native void nativeCompanionAction(int action, int pressed);
+
+    @Override
+    protected void onCreate(android.os.Bundle state) {
+        super.onCreate(state);
+        companionDisplayManager = (DisplayManager)getSystemService(DISPLAY_SERVICE);
+        if (companionDisplayManager != null) {
+            companionDisplayManager.registerDisplayListener(
+                companionDisplayListener, new Handler(Looper.getMainLooper()));
+            showCompanionDisplay();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        showCompanionDisplay();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (companionDisplayManager != null) {
+            try { companionDisplayManager.unregisterDisplayListener(companionDisplayListener); }
+            catch (Exception ignored) {}
+        }
+        dismissCompanionDisplay();
+        super.onDestroy();
+    }
+
+    private void showCompanionDisplay() {
+        if (companionDisplayManager == null || isFinishing()) return;
+        Display primary = getDisplay();
+        int primaryId = primary != null ? primary.getDisplayId() : Display.DEFAULT_DISPLAY;
+        Display target = null, fallback = null;
+        for (Display display : companionDisplayManager.getDisplays()) {
+            if (display == null || !display.isValid() || display.getDisplayId() == primaryId)
+                continue;
+            if (fallback == null) fallback = display;
+            if ((display.getFlags() & Display.FLAG_PRESENTATION) != 0) {
+                target = display;
+                break;
+            }
+        }
+        if (target == null) target = fallback;
+        if (target == null) {
+            dismissCompanionDisplay();
+            return;
+        }
+        if (companionPresentation != null) {
+            Display current = companionPresentation.getDisplay();
+            if (current != null && current.getDisplayId() == target.getDisplayId()) return;
+            dismissCompanionDisplay();
+        }
+        try {
+            companionPresentation = new PipeCleanCompanionPresentation(this, target);
+            companionPresentation.show();
+        } catch (Exception ex) {
+            dismissCompanionDisplay();
+            android.util.Log.w("PipeClean", "Couldn't open the companion display.", ex);
+        }
+    }
+
+    private void dismissCompanionDisplay() {
+        if (companionPresentation == null) return;
+        try { companionPresentation.dismiss(); } catch (Exception ignored) {}
+        companionPresentation = null;
+    }
+
+    /** Native game-loop status bridge; UI work is moved onto Android's main thread. */
+    public void updateCompanionState(int game, int lives, int stage, int world,
+                                     int paused, int slot, int palette, int filter, int item) {
+        runOnUiThread(() -> {
+            if (companionPresentation != null) {
+                companionPresentation.updateState(game, lives, stage, world,
+                    paused != 0, slot, palette, filter, item);
+            }
+        });
+    }
 
     public void openPipeCleanDocumentPicker(int kind, String title) {
         runOnUiThread(() -> {
