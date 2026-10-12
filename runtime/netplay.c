@@ -119,6 +119,7 @@ static void np_handle_save_begin(const char *line);
 static void np_handle_save_chunk(const char *line);
 static void np_handle_save_end(const char *line);
 static void np_handle_save_ack(const char *line);
+static void np_handle_save_fail(const char *line);
 
 static void np_lock(void) { if (np_mutex) SDL_LockMutex(np_mutex); }
 static void np_unlock(void) { if (np_mutex) SDL_UnlockMutex(np_mutex); }
@@ -1068,6 +1069,8 @@ static int SDLCALL np_worker(void *unused)
             np_handle_save_end(line);
         } else if (!strncmp(line, "SAVE_ACK\t", 9)) {
             np_handle_save_ack(line);
+        } else if (!strncmp(line, "SAVE_FAIL\t", 10)) {
+            np_handle_save_fail(line);
         } else if (!strncmp(line, "ERR\t", 4)) {
             np_set_status(NETPLAY_ERROR, line + 4);
             break;
@@ -1673,11 +1676,6 @@ static void np_handle_save_status(const char *line)
         slot < 0 || slot >= NETPLAY_SHARED_SLOT_COUNT || (saved != 0 && saved != 1)) return;
     np_lock();
     np_shared_peer_saved[slot] = saved;
-    if (np_is_host && saved == 0 && np_shared_tx_active && np_shared_tx_slot == slot) {
-        np_shared_tx_active = 0;
-        np_shared_tx_slot = -1;
-        np_shared_pending[slot] = 0;
-    }
     np_unlock();
 }
 
@@ -1779,7 +1777,28 @@ static void np_handle_save_end(const char *line)
     if (valid) {
         snprintf(command, sizeof command, "SAVE_ACK\t%u\t%u\t%08X\n", id, slot, crc);
         (void)np_send_current(command);
+    } else {
+        snprintf(command, sizeof command, "SAVE_FAIL\t%u\t%u\n", id, slot);
+        (void)np_send_current(command);
     }
+}
+
+static void np_handle_save_fail(const char *line)
+{
+    unsigned id, slot;
+    char extra;
+    if (sscanf(line, "SAVE_FAIL\t%u\t%u%c", &id, &slot, &extra) != 2 ||
+        slot >= NETPLAY_SHARED_SLOT_COUNT) return;
+    np_lock();
+    if (np_is_host && np_shared_tx_active && np_shared_tx_id == id &&
+        np_shared_tx_slot == (int)slot) {
+        np_shared_tx_active = 0;
+        np_shared_tx_slot = -1;
+        np_shared_pending[slot] = 0;
+        np_shared_local_saved[slot] = 0;
+        np_shared_local_reported[slot] = 0;
+    }
+    np_unlock();
 }
 
 static void np_handle_save_ack(const char *line)
