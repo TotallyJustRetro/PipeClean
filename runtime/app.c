@@ -1690,6 +1690,7 @@ static int play(int g)
             render_draw(&r, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
+        companion_publish_state(g, f, paused);
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (paused) {
@@ -1710,6 +1711,7 @@ static int play(int g)
                              char p[1200]; snprintf(p, sizeof p, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks()); SDL_SaveBMP(s, p); SDL_FreeSurface(s); } }
         SDL_RenderPresent(ren);
     }
+    companion_set_display_enabled(0);
     touch_reset_game(g);
     emu_stop();
     if (emu_cpu_faulted()) {
