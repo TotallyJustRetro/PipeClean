@@ -701,10 +701,10 @@ static void draw_preview(int g, float x, float y, float w, float h, int use_cfg_
     float ar = render_width() / 144.0f;
     if (use_cfg_shape) ar = c->aspect == ASPECT_4_3 ? 4.0f / 3.0f : (c->aspect == ASPECT_16_9 ? 16.0f / 9.0f : ar);
     float pw = w - 16, ph = pw / ar;
-    if (c->scaling == SCALE_STRETCH && use_cfg_shape) { pw = w - 16; ph = h - 16; }
+    if ((c->scaling == SCALE_STRETCH || c->scaling == SCALE_PIXEL_STRETCH) && use_cfg_shape) { pw = w - 16; ph = h - 16; }
     if (ph > h - 16) { ph = h - 16; pw = ph * ar; }
     SDL_Rect r = to_px(x + (w - pw) * 0.5f, y + (h - ph) * 0.5f, pw, ph);
-    render_draw(&r, c->scaling == SCALE_PIXEL ? SCALE_PIXEL : SCALE_SMOOTH);
+    render_draw(&r, (c->scaling == SCALE_PIXEL || c->scaling == SCALE_PIXEL_STRETCH) ? c->scaling : SCALE_SMOOTH);
 }
 
 /* External Wario entries use the ROM-independent gbrecomp player for now. */
@@ -993,7 +993,7 @@ static void sub_display(int g, float x, float y)
     label(x + 18, yy, "Window shape"); ui_seg(x + 18, yy + 22, 500, 36, aspect_names, N_ASPECT, &c->aspect);
     yy += 66;
     label(x + 18, yy, "Scaling"); ui_seg(x + 18, yy + 22, 500, 36, scale_names, N_SCALE, &c->scaling);
-    hint_area(x + 18, yy, 500, 60, "Pixel-perfect keeps every pixel crisp. Smooth blends. Stretch fills the whole window.");
+    hint_area(x + 18, yy, 500, 60, "Pixel-perfect keeps integer scaling. Smooth blends. Stretch fills the window; pixel-perfect stretch fills it without smoothing.");
     yy += 66;
     label(x + 18, yy, "Starting window size"); ui_seg(x + 18, yy + 22, 500, 36, size_names, N_SIZE, &c->size);
 
