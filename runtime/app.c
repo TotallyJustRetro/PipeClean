@@ -925,8 +925,24 @@ static int play_multiplayer(int g)
                     /* Host owns Mario/P1; joining client owns Luigi/P2 on both replicas. */
                     pad_poll_player(g, 0, &buttons[0], &dpad[0]);
                     uint8_t p1b = 0, p1d = 0, p1a = 0, p2b = 0, p2d = 0, p2a = 0;
-                    if (netplay_exchange_inputs(online_frame, buttons[0], dpad[0], online_actions,
-                                                &p1b, &p1d, &p1a, &p2b, &p2d, &p2a) != 0) {
+                    Uint64 exchange_started = SDL_GetPerformanceCounter();
+                    int exchange_result = netplay_exchange_inputs(
+                        online_frame, buttons[0], dpad[0], online_actions,
+                        &p1b, &p1d, &p1a, &p2b, &p2d, &p2a);
+                    Uint64 exchange_ticks = SDL_GetPerformanceCounter() - exchange_started;
+                    Uint64 exchange_freq = SDL_GetPerformanceFrequency();
+                    double exchange_ms = exchange_freq
+                        ? (double)exchange_ticks * 1000.0 / (double)exchange_freq : 0.0;
+                    if (exchange_ms >= 100.0) {
+                        char perf_msg[160];
+                        snprintf(perf_msg, sizeof perf_msg,
+                                 "ONLINE_INPUT_WAIT frame=%llu ms=%.1f role=%s result=%d",
+                                 (unsigned long long)online_frame, exchange_ms,
+                                 netplay_is_host() ? "host" : "guest", exchange_result);
+                        dev_diag_event(perf_msg);
+                        fprintf(stderr, "[netplay] %s\n", perf_msg);
+                    }
+                    if (exchange_result != 0) {
                         quit = 1;
                         game_notice("Online session ended or input timed out.");
                     } else {
@@ -948,14 +964,39 @@ static int play_multiplayer(int g)
                     for (int player = 1; player < player_count; player++)
                         emu_mp_set_player_input(player, buttons[player], dpad[player]);
 
+                Uint64 p1_step_start = SDL_GetPerformanceCounter();
                 int n0 = emu_mp_step(0, buttons[0], dpad[0], f, a0, 4096);
+                Uint64 p1_step_ticks = SDL_GetPerformanceCounter() - p1_step_start;
+                Uint64 step_freq = SDL_GetPerformanceFrequency();
+                double p1_step_ms = step_freq
+                    ? (double)p1_step_ticks * 1000.0 / (double)step_freq : 0.0;
+                if (online && p1_step_ms >= 50.0) {
+                    char perf_msg[160];
+                    snprintf(perf_msg, sizeof perf_msg,
+                             "ONLINE_SIM_SLOW player=1 frame=%llu ms=%.1f",
+                             (unsigned long long)online_frame, p1_step_ms);
+                    dev_diag_event(perf_msg);
+                    fprintf(stderr, "[netplay] %s\n", perf_msg);
+                }
                 if (n0 < 0) {
                     quit = 1;
                 } else {
                     int failed = 0;
                     for (int player = 1; player < player_count; player++) {
                         Frame *pf = player_frames[player - 1];
+                        Uint64 p_step_start = SDL_GetPerformanceCounter();
                         int result = emu_mp_step(player, buttons[player], dpad[player], pf, NULL, 0);
+                        Uint64 p_step_ticks = SDL_GetPerformanceCounter() - p_step_start;
+                        double p_step_ms = step_freq
+                            ? (double)p_step_ticks * 1000.0 / (double)step_freq : 0.0;
+                        if (online && p_step_ms >= 50.0) {
+                            char perf_msg[160];
+                            snprintf(perf_msg, sizeof perf_msg,
+                                     "ONLINE_SIM_SLOW player=%d frame=%llu ms=%.1f",
+                                     player + 1, (unsigned long long)online_frame, p_step_ms);
+                            dev_diag_event(perf_msg);
+                            fprintf(stderr, "[netplay] %s\n", perf_msg);
+                        }
                         if (result < 0) { failed = 1; break; }
                         /* SML2 shares one APU between all characters. Luigi's
                          * private movement pass restores shared sound-engine RAM,
