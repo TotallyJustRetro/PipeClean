@@ -15,7 +15,8 @@ int wide_sml2_homeworld_tile_at(int world_x, int world_y, uint8_t *tile)
 {
     if (!tile || world_x < 0 || world_x >= 512 ||
         world_y < 0 || world_y >= 256) return 0;
-    *tile = 1;
+    *tile = (uint8_t)((world_y >= 128 ? 3 : 1) +
+                      (world_x >= 256 ? 1 : 0));
     return 1;
 }
 
@@ -94,7 +95,10 @@ int main(void)
     assert(ppu_xoff == 0);
     ppu_tick(11 * 456);
     assert(ppu_bgtile[11][0] == 1);
-    assert(ppu_bgtile[11][241] == 1);
+    assert(ppu_bgtile[11][241] == 2);
+    ppu_tick((127 - 11) * 456);
+    assert(ppu_bgtile[127][0] == 3);
+    assert(ppu_bgtile[127][241] == 4);
 
     /* Returning to the normal SML2 window setup restores slider-controlled width. */
     ppu_write(0x4B, 7);
