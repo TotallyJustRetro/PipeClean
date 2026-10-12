@@ -60,6 +60,7 @@ void emu_stop(void);
 int  emu_running(void);
 int  emu_frame_get(Frame *f);
 void emu_input(uint8_t buttons, uint8_t dpad);
+void emu_reserve_item_use(void);
 void emu_set_paused(int p);
 void emu_set_turbo(int t);
 void emu_set_save_path(const char *path);
