@@ -971,10 +971,11 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
     case 1: dx = d->item_dx; dy = d->item_dy; size_x = d->item_scale; size_y = d->item_scale_y; break;
     case 2: dx = d->controls_dx; dy = d->controls_dy; size_x = d->controls_scale; size_y = d->controls_scale_y; break;
     case 3: dx = d->timeline_dx; dy = d->timeline_dy; size_x = d->timeline_scale; size_y = d->timeline_scale_y; break;
-    case 4: dx = d->decoration_dx; dy = d->decoration_dy; size_x = d->decoration_scale; size_y = d->decoration_scale_y; break;
+    case 4: dx = d->status_dx; dy = d->status_dy; size_x = d->status_scale; size_y = d->status_scale_y; break;
+    case 5: dx = d->decoration_dx; dy = d->decoration_dy; size_x = d->decoration_scale; size_y = d->decoration_scale_y; break;
     default:
-        if (element >= 5 && element < 4 + N_DECK_DECORATIONS) {
-            int slot = element - 5;
+        if (element >= 6 && element < 5 + N_DECK_DECORATIONS) {
+            int slot = element - 6;
             dx = d->decoration_extra_dx[slot];
             dy = d->decoration_extra_dy[slot];
             size_x = d->decoration_extra_scale[slot];
@@ -1031,14 +1032,22 @@ static void draw_companion(const Settings *s)
     transform_box(d, 1, 400, 164, &ix, &iy, &iw, &ih);
     draw_hero_item(s, g, current_item, ix + iw * .5f, iy + ih * .5f, iw * .5f);
 
-    /* Status card matches the Android deck's lives / stage block. */
-    draw_android_card(s, 620, 76, 156, 128, g, "ADVENTURE STATUS");
-    fill_circle(637, 111, 8, 255, 214, 107, 190);
-    draw_text(652, 105, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g), "LIVES");
+    /* Status card uses the exact same origin and independent width/height transform as the editor. */
+    float sx = 620, sy = 76, sw = 156, sh = 128;
+    transform_box(d, 4, 698, 140, &sx, &sy, &sw, &sh);
+    draw_android_card(s, (int)sx, (int)sy, (int)sw, (int)sh, g, "ADVENTURE STATUS");
+    float status_scale_x = sw / 156.0f, status_scale_y = sh / 128.0f;
+    float status_uniform_scale = fminf(status_scale_x, status_scale_y);
+    fill_circle((int)(sx + 17 * status_scale_x), (int)(sy + 35 * status_scale_y),
+                (int)fmaxf(1.f, 8 * status_uniform_scale), 255, 214, 107, 190);
+    draw_text_fit((int)(sx + 32 * status_scale_x), (int)(sy + 29 * status_scale_y),
+        (int)(110 * status_scale_x), 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g), "LIVES");
     char lives_text[24];
     snprintf(lives_text, sizeof lives_text, "\xC3\x97 %02d", current_lives);
-    draw_text_fit(652, 119, 110, 2, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), lives_text);
-    draw_text(634, 145, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
+    draw_text_fit((int)(sx + 32 * status_scale_x), (int)(sy + 43 * status_scale_y),
+        (int)(110 * status_scale_x), 2, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), lives_text);
+    draw_text_fit((int)(sx + 14 * status_scale_x), (int)(sy + 69 * status_scale_y),
+        (int)(126 * status_scale_x), 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
         g == GAME_SML ? "WORLD / LEVEL" : "CURRENT STAGE");
     char stage_text[32];
     if (g == GAME_SML && current_world > 0 && current_stage > 0)
@@ -1046,9 +1055,10 @@ static void draw_companion(const Settings *s)
     else if (g == GAME_SML2 && current_stage >= 0)
         snprintf(stage_text, sizeof stage_text, "STAGE %02d", current_stage);
     else snprintf(stage_text, sizeof stage_text, "--");
-    draw_text_fit(634, 163, 126, 2,
-        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), stage_text);
-    draw_text(634, 188, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
+    draw_text_fit((int)(sx + 14 * status_scale_x), (int)(sy + 87 * status_scale_y),
+        (int)(126 * status_scale_x), 2, theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), stage_text);
+    draw_text_fit((int)(sx + 14 * status_scale_x), (int)(sy + 112 * status_scale_y),
+        (int)(126 * status_scale_x), 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
         current_paused ? "PAUSED" : "IN PLAY");
 
     /* Action controls use the same Android coordinates, with each transform shared with the editor. */
@@ -1077,7 +1087,7 @@ static void draw_companion(const Settings *s)
                    (slot == 3) ? 170 : (slot == 4 || slot == 5) ? 140 : 122;
         float dh = slot == 0 ? 144 : (slot == 1 || slot == 2) ? 120 :
                    (slot == 3) ? 120 : (slot == 4 || slot == 5) ? 92 : 86;
-        transform_box(d, 4 + slot, 400, 225, &dx, &dy, &dw, &dh);
+        transform_box(d, 5 + slot, 400, 225, &dx, &dy, &dw, &dh);
         int asset_index = slot == 0 ? 3 : 20 + slot;
         if (assets[g][asset_index])
             draw_asset_image(s, g, asset_index, (int)dx, (int)dy, (int)dw, (int)dh);
