@@ -40,6 +40,8 @@ enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 #define N_UI_SFX 5                      /* hover, click, confirm, back, toggle */
 #define MAX_ROMHACKS 16
 #define ROMHACK_TITLE_LEN 96
+#define MAX_MENU_TRACKS 12
+#define N_RECENT_PLAYED 5
 
 typedef struct {
     char path[512];
@@ -108,6 +110,13 @@ typedef struct {
     int launcher_ui_scale;              /* 75..125 percent, persisted UI zoom */
     int launcher_window_size;           /* 0 = compact, 1 = default, 2 = large */
     int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
+    int launcher_dual_screen;            /* Android: show music player and deck controls on the companion display. */
+    int recent_played_count;
+    int recent_played[N_RECENT_PLAYED];  /* Game indices, most recent first; -1 = unused. */
+    int game_play_seconds[N_GAMES];      /* Accumulated played time, persisted in whole seconds. */
+    int menu_playlist_count;
+    int menu_playlist_selected;
+    char menu_playlist[MAX_MENU_TRACKS][512];
     char online_name[32];
     char online_server[160];          /* direct peer or traversal host:port */
     int online_connection_mode;          /* 0 = direct connection, 1 = traversal server */
