@@ -111,6 +111,7 @@ typedef struct {
     int launcher_window_size;           /* 0 = compact, 1 = default, 2 = large */
     int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
     int launcher_dual_screen;            /* Android: show music player and deck controls on the companion display. */
+    int launcher_pipe_screen_swap;        /* Android: swap SML1 gameplay to the companion screen in pipes/bonus rooms. */
     int recent_played_count;
     int recent_played[N_RECENT_PLAYED];  /* Game indices, most recent first; -1 = unused. */
     int game_play_seconds[N_GAMES];      /* Accumulated played time, persisted in whole seconds. */
