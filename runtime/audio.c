@@ -41,6 +41,12 @@ static int music_auto_advance, music_loop_pending;
 typedef struct { int clip; long pos; float vol; } Voice;
 static Voice voices[8];
 static float sfx_vol = 0.7f;
+/* Custom Companion Deck sounds are decoded once, cached by path, and mixed by
+   the same callback as other launcher sounds so Windows/Linux dev builds can
+   test the Android layout sound assignments without another audio device. */
+typedef struct { Clip clip; char path[512]; long pos; } DeckSoundVoice;
+static DeckSoundVoice deck_sound_voices[8];
+static unsigned deck_sound_next;
 
 /* controller speaker */
 static SDL_AudioDeviceID pdev;
@@ -415,6 +421,18 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
                 if (mp_sfx_pos[player][ev] >= clip->n) mp_sfx_pos[player][ev] = -1;
             }
         }
+        for (int i = 0; i < 8; i++) {
+            DeckSoundVoice *voice = &deck_sound_voices[i];
+            if (voice->pos < 0) continue;
+            if (!voice->clip.d || voice->pos >= voice->clip.n) {
+                voice->pos = -1;
+                continue;
+            }
+            l += voice->clip.d[voice->pos * 2] * 0.78f;
+            r += voice->clip.d[voice->pos * 2 + 1] * 0.78f;
+            voice->pos++;
+            if (voice->pos >= voice->clip.n) voice->pos = -1;
+        }
         if (l > 1) l = 1; else if (l < -1) l = -1;
         if (r > 1) r = 1; else if (r < -1) r = -1;
         out[i * 2] = l; out[i * 2 + 1] = r;
@@ -432,7 +450,10 @@ int audio_init(int latency)
     if (dev) return 0;
     SDL_SetHint(SDL_HINT_AUDIO_RESAMPLING_MODE, "3");
     mx = SDL_CreateMutex(); cv = SDL_CreateCond(); pmx = SDL_CreateMutex();
-    for (int i = 0; i < 8; i++) voices[i].clip = -1;
+    for (int i = 0; i < 8; i++) {
+        voices[i].clip = -1;
+        deck_sound_voices[i].pos = -1;
+    }
     SDL_AudioSpec want, have;
     SDL_zero(want);
     want.freq = 48000; want.format = AUDIO_F32SYS; want.channels = 2;
@@ -459,6 +480,14 @@ void audio_shutdown(void)
 {
     audio_pad_close();
     if (dev) { SDL_CloseAudioDevice(dev); dev = 0; }
+    for (int i = 0; i < 8; i++) {
+        free(deck_sound_voices[i].clip.d);
+        deck_sound_voices[i].clip.d = NULL;
+        deck_sound_voices[i].clip.n = 0;
+        deck_sound_voices[i].path[0] = 0;
+        deck_sound_voices[i].pos = -1;
+    }
+    deck_sound_next = 0;
     for (int player = 0; player < MAX_MP_PLAYERS - 1; player++) {
         for (int i = 0; i < N_P2_SFX; i++) {
             free(mp_sfx[player][i].d);
@@ -693,6 +722,51 @@ void audio_mp_sfx_preview(int player, int which)
 
 void audio_p2_sfx(int which) { audio_mp_sfx(2, which); }
 void audio_p2_sfx_preview(int which) { audio_mp_sfx_preview(2, which); }
+void audio_deck_sfx_play(const char *path)
+{
+    if (!dev || !path || !path[0]) return;
+
+    /* Replaying an already-decoded sound just rewinds its cached voice. */
+    SDL_LockMutex(mx);
+    for (int i = 0; i < 8; i++) {
+        if (deck_sound_voices[i].clip.d &&
+            strcmp(deck_sound_voices[i].path, path) == 0) {
+            deck_sound_voices[i].pos = 0;
+            SDL_UnlockMutex(mx);
+            return;
+        }
+    }
+    SDL_UnlockMutex(mx);
+
+    Clip decoded = {0};
+    if (load_clip(&decoded, path) != 0 || !decoded.d || decoded.n <= 0) {
+        free(decoded.d);
+        return;
+    }
+
+    SDL_LockMutex(mx);
+    int slot = -1;
+    for (int i = 0; i < 8; i++) {
+        if (deck_sound_voices[i].clip.d &&
+            strcmp(deck_sound_voices[i].path, path) == 0) {
+            deck_sound_voices[i].pos = 0;
+            SDL_UnlockMutex(mx);
+            free(decoded.d);
+            return;
+        }
+        if (slot < 0 && deck_sound_voices[i].pos < 0) slot = i;
+    }
+    if (slot < 0) {
+        slot = (int)(deck_sound_next++ % 8u);
+    }
+    Clip previous = deck_sound_voices[slot].clip;
+    deck_sound_voices[slot].clip = decoded;
+    snprintf(deck_sound_voices[slot].path, sizeof deck_sound_voices[slot].path, "%s", path);
+    deck_sound_voices[slot].pos = 0;
+    SDL_UnlockMutex(mx);
+    free(previous.d);
+}
+
 
 void audio_music_preview(void)
 {
