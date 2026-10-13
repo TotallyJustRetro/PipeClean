@@ -371,6 +371,10 @@ static int field_table(Field *t, int cap)
             S(gn[g][k], d->button_sound_path[b]); k++;
         }
         GS("deck_item_sound", d->item_sound_path); GS("deck_empty_item_sound", d->empty_item_sound_path);
+        for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_asset_stretch_%d", games[g].id, asset);
+            I(gn[g][k], d->asset_stretch[asset], 0, 1); k++;
+        }
 #undef GI
 #undef GS
     }
