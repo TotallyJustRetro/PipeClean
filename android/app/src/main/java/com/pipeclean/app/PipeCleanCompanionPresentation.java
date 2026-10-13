@@ -762,8 +762,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
             if (dashboardDualScreen) {
                 drawMusicPanel(c, 20, 315, 760, 123, false);
-            } else {
-                card(c, 20, 435 - 1, 760, 1, "");
             }
         }
 
@@ -791,7 +789,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 textFit(c, "Your recent games and play time will appear here.", 30,
                     recentY + 50, 384, 11, muted());
             } else {
-                float rowH = dashboardDualScreen ? 26f : 49f;
+                float rowH = dashboardDualScreen ? 26f : 68f;
                 for (int i = 0; i < rows; i++) {
                     int id = dashboardRecentGames[i];
                     if (id < 0) continue;
@@ -1228,9 +1226,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private int dashboardHitTest(float x, float y, boolean portrait) {
             if (!dashboardDualScreen) return 0;
             if (portrait) {
-                if (inside(x, y, 105, 613, 42, 29)) return MUSIC_PREV;
-                if (inside(x, y, 154, 613, 42, 29)) return MUSIC_TOGGLE;
-                if (inside(x, y, 203, 613, 42, 29)) return MUSIC_NEXT;
+                if (inside(x, y, 121, 613, 42, 29)) return MUSIC_PREV;
+                if (inside(x, y, 170, 613, 42, 29)) return MUSIC_TOGGLE;
+                if (inside(x, y, 219, 613, 42, 29)) return MUSIC_NEXT;
                 float rowY = 669;
                 float rowW = 394;
                 int count = musicPlaylist.length;
