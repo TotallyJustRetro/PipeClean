@@ -217,6 +217,16 @@ void launcher_open_companion_layout_picker(int kind, int game)
         d->decoration_extra_dx[5], d->decoration_extra_dy[5], d->decoration_extra_scale[5], d->decoration_extra_scale_y[5],
         d->decoration_extra_dx[6], d->decoration_extra_dy[6], d->decoration_extra_scale[6], d->decoration_extra_scale_y[6],
         d->sounds_enabled);
+    size_t manifest_used = strlen(manifest);
+    for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++) {
+        int wrote = snprintf(manifest + manifest_used, sizeof manifest - manifest_used,
+            "asset_stretch_%d=%d\n", asset, d->asset_stretch[asset] ? 1 : 0);
+        if (wrote < 0 || (size_t)wrote >= sizeof manifest - manifest_used) {
+            manifest[0] = 0;
+            break;
+        }
+        manifest_used += (size_t)wrote;
+    }
     jstring text = (*env)->NewStringUTF(env, manifest);
     jclass string_class = (*env)->FindClass(env, "java/lang/String");
     jobjectArray paths = string_class
@@ -410,6 +420,8 @@ static void companion_publish_launcher_dashboard(int selected_game)
                 values[base + 17 + slot * 3] = layout->decoration_extra_dy[slot];
                 values[base + 18 + slot * 3] = layout->decoration_extra_scale[slot];
             }
+            for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++)
+                values[base + 49 + asset] = layout->asset_stretch[asset] ? 1 : 0;
             values[base + 25] = layout->header_scale_y;
             values[base + 26] = layout->item_scale_y;
             values[base + 27] = layout->controls_scale_y;
@@ -426,7 +438,7 @@ static void companion_publish_launcher_dashboard(int selected_game)
             for (int i = 0; i < N_DECK_ASSET_PATHS; i++) {
                 jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
                 if (path) {
-                    (*env)->SetObjectArrayElement(env, layout_paths, g * 24 + i, path);
+                    (*env)->SetObjectArrayElement(env, layout_paths, g * N_DECK_ASSET_PATHS + i, path);
                     (*env)->DeleteLocalRef(env, path);
                 }
             }
@@ -553,7 +565,7 @@ static const char *desktop_deck_asset_path(const CompanionLayoutCfg *d, int i)
     if (i == 15) return d->header_texture_path;
     if (i == 16) return d->status_texture_path;
     if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
-    if (i >= 21 && i <= 23) return d->decoration_extra_path[i - 21];
+    if (i >= 21 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 21];
     return "";
 }
 
@@ -789,6 +801,15 @@ static int desktop_bundle_export(int game, const char *zip_path)
                              "%s=%s\n", desktop_deck_manifest_field(i), entry);
         if (extra < 0 || (size_t)extra >= sizeof manifest - (size_t)len) {
             ok = 0; break;
+        }
+        len += extra;
+    }
+    for (int asset = 0; asset < N_DECK_ASSET_PATHS && ok; asset++) {
+        int extra = snprintf(manifest + len, sizeof manifest - (size_t)len,
+            "asset_stretch_%d=%d\n", asset, d->asset_stretch[asset] ? 1 : 0);
+        if (extra < 0 || (size_t)extra >= sizeof manifest - (size_t)len) {
+            ok = 0;
+            break;
         }
         len += extra;
     }
