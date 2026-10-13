@@ -586,7 +586,7 @@ static void draw_slot_timeline(const Settings *s, int game)
             float label_area = selected ? 19.0f : 9.0f;
             float image_top = tile_y + image_margin;
             float image_bottom = fmaxf(image_top + 3.0f, tile_bottom - label_area - 2.0f);
-            SDL_Texture *thumb = slot_thumbnail(game, i);
+            SDL_Texture *thumb = occupied ? slot_thumbnail(game, i) : NULL;
             SDL_Rect image_dst = {(int)(tile_x + image_margin), (int)image_top,
                 (int)(tile_w - image_margin * 2.0f), (int)(image_bottom - image_top)};
             if (thumb && image_dst.w > 4 && image_dst.h > 3) {
@@ -612,8 +612,8 @@ static void draw_slot_timeline(const Settings *s, int game)
             if (selected) {
                 char slot_label[24], time_label[32];
                 snprintf(slot_label, sizeof slot_label, "SLOT %02d", i + 1);
-                draw_text_fit((int)(tile_x + tile_w * .5f - (tile_w - 8) * .5f),
-                    (int)tile_bottom - 13, (int)tile_w - 8, 1,
+                draw_text_fit((int)(tile_x + 4),
+                    (int)tile_bottom - 20, (int)tile_w - 8, 1,
                     255, 214, 107, slot_label);
                 time_t saved_at = slot_state_mtime(game, i);
                 if (occupied && saved_at > 0) {
@@ -626,7 +626,7 @@ static void draw_slot_timeline(const Settings *s, int game)
                         strftime(time_label, sizeof time_label, "SAVED %H:%M", &saved_tm);
                     else snprintf(time_label, sizeof time_label, "SAVED");
                 } else snprintf(time_label, sizeof time_label, "%s", occupied ? "SAVED" : "READY TO SAVE");
-                draw_text_fit((int)(tile_x + 4), (int)tile_bottom - 3,
+                draw_text_fit((int)(tile_x + 4), (int)tile_bottom - 9,
                     (int)tile_w - 8, 1,
                     theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), time_label);
             } else {
@@ -790,9 +790,9 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
         const char *label = item == 1 ? "MUSHROOM" :
             game == GAME_SML ? "SUPERBALL FLOWER" :
             item == 3 ? "CARROT" : "FIRE FLOWER";
-        draw_text_fit(cx - r, cy + (int)(r * .66f), r * 2, 1,
+        draw_text_fit(cx - r, cy + (int)(r * .66f) - 10, r * 2, 1,
             theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
-        draw_text_fit(cx - r, cy + (int)(r * .81f), r * 2, 1,
+        draw_text_fit(cx - r, cy + (int)(r * .81f) - 7, r * 2, 1,
             theme_muted_r(game), theme_muted_g(game), theme_muted_b(game),
             "TAP WHEN READY");
     }
@@ -896,7 +896,7 @@ static void draw_companion(const Settings *s)
     /* Left-hand save-slot preview / current save card. */
     draw_android_card(24, 72, 160, 132, g, current_playing ? "ACTIVE SAVE" : "SAVE SLOT PREVIEW");
     int occupied = slot_file_occupied(g, current_slot);
-    SDL_Texture *thumb = slot_thumbnail(g, current_slot);
+    SDL_Texture *thumb = occupied ? slot_thumbnail(g, current_slot) : NULL;
     SDL_Rect thumb_dst = {40, 103, 128, 56};
     fill_round_rect(40, 103, 128, 56, 5, 20, 33, 48, 255);
     if (thumb) SDL_RenderCopy(deck_renderer, thumb, NULL, &thumb_dst);
@@ -907,9 +907,21 @@ static void draw_companion(const Settings *s)
     char slot_text[32];
     snprintf(slot_text, sizeof slot_text, "SLOT %02d", current_slot + 1);
     draw_text(38, 170, 1, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), slot_text);
+    char active_save_label[40];
+    time_t active_saved_at = slot_state_mtime(g, current_slot);
+    if (occupied && active_saved_at > 0) {
+        struct tm saved_tm;
+#ifdef _WIN32
+        if (localtime_s(&saved_tm, &active_saved_at) == 0)
+#else
+        if (localtime_r(&active_saved_at, &saved_tm) != NULL)
+#endif
+            strftime(active_save_label, sizeof active_save_label, "SAVED %H:%M", &saved_tm);
+        else snprintf(active_save_label, sizeof active_save_label, "SAVED");
+    } else snprintf(active_save_label, sizeof active_save_label, "%s",
+                    occupied ? "SAVED" : "READY TO SAVE");
     draw_text_fit(38, 188, 138, 1,
-        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g),
-        occupied ? "SAVED" : "READY TO SAVE");
+        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), active_save_label);
 
     /* The reserve item stays at the visual center and uses the per-game layout transform. */
     float ix = 272, iy = 36, iw = 256, ih = 256;
@@ -926,10 +938,10 @@ static void draw_companion(const Settings *s)
     draw_text(634, 145, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
         g == GAME_SML ? "WORLD / LEVEL" : "CURRENT STAGE");
     char stage_text[32];
-    if (g == GAME_SML && current_world >= 0 && current_stage >= 0)
-        snprintf(stage_text, sizeof stage_text, "%d - %d", current_world + 1, current_stage + 1);
+    if (g == GAME_SML && current_world > 0 && current_stage > 0)
+        snprintf(stage_text, sizeof stage_text, "%d - %d", current_world, current_stage);
     else if (g == GAME_SML2 && current_stage >= 0)
-        snprintf(stage_text, sizeof stage_text, "STAGE %02d", current_stage + 1);
+        snprintf(stage_text, sizeof stage_text, "STAGE %02d", current_stage);
     else snprintf(stage_text, sizeof stage_text, "--");
     draw_text_fit(634, 163, 126, 2,
         theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), stage_text);
@@ -951,7 +963,7 @@ static void draw_companion(const Settings *s)
 
     draw_slot_timeline(s, g);
 
-    float dx = 280, dy = 150, dw = 240, dh = 150;
+    float dx = 280, dy = 153, dw = 240, dh = 144;
     transform_box(d, 4, 400, 225, &dx, &dy, &dw, &dh);
     if (assets[g][3]) image_cover(assets[g][3], (int)dx, (int)dy, (int)dw, (int)dh);
 
