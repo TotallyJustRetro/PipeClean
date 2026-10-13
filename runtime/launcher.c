@@ -2585,8 +2585,20 @@ static void tab_display(float x, float y)
     ui_text(F_REG, 13, x + 210, y + 245, C_OK, "Adapts to device");
     ui_text_fit(F_REG, 11, x + 36, y + 287, 700, C_DIM,
                 "Android sizes the app to your device. Interface size still applies; rotate or resize the app window if your device supports it.");
-    ui_text(F_REG, 13, x + 36, y + 327, C_TEXT, "Fullscreen");
-    ui_text(F_REG, 12, x + 210, y + 327, C_DIM, "Managed by Android");
+
+    ui_text(F_REG, 13, x + 36, y + 327, C_TEXT, "Second-screen Companion Deck");
+    if (ui_toggle(x + 310, y + 323, &settings.launcher_dual_screen))
+        settings_save();
+    ui_text_fit(F_REG, 10, x + 36, y + 352, 710, C_DIM,
+                settings.launcher_dual_screen
+                    ? "Music player, rotating vinyl and playlist are shown on the lower display."
+                    : "Music player, rotating vinyl and playlist stay on the main display.");
+
+    ui_text(F_REG, 13, x + 36, y + 380, C_TEXT, "Auto Pipe Swap (SML1)");
+    if (ui_toggle(x + 310, y + 376, &settings.launcher_pipe_screen_swap))
+        settings_save();
+    ui_text_fit(F_REG, 10, x + 36, y + 405, 710, C_DIM,
+                "When enabled, Super Mario Land swaps gameplay to the lower display in pipe and bonus rooms. Requires the Companion Deck.");
 #else
     ui_text(F_REG, 13, x + 36, y + 245, C_TEXT, "Desktop window size");
     static const char *sizes[] = {"Compact", "Balanced", "Large"};
@@ -2601,10 +2613,12 @@ static void tab_display(float x, float y)
     ui_text_fit(F_REG, 11, x + 36, y + 330, 700, C_DIM,
                 "Window size is restored when fullscreen is turned off. The game's own Display settings can still change game window size.");
 #endif
-    if (ui_button(x + 36, y + 394, 180, 36, "Reset display options", B_NORMAL, 1)) {
+    if (ui_button(x + 36, y + 434, 180, 30, "Reset display options", B_NORMAL, 1)) {
         settings.launcher_ui_scale = 100;
         settings.launcher_window_size = 1;
         settings.launcher_fullscreen = 0;
+        settings.launcher_dual_screen = 0;
+        settings.launcher_pipe_screen_swap = 0;
         ui_set_scale_preference(100);
         settings_save();
         launcher_toast("Launcher display options reset.");
