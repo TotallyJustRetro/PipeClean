@@ -207,8 +207,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String wallpaperPath = "";
 
         private static final int LAYOUT_GAME_COUNT = 7;
-        private static final int LAYOUT_VALUE_COUNT = 33;
-        private static final int LAYOUT_PATH_COUNT = 24;
+        private static final int LAYOUT_VALUE_COUNT = 49;
+        private static final int LAYOUT_PATH_COUNT = 28;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
         private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
@@ -581,12 +581,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void applyLayoutTransform(Canvas canvas, int element, float w, float h,
                                           float centerX, float centerY) {
             int g = activeLayoutGame();
-            if (g < 0 || element < 0 || element >= 8) return;
+            if (g < 0 || element < 0 || element >= 4 + N_DECK_DECORATIONS) return;
             int base = element < 5 ? element * 3 : 16 + (element - 5) * 3;
             float dx = layoutValues[g][base] * (w / 800f);
             float dy = layoutValues[g][base + 1] * (h / 450f);
             float scaleX = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
-            int scaleYIndex = element < 5 ? 25 + element : 30 + (element - 5);
+            int scaleYIndex = element < 5 ? 37 + element : 42 + (element - 5);
             float scaleY = Math.max(0.25f, Math.min(2.5f, layoutValues[g][scaleYIndex] / 100f));
             canvas.translate(centerX + dx, centerY + dy);
             canvas.scale(scaleX, scaleY);
@@ -671,14 +671,20 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0) return;
-            for (int slot = 0; slot < 4; slot++) {
+            for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
                 int imageIndex = slot == 0 ? 3 : 20 + slot;
                 if (!hasLayoutImage(g, imageIndex)) continue;
                 float bx = slot == 0 ? w * 0.35f : slot == 1 ? w * 0.025f :
-                    slot == 2 ? w * 0.76f : w * 0.40f;
-                float by = slot == 0 ? h * 0.34f : slot == 3 ? h * 0.58f : h * 0.17f;
-                float bw = slot == 0 ? w * 0.30f : w * 0.21f;
-                float bh = slot == 0 ? h * 0.32f : h * 0.27f;
+                    slot == 2 ? w * 0.76f : slot == 3 ? w * 0.40f :
+                    slot == 4 ? w * 0.032f : slot == 5 ? w * 0.7925f :
+                    slot == 6 ? w * 0.2375f : w * 0.61f;
+                float by = slot == 0 ? h * 0.34f : (slot == 1 || slot == 2) ? h * 0.17f :
+                    slot == 3 ? h * 0.58f : (slot == 4 || slot == 5) ? h * 0.485f :
+                    slot == 6 ? h * 0.17f : h * 0.578f;
+                float bw = slot == 0 ? w * 0.30f : (slot == 1 || slot == 2) ? w * 0.21f :
+                    slot == 3 ? w * 0.21f : (slot == 4 || slot == 5) ? w * 0.175f : w * 0.1525f;
+                float bh = slot == 0 ? h * 0.32f : (slot == 1 || slot == 2) ? h * 0.27f :
+                    slot == 3 ? h * 0.27f : (slot == 4 || slot == 5) ? h * 0.204f : h * 0.191f;
                 int element = 4 + slot;
                 canvas.save();
                 applyLayoutTransform(canvas, element, w, h, bx + bw * 0.5f, by + bh * 0.5f);
@@ -1228,27 +1234,15 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawHeroItem(c, 225, 280, 146, item);
             c.restore();
 
-            card(c, 35, 466, 380, 58, game < 0 ? "SAVE SLOT PREVIEW" : "ACTIVE SAVE SLOT");
-            Bitmap currentThumb = slotThumbnails[slot];
-            if (currentThumb != null && !currentThumb.isRecycled()) {
-                p.setColor(0xFFFFFFFF);
-                c.drawBitmap(currentThumb, null, new RectF(48, 477, 120, 513), p);
-            } else {
-                rect(c, 48, 477, 72, 36, 0x55304050);
-                text(c, slotOccupied[slot] ? "WAIT" : "EMPTY", 84, 498, 6, muted(), true);
-            }
-            text(c, String.format(Locale.US, "SLOT %02d", slot + 1), 145, 494, 13, ink());
-            text(c, slotOccupied[slot] ? "SAVED  " + (slotTimeLabels[slot] == null ? "" : slotTimeLabels[slot])
-                                       : "READY TO SAVE", 145, 512, 8, accent());
-
+            // The save-state timeline is the single source of save-slot information.
             boolean idle = game < 0;
             c.save();
             applyLayoutTransform(c, 2, 450f, 800f, 225f, 552f);
-            button(c,20,526,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
-            button(c,232,526,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
-            button(c,20,584,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",
+            button(c,20,466,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
+            button(c,232,466,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
+            button(c,20,524,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",
                 idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,232,584,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
+            button(c,232,524,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
             c.restore();
 
             c.save();
@@ -1312,10 +1306,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 int layoutGame = activeLayoutGame();
                 int textureIndex = 11 + itemId;
                 if (layoutGame >= 0 && itemId > 0 && hasLayoutImage(layoutGame, textureIndex))
-                    drawLayoutImage(c, layoutGame, textureIndex, cx-radius*0.46f, cy-radius*0.46f,
+                    drawLayoutImageContain(c, layoutGame, textureIndex, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else if (layoutGame >= 0 && hasLayoutImage(layoutGame, 2))
-                    drawLayoutImage(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
+                    drawLayoutImageContain(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else
                     drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
