@@ -2808,12 +2808,12 @@ enum {
 };
 enum {
     DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS, DECK_ELEM_TIMELINE,
-    DECK_ELEM_DECORATION, DECK_ELEM_DECORATION_2, DECK_ELEM_DECORATION_3,
+    DECK_ELEM_STATUS, DECK_ELEM_DECORATION, DECK_ELEM_DECORATION_2, DECK_ELEM_DECORATION_3,
     DECK_ELEM_DECORATION_4, DECK_ELEM_DECORATION_5, DECK_ELEM_DECORATION_6,
     DECK_ELEM_DECORATION_7, DECK_ELEM_DECORATION_8, N_DECK_ELEM
 };
 static const char *deck_element_names[N_DECK_ELEM] = {
-    "Header", "Reserve item", "Control buttons", "Save timeline",
+    "Header", "Reserve item", "Control buttons", "Save timeline", "Adventure status",
     "Decoration 1", "Decoration 2", "Decoration 3", "Decoration 4",
     "Decoration 5", "Decoration 6", "Decoration 7", "Decoration 8"
 };
@@ -2849,9 +2849,9 @@ static void deck_layout_defaults(CompanionLayoutCfg *d)
     if (!d) return;
     memset(d, 0, sizeof *d);
     d->header_scale = d->item_scale = d->controls_scale =
-        d->timeline_scale = d->decoration_scale = 100;
+        d->timeline_scale = d->status_scale = d->decoration_scale = 100;
     for (int i = 0; i < N_DECK_DECORATIONS - 1; i++) d->decoration_extra_scale[i] = d->decoration_extra_scale_y[i] = 100;
-d->header_scale_y = d->item_scale_y = d->controls_scale_y = d->timeline_scale_y = d->decoration_scale_y = 100;
+d->header_scale_y = d->item_scale_y = d->controls_scale_y = d->timeline_scale_y = d->status_scale_y = d->decoration_scale_y = 100;
     d->sounds_enabled = 1;
 }
 
@@ -2886,6 +2886,7 @@ static int *deck_element_x(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_ITEM: return &d->item_dx;
     case DECK_ELEM_CONTROLS: return &d->controls_dx;
     case DECK_ELEM_TIMELINE: return &d->timeline_dx;
+    case DECK_ELEM_STATUS: return &d->status_dx;
     case DECK_ELEM_DECORATION: return &d->decoration_dx;
     default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_dx[element - DECK_ELEM_DECORATION_2] : &d->decoration_dx;
@@ -2898,6 +2899,7 @@ static int *deck_element_y(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_ITEM: return &d->item_dy;
     case DECK_ELEM_CONTROLS: return &d->controls_dy;
     case DECK_ELEM_TIMELINE: return &d->timeline_dy;
+    case DECK_ELEM_STATUS: return &d->status_dy;
     case DECK_ELEM_DECORATION: return &d->decoration_dy;
     default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_dy[element - DECK_ELEM_DECORATION_2] : &d->decoration_dy;
@@ -2910,6 +2912,7 @@ static int *deck_element_scale(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_ITEM: return &d->item_scale;
     case DECK_ELEM_CONTROLS: return &d->controls_scale;
     case DECK_ELEM_TIMELINE: return &d->timeline_scale;
+    case DECK_ELEM_STATUS: return &d->status_scale;
     case DECK_ELEM_DECORATION: return &d->decoration_scale;
     default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_scale[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale;
@@ -2923,6 +2926,7 @@ static int *deck_element_scale_y(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_ITEM: return &d->item_scale_y;
     case DECK_ELEM_CONTROLS: return &d->controls_scale_y;
     case DECK_ELEM_TIMELINE: return &d->timeline_scale_y;
+    case DECK_ELEM_STATUS: return &d->status_scale_y;
     case DECK_ELEM_DECORATION: return &d->decoration_scale_y;
     default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_scale_y[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale_y;
@@ -2936,6 +2940,7 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
     case DECK_ELEM_ITEM:      *x = 250; *y = 14;  *w = 300; *h = 300; break;
     case DECK_ELEM_CONTROLS:  *x = 94;  *y = 320; *w = 612; *h = 46;  break;
     case DECK_ELEM_TIMELINE:  *x = 24;  *y = 365; *w = 752; *h = 83;  break;
+    case DECK_ELEM_STATUS:    *x = 620; *y = 76;  *w = 156; *h = 128; break;
     case DECK_ELEM_DECORATION: *x = 280; *y = 153; *w = 240; *h = 144; break;
     case DECK_ELEM_DECORATION_2: *x = 20; *y = 78; *w = 170; *h = 120; break;
     case DECK_ELEM_DECORATION_3: *x = 610; *y = 78; *w = 170; *h = 120; break;
@@ -3055,16 +3060,18 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
             ui_stroke(rx, ry, rw, rh, 8, 1.5f, RGBA(108, 218, 255, 255));
     }
 
-    /* Status panel accepts a separate texture from the header. */
+    /* Adventure Status is a first-class transformable element, just like the header. */
     {
-        float sx = x + w * (620.f / 800.f), sy = y + h * (76.f / 450.f);
-        float sw = w * (156.f / 800.f), sh = h * (128.f / 450.f);
+        float sx, sy, sw, sh;
+        deck_editor_element_rect(d, DECK_ELEM_STATUS, x, y, w, h, &sx, &sy, &sw, &sh);
         ui_rrect(sx, sy, sw, sh, 7, RGBA(34, 44, 62, 240));
         deck_editor_preview_asset(d, 16, d->status_texture_path, sx + 1, sy + 1, sw - 2, sh - 2);
         ui_text_fit(F_BOLD, 6, sx + 5, sy + 6, sw - 10, RGBA(191, 202, 222, 255), "ADVENTURE STATUS");
         ui_text_fit(F_BOLD, 8, sx + 5, sy + sh * .45f, sw - 10, RGBA(250, 240, 220, 255), "LIVES  × 03");
         ui_text_fit(F_BOLD, 7, sx + 5, sy + sh * .66f, sw - 10, RGBA(112, 225, 182, 255),
                     companion_editor_game == GAME_SML ? "WORLD 1 - 1" : "STAGE 01");
+        if (DECK_ELEM_STATUS == companion_editor_element)
+            ui_stroke(sx, sy, sw, sh, 7, 1.5f, RGBA(108, 218, 255, 255));
     }
 
     /* Separate images for Save, Load, Pause and Rewind. */
@@ -3104,10 +3111,6 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     }
 
     ui_unclip();
-    /* Adventure status isn't a movable layout element, but its bounds are shown as a separate cyan card. */
-    ui_stroke(x + w * (620.f / 800.f), y + h * (76.f / 450.f),
-              w * (156.f / 800.f), h * (128.f / 450.f), 7, .7f, RGBA(82, 208, 233, 180));
-
     float sx, sy, sw, sh;
     deck_editor_element_rect(d, companion_editor_element, x, y, w, h, &sx, &sy, &sw, &sh);
     ui_stroke(sx, sy, sw, sh, 5, 2, RGBA(117, 213, 255, 255));
@@ -3125,6 +3128,7 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
     int order[N_DECK_ELEM];
     int n = 0;
     for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION; e--) order[n++] = e;
+    order[n++] = DECK_ELEM_STATUS;
     order[n++] = DECK_ELEM_ITEM;
     order[n++] = DECK_ELEM_CONTROLS;
     order[n++] = DECK_ELEM_TIMELINE;
@@ -3318,8 +3322,8 @@ static void deck_editor_layout(float x, float y)
                 "Select, move, reshape");
     for (int e = 0; e < N_DECK_ELEM; e++) {
         int col = e % 2, row = e / 2;
-        float by = y + 204 + row * 27.0f;
-        if (ui_button(rx + col * 163, by, 157, 24,
+        float by = y + 204 + row * 21.0f;
+        if (ui_button(rx + col * 163, by, 157, 19,
                       deck_element_names[e],
                       e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
             companion_editor_element = e;
@@ -3677,6 +3681,10 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "timeline_dy")) fresh.timeline_dy = v;
         else if (!strcmp(line, "timeline_scale")) fresh.timeline_scale = v;
         else if (!strcmp(line, "timeline_scale_y")) fresh.timeline_scale_y = v;
+        else if (!strcmp(line, "status_dx")) fresh.status_dx = v;
+        else if (!strcmp(line, "status_dy")) fresh.status_dy = v;
+        else if (!strcmp(line, "status_scale")) fresh.status_scale = v;
+        else if (!strcmp(line, "status_scale_y")) fresh.status_scale_y = v;
         else if (!strcmp(line, "decoration_dx")) fresh.decoration_dx = v;
         else if (!strcmp(line, "decoration_dy")) fresh.decoration_dy = v;
         else if (!strcmp(line, "decoration_scale")) fresh.decoration_scale = v;
