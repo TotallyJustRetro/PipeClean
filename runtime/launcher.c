@@ -3179,6 +3179,11 @@ int launcher_companion_layout_target_game(int selected_game)
     return selected_game;
 }
 
+int launcher_companion_layout_preview_enabled(void)
+{
+    return companion_editor_open && companion_editor_page != 0;
+}
+
 static void deck_set_path(char *dst, size_t cap, const char *value,
                           const char *base_dir)
 {
@@ -3190,7 +3195,7 @@ static void deck_set_path(char *dst, size_t cap, const char *value,
     else if (base_dir && base_dir[0])
         snprintf(dst, cap, "%s%s%s", base_dir,
                  (base_dir[strlen(base_dir) - 1] == '/' ||
-                  base_dir[strlen(base_dir) - 1] == '\\\\') ? "" : "/", value);
+                  base_dir[strlen(base_dir) - 1] == '\\') ? "" : "/", value);
     else
         snprintf(dst, cap, "%s", value);
 }
@@ -3204,7 +3209,7 @@ static int deck_manifest_apply(int game, const char *path)
     snprintf(directory, sizeof directory, "%s", path);
     char *slash = strrchr(directory, '/');
 #ifdef _WIN32
-    char *backslash = strrchr(directory, '\\\\');
+    char *backslash = strrchr(directory, '\\');
     if (!slash || (backslash && backslash > slash)) slash = backslash;
 #endif
     if (slash) slash[1] = 0; else directory[0] = 0;
