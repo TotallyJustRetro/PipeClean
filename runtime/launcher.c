@@ -2811,12 +2811,17 @@ enum {
     DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS, DECK_ELEM_TIMELINE,
     DECK_ELEM_STATUS, DECK_ELEM_DECORATION, DECK_ELEM_DECORATION_2, DECK_ELEM_DECORATION_3,
     DECK_ELEM_DECORATION_4, DECK_ELEM_DECORATION_5, DECK_ELEM_DECORATION_6,
-    DECK_ELEM_DECORATION_7, DECK_ELEM_DECORATION_8, N_DECK_ELEM
+    DECK_ELEM_DECORATION_7, DECK_ELEM_DECORATION_8, DECK_ELEM_DECORATION_9,
+    DECK_ELEM_DECORATION_10, DECK_ELEM_DECORATION_11, DECK_ELEM_DECORATION_12,
+    DECK_ELEM_DECORATION_13, DECK_ELEM_DECORATION_14, DECK_ELEM_DECORATION_15,
+    DECK_ELEM_DECORATION_16, N_DECK_ELEM
 };
 static const char *deck_element_names[N_DECK_ELEM] = {
     "Header", "Reserve item", "Control buttons", "Save timeline", "Adventure status",
     "Decoration 1", "Decoration 2", "Decoration 3", "Decoration 4",
-    "Decoration 5", "Decoration 6", "Decoration 7", "Decoration 8"
+    "Decoration 5", "Decoration 6", "Decoration 7", "Decoration 8",
+    "Decoration 9", "Decoration 10", "Decoration 11", "Decoration 12",
+    "Decoration 13", "Decoration 14", "Decoration 15", "Decoration 16"
 };
 static int companion_editor_pending_decoration_slot;
 static char *deck_decoration_path(CompanionLayoutCfg *d, int slot)
