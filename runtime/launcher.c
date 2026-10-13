@@ -2790,6 +2790,388 @@ static void tab_online(float x, float y)
                 np.status[0] ? np.status : "Not connected");
 }
 
+
+#if defined(__ANDROID__)
+/* Companion Deck layout editor: only SML1 and SML2 have live widgets today.
+ * Rows for the other games stay visible so the editor can grow without a UI redesign. */
+enum {
+    DECK_PICK_BACKGROUND = 1, DECK_PICK_BUTTON_TEXTURE, DECK_PICK_ITEM_TEXTURE,
+    DECK_PICK_DECORATION, DECK_PICK_SOUND_SAVE, DECK_PICK_SOUND_LOAD,
+    DECK_PICK_SOUND_PAUSE, DECK_PICK_SOUND_REWIND, DECK_PICK_SOUND_BACKGROUND,
+    DECK_PICK_SOUND_CLOSE, DECK_PICK_ITEM_SOUND, DECK_PICK_EMPTY_SOUND,
+    DECK_PICK_IMPORT, DECK_PICK_EXPORT
+};
+enum { DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS,
+       DECK_ELEM_TIMELINE, DECK_ELEM_DECORATION, N_DECK_ELEM };
+static const char *deck_element_names[N_DECK_ELEM] = {
+    "Header", "Reserve item", "Control buttons", "Save timeline", "Decoration"
+};
+static int companion_editor_open, companion_editor_page;
+static int companion_editor_game = GAME_SML;
+static int companion_editor_element = DECK_ELEM_CONTROLS;
+static int companion_editor_sound_selection;
+static int companion_editor_dragging, companion_editor_resizing;
+static float companion_editor_last_x, companion_editor_last_y;
+static int companion_editor_preview_hover;
+static CompanionLayoutCfg companion_undo[16], companion_redo[16];
+static int companion_undo_count, companion_redo_count;
+
+static int deck_game_ready(int game)
+{
+    return game == GAME_SML || game == GAME_SML2;
+}
+
+static void deck_layout_defaults(CompanionLayoutCfg *d)
+{
+    if (!d) return;
+    memset(d, 0, sizeof *d);
+    d->header_scale = d->item_scale = d->controls_scale =
+        d->timeline_scale = d->decoration_scale = 100;
+    d->sounds_enabled = 1;
+}
+
+static void deck_editor_history_clear(void)
+{
+    companion_undo_count = companion_redo_count = 0;
+    companion_editor_dragging = companion_editor_resizing = 0;
+}
+
+static void deck_editor_push(CompanionLayoutCfg stack[16], int *count,
+                             const CompanionLayoutCfg *d)
+{
+    if (*count >= 16) {
+        memmove(stack, stack + 1, 15 * sizeof stack[0]);
+        *count = 15;
+    }
+    stack[(*count)++] = *d;
+}
+
+static void deck_editor_snapshot(void)
+{
+    if (companion_editor_game < 0 || companion_editor_game >= N_GAMES) return;
+    deck_editor_push(companion_undo, &companion_undo_count,
+                     &settings.deck_layout[companion_editor_game]);
+    companion_redo_count = 0;
+}
+
+static int *deck_element_x(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_dx;
+    case DECK_ELEM_ITEM: return &d->item_dx;
+    case DECK_ELEM_CONTROLS: return &d->controls_dx;
+    case DECK_ELEM_TIMELINE: return &d->timeline_dx;
+    default: return &d->decoration_dx;
+    }
+}
+static int *deck_element_y(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_dy;
+    case DECK_ELEM_ITEM: return &d->item_dy;
+    case DECK_ELEM_CONTROLS: return &d->controls_dy;
+    case DECK_ELEM_TIMELINE: return &d->timeline_dy;
+    default: return &d->decoration_dy;
+    }
+}
+static int *deck_element_scale(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_scale;
+    case DECK_ELEM_ITEM: return &d->item_scale;
+    case DECK_ELEM_CONTROLS: return &d->controls_scale;
+    case DECK_ELEM_TIMELINE: return &d->timeline_scale;
+    default: return &d->decoration_scale;
+    }
+}
+
+static void deck_editor_element_base(int element, float *x, float *y, float *w, float *h)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER:    *x = 18;  *y = 7;   *w = 265; *h = 49;  break;
+    case DECK_ELEM_ITEM:      *x = 327; *y = 174; *w = 146; *h = 146; break;
+    case DECK_ELEM_CONTROLS:  *x = 94;  *y = 320; *w = 612; *h = 46;  break;
+    case DECK_ELEM_TIMELINE:  *x = 24;  *y = 365; *w = 752; *h = 83;  break;
+    default:                  *x = 280; *y = 112; *w = 240; *h = 150; break;
+    }
+}
+
+static void deck_editor_element_rect(CompanionLayoutCfg *d, int element,
+                                     float px, float py, float pw, float ph,
+                                     float *rx, float *ry, float *rw, float *rh)
+{
+    float x, y, w, h, scale;
+    deck_editor_element_base(element, &x, &y, &w, &h);
+    scale = (float)*deck_element_scale(d, element) / 100.0f;
+    x += (float)*deck_element_x(d, element);
+    y += (float)*deck_element_y(d, element);
+    *rx = px + x * (pw / 800.0f);
+    *ry = py + y * (ph / 480.0f);
+    *rw = w * (pw / 800.0f) * scale;
+    *rh = h * (ph / 480.0f) * scale;
+}
+
+static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
+{
+    ui_shadow(x, y, w, h, 11, 5, RGBA(0, 0, 0, 75));
+    ui_rrect(x, y, w, h, 10, RGBA(9, 15, 26, 255));
+    if (d->background_path[0]) {
+        ui_rrect(x + 2, y + 2, w - 4, h - 4, 9, RGBA(40, 48, 74, 255));
+        ui_text_fit(F_REG, 7, x + 7, y + h - 16, w - 14, RGBA(195, 207, 233, 220),
+                    "CUSTOM BACKGROUND");
+    } else {
+        ui_vgrad(x + 2, y + 2, w - 4, h - 4, RGBA(24, 36, 58, 255), RGBA(18, 22, 40, 255));
+    }
+    for (int e = 0; e < N_DECK_ELEM; e++) {
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, e, x, y, w, h, &rx, &ry, &rw, &rh);
+        uint32_t fill = e == companion_editor_element
+            ? RGBA(66, 145, 255, 135) : RGBA(74, 91, 124, 210);
+        if (e == DECK_ELEM_HEADER) {
+            ui_rrect(rx, ry, rw, rh, 5, fill);
+            ui_text_fit(F_BOLD, 8, rx + 5, ry + 4, rw - 10, RGBA(245, 249, 255, 255), "PIPE CLEAN");
+        } else if (e == DECK_ELEM_ITEM) {
+            ui_rrect(rx, ry, rw, rh, 10, fill);
+            if (d->item_texture_path[0])
+                ui_text_fit(F_BOLD, 7, rx + 4, ry + rh * 0.42f, rw - 8, RGBA(255,255,255,255), "CUSTOM ITEM");
+            else {
+                ui_rrect(rx + rw * .22f, ry + rh * .28f, rw * .56f, rh * .44f, 8, RGBA(255, 210, 82, 255));
+                ui_text_c(F_BOLD, 8, rx + rw * .5f, ry + rh * .43f, RGBA(61, 43, 20, 255), "?");
+            }
+        } else if (e == DECK_ELEM_CONTROLS) {
+            ui_rrect(rx, ry, rw, rh, 6, fill);
+            float bw = (rw - 20) / 4.0f;
+            static const char *labels[] = {"SAVE", "LOAD", "PAUSE", "REWIND"};
+            for (int b = 0; b < 4; b++) {
+                ui_rrect(rx + 4 + b * (bw + 4), ry + 4, bw, rh - 8, 4, RGBA(25, 36, 57, 245));
+                ui_text_c(F_BOLD, 6, rx + 4 + b * (bw + 4) + bw * .5f, ry + rh * .46f, RGBA(235, 241, 255, 255), labels[b]);
+            }
+        } else if (e == DECK_ELEM_TIMELINE) {
+            ui_rrect(rx, ry, rw, rh, 5, fill);
+            ui_text_c(F_BOLD, 7, rx + rw * .5f, ry + rh * .42f, RGBA(239, 245, 255, 255), "SAVE-STATE TIMELINE");
+        } else {
+            ui_rrect(rx, ry, rw, rh, 5, RGBA(69, 91, 124, 110));
+            if (d->decoration_path[0])
+                ui_text_fit(F_BOLD, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(246, 250, 255, 255), "YOUR IMAGE");
+            else
+                ui_text_fit(F_REG, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(181, 194, 215, 255), "ADD IMAGE");
+        }
+        if (e == companion_editor_element) {
+            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(124, 190, 255, 255));
+            ui_rrect(rx + rw - 7, ry + rh - 7, 9, 9, 2, RGBA(255, 255, 255, 255));
+        }
+    }
+}
+
+static void deck_editor_begin_drag(float x, float y, float preview_x, float preview_y,
+                                   float preview_w, float preview_h)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    int order[] = {DECK_ELEM_DECORATION, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS,
+                   DECK_ELEM_TIMELINE, DECK_ELEM_HEADER};
+    for (int i = 0; i < N_DECK_ELEM; i++) {
+        int e = order[i];
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, e, preview_x, preview_y, preview_w, preview_h,
+                                 &rx, &ry, &rw, &rh);
+        if (x < rx || y < ry || x >= rx + rw || y >= ry + rh) continue;
+        companion_editor_element = e;
+        companion_editor_resizing = x >= rx + rw - 14 && y >= ry + rh - 14;
+        companion_editor_dragging = 1;
+        companion_editor_last_x = x;
+        companion_editor_last_y = y;
+        deck_editor_snapshot();
+        return;
+    }
+}
+
+static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
+{
+    if (!companion_editor_dragging || companion_editor_game < 0 ||
+        companion_editor_game >= N_GAMES) return;
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    float dx = x - companion_editor_last_x, dy = y - companion_editor_last_y;
+    if (companion_editor_resizing) {
+        int *scale = deck_element_scale(d, companion_editor_element);
+        *scale += (int)((dx / (preview_w / 800.0f) + dy / (preview_h / 480.0f)) * 0.28f);
+        if (*scale < 25) *scale = 25;
+        if (*scale > 250) *scale = 250;
+    } else {
+        int *ox = deck_element_x(d, companion_editor_element);
+        int *oy = deck_element_y(d, companion_editor_element);
+        *ox += (int)(dx / (preview_w / 800.0f));
+        *oy += (int)(dy / (preview_h / 480.0f));
+        if (*ox < -400) *ox = -400; if (*ox > 400) *ox = 400;
+        if (*oy < -400) *oy = -400; if (*oy > 400) *oy = 400;
+    }
+    companion_editor_last_x = x;
+    companion_editor_last_y = y;
+}
+
+static void deck_editor_open_picker(int kind)
+{
+    launcher_open_companion_layout_picker(kind, companion_editor_game);
+}
+
+static void deck_editor_undo(void)
+{
+    if (!companion_undo_count) { launcher_toast("Nothing to undo."); return; }
+    deck_editor_push(companion_redo, &companion_redo_count,
+                     &settings.deck_layout[companion_editor_game]);
+    settings.deck_layout[companion_editor_game] = companion_undo[--companion_undo_count];
+}
+static void deck_editor_redo(void)
+{
+    if (!companion_redo_count) { launcher_toast("Nothing to redo."); return; }
+    deck_editor_push(companion_undo, &companion_undo_count,
+                     &settings.deck_layout[companion_editor_game]);
+    settings.deck_layout[companion_editor_game] = companion_redo[--companion_redo_count];
+}
+
+static void deck_editor_list(float x, float y)
+{
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "COMPANION DECK LAYOUTS");
+    ui_text_fit(F_REG, 10, x + 36, y + 109, 708, C_MUTED,
+                "Choose a game layout. Unreleased layouts are shown here but cannot be edited yet.");
+    ui_rect(x + 36, y + 128, 728, 1, C_LINE);
+    for (int g = 0; g < N_GAMES; g++) {
+        float ry = y + 134 + g * 39.5f;
+        int ready = deck_game_ready(g);
+        if (ready) ui_rrect(x + 32, ry - 2, 734, 35, 7, RGBA(255,255,255, g == companion_editor_game ? 14 : 5));
+        ui_text_fit(F_BOLD, 11, x + 40, ry + 5, 190, ready ? C_TEXT : C_DIM, games[g].name);
+        ui_text_fit(F_REG, 9, x + 238, ry + 6, 105, ready ? C_OK : C_DIM,
+                    ready ? "READY TO EDIT" : "COMING SOON");
+        if (ui_button(x + 468, ry, 76, 29, "Edit", B_PRIMARY, ready)) {
+            companion_editor_game = g;
+            companion_editor_page = 1;
+            companion_editor_element = DECK_ELEM_CONTROLS;
+            deck_editor_history_clear();
+        }
+        if (ui_button(x + 550, ry, 76, 29, "Import", B_GHOST, ready)) {
+            companion_editor_game = g;
+            deck_editor_history_clear();
+            deck_editor_open_picker(DECK_PICK_IMPORT);
+        }
+        if (ui_button(x + 632, ry, 76, 29, "Export", B_GHOST, ready)) {
+            companion_editor_game = g;
+            deck_editor_open_picker(DECK_PICK_EXPORT);
+        }
+    }
+    if (ui_button(x + 36, y + 435, 156, 28, "Back to Display", B_NORMAL, 1))
+        companion_editor_open = 0;
+    ui_text_fit(F_REG, 9, x + 210, y + 442, 540, C_DIM,
+                "Bundles include the layout config and any assigned images and sounds.");
+}
+
+static void deck_editor_layout(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    ui_text(F_BOLD, 14, x + 36, y + 84, C_TEXT, games[companion_editor_game].name);
+    if (ui_button(x + 36, y + 105, 57, 27, "Back", B_GHOST, 1)) {
+        companion_editor_page = 0;
+        companion_editor_dragging = 0;
+        deck_editor_history_clear();
+        return;
+    }
+    if (ui_button(x + 103, y + 105, 58, 27, "Save", B_PRIMARY, 1)) {
+        settings_save();
+        launcher_toast("Companion Deck layout saved.");
+    }
+    if (ui_button(x + 168, y + 105, 54, 27, "Undo", B_GHOST, companion_undo_count > 0)) deck_editor_undo();
+    if (ui_button(x + 229, y + 105, 54, 27, "Redo", B_GHOST, companion_redo_count > 0)) deck_editor_redo();
+    if (ui_button(x + 290, y + 105, 58, 27, "Reset", B_GHOST, 1)) {
+        deck_editor_snapshot();
+        deck_layout_defaults(d);
+    }
+
+    if (ui_button(x + 361, y + 105, 76, 27, "Background", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_BACKGROUND);
+    if (ui_button(x + 443, y + 105, 67, 27, "Buttons", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_BUTTON_TEXTURE);
+    if (ui_button(x + 516, y + 105, 58, 27, "Item", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_ITEM_TEXTURE);
+    if (ui_button(x + 580, y + 105, 82, 27, "Add image", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_DECORATION);
+    if (ui_button(x + 668, y + 105, 78, 27, "Sounds", B_GHOST, 1)) companion_editor_page = 2;
+
+    float px = x + 36, py = y + 145, pw = 344, ph = 206;
+    deck_editor_preview(d, px, py, pw, ph);
+    companion_editor_preview_hover = ui_hover(px, py, pw, ph);
+    if (ui_mouse.pressed && companion_editor_preview_hover)
+        deck_editor_begin_drag(ui_mouse.x, ui_mouse.y, px, py, pw, ph);
+    if (ui_mouse.down && companion_editor_dragging)
+        deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
+    if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
+
+    float rx = x + 398;
+    ui_text(F_BOLD, 11, rx, y + 147, C_TEXT, "Selected element");
+    for (int e = 0; e < N_DECK_ELEM; e++) {
+        int col = e % 2, row = e / 2;
+        if (ui_button(rx + col * 166, y + 168 + row * 33, 158, 27,
+                      deck_element_names[e], e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
+            companion_editor_element = e;
+    }
+    int *scale = deck_element_scale(d, companion_editor_element);
+    char scale_text[48];
+    snprintf(scale_text, sizeof scale_text, "Size: %d%%", *scale);
+    ui_text(F_BOLD, 11, rx, y + 274, C_TEXT, scale_text);
+    if (ui_button(rx, y + 294, 52, 26, "−", B_GHOST, *scale > 25)) {
+        deck_editor_snapshot(); *scale -= 10; if (*scale < 25) *scale = 25;
+    }
+    if (ui_button(rx + 58, y + 294, 52, 26, "+", B_GHOST, *scale < 250)) {
+        deck_editor_snapshot(); *scale += 10; if (*scale > 250) *scale = 250;
+    }
+    if (ui_button(rx + 118, y + 294, 150, 26, "Center element", B_GHOST, 1)) {
+        deck_editor_snapshot();
+        *deck_element_x(d, companion_editor_element) = 0;
+        *deck_element_y(d, companion_editor_element) = 0;
+    }
+    ui_text_wrap(F_REG, 9, rx, y + 329, 342, C_DIM,
+                 "Drag an element to move it. Drag its lower-right handle to resize. Changes preview on the Companion Deck and remain pending until Save.", 4);
+}
+
+static void deck_editor_sounds(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "COMPANION SOUNDS");
+    if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1))
+        companion_editor_page = 1;
+    ui_text(F_REG, 11, x + 114, y + 114, C_TEXT, "Enable custom action sounds");
+    if (ui_toggle(x + 320, y + 110, &d->sounds_enabled)) { }
+    static const char *labels[N_DECK_BUTTON_SOUNDS] = {
+        "Save button", "Load button", "Pause button", "Rewind button",
+        "Background button", "Close button"
+    };
+    for (int i = 0; i < N_DECK_BUTTON_SOUNDS; i++) {
+        int col = i % 2, row = i / 2;
+        float bx = x + 36 + col * 365, by = y + 151 + row * 65;
+        ui_rrect(bx, by, 350, 54, 8, C_PANEL);
+        ui_text_fit(F_BOLD, 10, bx + 12, by + 9, 155, C_TEXT, labels[i]);
+        ui_text_fit(F_REG, 8, bx + 12, by + 28, 225, C_DIM,
+                    d->button_sound_path[i][0] ? d->button_sound_path[i] : "Use built-in / silent default");
+        char b[32]; snprintf(b, sizeof b, "Choose…");
+        if (ui_button(bx + 266, by + 13, 72, 29, b, B_GHOST, 1))
+            deck_editor_open_picker(DECK_PICK_SOUND_SAVE + i);
+    }
+    ui_rrect(x + 36, y + 352, 350, 56, 8, C_PANEL);
+    ui_text_fit(F_BOLD, 10, x + 48, y + 362, 170, C_TEXT, "Item used");
+    ui_text_fit(F_REG, 8, x + 48, y + 381, 220, C_DIM,
+                d->item_sound_path[0] ? d->item_sound_path : "Choose a sound for a usable item");
+    if (ui_button(x + 302, y + 366, 70, 28, "Choose…", B_GHOST, 1))
+        deck_editor_open_picker(DECK_PICK_ITEM_SOUND);
+    ui_rrect(x + 402, y + 352, 360, 56, 8, C_PANEL);
+    ui_text_fit(F_BOLD, 10, x + 414, y + 362, 180, C_TEXT, "Empty item slot");
+    ui_text_fit(F_REG, 8, x + 414, y + 381, 220, C_DIM,
+                d->empty_item_sound_path[0] ? d->empty_item_sound_path : "Choose a sound when the slot is empty");
+    if (ui_button(x + 674, y + 366, 74, 28, "Choose…", B_GHOST, 1))
+        deck_editor_open_picker(DECK_PICK_EMPTY_SOUND);
+}
+
+static void deck_editor_draw(float x, float y)
+{
+    ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
+    if (companion_editor_page == 0) deck_editor_list(x, y);
+    else if (companion_editor_page == 2) deck_editor_sounds(x, y);
+    else deck_editor_layout(x, y);
+}
+#endif /* __ANDROID__ */
+
 static void tab_display(float x, float y)
 {
     ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
