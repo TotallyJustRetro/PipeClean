@@ -3482,10 +3482,12 @@ static void deck_editor_layout(float x, float y)
     ui_text(F_BOLD, 10, rx, y + 190, C_TEXT, "LAYERS & TRANSFORM");
     ui_text_fit(F_REG, 8, rx + 148, y + 190, 180, C_MUTED,
                 "Select, move, reshape");
+    /* Three compact columns prevent the element picker from colliding with
+       the independent width/height controls below it. */
     for (int e = 0; e < N_DECK_ELEM; e++) {
-        int col = e % 2, row = e / 2;
+        int col = e % 3, row = e / 3;
         float by = y + 204 + row * 21.0f;
-        if (ui_button(rx + col * 163, by, 157, 19,
+        if (ui_button(rx + col * 109, by, 105, 19,
                       deck_element_names[e],
                       e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
             companion_editor_element = e;
