@@ -884,56 +884,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
             p.setStyle(Paint.Style.FILL);
         }
 
-        private void drawMusicPanel(Canvas c, float x, float y, float w, float h, boolean portrait) {
-            card(c, x, y, w, h, "MENU MUSIC");
-            float cx = x + (portrait ? 57f : 53f);
-            float cy = y + (portrait ? 76f : 69f);
-            float radius = portrait ? 34f : 37f;
-            drawVinylRecord(c, cx, cy, radius, musicPlaying);
-
-            long elapsed = Math.max(0L, SystemClock.uptimeMillis() - musicTitleChangedAt);
-            float progress = Math.min(1f, elapsed / 300f);
-            float eased = 1f - (1f - progress) * (1f - progress) * (1f - progress);
-            float slide = (1f - eased) * (portrait ? 30f : 24f);
-            float titleX = x + (portrait ? 105f : 98f) + slide;
-            float titleW = w - (titleX - x) - (portrait ? 12f : 340f);
-            text(c, musicPlaying ? "NOW PLAYING" : "MUSIC PAUSED",
-                 titleX, y + 36, 7.5f, musicPlaying ? 0xFF71D7A3 : muted());
-            textFit(c, musicTitle, titleX, y + 49, Math.max(80f, titleW), 11.5f, ink());
-
-            if (portrait) {
-                smallButton(c, x + 105, y + 78, 42, 29, "‹", 14);
-                smallButton(c, x + 154, y + 78, 42, 29, musicPlaying ? "Ⅱ" : "▶", 13);
-                smallButton(c, x + 203, y + 78, 42, 29, "›", 15);
-                text(c, "PLAYLIST  •  TAP A TRACK", x + 13, y + 121, 7, muted());
-                drawMusicPlaylistRows(c, x + 12, y + 134, w - 24, 27, 4);
-            } else {
-                smallButton(c, x + 268, y + 63, 44, 32, "‹", 14);
-                smallButton(c, x + 319, y + 63, 44, 32, musicPlaying ? "Ⅱ" : "▶", 13);
-                smallButton(c, x + 370, y + 63, 44, 32, "›", 15);
-                text(c, "PLAYLIST", x + 438, y + 24, 7, muted());
-                drawMusicPlaylistRows(c, x + 435, y + 33, w - 447, 25, 3);
-            }
-            if (musicPlaying) postInvalidateOnAnimation();
-        }
-
-        private void drawMusicPlaylistRows(Canvas c, float x, float y, float w, float rowH, int maxRows) {
-            int count = musicPlaylist.length;
-            if (count <= 0) {
-                textFit(c, "Add tracks in Audio & Menu", x + 4, y + 4, w - 8, 8, muted());
-                return;
-            }
-            for (int row = 0; row < maxRows; row++) {
-                int index = (musicSelectedTrack + row) % count;
-                float ry = y + row * rowH;
-                boolean selected = row == 0;
-                p.setColor(selected ? 0xFF354D62 : 0xB5162031);
-                c.drawRoundRect(x, ry, x + w, ry + rowH - 3, 5, 5, p);
-                textFit(c, musicPlaylist[index], x + 6, ry + (rowH - 10) * 0.5f, w - 12, 8.3f,
-                    selected ? 0xFFFFD66B : ink());
-            }
-        }
-
         private void drawLandscape(Canvas c) {
             headerPlate(c, 18, 7, 265, 49);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 26, 23, 10, accent());
