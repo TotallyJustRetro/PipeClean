@@ -306,11 +306,12 @@ static void companion_publish_launcher_dashboard(int selected_game)
     }
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
-    /* The playlist list and active song title are also displayed on the deck
-     * when dual-screen mode is enabled. */
+    /* Publish the song identity and a one-shot notification serial. The deck
+     * shows the vinyl banner only when dual-screen mode is active and the
+     * launcher is not on the Audio & Menu management page. */
     jmethodID music_method = (*env)->GetMethodID(
         env, cls, "updateCompanionMusicPlaylist",
-        "(Ljava/lang/String;[Ljava/lang/String;IZ)V");
+        "(Ljava/lang/String;[Ljava/lang/String;IZIZ)V");
     if (music_method && string_class) {
         int count = settings.menu_playlist_count;
         if (count < 0) count = 0;
@@ -335,7 +336,9 @@ static void companion_publish_launcher_dashboard(int selected_game)
             if (selected < 0 || selected >= count) selected = 0;
             (void)(*env)->CallVoidMethod(env, activity, music_method,
                 current_title, tracks, (jint)selected,
-                settings.menu_music ? JNI_TRUE : JNI_FALSE);
+                settings.menu_music ? JNI_TRUE : JNI_FALSE,
+                (jint)launcher_music_notification_serial(),
+                launcher_music_notification_allowed() ? JNI_TRUE : JNI_FALSE);
         }
         if (current_title) (*env)->DeleteLocalRef(env, current_title);
         if (tracks) (*env)->DeleteLocalRef(env, tracks);
