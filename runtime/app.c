@@ -373,14 +373,14 @@ static void companion_publish_launcher_dashboard(int selected_game)
     int layout_game = launcher_companion_layout_target_game(selected_game);
     if (layout_game < 0 || layout_game >= N_GAMES) layout_game = selected_game;
     int editor_preview = launcher_companion_layout_preview_enabled();
-    jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * 25);
+    jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * 33);
     jobjectArray layout_paths = string_class
         ? (*env)->NewObjectArray(env, N_GAMES * 24, string_class, NULL) : NULL;
     if (layout_values) {
-        jint values[N_GAMES * 25];
+        jint values[N_GAMES * 33];
         for (int g = 0; g < N_GAMES; g++) {
             CompanionLayoutCfg *layout = &settings.deck_layout[g];
-            int base = g * 25;
+            int base = g * 33;
             values[base + 0] = layout->header_dx;
             values[base + 1] = layout->header_dy;
             values[base + 2] = layout->header_scale;
@@ -402,8 +402,16 @@ static void companion_publish_launcher_dashboard(int selected_game)
                 values[base + 17 + slot * 3] = layout->decoration_extra_dy[slot];
                 values[base + 18 + slot * 3] = layout->decoration_extra_scale[slot];
             }
+            values[base + 25] = layout->header_scale_y;
+            values[base + 26] = layout->item_scale_y;
+            values[base + 27] = layout->controls_scale_y;
+            values[base + 28] = layout->timeline_scale_y;
+            values[base + 29] = layout->decoration_scale_y;
+            values[base + 30] = layout->decoration_extra_scale_y[0];
+            values[base + 31] = layout->decoration_extra_scale_y[1];
+            values[base + 32] = layout->decoration_extra_scale_y[2];
         }
-        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * 25, values);
+        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * 33, values);
     }
     if (layout_paths) {
         for (int g = 0; g < N_GAMES; g++) {
