@@ -1988,6 +1988,196 @@ static void tab_filters(float x, float y)
 }
 
 /* ------------------------------------------------------------------ audio tab */
+/* ------------------------------------------------------------------ menu music playlist + animated preview */
+static void menu_music_title_from_path(const char *path, char *out, size_t n)
+{
+    const char *base;
+    size_t len, w = 0;
+    if (!out || !n) return;
+    out[0] = 0;
+    if (!path || !path[0]) {
+        snprintf(out, n, "PipeClean Chiptune");
+        return;
+    }
+    base = path_base(path);
+    if (!base || !base[0]) base = path;
+    len = strlen(base);
+    const char *dot = strrchr(base, '.');
+    if (dot && dot > base) len = (size_t)(dot - base);
+    for (size_t i = 0; i < len && w + 1 < n; i++) {
+        char ch = base[i];
+        if (ch == '_') ch = ' ';
+        out[w++] = ch;
+    }
+    out[w] = 0;
+    while (w && out[w - 1] == ' ') out[--w] = 0;
+    if (!w) snprintf(out, n, "Untitled track");
+}
+
+static void menu_music_set_builtin(void)
+{
+    settings.menu_music_path[0] = 0;
+    settings.menu_music = 1;
+    audio_menu_apply();
+    audio_menu_music(1);
+    audio_music_preview();
+    menu_title_seen[0] = 0;
+    menu_title_anim = 0.0f;
+    settings_save();
+}
+
+void launcher_menu_music_select(int index)
+{
+    if (index < 0 || index >= settings.menu_playlist_count ||
+        index >= MAX_MENU_TRACKS || !settings.menu_playlist[index][0]) return;
+    settings.menu_playlist_selected = index;
+    snprintf(settings.menu_music_path, sizeof settings.menu_music_path, "%s",
+             settings.menu_playlist[index]);
+    settings.menu_music = 1;
+    audio_menu_apply();
+    audio_menu_music(1);
+    audio_music_preview();
+    snprintf(menu_title_seen, sizeof menu_title_seen, "%s", settings.menu_music_path);
+    menu_title_anim = 0.0f;
+    settings_save();
+}
+
+void launcher_menu_music_step(int delta)
+{
+    int count = settings.menu_playlist_count;
+    if (count <= 0) {
+        menu_music_set_builtin();
+        return;
+    }
+    int current = settings.menu_playlist_selected;
+    if (current < 0 || current >= count) current = 0;
+    current = (current + (delta < 0 ? -1 : 1) + count) % count;
+    launcher_menu_music_select(current);
+}
+
+void launcher_menu_music_toggle(void)
+{
+    settings.menu_music = !settings.menu_music;
+    audio_menu_apply();
+    audio_menu_music(1);
+    settings_save();
+}
+
+static void menu_playlist_add_path(const char *path)
+{
+    if (!path || !path[0]) return;
+    if (strlen(path) >= sizeof settings.menu_playlist[0]) {
+        launcher_toast("That music path is too long to save.");
+        return;
+    }
+    for (int i = 0; i < settings.menu_playlist_count && i < MAX_MENU_TRACKS; i++) {
+        if (!strcmp(settings.menu_playlist[i], path)) {
+            launcher_menu_music_select(i);
+            launcher_toast("That track is already in the playlist.");
+            return;
+        }
+    }
+    if (settings.menu_playlist_count >= MAX_MENU_TRACKS) {
+        launcher_toast("Playlist is full. Remove a track before adding another.");
+        return;
+    }
+    int i = settings.menu_playlist_count++;
+    snprintf(settings.menu_playlist[i], sizeof settings.menu_playlist[i], "%s", path);
+    menu_playlist_page = i / 3;
+    launcher_menu_music_select(i);
+    launcher_toast("Track added to the menu playlist.");
+}
+
+static void menu_playlist_remove_selected(void)
+{
+    int count = settings.menu_playlist_count;
+    int index = settings.menu_playlist_selected;
+    if (count <= 0 || index < 0 || index >= count) {
+        launcher_toast("Select a playlist track to remove.");
+        return;
+    }
+    for (int i = index; i + 1 < count; i++)
+        snprintf(settings.menu_playlist[i], sizeof settings.menu_playlist[i], "%s",
+                 settings.menu_playlist[i + 1]);
+    settings.menu_playlist[--count][0] = 0;
+    settings.menu_playlist_count = count;
+    if (count == 0) {
+        settings.menu_playlist_selected = 0;
+        menu_music_set_builtin();
+    } else {
+        if (index >= count) index = count - 1;
+        settings.menu_playlist_selected = index;
+        launcher_menu_music_select(index);
+    }
+    menu_playlist_page = count > 0 ? (count - 1) / 3 : 0;
+    settings_save();
+    launcher_toast("Track removed from the menu playlist.");
+}
+
+static void menu_music_preview(float x, float y, float w, float h)
+{
+    char title[512];
+    float size = h - 10.0f;
+    if (size > 48.0f) size = 48.0f;
+    if (size < 30.0f) size = 30.0f;
+    float cx = x + 12.0f + size * 0.5f;
+    float cy = y + h * 0.5f;
+    menu_music_title_from_path(settings.menu_music_path, title, sizeof title);
+    if (strcmp(menu_title_seen, settings.menu_music_path)) {
+        snprintf(menu_title_seen, sizeof menu_title_seen, "%s", settings.menu_music_path);
+        menu_title_anim = 0.0f;
+    }
+    if (menu_title_anim < 1.0f) {
+        menu_title_anim += ui_dt * 3.6f;
+        if (menu_title_anim > 1.0f) menu_title_anim = 1.0f;
+    }
+    float ease = 1.0f - (1.0f - menu_title_anim) * (1.0f - menu_title_anim) *
+                         (1.0f - menu_title_anim);
+    float slide = (1.0f - ease) * 28.0f;
+
+    ui_rrect(x, y, w, h, 12, HEX(0x111722));
+    ui_stroke(x, y, w, h, 12, 1, C_LINE);
+    /* Original vinyl art: rotating groove highlight and center label. */
+    ui_rrect(cx - size * .5f, cy - size * .5f, size, size, size * .5f, HEX(0x080A10));
+    ui_stroke(cx - size * .5f + 2, cy - size * .5f + 2, size - 4, size - 4,
+              size * .5f - 2, 1, HEX(0x495166));
+    ui_stroke(cx - size * .5f + size * .20f, cy - size * .5f + size * .20f,
+              size * .60f, size * .60f, size * .30f, 1, HEX(0x30394C));
+    ui_stroke(cx - size * .5f + size * .32f, cy - size * .5f + size * .32f,
+              size * .36f, size * .36f, size * .18f, 1, HEX(0x30394C));
+    float angle = settings.menu_music ? anim_clock * 4.8f : -0.45f;
+    ui_line(cx, cy, cx + cosf(angle) * size * .35f, cy + sinf(angle) * size * .35f,
+            2, HEX(0xE9C66D));
+    ui_rrect(cx - size * .115f, cy - size * .115f, size * .23f, size * .23f,
+             size * .12f, settings.menu_music ? HEX(ui_accent) : HEX(0x9298AA));
+    ui_rrect(cx - 2, cy - 2, 4, 4, 2, HEX(0x0A0D14));
+
+#if defined(__ANDROID__)
+    if (settings.launcher_dual_screen) {
+        ui_text(F_BOLD, 11, x + size + 30, y + 9, C_ACCENT,
+                "NOW PLAYING ON COMPANION DECK");
+        ui_text_fit(F_REG, 11, x + size + 30, y + 29, w - size - 44, C_DIM,
+                    "Music controls moved to the lower display.");
+        return;
+    }
+#endif
+    float tx = x + size + 24.0f + slide;
+    float tw = w - (tx - x) - 12.0f;
+    ui_text(F_BOLD, 8, tx, y + 7, settings.menu_music ? C_OK : C_DIM,
+            settings.menu_music ? "NOW PLAYING" : "MUSIC PAUSED");
+    ui_text_fit(F_BOLD, 13, tx, y + 20, tw, C_TEXT, title);
+    ui_text_fit(F_REG, 9, tx, y + h - 17, tw, C_DIM,
+                settings.menu_music_path[0] ? "Custom track • loops in the launcher"
+                                            : "Built-in PipeClean menu theme");
+}
+
+static void menu_playlist_import_dialog(void)
+{
+    char path[1100];
+    if (!dlg_pick(DLG_AUDIO, "Add a track to the menu playlist", path, sizeof path)) return;
+    menu_playlist_add_path(path);
+}
+
 static const char *sfx_names[N_UI_SFX] = {"Hover", "Click", "Confirm", "Back", "Toggle"};
 
 static void tab_audio(float x, float y)
