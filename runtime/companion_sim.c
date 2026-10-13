@@ -969,7 +969,7 @@ static void draw_companion(const Settings *s)
     const char *action_labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
     const char *action_subs[4] = {"SNAPSHOT", "RESTORE",
         current_paused ? "CONTINUE" : "HOLD GAME", "HOLD TO REWIND"};
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 4; i++) {
         float ax = 94.0f + i * 153.0f, ay = 320.0f;
         float aw = (i == 3) ? 153.0f : 145.0f, ah = 42.0f;
         transform_box(d, 2, 400, 343, &ax, &ay, &aw, &ah);
@@ -1249,7 +1249,7 @@ void companion_sim_shutdown(void)
 {
     if (deck_window) {
         for (int g = 0; g < N_GAMES; g++) {
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 7; i++) {
                 if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
                 assets[g][i] = NULL;
                 asset_paths[g][i][0] = 0;
