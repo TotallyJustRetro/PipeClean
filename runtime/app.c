@@ -208,10 +208,153 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
     }
     (*env)->DeleteLocalRef(env, cls);
 }
+
+static void companion_music_title(const char *path, char *out, size_t n)
+{
+    const char *base = path ? path : "";
+    const char *slash1 = strrchr(base, '/');
+    const char *slash2 = strrchr(base, '\\');
+    if (slash1 && (!slash2 || slash1 > slash2)) base = slash1 + 1;
+    else if (slash2) base = slash2 + 1;
+    if (!base[0]) {
+        snprintf(out, n, "PipeClean Chiptune");
+        return;
+    }
+    size_t len = strlen(base);
+    const char *dot = strrchr(base, '.');
+    if (dot && dot > base) len = (size_t)(dot - base);
+    if (len >= n) len = n - 1;
+    size_t w = 0;
+    for (size_t i = 0; i < len && w + 1 < n; i++) {
+        char ch = base[i];
+        if (ch == '_') ch = ' ';
+        out[w++] = ch;
+    }
+    out[w] = 0;
+    if (!w) snprintf(out, n, "Untitled track");
+}
+
+/* Publish launcher selection, recent history, play-time statistics and preview
+ * to the Companion Deck at a modest rate; large preview pixels are sent only on
+ * a game change or once every few seconds. */
+static void companion_publish_launcher_dashboard(int selected_game)
+{
+    static Uint32 last_publish_tick;
+    static Uint32 last_preview_tick;
+    static int last_dashboard_game = -2;
+    Uint32 now = SDL_GetTicks();
+    if ((Uint32)(now - last_publish_tick) < 400) return;
+    last_publish_tick = now;
+
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jclass string_class = (*env)->FindClass(env, "java/lang/String");
+    jobjectArray game_names = string_class
+        ? (*env)->NewObjectArray(env, N_GAMES, string_class, NULL) : NULL;
+    jintArray recent = (*env)->NewIntArray(env, N_RECENT_PLAYED);
+    jintArray seconds = (*env)->NewIntArray(env, N_GAMES);
+    if (game_names) {
+        for (int i = 0; i < N_GAMES; i++) {
+            jstring name = (*env)->NewStringUTF(env, games[i].name ? games[i].name : "Game");
+            if (name) {
+                (*env)->SetObjectArrayElement(env, game_names, i, name);
+                (*env)->DeleteLocalRef(env, name);
+            }
+        }
+    }
+    if (recent) {
+        jint values[N_RECENT_PLAYED];
+        for (int i = 0; i < N_RECENT_PLAYED; i++) values[i] = settings.recent_played[i];
+        (*env)->SetIntArrayRegion(env, recent, 0, N_RECENT_PLAYED, values);
+    }
+    if (seconds) {
+        jint values[N_GAMES];
+        for (int i = 0; i < N_GAMES; i++) values[i] = settings.game_play_seconds[i];
+        (*env)->SetIntArrayRegion(env, seconds, 0, N_GAMES, values);
+    }
+
+    int preview_w = 0, preview_h = 0;
+    jintArray preview = NULL;
+    int game_changed = selected_game != last_dashboard_game;
+    int want_preview = game_changed || (Uint32)(now - last_preview_tick) >= 5000;
+    if (want_preview) {
+        const uint32_t *pixels = NULL;
+        if (launcher_preview_pixels(selected_game, &pixels, &preview_w, &preview_h) &&
+            pixels && preview_w > 0 && preview_h > 0 &&
+            (uint64_t)preview_w * (uint64_t)preview_h <= 1048576u) {
+            jsize count = (jsize)(preview_w * preview_h);
+            preview = (*env)->NewIntArray(env, count);
+            if (preview) (*env)->SetIntArrayRegion(env, preview, 0, count, (const jint *)pixels);
+        }
+        last_preview_tick = now;
+    }
+    jmethodID dashboard_method = (*env)->GetMethodID(
+        env, cls, "updateLauncherDashboard",
+        "(I[Ljava/lang/String;[I[III[IZ)V");
+    if (dashboard_method && game_names && recent && seconds) {
+        (void)(*env)->CallVoidMethod(env, activity, dashboard_method,
+            (jint)selected_game, game_names, recent, seconds,
+            (jint)preview_w, (jint)preview_h, preview,
+            settings.launcher_dual_screen ? JNI_TRUE : JNI_FALSE);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    /* The playlist list and active song title are also displayed on the deck
+     * when dual-screen mode is enabled. */
+    jmethodID music_method = (*env)->GetMethodID(
+        env, cls, "updateCompanionMusicPlaylist",
+        "(Ljava/lang/String;[Ljava/lang/String;IZ)V");
+    if (music_method && string_class) {
+        int count = settings.menu_playlist_count;
+        if (count < 0) count = 0;
+        if (count > MAX_MENU_TRACKS) count = MAX_MENU_TRACKS;
+        jobjectArray tracks = (*env)->NewObjectArray(env, count, string_class, NULL);
+        char title[512];
+        companion_music_title(settings.menu_music_path, title, sizeof title);
+        jstring current_title = (*env)->NewStringUTF(env, title);
+        if (tracks) {
+            for (int i = 0; i < count; i++) {
+                char track_title[512];
+                companion_music_title(settings.menu_playlist[i], track_title, sizeof track_title);
+                jstring item = (*env)->NewStringUTF(env, track_title);
+                if (item) {
+                    (*env)->SetObjectArrayElement(env, tracks, i, item);
+                    (*env)->DeleteLocalRef(env, item);
+                }
+            }
+        }
+        if (current_title && tracks) {
+            int selected = settings.menu_playlist_selected;
+            if (selected < 0 || selected >= count) selected = 0;
+            (void)(*env)->CallVoidMethod(env, activity, music_method,
+                current_title, tracks, (jint)selected,
+                settings.menu_music ? JNI_TRUE : JNI_FALSE);
+        }
+        if (current_title) (*env)->DeleteLocalRef(env, current_title);
+        if (tracks) (*env)->DeleteLocalRef(env, tracks);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    last_dashboard_game = selected_game;
+    if (preview) (*env)->DeleteLocalRef(env, preview);
+    if (game_names) (*env)->DeleteLocalRef(env, game_names);
+    if (recent) (*env)->DeleteLocalRef(env, recent);
+    if (seconds) (*env)->DeleteLocalRef(env, seconds);
+    if (string_class) (*env)->DeleteLocalRef(env, string_class);
+    (*env)->DeleteLocalRef(env, cls);
+}
+
 #else
 static void companion_publish_state(int game, const Frame *frame, int paused)
 {
     (void)game; (void)frame; (void)paused;
+}
+static void companion_publish_launcher_dashboard(int selected_game)
+{
+    (void)selected_game;
 }
 #endif
 
