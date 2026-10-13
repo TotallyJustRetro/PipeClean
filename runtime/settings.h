@@ -107,13 +107,17 @@ enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
 /* Reserve item IDs: 1 = mushroom, 2 = SML1 superball / SML2 fire flower,
  * 3 = SML2 carrot. Index 0 is unused; item_texture_path is the legacy fallback. */
 #define N_DECK_ITEM_TEXTURE_IDS 4
+#define N_DECK_DECORATIONS 8
+#define N_DECK_LAYOUT_VALUES 49
+#define N_DECK_ASSET_PATHS 28
 typedef struct {
     int header_dx, header_dy, header_scale, header_scale_y;
     int item_dx, item_dy, item_scale, item_scale_y;
     int controls_dx, controls_dy, controls_scale, controls_scale_y;
     int timeline_dx, timeline_dy, timeline_scale, timeline_scale_y;
     int decoration_dx, decoration_dy, decoration_scale, decoration_scale_y;
-    int decoration_extra_dx[3], decoration_extra_dy[3], decoration_extra_scale[3], decoration_extra_scale_y[3];
+    int decoration_extra_dx[N_DECK_DECORATIONS - 1], decoration_extra_dy[N_DECK_DECORATIONS - 1];
+    int decoration_extra_scale[N_DECK_DECORATIONS - 1], decoration_extra_scale_y[N_DECK_DECORATIONS - 1];
     int sounds_enabled;
     char background_path[512];
     char header_texture_path[512];
@@ -123,7 +127,7 @@ typedef struct {
     char item_texture_path[512]; /* Legacy generic item image, used as fallback. */
     char item_texture_by_id[N_DECK_ITEM_TEXTURE_IDS][512];
     char decoration_path[512]; /* First decoration; retained for old configs. */
-    char decoration_extra_path[3][512];
+    char decoration_extra_path[N_DECK_DECORATIONS - 1][512];
     char button_sound_path[N_DECK_BUTTON_SOUNDS][512];
     char item_sound_path[512];
     char empty_item_sound_path[512];
