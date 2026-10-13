@@ -169,6 +169,9 @@ static const char *companion_layout_asset_paths(const CompanionLayoutCfg *d, int
     if (i == 12) return d->item_texture_by_id[1];
     if (i == 13) return d->item_texture_by_id[2];
     if (i == 14) return d->item_texture_by_id[3];
+    if (i == 15) return d->header_texture_path;
+    if (i == 16) return d->status_texture_path;
+    if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
     return "";
 }
 
@@ -202,9 +205,9 @@ void launcher_open_companion_layout_picker(int kind, int game)
     jstring text = (*env)->NewStringUTF(env, manifest);
     jclass string_class = (*env)->FindClass(env, "java/lang/String");
     jobjectArray paths = string_class
-        ? (*env)->NewObjectArray(env, 15, string_class, NULL) : NULL;
+        ? (*env)->NewObjectArray(env, 21, string_class, NULL) : NULL;
     if (paths) {
-        for (int i = 0; i < 15; i++) {
+        for (int i = 0; i < 21; i++) {
             jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(d, i));
             if (path) {
                 (*env)->SetObjectArrayElement(env, paths, i, path);
@@ -365,7 +368,7 @@ static void companion_publish_launcher_dashboard(int selected_game)
     int editor_preview = launcher_companion_layout_preview_enabled();
     jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * 16);
     jobjectArray layout_paths = string_class
-        ? (*env)->NewObjectArray(env, N_GAMES * 15, string_class, NULL) : NULL;
+        ? (*env)->NewObjectArray(env, N_GAMES * 21, string_class, NULL) : NULL;
     if (layout_values) {
         jint values[N_GAMES * 16];
         for (int g = 0; g < N_GAMES; g++) {
@@ -393,10 +396,10 @@ static void companion_publish_launcher_dashboard(int selected_game)
     if (layout_paths) {
         for (int g = 0; g < N_GAMES; g++) {
             CompanionLayoutCfg *layout = &settings.deck_layout[g];
-            for (int i = 0; i < 15; i++) {
+            for (int i = 0; i < 21; i++) {
                 jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
                 if (path) {
-                    (*env)->SetObjectArrayElement(env, layout_paths, g * 15 + i, path);
+                    (*env)->SetObjectArrayElement(env, layout_paths, g * 21 + i, path);
                     (*env)->DeleteLocalRef(env, path);
                 }
             }
@@ -520,6 +523,9 @@ static const char *desktop_deck_asset_path(const CompanionLayoutCfg *d, int i)
     if (i == 12) return d->item_texture_by_id[1];
     if (i == 13) return d->item_texture_by_id[2];
     if (i == 14) return d->item_texture_by_id[3];
+    if (i == 15) return d->header_texture_path;
+    if (i == 16) return d->status_texture_path;
+    if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
     return "";
 }
 
@@ -648,24 +654,28 @@ static int desktop_bundle_import(int game, const char *zip_path, char *manifest_
 
 static const char *desktop_deck_manifest_field(int i)
 {
-    static const char *fields[15] = {
+    static const char *fields[21] = {
         "background_path", "button_texture_path", "item_texture_path", "decoration_path",
         "button_sound_path0", "button_sound_path1", "button_sound_path2", "button_sound_path3",
         "button_sound_path4", "button_sound_path5", "item_sound_path", "empty_item_sound_path",
-        "item_texture_path_1", "item_texture_path_2", "item_texture_path_3"
+        "item_texture_path_1", "item_texture_path_2", "item_texture_path_3",
+        "header_texture_path", "status_texture_path", "button_texture_save_path",
+        "button_texture_load_path", "button_texture_pause_path", "button_texture_rewind_path"
     };
-    return i >= 0 && i < 15 ? fields[i] : "";
+    return i >= 0 && i < 21 ? fields[i] : "";
 }
 
 static const char *desktop_deck_entry_stem(int i)
 {
-    static const char *stems[15] = {
+    static const char *stems[21] = {
         "background", "button-texture", "item-texture", "decoration",
         "save-sound", "load-sound", "pause-sound", "rewind-sound",
         "background-sound", "close-sound", "item-sound", "empty-item-sound",
-        "mushroom-texture", "special-item-texture", "carrot-texture"
+        "mushroom-texture", "special-item-texture", "carrot-texture",
+        "header-texture", "status-texture", "save-button-texture",
+        "load-button-texture", "pause-button-texture", "rewind-button-texture"
     };
-    return i >= 0 && i < 15 ? stems[i] : "asset";
+    return i >= 0 && i < 21 ? stems[i] : "asset";
 }
 
 static void desktop_deck_extension(const char *path, char out[12])
@@ -711,7 +721,7 @@ static int desktop_bundle_export(int game, const char *zip_path)
     memset(&zip, 0, sizeof zip);
     if (!mz_zip_writer_init_file(&zip, zip_path, 0)) return 0;
     int ok = 1;
-    for (int i = 0; i < 15 && ok; i++) {
+    for (int i = 0; i < 21 && ok; i++) {
         const char *path = desktop_deck_asset_path(d, i);
         if (!path || !path[0] || !file_exists(path)) continue;
         struct stat st;
