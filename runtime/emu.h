@@ -21,7 +21,7 @@ typedef struct {
     int player_x, player_y;
     uint8_t scroll_x, game_state;
     uint8_t level_id, level_bank; /* Current stage; SML1 level_bank carries the world nibble. */
-    uint8_t reserve_item;       /* 0 = empty; 1 = reserved mushroom. */
+    uint8_t reserve_item;       /* 0 = empty; 1 = mushroom, 2 = flower, 3 = carrot. */
     uint8_t obp0, obp1, sprite_size16;
     uint8_t mario_oam[16];      /* Player 1 Mario OAM */
     uint8_t mario_oam2[16];     /* Player 2 OAM in local multiplayer */
