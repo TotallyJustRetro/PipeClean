@@ -201,6 +201,10 @@ void settings_defaults(Settings *s)
         CompanionLayoutCfg *d = &s->deck_layout[i];
         d->header_scale = d->item_scale = d->controls_scale =
             d->timeline_scale = d->decoration_scale = 100;
+        d->header_scale_y = d->item_scale_y = d->controls_scale_y =
+            d->timeline_scale_y = d->decoration_scale_y = 100;
+        for (int slot = 0; slot < 3; slot++)
+            d->decoration_extra_scale[slot] = d->decoration_extra_scale_y[slot] = 100;
         d->sounds_enabled = 1;
     }
 }
@@ -320,11 +324,11 @@ static int field_table(Field *t, int cap)
         GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
 
         CompanionLayoutCfg *d = &s->deck_layout[g];
-        GI("deck_header_dx", d->header_dx, -400, 400); GI("deck_header_dy", d->header_dy, -400, 400); GI("deck_header_scale", d->header_scale, 25, 250);
-        GI("deck_item_dx", d->item_dx, -400, 400); GI("deck_item_dy", d->item_dy, -400, 400); GI("deck_item_scale", d->item_scale, 25, 250);
-        GI("deck_controls_dx", d->controls_dx, -400, 400); GI("deck_controls_dy", d->controls_dy, -400, 400); GI("deck_controls_scale", d->controls_scale, 25, 250);
-        GI("deck_timeline_dx", d->timeline_dx, -400, 400); GI("deck_timeline_dy", d->timeline_dy, -400, 400); GI("deck_timeline_scale", d->timeline_scale, 25, 250);
-        GI("deck_decoration_dx", d->decoration_dx, -400, 400); GI("deck_decoration_dy", d->decoration_dy, -400, 400); GI("deck_decoration_scale", d->decoration_scale, 25, 250);
+        GI("deck_header_dx", d->header_dx, -400, 400); GI("deck_header_dy", d->header_dy, -400, 400); GI("deck_header_scale", d->header_scale, 25, 250); GI("deck_header_scale_y", d->header_scale_y, 25, 250);
+        GI("deck_item_dx", d->item_dx, -400, 400); GI("deck_item_dy", d->item_dy, -400, 400); GI("deck_item_scale", d->item_scale, 25, 250); GI("deck_item_scale_y", d->item_scale_y, 25, 250);
+        GI("deck_controls_dx", d->controls_dx, -400, 400); GI("deck_controls_dy", d->controls_dy, -400, 400); GI("deck_controls_scale", d->controls_scale, 25, 250); GI("deck_controls_scale_y", d->controls_scale_y, 25, 250);
+        GI("deck_timeline_dx", d->timeline_dx, -400, 400); GI("deck_timeline_dy", d->timeline_dy, -400, 400); GI("deck_timeline_scale", d->timeline_scale, 25, 250); GI("deck_timeline_scale_y", d->timeline_scale_y, 25, 250);
+        GI("deck_decoration_dx", d->decoration_dx, -400, 400); GI("deck_decoration_dy", d->decoration_dy, -400, 400); GI("deck_decoration_scale", d->decoration_scale, 25, 250); GI("deck_decoration_scale_y", d->decoration_scale_y, 25, 250);
         for (int slot = 0; slot < 3; slot++) {
             int slot_id = slot + 2;
             snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_dx", games[g].id, slot_id);
@@ -333,6 +337,8 @@ static int field_table(Field *t, int cap)
             I(gn[g][k], d->decoration_extra_dy[slot], -400, 400); k++;
             snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_scale", games[g].id, slot_id);
             I(gn[g][k], d->decoration_extra_scale[slot], 25, 250); k++;
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_scale_y", games[g].id, slot_id);
+            I(gn[g][k], d->decoration_extra_scale_y[slot], 25, 250); k++;
         }
         GI("deck_sounds_enabled", d->sounds_enabled, 0, 1);
         GS("deck_background", d->background_path);
