@@ -2806,22 +2806,26 @@ enum {
     DECK_PICK_BUTTON_SAVE_TEXTURE = 20, DECK_PICK_BUTTON_LOAD_TEXTURE = 21,
     DECK_PICK_BUTTON_PAUSE_TEXTURE = 22, DECK_PICK_BUTTON_REWIND_TEXTURE = 23
 };
-enum { DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS,
-       DECK_ELEM_TIMELINE, DECK_ELEM_DECORATION, DECK_ELEM_DECORATION_2,
-       DECK_ELEM_DECORATION_3, DECK_ELEM_DECORATION_4, N_DECK_ELEM };
+enum {
+    DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS, DECK_ELEM_TIMELINE,
+    DECK_ELEM_DECORATION, DECK_ELEM_DECORATION_2, DECK_ELEM_DECORATION_3,
+    DECK_ELEM_DECORATION_4, DECK_ELEM_DECORATION_5, DECK_ELEM_DECORATION_6,
+    DECK_ELEM_DECORATION_7, DECK_ELEM_DECORATION_8, N_DECK_ELEM
+};
 static const char *deck_element_names[N_DECK_ELEM] = {
     "Header", "Reserve item", "Control buttons", "Save timeline",
-    "Decoration 1", "Decoration 2", "Decoration 3", "Decoration 4"
+    "Decoration 1", "Decoration 2", "Decoration 3", "Decoration 4",
+    "Decoration 5", "Decoration 6", "Decoration 7", "Decoration 8"
 };
 static int companion_editor_pending_decoration_slot;
 static char *deck_decoration_path(CompanionLayoutCfg *d, int slot)
 {
-    if (!d || slot < 0 || slot >= 4) return NULL;
+    if (!d || slot < 0 || slot >= N_DECK_DECORATIONS) return NULL;
     return slot == 0 ? d->decoration_path : d->decoration_extra_path[slot - 1];
 }
 static const char *deck_decoration_path_const(const CompanionLayoutCfg *d, int slot)
 {
-    if (!d || slot < 0 || slot >= 4) return "";
+    if (!d || slot < 0 || slot >= N_DECK_DECORATIONS) return "";
     return slot == 0 ? d->decoration_path : d->decoration_extra_path[slot - 1];
 }
 static int companion_editor_open, companion_editor_page;
@@ -2846,7 +2850,7 @@ static void deck_layout_defaults(CompanionLayoutCfg *d)
     memset(d, 0, sizeof *d);
     d->header_scale = d->item_scale = d->controls_scale =
         d->timeline_scale = d->decoration_scale = 100;
-    for (int i = 0; i < 3; i++) d->decoration_extra_scale[i] = d->decoration_extra_scale_y[i] = 100;
+    for (int i = 0; i < N_DECK_DECORATIONS - 1; i++) d->decoration_extra_scale[i] = d->decoration_extra_scale_y[i] = 100;
 d->header_scale_y = d->item_scale_y = d->controls_scale_y = d->timeline_scale_y = d->decoration_scale_y = 100;
     d->sounds_enabled = 1;
 }
@@ -2883,7 +2887,7 @@ static int *deck_element_x(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_CONTROLS: return &d->controls_dx;
     case DECK_ELEM_TIMELINE: return &d->timeline_dx;
     case DECK_ELEM_DECORATION: return &d->decoration_dx;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_dx[element - DECK_ELEM_DECORATION_2] : &d->decoration_dx;
     }
 }
@@ -2895,7 +2899,7 @@ static int *deck_element_y(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_CONTROLS: return &d->controls_dy;
     case DECK_ELEM_TIMELINE: return &d->timeline_dy;
     case DECK_ELEM_DECORATION: return &d->decoration_dy;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_dy[element - DECK_ELEM_DECORATION_2] : &d->decoration_dy;
     }
 }
@@ -2907,7 +2911,7 @@ static int *deck_element_scale(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_CONTROLS: return &d->controls_scale;
     case DECK_ELEM_TIMELINE: return &d->timeline_scale;
     case DECK_ELEM_DECORATION: return &d->decoration_scale;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_scale[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale;
     }
 }
@@ -2920,7 +2924,7 @@ static int *deck_element_scale_y(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_CONTROLS: return &d->controls_scale_y;
     case DECK_ELEM_TIMELINE: return &d->timeline_scale_y;
     case DECK_ELEM_DECORATION: return &d->decoration_scale_y;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
         ? &d->decoration_extra_scale_y[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale_y;
     }
 }
@@ -2932,10 +2936,14 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
     case DECK_ELEM_ITEM:      *x = 250; *y = 14;  *w = 300; *h = 300; break;
     case DECK_ELEM_CONTROLS:  *x = 94;  *y = 320; *w = 612; *h = 46;  break;
     case DECK_ELEM_TIMELINE:  *x = 24;  *y = 365; *w = 752; *h = 83;  break;
-    case DECK_ELEM_DECORATION: *x = 280; *y = 150; *w = 240; *h = 150; break;
+    case DECK_ELEM_DECORATION: *x = 280; *y = 153; *w = 240; *h = 144; break;
     case DECK_ELEM_DECORATION_2: *x = 20; *y = 78; *w = 170; *h = 120; break;
     case DECK_ELEM_DECORATION_3: *x = 610; *y = 78; *w = 170; *h = 120; break;
-    default: *x = 315; *y = 245; *w = 170; *h = 120; break;
+    case DECK_ELEM_DECORATION_4: *x = 315; *y = 245; *w = 170; *h = 120; break;
+    case DECK_ELEM_DECORATION_5: *x = 26; *y = 218; *w = 140; *h = 92; break;
+    case DECK_ELEM_DECORATION_6: *x = 634; *y = 218; *w = 140; *h = 92; break;
+    case DECK_ELEM_DECORATION_7: *x = 190; *y = 85; *w = 122; *h = 86; break;
+    default: *x = 488; *y = 260; *w = 122; *h = 86; break;
     }
 }
 
@@ -2955,61 +2963,152 @@ static void deck_editor_element_rect(CompanionLayoutCfg *d, int element,
     *rh = h * (ph / 450.0f) * scale_y;
 }
 
+static const char *deck_editor_preview_asset_path(const CompanionLayoutCfg *d, int index)
+{
+    if (!d) return "";
+    if (index == 0) return d->background_path;
+    if (index == 1) return d->button_texture_path;
+    if (index == 2) return d->item_texture_path;
+    if (index == 3) return d->decoration_path;
+    if (index >= 12 && index <= 14) return d->item_texture_by_id[index - 11];
+    if (index == 15) return d->header_texture_path;
+    if (index == 16) return d->status_texture_path;
+    if (index >= 17 && index <= 20) return d->button_texture_by_action[index - 17];
+    if (index >= 21 && index < N_DECK_ASSET_PATHS) return d->decoration_extra_path[index - 21];
+    return "";
+}
+
+static void deck_editor_preview_image(const char *path, float x, float y, float w, float h)
+{
+    if (!path || !path[0] || w <= 0 || h <= 0) return;
+    ui_image_file_fit(path, x, y, w, h);
+}
+
 static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
 {
-    ui_shadow(x, y, w, h, 11, 5, RGBA(0, 0, 0, 75));
-    ui_rrect(x, y, w, h, 10, RGBA(9, 15, 26, 255));
-    if (d->background_path[0]) {
-        ui_rrect(x + 2, y + 2, w - 4, h - 4, 9, RGBA(40, 48, 74, 255));
-        ui_text_fit(F_REG, 7, x + 7, y + h - 16, w - 14, RGBA(195, 207, 233, 220),
-                    "CUSTOM BACKGROUND");
-    } else {
-        ui_vgrad(x + 2, y + 2, w - 4, h - 4, RGBA(24, 36, 58, 255), RGBA(18, 22, 40, 255));
-    }
-    for (int e = 0; e < N_DECK_ELEM; e++) {
+    ui_shadow(x, y, w, h, 11, 5, RGBA(0, 0, 0, 110));
+    ui_rrect(x, y, w, h, 10, RGBA(12, 20, 34, 255));
+    ui_vgrad(x + 2, y + 2, w - 4, h - 4,
+             companion_editor_game == GAME_SML ? RGBA(52, 87, 62, 255) :
+             companion_editor_game == GAME_SML2 ? RGBA(67, 49, 88, 255) : RGBA(24, 36, 58, 255),
+             RGBA(16, 22, 38, 255));
+    ui_clip(x + 2, y + 2, w - 4, h - 4);
+    deck_editor_preview_image(d->background_path, x + 2, y + 2, w - 4, h - 4);
+    /* Background and all inserted artwork are fit-within by default; no asset is silently cropped. */
+
+    for (int e = DECK_ELEM_DECORATION; e < N_DECK_ELEM; e++) {
         float rx, ry, rw, rh;
         deck_editor_element_rect(d, e, x, y, w, h, &rx, &ry, &rw, &rh);
-        uint32_t fill = e == companion_editor_element
-            ? RGBA(66, 145, 255, 135) : RGBA(74, 91, 124, 210);
-        if (e == DECK_ELEM_HEADER) {
-            ui_rrect(rx, ry, rw, rh, 5, fill);
-            ui_text_fit(F_BOLD, 8, rx + 5, ry + 4, rw - 10, RGBA(245, 249, 255, 255), "PIPE CLEAN");
-        } else if (e == DECK_ELEM_ITEM) {
-            ui_rrect(rx, ry, rw, rh, 10, fill);
-            if (d->item_texture_path[0] || d->item_texture_by_id[1][0] ||
-                d->item_texture_by_id[2][0] || d->item_texture_by_id[3][0])
-                ui_text_fit(F_BOLD, 7, rx + 4, ry + rh * 0.42f, rw - 8, RGBA(255,255,255,255), "CUSTOM ITEM");
-            else {
-                ui_rrect(rx + rw * .22f, ry + rh * .28f, rw * .56f, rh * .44f, 8, RGBA(255, 210, 82, 255));
-                ui_text_c(F_BOLD, 8, rx + rw * .5f, ry + rh * .43f, RGBA(61, 43, 20, 255), "?");
-            }
-        } else if (e == DECK_ELEM_CONTROLS) {
-            ui_rrect(rx, ry, rw, rh, 6, fill);
-            float bw = (rw - 20) / 4.0f;
-            static const char *labels[] = {"SAVE", "LOAD", "PAUSE", "REWIND"};
-            for (int b = 0; b < 4; b++) {
-                ui_rrect(rx + 4 + b * (bw + 4), ry + 4, bw, rh - 8, 4, RGBA(25, 36, 57, 245));
-                ui_text_c(F_BOLD, 6, rx + 4 + b * (bw + 4) + bw * .5f, ry + rh * .46f, RGBA(235, 241, 255, 255), labels[b]);
-            }
-        } else if (e == DECK_ELEM_TIMELINE) {
-            ui_rrect(rx, ry, rw, rh, 5, fill);
-            ui_text_c(F_BOLD, 7, rx + rw * .5f, ry + rh * .42f, RGBA(239, 245, 255, 255), "SAVE-STATE TIMELINE");
+        int slot = e - DECK_ELEM_DECORATION;
+        const char *asset = deck_decoration_path_const(d, slot);
+        if (asset[0]) {
+            deck_editor_preview_image(asset, rx, ry, rw, rh);
+            if (e == companion_editor_element)
+                ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
         } else {
-            ui_rrect(rx, ry, rw, rh, 5, RGBA(69, 91, 124, 110));
-            int decoration_slot = e - DECK_ELEM_DECORATION;
-            const char *decoration_path = deck_decoration_path_const(d, decoration_slot);
-            char decoration_label[32];
-            snprintf(decoration_label, sizeof decoration_label, "IMAGE %d", decoration_slot + 1);
-            if (decoration_path[0])
-                ui_text_fit(F_BOLD, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(246, 250, 255, 255), decoration_label);
-            else
-                ui_text_fit(F_REG, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(181, 194, 215, 255), "EMPTY DECORATION");
-        }
-        if (e == companion_editor_element) {
-            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(124, 190, 255, 255));
-            ui_rrect(rx + rw - 7, ry + rh - 7, 9, 9, 2, RGBA(255, 255, 255, 255));
+            ui_rrect(rx, ry, rw, rh, 5,
+                e == companion_editor_element ? RGBA(56, 135, 210, 135) : RGBA(69, 91, 124, 88));
+            ui_text_fit(F_BOLD, 7, rx + 4, ry + rh * .45f, rw - 8,
+                RGBA(210, 220, 240, 230), "EMPTY LAYER");
         }
     }
+
+    /* Header layer */
+    {
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, DECK_ELEM_HEADER, x, y, w, h, &rx, &ry, &rw, &rh);
+        ui_rrect(rx, ry, rw, rh, 5, RGBA(28, 40, 58, 210));
+        deck_editor_preview_image(d->header_texture_path, rx + 1, ry + 1, rw - 2, rh - 2);
+        ui_text_fit(F_BOLD, 6.8f, rx + 7, ry + rh * .24f, rw - 14,
+                    RGBA(127, 220, 236, 255), "PIPE CLEAN / POCKET QUEST");
+        ui_text_fit(F_BOLD, 9, rx + 7, ry + rh * .52f, rw - 14,
+                    RGBA(247, 249, 255, 255), companion_editor_game == GAME_SML ? "SUPER MARIO LAND" : "SUPER MARIO LAND 2");
+        if (DECK_ELEM_HEADER == companion_editor_element)
+            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
+    }
+
+    /* Reserve item — use its exact assigned texture, or the legacy generic fallback. */
+    {
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, DECK_ELEM_ITEM, x, y, w, h, &rx, &ry, &rw, &rh);
+        int item_id = companion_editor_preview_item;
+        const char *item_path = item_id >= 1 && item_id <= 3
+            ? deck_editor_preview_asset_path(d, 11 + item_id) : "";
+        if (!item_path[0]) item_path = d->item_texture_path;
+        float inset_x = rw * .16f, inset_y = rh * .13f;
+        if (item_path[0]) deck_editor_preview_image(item_path, rx + inset_x, ry + inset_y, rw - inset_x * 2, rh - inset_y * 2);
+        else {
+            ui_rrect(rx + rw * .25f, ry + rh * .25f, rw * .5f, rh * .48f, 8, RGBA(255, 205, 75, 245));
+            ui_text_c(F_BOLD, 13, rx + rw * .5f, ry + rh * .36f, RGBA(61, 43, 20, 255), "?");
+        }
+        ui_text_c(F_BOLD, 5.6f, rx + rw * .5f, ry + rh * .81f,
+                  RGBA(248, 245, 230, 255),
+                  item_id == 1 ? "MUSHROOM" :
+                  item_id == 2 ? (companion_editor_game == GAME_SML ? "SUPERBALL FLOWER" : "FIRE FLOWER") :
+                  item_id == 3 ? "CARROT" : "ITEM PREVIEW");
+        if (DECK_ELEM_ITEM == companion_editor_element)
+            ui_stroke(rx, ry, rw, rh, 8, 1.5f, RGBA(108, 218, 255, 255));
+    }
+
+    /* Status panel accepts a separate texture from the header. */
+    {
+        float sx = x + w * (620.f / 800.f), sy = y + h * (76.f / 450.f);
+        float sw = w * (156.f / 800.f), sh = h * (128.f / 450.f);
+        ui_rrect(sx, sy, sw, sh, 7, RGBA(34, 44, 62, 240));
+        deck_editor_preview_image(d->status_texture_path, sx + 1, sy + 1, sw - 2, sh - 2);
+        ui_text_fit(F_BOLD, 6, sx + 5, sy + 6, sw - 10, RGBA(191, 202, 222, 255), "ADVENTURE STATUS");
+        ui_text_fit(F_BOLD, 8, sx + 5, sy + sh * .45f, sw - 10, RGBA(250, 240, 220, 255), "LIVES  × 03");
+        ui_text_fit(F_BOLD, 7, sx + 5, sy + sh * .66f, sw - 10, RGBA(112, 225, 182, 255),
+                    companion_editor_game == GAME_SML ? "WORLD 1 - 1" : "STAGE 01");
+    }
+
+    /* Separate images for Save, Load, Pause and Rewind. */
+    {
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, DECK_ELEM_CONTROLS, x, y, w, h, &rx, &ry, &rw, &rh);
+        static const char *labels[4] = {"SAVE", "LOAD", "PAUSE", "REWIND"};
+        for (int b = 0; b < 4; b++) {
+            float bx = rx + b * (rw / 4.f), by = ry, bw = rw / 4.f - 2.f, bh = rh;
+            const char *custom = deck_editor_preview_asset_path(d, 17 + b);
+            if (!custom[0]) custom = d->button_texture_path;
+            ui_rrect(bx, by, bw, bh, 4, RGBA(29, 42, 60, 240));
+            deck_editor_preview_image(custom, bx + 1, by + 1, bw - 2, bh - 2);
+            ui_stroke(bx, by, bw, bh, 4, .7f, RGBA(105, 137, 174, 230));
+            ui_text_c(F_BOLD, 5.8f, bx + bw * .5f, by + bh * .39f, RGBA(246, 249, 255, 255), labels[b]);
+        }
+        if (DECK_ELEM_CONTROLS == companion_editor_element)
+            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
+    }
+
+    /* Timeline is a wide strip; the editor intentionally has no duplicate save-preview card. */
+    {
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, DECK_ELEM_TIMELINE, x, y, w, h, &rx, &ry, &rw, &rh);
+        ui_rrect(rx, ry, rw, rh, 5, RGBA(24, 34, 51, 235));
+        ui_text_fit(F_BOLD, 6.5f, rx + 5, ry + 4, rw - 10,
+                    RGBA(218, 228, 245, 255), "SAVE-STATE TIMELINE");
+        for (int slot = 0; slot < 10; slot++) {
+            float tile_w = (rw - 18) / 10.f;
+            float tx = rx + 3 + slot * (tile_w + 1);
+            ui_rrect(tx, ry + rh * .28f, tile_w, rh * .54f, 2,
+                     slot == 0 ? RGBA(86, 180, 200, 190) : RGBA(66, 81, 106, 200));
+        }
+        if (DECK_ELEM_TIMELINE == companion_editor_element)
+            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
+    }
+
+    ui_unclip();
+    /* Adventure status isn't a movable layout element, but its bounds are shown as a separate cyan card. */
+    ui_stroke(x + w * (620.f / 800.f), y + h * (76.f / 450.f),
+              w * (156.f / 800.f), h * (128.f / 450.f), 7, .7f, RGBA(82, 208, 233, 180));
+
+    float sx, sy, sw, sh;
+    deck_editor_element_rect(d, companion_editor_element, x, y, w, h, &sx, &sy, &sw, &sh);
+    ui_stroke(sx, sy, sw, sh, 5, 2, RGBA(117, 213, 255, 255));
+    /* Large, high-contrast handles are sized for touchscreens as well as a mouse. */
+    ui_rrect(sx + sw - 18, sy + sh * .5f - 9, 18, 18, 5, RGBA(250, 252, 255, 255));
+    ui_rrect(sx + sw * .5f - 9, sy + sh - 18, 18, 18, 5, RGBA(250, 252, 255, 255));
+    ui_rrect(sx + sw - 18, sy + sh - 18, 18, 18, 5, RGBA(93, 207, 255, 255));
 }
 
 static void deck_editor_begin_drag(float x, float y, float preview_x, float preview_y,
