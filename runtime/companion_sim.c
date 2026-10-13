@@ -337,7 +337,7 @@ static void draw_companion(const Settings *s)
     SDL_RenderPresent(deck_renderer);
 }
 
-void companion_sim_sync(const Settings *s, SDL_Window *main_window)
+void companion_sim_sync(Settings *s, SDL_Window *main_window)
 {
     if (!s || !main_window) return;
     if (!s->launcher_dual_screen) {
@@ -411,7 +411,7 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
     }
 }
 
-void companion_sim_render(const Settings *s, SDL_Window *main_window)
+void companion_sim_render(Settings *s, SDL_Window *main_window)
 {
     companion_sim_sync(s, main_window);
     if (!deck_window || !deck_renderer) return;
