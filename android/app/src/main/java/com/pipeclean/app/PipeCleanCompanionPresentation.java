@@ -215,6 +215,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private final String[][] loadedLayoutImagePaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
         private int layoutPreviewGame = -1;
         private boolean layoutEditorPreview;
+        private int layoutPreviewItem;
         private MediaPlayer deckSoundPlayer;
         private static final String[] PALETTES = {
             "Classic Green", "Original DMG", "Pocket", "Black & White", "Ice Blue",
@@ -522,7 +523,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             return 0;
         }
 
-        void setDeckLayout(int layoutGame, int[] values, String[] paths, boolean editorPreview) {
+        void setDeckLayout(int layoutGame, int[] values, String[] paths,
+                           boolean editorPreview, int previewItem) {
             if (values != null) {
                 for (int g = 0; g < LAYOUT_GAME_COUNT; g++) {
                     int base = g * LAYOUT_VALUE_COUNT;
@@ -544,6 +546,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
             layoutPreviewGame = layoutGame >= 0 && layoutGame < LAYOUT_GAME_COUNT ? layoutGame : -1;
             layoutEditorPreview = editorPreview && layoutPreviewGame >= 0;
+            layoutPreviewItem = layoutEditorPreview && previewItem >= 1 && previewItem <= 3
+                ? previewItem : 0;
             postInvalidateOnAnimation();
         }
 
@@ -803,9 +807,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float scale = Math.min(getWidth() / w, getHeight() / h);
             boolean preview = layoutEditorPreview && layoutPreviewGame >= 0;
             int previousGame = game;
+            int previousItem = item;
             boolean previousDashboardMode = dashboardMode;
             if (preview) {
                 game = layoutPreviewGame;
+                item = layoutPreviewItem;
                 dashboardMode = false;
             }
             c.save();
@@ -823,6 +829,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawCornerGems(c, w, h);
             c.restore();
             game = previousGame;
+            item = previousItem;
             dashboardMode = previousDashboardMode;
             if (animatedSlot < 0f) animatedSlot = slot;
             if (!timelineTouchActive) {
