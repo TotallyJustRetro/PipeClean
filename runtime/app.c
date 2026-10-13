@@ -501,6 +501,7 @@ static void companion_publish_launcher_dashboard(int selected_game)
 }
 
 #else
+#if defined(PIPECLEAN_DEV_BUILD)
 #include "miniz.h"
 #include <time.h>
 #include <sys/stat.h>
@@ -760,6 +761,13 @@ void launcher_open_companion_layout_picker(int kind, int game)
     }
     launcher_companion_layout_picker_result(kind, game, selected);
 }
+
+#else
+void launcher_open_companion_layout_picker(int kind, int game)
+{
+    (void)kind; (void)game;
+}
+#endif
 
 static void companion_publish_state(int game, const Frame *frame, int paused)
 {
