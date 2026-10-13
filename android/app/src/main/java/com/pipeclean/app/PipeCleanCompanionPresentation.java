@@ -11,6 +11,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.media.MediaPlayer;
 import android.os.SystemClock;
 import android.view.Display;
 import android.view.MotionEvent;
@@ -199,6 +200,18 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private Bitmap wallpaperBitmap;
         private Movie wallpaperMovie;
         private String wallpaperPath = "";
+
+        private static final int LAYOUT_GAME_COUNT = 7;
+        private static final int LAYOUT_VALUE_COUNT = 16;
+        private static final int LAYOUT_PATH_COUNT = 12;
+        private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
+        private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
+        private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][4];
+        private final Movie[][] layoutMovies = new Movie[LAYOUT_GAME_COUNT][4];
+        private final String[][] loadedLayoutImagePaths = new String[LAYOUT_GAME_COUNT][4];
+        private int layoutPreviewGame = -1;
+        private boolean layoutEditorPreview;
+        private MediaPlayer deckSoundPlayer;
         private static final String[] PALETTES = {
             "Classic Green", "Original DMG", "Pocket", "Black & White", "Ice Blue",
             "Cherry", "Gold", "Grape", "Mint", "Sepia", "Sunset", "Midnight",
@@ -501,6 +514,187 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 cursor += widths[i] + gap;
             }
             return 0;
+        }
+
+        void setDeckLayout(int layoutGame, int[] values, String[] paths, boolean editorPreview) {
+            if (values != null) {
+                for (int g = 0; g < LAYOUT_GAME_COUNT; g++) {
+                    int base = g * LAYOUT_VALUE_COUNT;
+                    if (values.length >= base + LAYOUT_VALUE_COUNT)
+                        System.arraycopy(values, base, layoutValues[g], 0, LAYOUT_VALUE_COUNT);
+                }
+            }
+            if (paths != null) {
+                for (int g = 0; g < LAYOUT_GAME_COUNT; g++) {
+                    for (int i = 0; i < LAYOUT_PATH_COUNT; i++) {
+                        int at = g * LAYOUT_PATH_COUNT + i;
+                        String next = at < paths.length && paths[at] != null ? paths[at] : "";
+                        if (!next.equals(layoutPaths[g][i])) {
+                            layoutPaths[g][i] = next;
+                            if (i < 4) loadLayoutImage(g, i, next);
+                        }
+                    }
+                }
+            }
+            layoutPreviewGame = layoutGame >= 0 && layoutGame < LAYOUT_GAME_COUNT ? layoutGame : -1;
+            layoutEditorPreview = editorPreview && layoutPreviewGame >= 0;
+            postInvalidateOnAnimation();
+        }
+
+        private void loadLayoutImage(int gameIndex, int imageIndex, String path) {
+            Bitmap old = layoutBitmaps[gameIndex][imageIndex];
+            if (old != null && !old.isRecycled()) old.recycle();
+            layoutBitmaps[gameIndex][imageIndex] = null;
+            layoutMovies[gameIndex][imageIndex] = null;
+            loadedLayoutImagePaths[gameIndex][imageIndex] = path == null ? "" : path;
+            if (path == null || path.isEmpty()) return;
+            File file = new File(path);
+            if (!file.isFile()) return;
+            if (path.toLowerCase(Locale.US).endsWith(".gif")) {
+                try (InputStream in = new FileInputStream(file)) {
+                    layoutMovies[gameIndex][imageIndex] = Movie.decodeStream(in);
+                } catch (Exception ex) {
+                    android.util.Log.w("PipeClean", "Couldn't decode Companion Deck GIF.", ex);
+                }
+            } else {
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inScaled = false;
+                layoutBitmaps[gameIndex][imageIndex] = BitmapFactory.decodeFile(path, options);
+            }
+        }
+
+        private int activeLayoutGame() {
+            if (layoutEditorPreview && layoutPreviewGame >= 0) return layoutPreviewGame;
+            if (!dashboardMode && game >= 0 && game < LAYOUT_GAME_COUNT) return game;
+            return -1;
+        }
+
+        private void applyLayoutTransform(Canvas canvas, int element, float w, float h,
+                                          float centerX, float centerY) {
+            int g = activeLayoutGame();
+            if (g < 0 || element < 0 || element >= 5) return;
+            int base = element * 3;
+            float dx = layoutValues[g][base] * (w / 800f);
+            float dy = layoutValues[g][base + 1] * (h / 450f);
+            float scale = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
+            canvas.translate(centerX + dx, centerY + dy);
+            canvas.scale(scale, scale);
+            canvas.translate(-centerX, -centerY);
+        }
+
+        private boolean hasLayoutImage(int g, int imageIndex) {
+            return g >= 0 && g < LAYOUT_GAME_COUNT && imageIndex >= 0 && imageIndex < 4 &&
+                ((layoutBitmaps[g][imageIndex] != null && !layoutBitmaps[g][imageIndex].isRecycled()) ||
+                 layoutMovies[g][imageIndex] != null);
+        }
+
+        private void drawLayoutImage(Canvas canvas, int g, int imageIndex,
+                                     float x, float y, float w, float h) {
+            if (!hasLayoutImage(g, imageIndex) || w <= 0 || h <= 0) return;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFFFFFFFF);
+            Bitmap bitmap = layoutBitmaps[g][imageIndex];
+            if (bitmap != null && !bitmap.isRecycled()) {
+                canvas.drawBitmap(bitmap, null, new RectF(x, y, x + w, y + h), p);
+                return;
+            }
+            Movie movie = layoutMovies[g][imageIndex];
+            if (movie != null && movie.width() > 0 && movie.height() > 0) {
+                int duration = movie.duration() > 0 ? movie.duration() : 1000;
+                movie.setTime((int)(SystemClock.uptimeMillis() % duration));
+                canvas.save();
+                canvas.translate(x, y);
+                canvas.scale(w / movie.width(), h / movie.height());
+                movie.draw(canvas, 0, 0, p);
+                canvas.restore();
+            }
+        }
+
+        private void drawLayoutBackground(Canvas canvas, float w, float h) {
+            int g = activeLayoutGame();
+            if (g >= 0 && hasLayoutImage(g, 0))
+                drawLayoutImageCover(canvas, g, 0, 0, 0, w, h);
+        }
+
+        private void drawLayoutImageCover(Canvas canvas, int g, int imageIndex,
+                                          float x, float y, float w, float h) {
+            if (!hasLayoutImage(g, imageIndex)) return;
+            Bitmap bitmap = layoutBitmaps[g][imageIndex];
+            float iw, ih;
+            if (bitmap != null && !bitmap.isRecycled()) {
+                iw = bitmap.getWidth(); ih = bitmap.getHeight();
+            } else {
+                Movie movie = layoutMovies[g][imageIndex];
+                iw = movie == null ? 1 : movie.width();
+                ih = movie == null ? 1 : movie.height();
+            }
+            float scale = Math.max(w / iw, h / ih);
+            float dw = iw * scale, dh = ih * scale;
+            canvas.save();
+            canvas.clipRect(x, y, x + w, y + h);
+            drawLayoutImage(canvas, g, imageIndex,
+                x + (w - dw) * 0.5f, y + (h - dh) * 0.5f, dw, dh);
+            canvas.restore();
+        }
+
+        private void drawLayoutDecoration(Canvas canvas, float w, float h) {
+            int g = activeLayoutGame();
+            if (g < 0 || !hasLayoutImage(g, 3)) return;
+            canvas.save();
+            applyLayoutTransform(canvas, 4, w, h, w * 0.5f, h * 0.5f);
+            float dw = w * 0.30f, dh = h * 0.32f;
+            drawLayoutImage(canvas, g, 3, (w - dw) * 0.5f, (h - dh) * 0.5f, dw, dh);
+            canvas.restore();
+        }
+
+        private void playLayoutSound(int soundIndex) {
+            int g = activeLayoutGame();
+            if (g < 0 || layoutValues[g][15] == 0 ||
+                soundIndex < 0 || soundIndex >= LAYOUT_PATH_COUNT) return;
+            String path = layoutPaths[g][soundIndex];
+            if (path == null || path.isEmpty() || !new File(path).isFile()) return;
+            try {
+                if (deckSoundPlayer != null) {
+                    try { deckSoundPlayer.stop(); } catch (Exception ignored) {}
+                    deckSoundPlayer.release();
+                    deckSoundPlayer = null;
+                }
+                MediaPlayer player = new MediaPlayer();
+                deckSoundPlayer = player;
+                player.setDataSource(path);
+                player.setOnCompletionListener(done -> {
+                    done.release();
+                    if (deckSoundPlayer == done) deckSoundPlayer = null;
+                });
+                player.setOnErrorListener((failed, what, extra) -> {
+                    failed.release();
+                    if (deckSoundPlayer == failed) deckSoundPlayer = null;
+                    return true;
+                });
+                player.setOnPreparedListener(MediaPlayer::start);
+                player.prepareAsync();
+            } catch (Exception ex) {
+                if (deckSoundPlayer != null) {
+                    deckSoundPlayer.release();
+                    deckSoundPlayer = null;
+                }
+                android.util.Log.w("PipeClean", "Couldn't play Companion Deck action sound.", ex);
+            }
+        }
+
+        private void drawLayoutButtonTexture(Canvas canvas, int action,
+                                             float x, float y, float w, float h) {
+            int g = activeLayoutGame();
+            if (g < 0 || !hasLayoutImage(g, 1)) return;
+            Path clip = new Path();
+            clip.addRoundRect(new RectF(x, y, x + w, y + h), 13, 13, Path.Direction.CW);
+            canvas.save();
+            canvas.clipPath(clip);
+            drawLayoutImage(canvas, g, 1, x, y, w, h);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(action == downAction ? 0x66000000 : 0x44000000);
+            canvas.drawRoundRect(x, y, x + w, y + h, 13, 13, p);
+            canvas.restore();
         }
 
         void setBackgroundFile(String path) {
