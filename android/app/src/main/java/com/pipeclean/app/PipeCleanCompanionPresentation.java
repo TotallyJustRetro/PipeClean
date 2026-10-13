@@ -207,10 +207,16 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String wallpaperPath = "";
 
         private static final int LAYOUT_GAME_COUNT = 7;
-        private static final int LAYOUT_DECORATION_COUNT = 8;
+        private static final int LAYOUT_DECORATION_COUNT = 16;
         private static final int LAYOUT_ELEMENT_COUNT = 5 + LAYOUT_DECORATION_COUNT;
-        private static final int LAYOUT_VALUE_COUNT = 83;
-        private static final int LAYOUT_PATH_COUNT = 30;
+        private static final int LAYOUT_PATH_COUNT = 38;
+        private static final int LAYOUT_STATUS_VALUE_BASE = 49 + LAYOUT_PATH_COUNT;
+        private static final int LAYOUT_EXTENDED_DECORATION_COUNT = LAYOUT_DECORATION_COUNT - 8;
+        private static final int LAYOUT_EXTENDED_DECORATION_VALUE_BASE = LAYOUT_STATUS_VALUE_BASE + 4;
+        private static final int LAYOUT_EXTENDED_DECORATION_SCALE_Y_BASE =
+            LAYOUT_EXTENDED_DECORATION_VALUE_BASE + LAYOUT_EXTENDED_DECORATION_COUNT * 3;
+        private static final int LAYOUT_VALUE_COUNT =
+            LAYOUT_EXTENDED_DECORATION_SCALE_Y_BASE + LAYOUT_EXTENDED_DECORATION_COUNT;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
         private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
@@ -584,21 +590,22 @@ final class PipeCleanCompanionPresentation extends Presentation {
                                           float centerX, float centerY) {
             int g = activeLayoutGame();
             if (g < 0 || element < 0 || element >= LAYOUT_ELEMENT_COUNT) return;
-            /* Keep legacy indices intact: status is appended at 79..82, while decoration
-               1 remains at 12..14 and decorations 2..8 remain at 16..36. */
+            /* Keep existing indices stable and put added layer transforms after status. */
             int base;
             if (element < 4) base = element * 3;
-            else if (element == 4) base = 79;
+            else if (element == 4) base = LAYOUT_STATUS_VALUE_BASE;
             else if (element == 5) base = 12;
-            else base = 16 + (element - 6) * 3;
+            else if (element < 13) base = 16 + (element - 6) * 3;
+            else base = LAYOUT_EXTENDED_DECORATION_VALUE_BASE + (element - 13) * 3;
             float dx = layoutValues[g][base] * (w / 800f);
             float dy = layoutValues[g][base + 1] * (h / 450f);
             float scaleX = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
             int scaleYIndex;
             if (element < 4) scaleYIndex = 37 + element;
-            else if (element == 4) scaleYIndex = 82;
+            else if (element == 4) scaleYIndex = LAYOUT_STATUS_VALUE_BASE + 3;
             else if (element == 5) scaleYIndex = 41;
-            else scaleYIndex = 42 + (element - 6);
+            else if (element < 13) scaleYIndex = 42 + (element - 6);
+            else scaleYIndex = LAYOUT_EXTENDED_DECORATION_SCALE_Y_BASE + (element - 13);
             float scaleY = Math.max(0.25f, Math.min(2.5f, layoutValues[g][scaleYIndex] / 100f));
             canvas.translate(centerX + dx, centerY + dy);
             canvas.scale(scaleX, scaleY);
@@ -700,7 +707,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             int g = activeLayoutGame();
             if (g < 0) return;
             for (int slot = 0; slot < LAYOUT_DECORATION_COUNT; slot++) {
-                int imageIndex = slot == 0 ? 3 : 20 + slot;
+                int imageIndex = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
                 if (!hasLayoutImage(g, imageIndex)) continue;
                 float bx = slot == 0 ? w * 0.35f : slot == 1 ? w * 0.025f :
                     slot == 2 ? w * 0.76f : slot == 3 ? w * 0.40f :
