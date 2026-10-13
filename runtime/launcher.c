@@ -3276,7 +3276,7 @@ static void deck_editor_open_picker(int kind)
                 return;
             }
         }
-        launcher_toast("All eight image layers are full. Remove a layer to add another.");
+        launcher_toast("All sixteen image layers are full. Remove a layer to add another.");
         return;
     }
     if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
