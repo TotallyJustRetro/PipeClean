@@ -279,13 +279,13 @@ static int field_table(Field *t, int cap)
     I("f_mask", f->mask, 0, 100); I("f_curve", f->curve, 0, 100); I("f_bloom", f->bloom, 0, 100);
     I("f_hdr", f->hdr, 0, 100); I("f_vignette", f->vignette, 0, 100); I("f_blur", f->blur, 0, 100);
     I("f_preset", f->preset, 0, n_filter_presets - 1);
-    static char gn[N_GAMES][120][40];
+    static char gn[N_GAMES][120][64];
     static int gi = 0; (void)gi;
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &s->g[g];
         int k = 0;
-#define GI(nm, p, l, h) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
-#define GS(nm, p) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
+#define GI(nm, p, l, h) do { snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
+#define GS(nm, p) do { snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
         GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path);
         GI("romhack_count", c->romhack_count, 0, MAX_ROMHACKS);
         GI("romhack_selected", c->romhack_selected, -1, MAX_ROMHACKS - 1);
