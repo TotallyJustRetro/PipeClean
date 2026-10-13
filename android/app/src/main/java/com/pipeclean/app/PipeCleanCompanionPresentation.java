@@ -72,8 +72,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
     }
 
     void setMusicPlaylist(String currentTitle, String[] playlistNames,
-                          int selectedTrack, boolean playing) {
-        deck.setMusicPlaylist(currentTitle, playlistNames, selectedTrack, playing);
+                          int selectedTrack, boolean playing,
+                          int notificationSerial, boolean notificationAllowed) {
+        deck.setMusicPlaylist(currentTitle, playlistNames, selectedTrack, playing,
+            notificationSerial, notificationAllowed);
     }
 
     void setBackgroundFile(String path) { deck.setBackgroundFile(path); }
@@ -175,11 +177,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String[] dashboardGameNames = new String[0];
         private int[] dashboardRecentGames = new int[0], dashboardPlaySeconds = new int[0];
         private Bitmap dashboardPreview;
-        private String musicTitle = "PipeClean Chiptune", musicTitleLast = "";
+        private String musicTitle = "PipeClean Chiptune";
         private String[] musicPlaylist = new String[0];
         private int musicSelectedTrack;
         private boolean musicPlaying = true;
-        private long musicTitleChangedAt = SystemClock.uptimeMillis();
+        private int musicNoticeSerial = -1;
+        private boolean musicNoticeVisible, musicNoticeAllowed;
+        private long musicNoticeStartedAt;
         private final boolean[] slotOccupied = new boolean[10];
         private final Bitmap[] slotThumbnails = new Bitmap[10];
         private final long[] slotSavedAt = new long[10];
@@ -278,18 +282,23 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         void setMusicPlaylist(String currentTitle, String[] playlistNames,
-                              int selectedTrack, boolean playing) {
+                              int selectedTrack, boolean playing,
+                              int notificationSerial, boolean notificationAllowed) {
             String safeTitle = currentTitle == null || currentTitle.trim().isEmpty()
                 ? "PipeClean Chiptune" : currentTitle.trim();
-            if (!safeTitle.equals(musicTitle)) {
-                musicTitleLast = musicTitle;
-                musicTitle = safeTitle;
-                musicTitleChangedAt = SystemClock.uptimeMillis();
-            }
+            musicTitle = safeTitle;
             musicPlaylist = playlistNames != null ? playlistNames.clone() : new String[0];
             musicSelectedTrack = musicPlaylist.length > 0
                 ? Math.max(0, Math.min(musicPlaylist.length - 1, selectedTrack)) : 0;
             musicPlaying = playing;
+            musicNoticeAllowed = notificationAllowed;
+            if (notificationSerial != musicNoticeSerial) {
+                musicNoticeSerial = notificationSerial;
+                if (notificationAllowed && dashboardDualScreen && playing) {
+                    musicNoticeVisible = true;
+                    musicNoticeStartedAt = SystemClock.uptimeMillis();
+                }
+            }
             postInvalidate();
         }
 
@@ -601,6 +610,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             } else {
                 if (portrait) drawPortrait(c); else drawLandscape(c);
             }
+            drawMusicNotification(c, portrait, w, h);
             drawCornerGems(c, w, h);
             c.restore();
             // The hero button, GIF wallpaper, and slot carousel animate smoothly.
@@ -735,9 +745,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, "PIPE CLEAN  •  GAME LIBRARY", 27, 22, 9, accent());
             text(c, "READY TO PLAY", 27, 42, 15, ink());
 
-            float previewH = dashboardDualScreen ? 238f : 362f;
+            float previewH = 362f;
             card(c, 20, 65, 460, previewH, "SELECTED GAME");
-            float imageBottom = dashboardDualScreen ? 229f : 293f;
+            float imageBottom = 293f;
             drawDashboardPreview(c, new RectF(34, 94, 466, imageBottom));
             float titleY = imageBottom + 21f;
             textFit(c, dashboardGameName(dashboardGame), 36, titleY, 420, 16, ink());
@@ -767,9 +777,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 }
             }
 
-            if (dashboardDualScreen) {
-                drawMusicPanel(c, 20, 315, 760, 123, false);
-            }
         }
 
         private void drawLauncherDashboardPortrait(Canvas c) {
@@ -777,7 +784,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, "PIPE CLEAN  •  LIBRARY", 20, 23, 9, accent());
             text(c, "READY TO PLAY", 20, 42, 13, ink());
 
-            float previewH = dashboardDualScreen ? 258f : 310f;
+            float previewH = 310f;
             card(c, 16, 60, 418, previewH, "SELECTED GAME");
             float imageBottom = 60 + previewH - 87f;
             drawDashboardPreview(c, new RectF(28, 91, 422, imageBottom));
@@ -789,7 +796,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             textFit(c, playTimeText(played), 29, titleY + 32, 392, 11, accent());
 
             float recentY = 60 + previewH + 9f;
-            float recentH = dashboardDualScreen ? 182f : 800f - recentY - 14f;
+            float recentH = 800f - recentY - 14f;
             card(c, 16, recentY, 418, recentH, "RECENTLY PLAYED");
             int rows = dashboardRecentCount();
             if (rows == 0) {
@@ -809,7 +816,48 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     textFit(c, playTimeText(secs), 54, ry + 15, 355, 7.5f, muted());
                 }
             }
-            if (dashboardDualScreen) drawMusicPanel(c, 16, 535, 418, 250, true);
+        }
+
+        private void drawMusicNotification(Canvas c, boolean portrait, float w, float h) {
+            if (!dashboardDualScreen || !musicNoticeAllowed || !musicNoticeVisible) return;
+            long elapsed = Math.max(0L, SystemClock.uptimeMillis() - musicNoticeStartedAt);
+            final long totalMs = 2750L;
+            if (elapsed >= totalMs) {
+                musicNoticeVisible = false;
+                return;
+            }
+
+            float width = portrait ? 414f : 368f;
+            float height = 58f;
+            float targetX = portrait ? 18f : 18f;
+            float y = h - height - 11f;
+            final float inMs = 300f, outAtMs = 2340f, outMs = 360f;
+            float offset = 0f;
+            if (elapsed < inMs) {
+                float q = elapsed / inMs;
+                float ease = 1f - (1f - q) * (1f - q) * (1f - q);
+                offset = -width * (1f - ease);
+            } else if (elapsed > outAtMs) {
+                float q = Math.min(1f, (elapsed - outAtMs) / outMs);
+                float ease = q * q * (3f - 2f * q);
+                offset = -width * ease;
+            }
+            float x = targetX + offset;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xE8111722);
+            c.drawRoundRect(x, y, x + width, y + height, 12f, 12f, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1f);
+            p.setColor(0xD85C6F93);
+            c.drawRoundRect(x, y, x + width, y + height, 12f, 12f, p);
+            p.setStyle(Paint.Style.FILL);
+
+            float cx = x + 31f;
+            float cy = y + height * 0.5f;
+            drawVinylRecord(c, cx, cy, 21f, musicPlaying);
+            text(c, "NOW PLAYING", x + 61f, y + 17f, 7.5f, 0xFF71D7A3);
+            textFit(c, musicTitle, x + 61f, y + 34f, width - 73f, 11.5f, ink());
+            postInvalidateOnAnimation();
         }
 
         private void drawVinylRecord(Canvas c, float cx, float cy, float radius, boolean playing) {
