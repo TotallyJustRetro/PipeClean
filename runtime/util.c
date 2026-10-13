@@ -76,6 +76,7 @@ static int dlg_win(int kind, const char *title, char *out, size_t n)
         L"Romhack or patch (*.ips;*.bps;*.ups;*.gb;*.gbc)\0*.ips;*.bps;*.ups;*.gb;*.gbc\0All files\0*.*\0",
         L"Images (*.png;*.gif)\0*.png;*.gif\0All files\0*.*\0",
         L"Audio (*.wav;*.mp3;*.ogg;*.flac)\0*.wav;*.mp3;*.ogg;*.flac\0All files\0*.*\0",
+        L"All files\0*.*\0",
         L"ZIP archive (*.zip)\0*.zip\0All files\0*.*\0",
         L"ZIP archive (*.zip)\0*.zip\0All files\0*.*\0"};
     OPENFILENAMEW o;
