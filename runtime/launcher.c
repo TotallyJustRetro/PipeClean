@@ -3435,8 +3435,8 @@ static void deck_editor_items(float x, float y)
             companion_editor_preview_item = item;
         }
         if (ui_button(x + 470, ry + 18, 72, 32,
-                      d->asset_stretch[asset_index] ? "Fit / no crop" : "Stretch",
-                      d->asset_stretch[asset_index] ? B_PRIMARY : B_GHOST, 1)) {
+                      d->asset_stretch[asset_index] ? "STRETCH" : "FIT / NO CROP",
+                      d->asset_stretch[asset_index] ? B_PRIMARY : B_NORMAL, 1)) {
             deck_editor_snapshot();
             d->asset_stretch[asset_index] = !d->asset_stretch[asset_index];
             settings_save();
@@ -3486,8 +3486,8 @@ static void deck_editor_assets(float x, float y)
         ui_text_fit(F_REG, 8, x + 218, ry + 13, 224,
                     rows[i].path[0] ? C_MUTED : C_DIM, name);
         int stretch = d->asset_stretch[rows[i].asset_index];
-        if (ui_button(x + 450, ry + 4, 78, 29, stretch ? "Fit / no crop" : "Stretch",
-                      stretch ? B_PRIMARY : B_GHOST, 1)) {
+        if (ui_button(x + 450, ry + 4, 78, 29, stretch ? "STRETCH" : "FIT / NO CROP",
+                      stretch ? B_PRIMARY : B_NORMAL, 1)) {
             deck_editor_snapshot();
             d->asset_stretch[rows[i].asset_index] = !stretch;
             settings_save();
@@ -3528,8 +3528,8 @@ static void deck_editor_decorations(float x, float y)
                     asset_path[0] ? path_base(asset_path) : "EMPTY — READY FOR AN IMAGE");
         int asset_index = slot == 0 ? 3 : 20 + slot;
         int stretch = d->asset_stretch[asset_index];
-        if (ui_button(x + 438, ry + 2, 82, 28, stretch ? "Fit / no crop" : "Stretch",
-                      stretch ? B_PRIMARY : B_GHOST, 1)) {
+        if (ui_button(x + 438, ry + 2, 82, 28, stretch ? "STRETCH" : "FIT / NO CROP",
+                      stretch ? B_PRIMARY : B_NORMAL, 1)) {
             deck_editor_snapshot();
             d->asset_stretch[asset_index] = !stretch;
             settings_save();
