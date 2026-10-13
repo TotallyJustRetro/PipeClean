@@ -284,7 +284,7 @@ static int field_table(Field *t, int cap)
     I("f_hdr", f->hdr, 0, 100); I("f_vignette", f->vignette, 0, 100); I("f_blur", f->blur, 0, 100);
     I("f_preset", f->preset, 0, n_filter_presets - 1);
     /* Includes the added Companion Deck layer paths/transforms and per-asset modes. */
-    static char gn[N_GAMES][256][64];
+    static char gn[N_GAMES][512][64];
     static int gi = 0; (void)gi;
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &s->g[g];
