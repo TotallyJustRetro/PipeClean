@@ -63,6 +63,19 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
     void showIdleState() { deck.showIdleState(); }
 
+    void setLauncherDashboardState(int selectedGame, String[] gameNames,
+                                    int[] recentGames, int[] playSeconds,
+                                    int previewWidth, int previewHeight, int[] previewPixels,
+                                    boolean dualScreenEnabled) {
+        deck.setLauncherDashboardState(selectedGame, gameNames, recentGames, playSeconds,
+            previewWidth, previewHeight, previewPixels, dualScreenEnabled);
+    }
+
+    void setMusicPlaylist(String currentTitle, String[] playlistNames,
+                          int selectedTrack, boolean playing) {
+        deck.setMusicPlaylist(currentTitle, playlistNames, selectedTrack, playing);
+    }
+
     void setBackgroundFile(String path) { deck.setBackgroundFile(path); }
 
     void updateSaveSlots(int game, int selectedSlot, String[] statePaths, String[] thumbnailPaths) {
@@ -156,8 +169,17 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
-        private boolean paused, itemPressed;
+        private boolean paused, itemPressed, dashboardMode = true, dashboardDualScreen;
         private long itemPressStart, itemReleaseStart;
+        private int dashboardGame = -1;
+        private String[] dashboardGameNames = new String[0];
+        private int[] dashboardRecentGames = new int[0], dashboardPlaySeconds = new int[0];
+        private Bitmap dashboardPreview;
+        private String musicTitle = "PipeClean Chiptune", musicTitleLast = "";
+        private String[] musicPlaylist = new String[0];
+        private int musicSelectedTrack;
+        private boolean musicPlaying = true;
+        private long musicTitleChangedAt = SystemClock.uptimeMillis();
         private final boolean[] slotOccupied = new boolean[10];
         private final Bitmap[] slotThumbnails = new Bitmap[10];
         private final long[] slotSavedAt = new long[10];
@@ -192,6 +214,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         void setState(int game, int lives, int stage, int world, boolean paused,
                       int slot, int palette, int filter, int item) {
+            dashboardMode = false;
             this.game = game;
             this.lives = Math.max(0, Math.min(99, lives));
             this.stage = stage;
@@ -206,6 +229,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         void showIdleState() {
+            dashboardMode = true;
             game = -1;
             lives = 0;
             stage = -1;
@@ -214,6 +238,56 @@ final class PipeCleanCompanionPresentation extends Presentation {
             item = 0;
             downAction = 0;
             itemPressed = false;
+            postInvalidate();
+        }
+
+        void setLauncherDashboardState(int selectedGame, String[] gameNames,
+                                       int[] recentGames, int[] playSeconds,
+                                       int previewWidth, int previewHeight, int[] previewPixels,
+                                       boolean dualScreenEnabled) {
+            dashboardMode = true;
+            game = -1;
+            if (dashboardGame != selectedGame && dashboardPreview != null) {
+                if (!dashboardPreview.isRecycled()) dashboardPreview.recycle();
+                dashboardPreview = null;
+            }
+            dashboardGame = selectedGame;
+            dashboardGameNames = gameNames != null ? gameNames.clone() : new String[0];
+            dashboardRecentGames = recentGames != null ? recentGames.clone() : new int[0];
+            dashboardPlaySeconds = playSeconds != null ? playSeconds.clone() : new int[0];
+            dashboardDualScreen = dualScreenEnabled;
+            if (previewPixels != null && previewWidth > 0 && previewHeight > 0 &&
+                (long) previewWidth * previewHeight == previewPixels.length &&
+                (long) previewWidth * previewHeight <= 1048576L) {
+                try {
+                    int[] opaque = new int[previewPixels.length];
+                    for (int i = 0; i < previewPixels.length; i++)
+                        opaque[i] = 0xFF000000 | (previewPixels[i] & 0x00FFFFFF);
+                    Bitmap next = Bitmap.createBitmap(opaque, previewWidth, previewHeight,
+                        Bitmap.Config.ARGB_8888);
+                    if (dashboardPreview != null && !dashboardPreview.isRecycled())
+                        dashboardPreview.recycle();
+                    dashboardPreview = next;
+                } catch (Exception ex) {
+                    android.util.Log.w("PipeClean", "Couldn't decode launcher preview frame.", ex);
+                }
+            }
+            postInvalidate();
+        }
+
+        void setMusicPlaylist(String currentTitle, String[] playlistNames,
+                              int selectedTrack, boolean playing) {
+            String safeTitle = currentTitle == null || currentTitle.trim().isEmpty()
+                ? "PipeClean Chiptune" : currentTitle.trim();
+            if (!safeTitle.equals(musicTitle)) {
+                musicTitleLast = musicTitle;
+                musicTitle = safeTitle;
+                musicTitleChangedAt = SystemClock.uptimeMillis();
+            }
+            musicPlaylist = playlistNames != null ? playlistNames.clone() : new String[0];
+            musicSelectedTrack = musicPlaylist.length > 0
+                ? Math.max(0, Math.min(musicPlaylist.length - 1, selectedTrack)) : 0;
+            musicPlaying = playing;
             postInvalidate();
         }
 
@@ -520,7 +594,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.translate((getWidth() - w * scale) * 0.5f, (getHeight() - h * scale) * 0.5f);
             c.scale(scale, scale);
             drawWallpaper(c, w, h);
-            if (portrait) drawPortrait(c); else drawLandscape(c);
+            if (dashboardMode) {
+                if (portrait) drawLauncherDashboardPortrait(c); else drawLauncherDashboardLandscape(c);
+            } else {
+                if (portrait) drawPortrait(c); else drawLandscape(c);
+            }
             drawCornerGems(c, w, h);
             c.restore();
             // The hero button, GIF wallpaper, and slot carousel animate smoothly.
