@@ -471,7 +471,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private String itemName() {
-            if (item == 0) return "EMPTY POCKET";
+            if (item == 0) return "";
             if (sml1()) {
                 if (item == 1) return "MUSHROOM";
                 if (item == 2) return "SUPERBALL FLOWER";
@@ -485,7 +485,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private String actionHint() {
-            if (item == 0) return "Find a power-up to fill your pocket";
+            if (item == 0) return "";
             return sml1() ? "Tap to release into the level" : "Tap when you're ready";
         }
 
@@ -721,16 +721,15 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
             if(itemId>0) {
                 drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
+                // Only occupied pockets need a label or usage hint.
+                textFit(c, itemName(), cx, cy + radius * 0.66f, radius * 1.55f,
+                    Math.max(8f, radius * 0.11f), ink(), true);
+                textFit(c, actionHint(), cx, cy + radius * 0.81f, radius * 1.68f,
+                    Math.max(6.5f, radius * 0.065f), muted(), true);
             } else {
-                // Empty pocket: softly glowing 8-bit star prompt.
+                // Empty pockets are represented by the icon alone—no text.
                 drawPixelStar(c,cx,cy-radius*0.08f,17,0xFFB4A1CB);
-                text(c,"READY",cx,cy+radius*.30f,8,muted(),true);
             }
-            // Keep the label and hint inside the oversized reserve-item button.
-            textFit(c, itemName(), cx, cy + radius * 0.66f, radius * 1.55f,
-                Math.max(8f, radius * 0.11f), ink(), true);
-            textFit(c, actionHint(), cx, cy + radius * 0.81f, radius * 1.68f,
-                Math.max(6.5f, radius * 0.065f), muted(), true);
             c.restore();
         }
 
