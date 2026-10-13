@@ -702,6 +702,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
             return String.format(Locale.US, "%dm played", minutes);
         }
 
+        private int dashboardRecentCount() {
+            int count = 0;
+            for (int id : dashboardRecentGames)
+                if (id >= 0 && id < dashboardGameNames.length) count++;
+            return count;
+        }
+
         private void drawDashboardPreview(Canvas c, RectF target) {
             p.setStyle(Paint.Style.FILL);
             p.setColor(0xFF07111F);
@@ -740,7 +747,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             textFit(c, playTimeText(played), 36, titleY + 39, 420, 12, accent());
 
             card(c, 492, 65, 288, previewH, "RECENTLY PLAYED");
-            int rows = Math.min(5, dashboardRecentGames.length);
+            int rows = dashboardRecentCount();
             if (rows == 0) {
                 drawMiniStar(c, 523, 132, 9);
                 text(c, "YOUR ADVENTURE", 545, 126, 8, muted());
@@ -750,9 +757,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 for (int i = 0; i < rows; i++) {
                     int id = dashboardRecentGames[i];
                     if (id < 0) continue;
-                    float ry = 99 + i * (dashboardDualScreen ? 27f : 48f);
+                    float ry = 99 + i * (dashboardDualScreen ? 27f : 63f);
                     p.setColor(i == 0 ? 0x4038D69B : 0x30172237);
-                    c.drawRoundRect(504, ry, 768, ry + (dashboardDualScreen ? 24f : 43f), 7, 7, p);
+                    c.drawRoundRect(504, ry, 768, ry + (dashboardDualScreen ? 24f : 56f), 7, 7, p);
                     drawMiniStar(c, 518, ry + 12, 5);
                     textFit(c, dashboardGameName(id), 531, ry + 3, 226, 9, i == 0 ? accent() : ink());
                     int secs = id < dashboardPlaySeconds.length ? dashboardPlaySeconds[id] : 0;
@@ -784,7 +791,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float recentY = 60 + previewH + 9f;
             float recentH = dashboardDualScreen ? 182f : 800f - recentY - 14f;
             card(c, 16, recentY, 418, recentH, "RECENTLY PLAYED");
-            int rows = Math.min(5, dashboardRecentGames.length);
+            int rows = dashboardRecentCount();
             if (rows == 0) {
                 textFit(c, "Your recent games and play time will appear here.", 30,
                     recentY + 50, 384, 11, muted());
