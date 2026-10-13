@@ -130,7 +130,7 @@ typedef struct {
     int launcher_ui_scale;              /* 75..125 percent, persisted UI zoom */
     int launcher_window_size;           /* 0 = compact, 1 = default, 2 = large */
     int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
-    int launcher_dual_screen;            /* Android: show music player and deck controls on the companion display. */
+    int launcher_dual_screen;            /* Android: use the second display; desktop: open the Companion Deck simulator window. */
     int launcher_pipe_screen_swap;        /* Android: swap SML1 gameplay to the companion screen in pipes/bonus rooms. */
     int recent_played_count;
     int recent_played[N_RECENT_PLAYED];  /* Game indices, most recent first; -1 = unused. */
