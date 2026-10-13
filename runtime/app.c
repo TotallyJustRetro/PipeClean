@@ -355,27 +355,43 @@ static void companion_publish_launcher_dashboard(int selected_game)
     jintArray seconds = (*env)->NewIntArray(env, N_GAMES);
     int layout_game = launcher_companion_layout_target_game(selected_game);
     if (layout_game < 0 || layout_game >= N_GAMES) layout_game = selected_game;
-    CompanionLayoutCfg *layout = &settings.deck_layout[layout_game];
-    jintArray layout_values = (*env)->NewIntArray(env, 16);
+    int editor_preview = launcher_companion_layout_preview_enabled();
+    jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * 16);
     jobjectArray layout_paths = string_class
-        ? (*env)->NewObjectArray(env, 12, string_class, NULL) : NULL;
+        ? (*env)->NewObjectArray(env, N_GAMES * 12, string_class, NULL) : NULL;
     if (layout_values) {
-        jint values[16] = {
-            layout->header_dx, layout->header_dy, layout->header_scale,
-            layout->item_dx, layout->item_dy, layout->item_scale,
-            layout->controls_dx, layout->controls_dy, layout->controls_scale,
-            layout->timeline_dx, layout->timeline_dy, layout->timeline_scale,
-            layout->decoration_dx, layout->decoration_dy, layout->decoration_scale,
-            layout->sounds_enabled
-        };
-        (*env)->SetIntArrayRegion(env, layout_values, 0, 16, values);
+        jint values[N_GAMES * 16];
+        for (int g = 0; g < N_GAMES; g++) {
+            CompanionLayoutCfg *layout = &settings.deck_layout[g];
+            int base = g * 16;
+            values[base + 0] = layout->header_dx;
+            values[base + 1] = layout->header_dy;
+            values[base + 2] = layout->header_scale;
+            values[base + 3] = layout->item_dx;
+            values[base + 4] = layout->item_dy;
+            values[base + 5] = layout->item_scale;
+            values[base + 6] = layout->controls_dx;
+            values[base + 7] = layout->controls_dy;
+            values[base + 8] = layout->controls_scale;
+            values[base + 9] = layout->timeline_dx;
+            values[base + 10] = layout->timeline_dy;
+            values[base + 11] = layout->timeline_scale;
+            values[base + 12] = layout->decoration_dx;
+            values[base + 13] = layout->decoration_dy;
+            values[base + 14] = layout->decoration_scale;
+            values[base + 15] = layout->sounds_enabled;
+        }
+        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * 16, values);
     }
     if (layout_paths) {
-        for (int i = 0; i < 12; i++) {
-            jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
-            if (path) {
-                (*env)->SetObjectArrayElement(env, layout_paths, i, path);
-                (*env)->DeleteLocalRef(env, path);
+        for (int g = 0; g < N_GAMES; g++) {
+            CompanionLayoutCfg *layout = &settings.deck_layout[g];
+            for (int i = 0; i < 12; i++) {
+                jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
+                if (path) {
+                    (*env)->SetObjectArrayElement(env, layout_paths, g * 12 + i, path);
+                    (*env)->DeleteLocalRef(env, path);
+                }
             }
         }
     }
@@ -416,13 +432,14 @@ static void companion_publish_launcher_dashboard(int selected_game)
     }
     jmethodID dashboard_method = (*env)->GetMethodID(
         env, cls, "updateLauncherDashboard",
-        "(I[Ljava/lang/String;[I[III[I[I[Ljava/lang/String;Z)V");
+        "(I[Ljava/lang/String;[I[III[II[I[Ljava/lang/String;ZZ)V");
     if (dashboard_method && game_names && recent && seconds && layout_values && layout_paths) {
         (void)(*env)->CallVoidMethod(env, activity, dashboard_method,
             (jint)selected_game, game_names, recent, seconds,
             (jint)preview_w, (jint)preview_h, preview,
             (jint)layout_game, layout_values, layout_paths,
-            settings.launcher_dual_screen ? JNI_TRUE : JNI_FALSE);
+            settings.launcher_dual_screen ? JNI_TRUE : JNI_FALSE,
+            editor_preview ? JNI_TRUE : JNI_FALSE);
     }
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
