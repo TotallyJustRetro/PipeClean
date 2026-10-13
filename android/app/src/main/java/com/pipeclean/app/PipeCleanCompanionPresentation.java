@@ -296,7 +296,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private boolean isTimelinePoint(float x, float y, boolean portrait) {
             return portrait
-                ? inside(x, y, 14, 704 + 14, 422, 96 - 14)
+                ? inside(x, y, 14, 704 + 14, 422, 92 - 14)
                 : inside(x, y, 24, 365 + 14, 752, 83 - 14);
         }
 
