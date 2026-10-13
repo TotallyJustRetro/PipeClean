@@ -578,11 +578,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             int g = activeLayoutGame();
             if (g < 0 || element < 0 || element >= 5) return;
             int base = element * 3;
-            boolean portrait = h > w;
-            float referenceW = portrait ? 450f : 800f;
-            float referenceH = portrait ? 800f : 450f;
-            float dx = layoutValues[g][base] * (w / referenceW);
-            float dy = layoutValues[g][base + 1] * (h / referenceH);
+            float dx = layoutValues[g][base] * (w / 800f);
+            float dy = layoutValues[g][base + 1] * (h / 450f);
             float scale = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
             canvas.translate(centerX + dx, centerY + dy);
             canvas.scale(scale, scale);
@@ -1559,6 +1556,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
+            /* The editor manipulates the deck from the primary launcher; the
+               secondary screen is a live preview, not a second control surface. */
+            if (layoutEditorPreview) return true;
             boolean portrait=getHeight()>getWidth();
             float dw=portrait?450f:800f, dh=portrait?800f:450f;
             float scale=Math.min(getWidth()/dw,getHeight()/dh);
@@ -1577,7 +1577,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     timelineDragFocus=timelineStartFocus;
                 }
                 if(downAction==ITEM_USE) { itemPressed=true; itemPressStart=SystemClock.uptimeMillis(); }
-                if(downAction==REWIND) send(REWIND,1);
+                if(downAction==REWIND) {
+                    playLayoutSound(7);
+                    send(REWIND,1);
+                }
                 invalidate();
                 return true;
             }
@@ -1622,8 +1625,19 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
                 int up=hitTest(x,y);
                 if(downAction==REWIND) send(REWIND,0);
-                else if(up!=0 && up==downAction) send(up,1);
-                if(downAction==ITEM_USE) { itemPressed=false; itemReleaseStart=SystemClock.uptimeMillis(); }
+                else if(up!=0 && up==downAction) {
+                    if (up == SAVE) playLayoutSound(4);
+                    else if (up == LOAD) playLayoutSound(5);
+                    else if (up == PAUSE) playLayoutSound(6);
+                    else if (up == BACKGROUND) playLayoutSound(8);
+                    else if (up == CLOSE_GAME) playLayoutSound(9);
+                    send(up,1);
+                }
+                if(downAction==ITEM_USE) {
+                    itemPressed=false;
+                    itemReleaseStart=SystemClock.uptimeMillis();
+                    if (up == ITEM_USE) playLayoutSound(item > 0 ? 10 : 11);
+                }
                 downAction=0;
                 invalidate();
                 performClick();
