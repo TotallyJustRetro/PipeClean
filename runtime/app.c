@@ -397,7 +397,7 @@ static void companion_publish_launcher_dashboard(int selected_game)
                 values[base + 18 + slot * 3] = layout->decoration_extra_scale[slot];
             }
         }
-        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * 16, values);
+        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * 25, values);
     }
     if (layout_paths) {
         for (int g = 0; g < N_GAMES; g++) {
