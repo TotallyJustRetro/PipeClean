@@ -74,8 +74,10 @@ static int dlg_win(int kind, const char *title, char *out, size_t n)
     static const wchar_t *filters[] = {
         L"Game Boy ROM (*.gb;*.gbc)\0*.gb;*.gbc\0All files\0*.*\0",
         L"Romhack or patch (*.ips;*.bps;*.ups;*.gb;*.gbc)\0*.ips;*.bps;*.ups;*.gb;*.gbc\0All files\0*.*\0",
-        L"Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tga\0All files\0*.*\0",
-        L"Audio (*.wav;*.mp3;*.ogg;*.flac)\0*.wav;*.mp3;*.ogg;*.flac\0All files\0*.*\0"};
+        L"Images (*.png;*.gif)\0*.png;*.gif\0All files\0*.*\0",
+        L"Audio (*.wav;*.mp3;*.ogg;*.flac)\0*.wav;*.mp3;*.ogg;*.flac\0All files\0*.*\0",
+        L"ZIP archive (*.zip)\0*.zip\0All files\0*.*\0",
+        L"ZIP archive (*.zip)\0*.zip\0All files\0*.*\0"};
     OPENFILENAMEW o;
     memset(&o, 0, sizeof o);
     o.lStructSize = sizeof o;
@@ -83,8 +85,15 @@ static int dlg_win(int kind, const char *title, char *out, size_t n)
     o.lpstrFile = buf;
     o.nMaxFile = 2048;
     o.lpstrTitle = wtitle;
-    o.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
-    if (!GetOpenFileNameW(&o)) return 0;
+    o.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+    if (kind == DLG_ZIP_SAVE) {
+        o.lpstrDefExt = L"zip";
+        o.Flags |= OFN_OVERWRITEPROMPT;
+        if (!GetSaveFileNameW(&o)) return 0;
+    } else {
+        o.Flags |= OFN_FILEMUSTEXIST;
+        if (!GetOpenFileNameW(&o)) return 0;
+    }
     from_w(buf, out, n);
     return 1;
 }
@@ -163,12 +172,24 @@ void open_folder(const char *path) { (void)path; }
 int dlg_pick(int kind, const char *title, char *out, size_t n)
 {
     out[0] = 0;
-    char cmd[1024];
+    char cmd[1400];
 #ifdef __APPLE__
-    snprintf(cmd, sizeof cmd, "osascript -e 'POSIX path of (choose %s with prompt \"%s\")' 2>/dev/null", kind == DLG_FOLDER ? "folder" : "file", title);
+    if (kind == DLG_ZIP_SAVE)
+        snprintf(cmd, sizeof cmd, "osascript -e 'POSIX path of (choose file name with prompt \"%s\" default name \"PipeClean-CompanionDeck.zip\")' 2>/dev/null", title);
+    else
+        snprintf(cmd, sizeof cmd, "osascript -e 'POSIX path of (choose %s with prompt \"%s\")' 2>/dev/null",
+                 kind == DLG_FOLDER ? "folder" : "file", title);
 #else
-    snprintf(cmd, sizeof cmd, "zenity --file-selection %s --title=\"%s\" 2>/dev/null || kdialog %s . 2>/dev/null",
-             kind == DLG_FOLDER ? "--directory" : "", title, kind == DLG_FOLDER ? "--getexistingdirectory" : "--getopenfilename");
+    const char *filter = (kind == DLG_IMAGE) ? "PNG or GIF | *.png *.gif" :
+        (kind == DLG_AUDIO) ? "Audio | *.wav *.mp3 *.ogg *.flac" :
+        (kind == DLG_ZIP_OPEN || kind == DLG_ZIP_SAVE) ? "ZIP archive | *.zip" : "All files | *";
+    const char *save_arg = kind == DLG_ZIP_SAVE ? "--save --confirm-overwrite" : "";
+    const char *kdialog_mode = kind == DLG_FOLDER ? "--getexistingdirectory" :
+        kind == DLG_ZIP_SAVE ? "--getsavefilename" : "--getopenfilename";
+    snprintf(cmd, sizeof cmd,
+        "zenity --file-selection %s --title=\"%s\" --file-filter='%s' 2>/dev/null || "
+        "kdialog %s . '%s' 2>/dev/null",
+        kind == DLG_FOLDER ? "--directory" : save_arg, title, filter, kdialog_mode, filter);
 #endif
     FILE *p = popen(cmd, "r");
     if (!p) return 0;
