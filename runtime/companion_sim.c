@@ -31,11 +31,11 @@
 
 static SDL_Window *deck_window;
 static SDL_Renderer *deck_renderer;
-static SDL_Texture *assets[N_GAMES][24];
-static IMG_Animation *asset_animations[N_GAMES][24];
-static int asset_animation_frame[N_GAMES][24];
-static Uint32 asset_animation_started[N_GAMES][24];
-static char asset_paths[N_GAMES][24][512];
+static SDL_Texture *assets[N_GAMES][N_DECK_ASSET_PATHS];
+static IMG_Animation *asset_animations[N_GAMES][N_DECK_ASSET_PATHS];
+static int asset_animation_frame[N_GAMES][N_DECK_ASSET_PATHS];
+static Uint32 asset_animation_started[N_GAMES][N_DECK_ASSET_PATHS];
+static char asset_paths[N_GAMES][N_DECK_ASSET_PATHS][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
 static int pressed_action, mouse_down_action;
@@ -802,8 +802,8 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
     int item_asset = item >= 1 && item <= 3 ? item + 3 : 2;
     if (item > 0 && !assets[game][item_asset]) item_asset = 2;
     if (item > 0 && assets[game][item_asset]) {
-        SDL_Rect dest = {cx - r * 46 / 100, cy - r * 46 / 100, r * 92 / 100, r * 92 / 100};
-        SDL_RenderCopy(deck_renderer, assets[game][item_asset], NULL, &dest);
+        image_contain(assets[game][item_asset],
+            cx - r * 46 / 100, cy - r * 46 / 100, r * 92 / 100, r * 92 / 100);
     } else if (item > 0) {
         const char *label = item == 1 ? "MUSHROOM" :
             game == GAME_SML ? "SUPERBALL FLOWER" :
@@ -835,7 +835,7 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
 
 static void destroy_asset(int game, int index)
 {
-    if (game < 0 || game >= N_GAMES || index < 0 || index >= 24) return;
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= N_DECK_ASSET_PATHS) return;
     if (assets[game][index]) SDL_DestroyTexture(assets[game][index]);
     assets[game][index] = NULL;
     if (asset_animations[game][index]) IMG_FreeAnimation(asset_animations[game][index]);
@@ -847,7 +847,7 @@ static void destroy_asset(int game, int index)
 
 static void load_asset(int game, int index, const char *path)
 {
-    if (game < 0 || game >= N_GAMES || index < 0 || index >= 24) return;
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= N_DECK_ASSET_PATHS) return;
     const char *next = path ? path : "";
     if (!strcmp(asset_paths[game][index], next)) return;
     destroy_asset(game, index);
@@ -879,7 +879,7 @@ static void update_animated_assets(void)
 {
     Uint32 now = SDL_GetTicks();
     for (int g = 0; g < N_GAMES; g++) {
-        for (int i = 0; i < 24; i++) {
+        for (int i = 0; i < N_DECK_ASSET_PATHS; i++) {
             IMG_Animation *animation = asset_animations[g][i];
             if (!animation || animation->count < 2) continue;
             Uint32 total_ms = 0;
@@ -921,7 +921,7 @@ static void sync_assets(const Settings *s)
         load_asset(g, 8, d->status_texture_path);
         for (int b = 0; b < 4; b++)
             load_asset(g, 17 + b, d->button_texture_by_action[b]);
-        for (int slot = 0; slot < 3; slot++)
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
             load_asset(g, 21 + slot, d->decoration_extra_path[slot]);
     }
 }
@@ -961,7 +961,7 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
     case 3: dx = d->timeline_dx; dy = d->timeline_dy; size_x = d->timeline_scale; size_y = d->timeline_scale_y; break;
     case 4: dx = d->decoration_dx; dy = d->decoration_dy; size_x = d->decoration_scale; size_y = d->decoration_scale_y; break;
     default:
-        if (element >= 5 && element <= 7) {
+        if (element >= 5 && element < 4 + N_DECK_DECORATIONS) {
             int slot = element - 5;
             dx = d->decoration_extra_dx[slot];
             dy = d->decoration_extra_dy[slot];
@@ -1054,10 +1054,17 @@ static void draw_companion(const Settings *s)
 
     draw_slot_timeline(s, g);
 
-    for (int slot = 0; slot < 4; slot++) {
-        float dx = slot == 0 ? 280 : slot == 1 ? 20 : slot == 2 ? 610 : 315;
-        float dy = slot == 0 ? 153 : slot == 3 ? 245 : 78;
-        float dw = slot == 0 ? 240 : 170, dh = slot == 0 ? 144 : 120;
+    for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
+        float dx = slot == 0 ? 280 : slot == 1 ? 20 : slot == 2 ? 610 :
+                   slot == 3 ? 315 : slot == 4 ? 26 : slot == 5 ? 634 :
+                   slot == 6 ? 190 : 488;
+        float dy = slot == 0 ? 153 : (slot == 1 || slot == 2) ? 78 :
+                   slot == 3 ? 245 : (slot == 4 || slot == 5) ? 218 :
+                   slot == 6 ? 85 : 260;
+        float dw = slot == 0 ? 240 : (slot == 1 || slot == 2) ? 170 :
+                   (slot == 3) ? 170 : (slot == 4 || slot == 5) ? 140 : 122;
+        float dh = slot == 0 ? 144 : (slot == 1 || slot == 2) ? 120 :
+                   (slot == 3) ? 120 : (slot == 4 || slot == 5) ? 92 : 86;
         transform_box(d, 4 + slot, 400, 225, &dx, &dy, &dw, &dh);
         int asset_index = slot == 0 ? 3 : 20 + slot;
         if (assets[g][asset_index])
@@ -1073,7 +1080,7 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     if (!s->launcher_dual_screen) {
         if (deck_window) {
             for (int g = 0; g < N_GAMES; g++) {
-                for (int i = 0; i < 24; i++) destroy_asset(g, i);
+                for (int i = 0; i < N_DECK_ASSET_PATHS; i++) destroy_asset(g, i);
                 for (int i = 0; i < 10; i++) {
                     if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                     slot_thumb_texture[g][i] = NULL;
@@ -1327,7 +1334,7 @@ void companion_sim_shutdown(void)
 {
     if (deck_window) {
         for (int g = 0; g < N_GAMES; g++) {
-            for (int i = 0; i < 24; i++) destroy_asset(g, i);
+            for (int i = 0; i < N_DECK_ASSET_PATHS; i++) destroy_asset(g, i);
             for (int i = 0; i < 10; i++) {
                 if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                 slot_thumb_texture[g][i] = NULL;
