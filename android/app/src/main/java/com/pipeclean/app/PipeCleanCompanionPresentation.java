@@ -1313,7 +1313,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
             if(action==MotionEvent.ACTION_DOWN) {
                 downAction=hitTest(x,y);
-                timelineTouchActive=isTimelinePoint(x,y,portrait);
+                timelineTouchActive=!dashboardMode && isTimelinePoint(x,y,portrait);
                 timelineMoved=false;
                 if(timelineTouchActive) {
                     timelineDownX=x;
