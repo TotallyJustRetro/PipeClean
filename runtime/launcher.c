@@ -84,6 +84,7 @@ static int launcher_controller_confirm_was_down, launcher_controller_back_was_do
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
 static float launcher_controller_x, launcher_controller_y;
 static int clickable(float x, float y, float w, float h, int *over_out);
+static void ensure_pack(int g);
 
 static void controller_name(int device, char *out, size_t n)
 {
