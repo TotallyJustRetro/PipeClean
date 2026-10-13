@@ -435,6 +435,11 @@ static void companion_publish_launcher_dashboard(int selected_game)
             values[base + 41] = layout->decoration_scale_y;
             for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
                 values[base + 42 + slot] = layout->decoration_extra_scale_y[slot];
+            /* Append the status transform after the original asset-mode range to preserve indices 0..78. */
+            values[base + 79] = layout->status_dx;
+            values[base + 80] = layout->status_dy;
+            values[base + 81] = layout->status_scale;
+            values[base + 82] = layout->status_scale_y;
         }
         (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * N_DECK_LAYOUT_VALUES, values);
     }
