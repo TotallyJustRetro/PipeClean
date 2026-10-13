@@ -2807,10 +2807,23 @@ enum {
     DECK_PICK_BUTTON_PAUSE_TEXTURE = 22, DECK_PICK_BUTTON_REWIND_TEXTURE = 23
 };
 enum { DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS,
-       DECK_ELEM_TIMELINE, DECK_ELEM_DECORATION, N_DECK_ELEM };
+       DECK_ELEM_TIMELINE, DECK_ELEM_DECORATION, DECK_ELEM_DECORATION_2,
+       DECK_ELEM_DECORATION_3, DECK_ELEM_DECORATION_4, N_DECK_ELEM };
 static const char *deck_element_names[N_DECK_ELEM] = {
-    "Header", "Reserve item", "Control buttons", "Save timeline", "Decoration"
+    "Header", "Reserve item", "Control buttons", "Save timeline",
+    "Decoration 1", "Decoration 2", "Decoration 3", "Decoration 4"
 };
+static int companion_editor_pending_decoration_slot;
+static char *deck_decoration_path(CompanionLayoutCfg *d, int slot)
+{
+    if (!d || slot < 0 || slot >= 4) return NULL;
+    return slot == 0 ? d->decoration_path : d->decoration_extra_path[slot - 1];
+}
+static const char *deck_decoration_path_const(const CompanionLayoutCfg *d, int slot)
+{
+    if (!d || slot < 0 || slot >= 4) return "";
+    return slot == 0 ? d->decoration_path : d->decoration_extra_path[slot - 1];
+}
 static int companion_editor_open, companion_editor_page;
 static int companion_editor_game = GAME_SML;
 static int companion_editor_element = DECK_ELEM_CONTROLS;
@@ -2833,6 +2846,7 @@ static void deck_layout_defaults(CompanionLayoutCfg *d)
     memset(d, 0, sizeof *d);
     d->header_scale = d->item_scale = d->controls_scale =
         d->timeline_scale = d->decoration_scale = 100;
+    for (int i = 0; i < 3; i++) d->decoration_extra_scale[i] = 100;
     d->sounds_enabled = 1;
 }
 
@@ -2867,7 +2881,9 @@ static int *deck_element_x(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_ITEM: return &d->item_dx;
     case DECK_ELEM_CONTROLS: return &d->controls_dx;
     case DECK_ELEM_TIMELINE: return &d->timeline_dx;
-    default: return &d->decoration_dx;
+    case DECK_ELEM_DECORATION: return &d->decoration_dx;
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+        ? &d->decoration_extra_dx[element - DECK_ELEM_DECORATION_2] : &d->decoration_dx;
     }
 }
 static int *deck_element_y(CompanionLayoutCfg *d, int element)
@@ -2877,7 +2893,9 @@ static int *deck_element_y(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_ITEM: return &d->item_dy;
     case DECK_ELEM_CONTROLS: return &d->controls_dy;
     case DECK_ELEM_TIMELINE: return &d->timeline_dy;
-    default: return &d->decoration_dy;
+    case DECK_ELEM_DECORATION: return &d->decoration_dy;
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+        ? &d->decoration_extra_dy[element - DECK_ELEM_DECORATION_2] : &d->decoration_dy;
     }
 }
 static int *deck_element_scale(CompanionLayoutCfg *d, int element)
@@ -2887,7 +2905,9 @@ static int *deck_element_scale(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_ITEM: return &d->item_scale;
     case DECK_ELEM_CONTROLS: return &d->controls_scale;
     case DECK_ELEM_TIMELINE: return &d->timeline_scale;
-    default: return &d->decoration_scale;
+    case DECK_ELEM_DECORATION: return &d->decoration_scale;
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+        ? &d->decoration_extra_scale[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale;
     }
 }
 
@@ -2898,7 +2918,10 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
     case DECK_ELEM_ITEM:      *x = 250; *y = 14;  *w = 300; *h = 300; break;
     case DECK_ELEM_CONTROLS:  *x = 94;  *y = 320; *w = 612; *h = 46;  break;
     case DECK_ELEM_TIMELINE:  *x = 24;  *y = 365; *w = 752; *h = 83;  break;
-    default:                  *x = 280; *y = 150; *w = 240; *h = 150; break;
+    case DECK_ELEM_DECORATION: *x = 280; *y = 150; *w = 240; *h = 150; break;
+    case DECK_ELEM_DECORATION_2: *x = 20; *y = 78; *w = 170; *h = 120; break;
+    case DECK_ELEM_DECORATION_3: *x = 610; *y = 78; *w = 170; *h = 120; break;
+    default: *x = 315; *y = 245; *w = 170; *h = 120; break;
     }
 }
 
@@ -2958,10 +2981,14 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
             ui_text_c(F_BOLD, 7, rx + rw * .5f, ry + rh * .42f, RGBA(239, 245, 255, 255), "SAVE-STATE TIMELINE");
         } else {
             ui_rrect(rx, ry, rw, rh, 5, RGBA(69, 91, 124, 110));
-            if (d->decoration_path[0])
-                ui_text_fit(F_BOLD, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(246, 250, 255, 255), "YOUR IMAGE");
+            int decoration_slot = e - DECK_ELEM_DECORATION;
+            const char *decoration_path = deck_decoration_path_const(d, decoration_slot);
+            char decoration_label[32];
+            snprintf(decoration_label, sizeof decoration_label, "IMAGE %d", decoration_slot + 1);
+            if (decoration_path[0])
+                ui_text_fit(F_BOLD, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(246, 250, 255, 255), decoration_label);
             else
-                ui_text_fit(F_REG, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(181, 194, 215, 255), "ADD IMAGE");
+                ui_text_fit(F_REG, 7, rx + 5, ry + rh * .45f, rw - 10, RGBA(181, 194, 215, 255), "EMPTY DECORATION");
         }
         if (e == companion_editor_element) {
             ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(124, 190, 255, 255));
@@ -2974,8 +3001,9 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
                                    float preview_w, float preview_h)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-    int order[] = {DECK_ELEM_DECORATION, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS,
-                   DECK_ELEM_TIMELINE, DECK_ELEM_HEADER};
+    int order[] = {DECK_ELEM_DECORATION_4, DECK_ELEM_DECORATION_3,
+                   DECK_ELEM_DECORATION_2, DECK_ELEM_DECORATION,
+                   DECK_ELEM_ITEM, DECK_ELEM_CONTROLS, DECK_ELEM_TIMELINE, DECK_ELEM_HEADER};
     for (int i = 0; i < N_DECK_ELEM; i++) {
         int e = order[i];
         float rx, ry, rw, rh;
