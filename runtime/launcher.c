@@ -3766,12 +3766,16 @@ static int deck_manifest_apply(int game, const char *path)
     if (fresh.controls_dy < -400) fresh.controls_dy = -400; if (fresh.controls_dy > 400) fresh.controls_dy = 400;
     if (fresh.timeline_dx < -400) fresh.timeline_dx = -400; if (fresh.timeline_dx > 400) fresh.timeline_dx = 400;
     if (fresh.timeline_dy < -400) fresh.timeline_dy = -400; if (fresh.timeline_dy > 400) fresh.timeline_dy = 400;
+    if (fresh.status_dx < -400) fresh.status_dx = -400; if (fresh.status_dx > 400) fresh.status_dx = 400;
+    if (fresh.status_dy < -400) fresh.status_dy = -400; if (fresh.status_dy > 400) fresh.status_dy = 400;
     if (fresh.decoration_dx < -400) fresh.decoration_dx = -400; if (fresh.decoration_dx > 400) fresh.decoration_dx = 400;
     if (fresh.decoration_dy < -400) fresh.decoration_dy = -400; if (fresh.decoration_dy > 400) fresh.decoration_dy = 400;
     if (fresh.header_scale < 25) fresh.header_scale = 25; if (fresh.header_scale > 250) fresh.header_scale = 250;
     if (fresh.item_scale < 25) fresh.item_scale = 25; if (fresh.item_scale > 250) fresh.item_scale = 250;
     if (fresh.controls_scale < 25) fresh.controls_scale = 25; if (fresh.controls_scale > 250) fresh.controls_scale = 250;
     if (fresh.timeline_scale < 25) fresh.timeline_scale = 25; if (fresh.timeline_scale > 250) fresh.timeline_scale = 250;
+    if (fresh.status_scale < 25) fresh.status_scale = 25; if (fresh.status_scale > 250) fresh.status_scale = 250;
+    if (fresh.status_scale_y < 25) fresh.status_scale_y = 25; if (fresh.status_scale_y > 250) fresh.status_scale_y = 250;
     if (fresh.decoration_scale < 25) fresh.decoration_scale = 25; if (fresh.decoration_scale > 250) fresh.decoration_scale = 250;
     settings.deck_layout[game] = fresh;
     return 1;
