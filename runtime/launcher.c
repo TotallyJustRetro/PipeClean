@@ -3168,7 +3168,7 @@ static void deck_editor_layout(float x, float y)
     if (ui_button(x + 516, y + 105, 58, 27, "Sounds", B_GHOST, 1)) companion_editor_page = 2;
     if (ui_button(x + 580, y + 105, 82, 27, "Add image", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_DECORATION);
 
-    float px = x + 36, py = y + 145, pw = 344, ph = 193.5f;
+    float px = x + 36, py = y + 145, pw = 360, ph = 202.5f;
     deck_editor_preview(d, px, py, pw, ph);
     companion_editor_preview_hover = ui_hover(px, py, pw, ph);
     if (ui_mouse.pressed && companion_editor_preview_hover)
@@ -3177,31 +3177,40 @@ static void deck_editor_layout(float x, float y)
         deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
     if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
 
-    float rx = x + 398;
-    ui_text(F_BOLD, 11, rx, y + 147, C_TEXT, "Selected element");
+    float rx = x + 414;
+    ui_text(F_BOLD, 11, rx, y + 147, C_TEXT, "SELECT ELEMENT");
     for (int e = 0; e < N_DECK_ELEM; e++) {
         int col = e % 2, row = e / 2;
-        if (ui_button(rx + col * 166, y + 168 + row * 33, 158, 27,
+        if (ui_button(rx + col * 166, y + 160 + row * 25, 158, 22,
                       deck_element_names[e], e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
             companion_editor_element = e;
     }
-    int *scale = deck_element_scale(d, companion_editor_element);
-    char scale_text[48];
-    snprintf(scale_text, sizeof scale_text, "Size: %d%%", *scale);
-    ui_text(F_BOLD, 11, rx, y + 274, C_TEXT, scale_text);
-    if (ui_button(rx, y + 294, 52, 26, "−", B_GHOST, *scale > 25)) {
-        deck_editor_snapshot(); *scale -= 10; if (*scale < 25) *scale = 25;
+    int *scale_x = deck_element_scale(d, companion_editor_element);
+    int *scale_y = deck_element_scale_y(d, companion_editor_element);
+    char scale_text[64];
+    snprintf(scale_text, sizeof scale_text, "Width: %d%%", *scale_x);
+    ui_text(F_BOLD, 10, rx, y + 267, C_TEXT, scale_text);
+    if (ui_button(rx + 102, y + 255, 44, 24, "−", B_GHOST, *scale_x > 25)) {
+        deck_editor_snapshot(); *scale_x -= 10; if (*scale_x < 25) *scale_x = 25;
     }
-    if (ui_button(rx + 58, y + 294, 52, 26, "+", B_GHOST, *scale < 250)) {
-        deck_editor_snapshot(); *scale += 10; if (*scale > 250) *scale = 250;
+    if (ui_button(rx + 152, y + 255, 44, 24, "+", B_GHOST, *scale_x < 250)) {
+        deck_editor_snapshot(); *scale_x += 10; if (*scale_x > 250) *scale_x = 250;
     }
-    if (ui_button(rx + 118, y + 294, 150, 26, "Center element", B_GHOST, 1)) {
+    snprintf(scale_text, sizeof scale_text, "Height: %d%%", *scale_y);
+    ui_text(F_BOLD, 10, rx, y + 302, C_TEXT, scale_text);
+    if (ui_button(rx + 102, y + 290, 44, 24, "−", B_GHOST, *scale_y > 25)) {
+        deck_editor_snapshot(); *scale_y -= 10; if (*scale_y < 25) *scale_y = 25;
+    }
+    if (ui_button(rx + 152, y + 290, 44, 24, "+", B_GHOST, *scale_y < 250)) {
+        deck_editor_snapshot(); *scale_y += 10; if (*scale_y > 250) *scale_y = 250;
+    }
+    if (ui_button(rx + 205, y + 290, 132, 24, "Center element", B_GHOST, 1)) {
         deck_editor_snapshot();
         *deck_element_x(d, companion_editor_element) = 0;
         *deck_element_y(d, companion_editor_element) = 0;
     }
-    ui_text_wrap(F_REG, 9, rx, y + 329, 342, C_DIM,
-                 "Drag an element to move it. Drag its lower-right handle to resize. Changes preview on the Companion Deck and remain pending until Save.", 4);
+    ui_text_wrap(F_REG, 9, rx, y + 327, 342, C_DIM,
+                 "Drag to move. Use the corner handle or Width / Height controls to stretch independently. Preview updates live; Save commits the layout.", 4);
 }
 
 static void deck_editor_sounds(float x, float y)
