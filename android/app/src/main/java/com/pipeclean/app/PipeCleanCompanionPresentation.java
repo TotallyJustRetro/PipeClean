@@ -235,6 +235,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         void setState(int game, int lives, int stage, int world, boolean paused,
                       int slot, int palette, int filter, int item) {
+            layoutEditorPreview = false;
             dashboardMode = false;
             this.game = game;
             this.lives = Math.max(0, Math.min(99, lives));
@@ -250,6 +251,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         void showIdleState() {
+            layoutEditorPreview = false;
             dashboardMode = true;
             game = -1;
             lives = 0;
