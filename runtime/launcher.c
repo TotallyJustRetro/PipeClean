@@ -3689,48 +3689,60 @@ static void deck_editor_decorations(float x, float y)
         companion_editor_page = 1;
         return;
     }
-    ui_text_wrap(F_REG, 9, x + 114, y + 110, 620, C_MUTED,
-        "Eight independent layers. Fit / no crop preserves every pixel; Stretch fills the box. Remove clears only that layer.", 2);
+    ui_text_wrap(F_REG, 9, x + 114, y + 110, 500, C_MUTED,
+        "16 independent layers. Fit keeps the full image; duplicate and move layers back/front. X removes.", 2);
+    if (ui_button(x + 638, y + 107, 126, 30, "＋ Add image layer", B_PRIMARY, 1)) {
+        deck_editor_open_picker(DECK_PICK_DECORATION);
+        return;
+    }
+
+    /* Two compact columns keep all 16 layer controls visible in the editor panel. */
     for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
         char *asset_path = deck_decoration_path(d, slot);
-        float ry = y + 151 + slot * 35.5f;
-        ui_rrect(x + 36, ry, 728, 32, 6,
-                 slot == companion_editor_element - DECK_ELEM_DECORATION
-                    ? RGBA(65, 130, 190, 46) : C_PANEL);
-        char label[32];
+        int asset_index = deck_decoration_asset_index(slot);
+        float colx = x + 36 + (slot / 8) * 366.0f;
+        float ry = y + 151 + (slot % 8) * 35.5f;
+        int selected = companion_editor_element == DECK_ELEM_DECORATION + slot;
+        ui_rrect(colx, ry, 360, 32, 6,
+                 selected ? RGBA(65, 130, 190, 46) : C_PANEL);
+        char label[24];
         snprintf(label, sizeof label, "LAYER %02d", slot + 1);
-        ui_text(F_BOLD, 8.5f, x + 48, ry + 6, C_TEXT, label);
-        ui_text_fit(F_REG, 7.5f, x + 48, ry + 18, 318,
+        ui_text(F_BOLD, 7.5f, colx + 7, ry + 4, selected ? C_ACCENT : C_TEXT, label);
+        ui_text_fit(F_REG, 6.5f, colx + 7, ry + 17, 75,
                     asset_path[0] ? C_MUTED : C_DIM,
-                    asset_path[0] ? path_base(asset_path) : "EMPTY — READY FOR AN IMAGE");
-        ui_rrect(x + 372, ry + 3, 54, 26, 5, RGBA(7, 13, 24, 255));
-        ui_stroke(x + 372, ry + 3, 54, 26, 5, 1.0f, RGBA(77, 111, 149, 180));
+                    asset_path[0] ? path_base(asset_path) : "EMPTY");
+        ui_rrect(colx + 86, ry + 4, 32, 24, 4, RGBA(7, 13, 24, 255));
+        ui_stroke(colx + 86, ry + 4, 32, 24, 4, 1.0f, RGBA(77, 111, 149, 180));
         if (asset_path[0])
-            ui_image_file_fit(asset_path, x + 375, ry + 4, 48, 24);
+            ui_image_file_fit(asset_path, colx + 88, ry + 5, 28, 22);
         else
-            ui_text_fit(F_BOLD, 6.5f, x + 375, ry + 12, 48, C_DIM, "EMPTY");
-        int asset_index = slot == 0 ? 3 : 20 + slot;
+            ui_text_c(F_BOLD, 6.2f, colx + 102, ry + 12, C_DIM, "＋");
+
         int stretch = d->asset_stretch[asset_index];
-        if (ui_button(x + 438, ry + 2, 82, 28, stretch ? "STRETCH" : "FIT / NO CROP",
-                      stretch ? B_PRIMARY : B_NORMAL, 1)) {
+        if (ui_button(colx + 122, ry + 3, 64, 26,
+                      stretch ? "STRETCH" : "FIT", stretch ? B_PRIMARY : B_NORMAL, 1)) {
             deck_editor_snapshot();
             d->asset_stretch[asset_index] = !stretch;
             settings_save();
         }
-        if (ui_button(x + 526, ry + 2, 82, 28, "Choose…", B_GHOST, 1))
+        if (ui_button(colx + 189, ry + 3, 52, 26, "Pick", B_GHOST, 1))
             deck_editor_open_decoration_picker(slot);
-        if (ui_button(x + 614, ry + 2, 136, 28, "Remove layer", B_DANGER, asset_path[0] != 0)) {
+        if (ui_button(colx + 244, ry + 3, 27, 26, "Dup", B_GHOST, asset_path[0] != 0))
+            deck_editor_duplicate_decoration(slot);
+        if (ui_button(colx + 274, ry + 3, 24, 26, "←", B_GHOST, slot > 0))
+            deck_editor_move_decoration(slot, -1);
+        if (ui_button(colx + 301, ry + 3, 24, 26, "→", B_GHOST, slot + 1 < N_DECK_DECORATIONS))
+            deck_editor_move_decoration(slot, 1);
+        if (ui_button(colx + 328, ry + 3, 27, 26, "×", B_DANGER, asset_path[0] != 0)) {
             deck_editor_snapshot();
             asset_path[0] = 0;
             d->asset_stretch[asset_index] = 0;
-            if (companion_editor_element == DECK_ELEM_DECORATION + slot)
-                companion_editor_element = DECK_ELEM_DECORATION;
+            if (selected) companion_editor_element = DECK_ELEM_DECORATION;
             settings_save();
             launcher_toast("Image layer removed.");
         }
-        if (ui_mouse.pressed && ui_hover(x + 36, ry, 520, 32) && asset_path[0]) {
+        if (ui_mouse.pressed && ui_hover(colx + 3, ry, 80, 32) && asset_path[0])
             companion_editor_element = DECK_ELEM_DECORATION + slot;
-        }
     }
 }
 
