@@ -984,7 +984,7 @@ static void draw_companion(const Settings *s)
     if (g < 0 || g >= N_GAMES) g = GAME_SML;
     const CompanionLayoutCfg *d = &s->deck_layout[g];
     draw_android_scenery(g);
-    if (assets[g][0]) image_cover(assets[g][0], 0, 0, 800, 450);
+    if (assets[g][0]) image_contain(assets[g][0], 0, 0, 800, 450);
 
     float hx = 18, hy = 7, hw = 265, hh = 49;
     transform_box(d, 0, 400, 31.5f, &hx, &hy, &hw, &hh);
