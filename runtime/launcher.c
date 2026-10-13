@@ -49,6 +49,9 @@ static int export_scale = 8;
 static char bg_loaded[512], bg_msg[256];
 static int bg_for_game = -1;
 static float anim_clock;
+static int menu_playlist_page;
+static char menu_title_seen[512];
+static float menu_title_anim = 1.0f;
 static int wide_dirty, wide_note[N_GAMES];
 static SDL_Texture *state_thumb_tex[N_GAMES][10];
 static char state_thumb_path_cache[N_GAMES][10][1200];
@@ -432,6 +435,17 @@ static void make_preview(int g)
     prev_ok[g] = 1;
     tex_collect_frame(&prev[g]);
     tex_collect_save();
+}
+
+/* Render the selected ROM's cached preview into the shared CPU pixel buffer.
+ * The caller must consume the pointer before the next render_build/reset. */
+int launcher_preview_pixels(int game, const uint32_t **pixels, int *w, int *h)
+{
+    if (game < 0 || game >= N_GAMES || !prev_ok[game] || games[game].external_player)
+        return 0;
+    ensure_pack(game);
+    render_build(&prev[game], game, 0);
+    return render_pixels(pixels, w, h);
 }
 
 static void set_rom(int g, const char *path)
