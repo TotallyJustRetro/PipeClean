@@ -351,11 +351,12 @@ static int field_table(Field *t, int cap)
             snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d", games[g].id, slot + 2);
             S(gn[g][k], d->decoration_extra_path[slot]); k++;
         }
-        static const char *deck_button_texture_names[4] = {
+        static const char *deck_button_texture_names[6] = {
             "deck_button_save_texture", "deck_button_load_texture",
-            "deck_button_pause_texture", "deck_button_rewind_texture"
+            "deck_button_pause_texture", "deck_button_rewind_texture",
+            "deck_button_background_texture", "deck_button_close_texture"
         };
-        for (int b = 0; b < 4; b++) {
+        for (int b = 0; b < 6; b++) {
             snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, deck_button_texture_names[b]);
             S(gn[g][k], d->button_texture_by_action[b]); k++;
         }
