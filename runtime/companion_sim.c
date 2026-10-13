@@ -985,6 +985,10 @@ static void push_action(int action, int pressed)
     (void)SDL_PushEvent(&ev);
 }
 
+static int inside(float x, float y, float rx, float ry, float rw, float rh);
+static void inverse_point(const CompanionLayoutCfg *d, int element, float *x, float *y,
+                          float cx, float cy);
+
 static int timeline_hit_slot(const Settings *s, int game, float x, float y)
 {
     float tx = x, ty = y, tw = 752.0f, th = 83.0f;
