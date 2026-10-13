@@ -706,20 +706,19 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0) return;
+            /* Default boxes are authored in the same 800x450 coordinate space as the editor.
+               Every layer has its own starting box rather than stacking on the last fallback. */
+            final float[] bxBase = {280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
+            final float[] byBase = {153,78,78,245,218,218,85,260,135,135,290,290,35,35,175,175};
+            final float[] bwBase = {240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
+            final float[] bhBase = {144,120,120,120,92,92,86,86,70,70,70,70,65,65,74,74};
             for (int slot = 0; slot < LAYOUT_DECORATION_COUNT; slot++) {
                 int imageIndex = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
                 if (!hasLayoutImage(g, imageIndex)) continue;
-                float bx = slot == 0 ? w * 0.35f : slot == 1 ? w * 0.025f :
-                    slot == 2 ? w * 0.76f : slot == 3 ? w * 0.40f :
-                    slot == 4 ? w * 0.032f : slot == 5 ? w * 0.7925f :
-                    slot == 6 ? w * 0.2375f : w * 0.61f;
-                float by = slot == 0 ? h * 0.34f : (slot == 1 || slot == 2) ? h * 0.17f :
-                    slot == 3 ? h * 0.58f : (slot == 4 || slot == 5) ? h * 0.485f :
-                    slot == 6 ? h * 0.17f : h * 0.578f;
-                float bw = slot == 0 ? w * 0.30f : (slot == 1 || slot == 2) ? w * 0.21f :
-                    slot == 3 ? w * 0.21f : (slot == 4 || slot == 5) ? w * 0.175f : w * 0.1525f;
-                float bh = slot == 0 ? h * 0.32f : (slot == 1 || slot == 2) ? h * 0.27f :
-                    slot == 3 ? h * 0.27f : (slot == 4 || slot == 5) ? h * 0.204f : h * 0.191f;
+                float bx = w * bxBase[slot] / 800f;
+                float by = h * byBase[slot] / 450f;
+                float bw = w * bwBase[slot] / 800f;
+                float bh = h * bhBase[slot] / 450f;
                 int element = 5 + slot;
                 canvas.save();
                 applyLayoutTransform(canvas, element, w, h, bx + bw * 0.5f, by + bh * 0.5f);
