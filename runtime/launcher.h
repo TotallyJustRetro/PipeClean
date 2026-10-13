@@ -9,6 +9,11 @@ void launcher_event(const SDL_Event *e);
 int  launcher_capturing(void);
 void launcher_toast(const char *msg);
 void launcher_drop(const char *path);
+
+/* Android Companion Deck custom-layout bridge. Picker kinds are defined by the
+ * launcher and results are routed back through the SDL event loop. */
+void launcher_open_companion_layout_picker(int kind, int game);
+void launcher_companion_layout_picker_result(int kind, int game, const char *path);
 int  launcher_current_game(void);
 int  launcher_take_load_state(int game);
 int  launcher_prepare(int game, char *err, size_t n);
