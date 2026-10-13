@@ -98,11 +98,7 @@ static void game_session_end(void)
 #define PIPECLEAN_COMPANION_SLOT_NEXT 8
 #define PIPECLEAN_COMPANION_ITEM_USE 9
 #define PIPECLEAN_COMPANION_CLOSE_GAME 12
-#define PIPECLEAN_COMPANION_MUSIC_TOGGLE 13
-#define PIPECLEAN_COMPANION_MUSIC_PREV 14
-#define PIPECLEAN_COMPANION_MUSIC_NEXT 15
 #define PIPECLEAN_COMPANION_SLOT_SELECT_BASE 20
-#define PIPECLEAN_COMPANION_MUSIC_SELECT_BASE 40
 
 #if defined(__ANDROID__)
 JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionAction(
@@ -974,37 +970,6 @@ static int app_rewind_held(int g)
     if (g < 0 || g >= N_GAMES) return 0;
     return app_key_down(settings.g[g].action_key[ACT_REWIND]) ||
            pad_binding_down(g, ACT_REWIND);
-}
-
-static int launcher_companion_music_event(const SDL_Event *e)
-{
-    if (!e || e->type != SDL_USEREVENT || e->user.code != PIPECLEAN_COMPANION_EVENT_CODE)
-        return 0;
-    int action = (int)(intptr_t)e->user.data1;
-    int pressed = (int)(intptr_t)e->user.data2;
-    if (!pressed) return action == PIPECLEAN_COMPANION_MUSIC_TOGGLE ||
-        action == PIPECLEAN_COMPANION_MUSIC_PREV ||
-        action == PIPECLEAN_COMPANION_MUSIC_NEXT ||
-        (action >= PIPECLEAN_COMPANION_MUSIC_SELECT_BASE &&
-         action < PIPECLEAN_COMPANION_MUSIC_SELECT_BASE + MAX_MENU_TRACKS);
-    switch (action) {
-    case PIPECLEAN_COMPANION_MUSIC_TOGGLE:
-        launcher_menu_music_toggle();
-        return 1;
-    case PIPECLEAN_COMPANION_MUSIC_PREV:
-        launcher_menu_music_step(-1);
-        return 1;
-    case PIPECLEAN_COMPANION_MUSIC_NEXT:
-        launcher_menu_music_step(1);
-        return 1;
-    default:
-        if (action >= PIPECLEAN_COMPANION_MUSIC_SELECT_BASE &&
-            action < PIPECLEAN_COMPANION_MUSIC_SELECT_BASE + MAX_MENU_TRACKS) {
-            launcher_menu_music_select(action - PIPECLEAN_COMPANION_MUSIC_SELECT_BASE);
-            return 1;
-        }
-        return 0;
-    }
 }
 
 static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *quit)
@@ -2227,7 +2192,6 @@ int app_run(const char *autorun, const char *hack)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (launcher_companion_music_event(&e)) continue;
             launcher_touch_event(&e);
             pad_event(&e);
             launcher_event(&e);
