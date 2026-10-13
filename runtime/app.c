@@ -172,7 +172,7 @@ static const char *companion_layout_asset_paths(const CompanionLayoutCfg *d, int
     if (i == 15) return d->header_texture_path;
     if (i == 16) return d->status_texture_path;
     if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
-    if (i >= 21 && i <= 23) return d->decoration_extra_path[i - 21];
+    if (i >= 21 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 21];
     return "";
 }
 
@@ -199,6 +199,10 @@ void launcher_open_companion_layout_picker(int kind, int game)
         "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\ndecoration_2_scale_y=%d\n"
         "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\ndecoration_3_scale_y=%d\n"
         "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\ndecoration_4_scale_y=%d\n"
+        "decoration_5_dx=%d\ndecoration_5_dy=%d\ndecoration_5_scale=%d\ndecoration_5_scale_y=%d\n"
+        "decoration_6_dx=%d\ndecoration_6_dy=%d\ndecoration_6_scale=%d\ndecoration_6_scale_y=%d\n"
+        "decoration_7_dx=%d\ndecoration_7_dy=%d\ndecoration_7_scale=%d\ndecoration_7_scale_y=%d\n"
+        "decoration_8_dx=%d\ndecoration_8_dy=%d\ndecoration_8_scale=%d\ndecoration_8_scale_y=%d\n"
         "sounds_enabled=%d\n",
         d->header_dx, d->header_dy, d->header_scale, d->header_scale_y,
         d->item_dx, d->item_dy, d->item_scale, d->item_scale_y,
@@ -208,13 +212,17 @@ void launcher_open_companion_layout_picker(int kind, int game)
         d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0], d->decoration_extra_scale_y[0],
         d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1], d->decoration_extra_scale_y[1],
         d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2], d->decoration_extra_scale_y[2],
+        d->decoration_extra_dx[3], d->decoration_extra_dy[3], d->decoration_extra_scale[3], d->decoration_extra_scale_y[3],
+        d->decoration_extra_dx[4], d->decoration_extra_dy[4], d->decoration_extra_scale[4], d->decoration_extra_scale_y[4],
+        d->decoration_extra_dx[5], d->decoration_extra_dy[5], d->decoration_extra_scale[5], d->decoration_extra_scale_y[5],
+        d->decoration_extra_dx[6], d->decoration_extra_dy[6], d->decoration_extra_scale[6], d->decoration_extra_scale_y[6],
         d->sounds_enabled);
     jstring text = (*env)->NewStringUTF(env, manifest);
     jclass string_class = (*env)->FindClass(env, "java/lang/String");
     jobjectArray paths = string_class
-        ? (*env)->NewObjectArray(env, 24, string_class, NULL) : NULL;
+        ? (*env)->NewObjectArray(env, N_DECK_ASSET_PATHS, string_class, NULL) : NULL;
     if (paths) {
-        for (int i = 0; i < 24; i++) {
+        for (int i = 0; i < N_DECK_ASSET_PATHS; i++) {
             jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(d, i));
             if (path) {
                 (*env)->SetObjectArrayElement(env, paths, i, path);
@@ -373,14 +381,14 @@ static void companion_publish_launcher_dashboard(int selected_game)
     int layout_game = launcher_companion_layout_target_game(selected_game);
     if (layout_game < 0 || layout_game >= N_GAMES) layout_game = selected_game;
     int editor_preview = launcher_companion_layout_preview_enabled();
-    jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * 33);
+    jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * N_DECK_LAYOUT_VALUES);
     jobjectArray layout_paths = string_class
-        ? (*env)->NewObjectArray(env, N_GAMES * 24, string_class, NULL) : NULL;
+        ? (*env)->NewObjectArray(env, N_GAMES * N_DECK_ASSET_PATHS, string_class, NULL) : NULL;
     if (layout_values) {
-        jint values[N_GAMES * 33];
+        jint values[N_GAMES * N_DECK_LAYOUT_VALUES];
         for (int g = 0; g < N_GAMES; g++) {
             CompanionLayoutCfg *layout = &settings.deck_layout[g];
-            int base = g * 33;
+            int base = g * N_DECK_LAYOUT_VALUES;
             values[base + 0] = layout->header_dx;
             values[base + 1] = layout->header_dy;
             values[base + 2] = layout->header_scale;
@@ -397,7 +405,7 @@ static void companion_publish_launcher_dashboard(int selected_game)
             values[base + 13] = layout->decoration_dy;
             values[base + 14] = layout->decoration_scale;
             values[base + 15] = layout->sounds_enabled;
-            for (int slot = 0; slot < 3; slot++) {
+            for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
                 values[base + 16 + slot * 3] = layout->decoration_extra_dx[slot];
                 values[base + 17 + slot * 3] = layout->decoration_extra_dy[slot];
                 values[base + 18 + slot * 3] = layout->decoration_extra_scale[slot];
@@ -407,16 +415,15 @@ static void companion_publish_launcher_dashboard(int selected_game)
             values[base + 27] = layout->controls_scale_y;
             values[base + 28] = layout->timeline_scale_y;
             values[base + 29] = layout->decoration_scale_y;
-            values[base + 30] = layout->decoration_extra_scale_y[0];
-            values[base + 31] = layout->decoration_extra_scale_y[1];
-            values[base + 32] = layout->decoration_extra_scale_y[2];
+            for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
+                values[base + 42 + slot] = layout->decoration_extra_scale_y[slot];
         }
-        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * 33, values);
+        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * N_DECK_LAYOUT_VALUES, values);
     }
     if (layout_paths) {
         for (int g = 0; g < N_GAMES; g++) {
             CompanionLayoutCfg *layout = &settings.deck_layout[g];
-            for (int i = 0; i < 24; i++) {
+            for (int i = 0; i < N_DECK_ASSET_PATHS; i++) {
                 jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
                 if (path) {
                     (*env)->SetObjectArrayElement(env, layout_paths, g * 24 + i, path);
@@ -681,30 +688,32 @@ static int desktop_bundle_import(int game, const char *zip_path, char *manifest_
 
 static const char *desktop_deck_manifest_field(int i)
 {
-    static const char *fields[24] = {
+    static const char *fields[N_DECK_ASSET_PATHS] = {
         "background_path", "button_texture_path", "item_texture_path", "decoration_path",
         "button_sound_path0", "button_sound_path1", "button_sound_path2", "button_sound_path3",
         "button_sound_path4", "button_sound_path5", "item_sound_path", "empty_item_sound_path",
         "item_texture_path_1", "item_texture_path_2", "item_texture_path_3",
         "header_texture_path", "status_texture_path", "button_texture_save_path",
         "button_texture_load_path", "button_texture_pause_path", "button_texture_rewind_path",
-        "decoration_path_1", "decoration_path_2", "decoration_path_3"
+        "decoration_path_1", "decoration_path_2", "decoration_path_3",
+        "decoration_path_4", "decoration_path_5", "decoration_path_6", "decoration_path_7"
     };
-    return i >= 0 && i < 24 ? fields[i] : "";
+    return i >= 0 && i < N_DECK_ASSET_PATHS ? fields[i] : "";
 }
 
 static const char *desktop_deck_entry_stem(int i)
 {
-    static const char *stems[24] = {
+    static const char *stems[N_DECK_ASSET_PATHS] = {
         "background", "button-texture", "item-texture", "decoration-1",
         "save-sound", "load-sound", "pause-sound", "rewind-sound",
         "background-sound", "close-sound", "item-sound", "empty-item-sound",
         "mushroom-texture", "special-item-texture", "carrot-texture",
         "header-texture", "status-texture", "save-button-texture",
         "load-button-texture", "pause-button-texture", "rewind-button-texture",
-        "decoration-2", "decoration-3", "decoration-4"
+        "decoration-2", "decoration-3", "decoration-4", "decoration-5",
+        "decoration-6", "decoration-7", "decoration-8"
     };
-    return i >= 0 && i < 24 ? stems[i] : "asset";
+    return i >= 0 && i < N_DECK_ASSET_PATHS ? stems[i] : "asset";
 }
 
 static void desktop_deck_extension(const char *path, char out[12])
@@ -757,7 +766,7 @@ static int desktop_bundle_export(int game, const char *zip_path)
     memset(&zip, 0, sizeof zip);
     if (!mz_zip_writer_init_file(&zip, zip_path, 0)) return 0;
     int ok = 1;
-    for (int i = 0; i < 24 && ok; i++) {
+    for (int i = 0; i < N_DECK_ASSET_PATHS && ok; i++) {
         const char *path = desktop_deck_asset_path(d, i);
         if (!path || !path[0] || !file_exists(path)) continue;
         struct stat st;
