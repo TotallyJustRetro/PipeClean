@@ -32,10 +32,10 @@
 static SDL_Window *deck_window;
 static SDL_Renderer *deck_renderer;
 static SDL_Texture *assets[N_GAMES][21];
-static IMG_Animation *asset_animations[N_GAMES][7];
-static int asset_animation_frame[N_GAMES][7];
-static Uint32 asset_animation_started[N_GAMES][7];
-static char asset_paths[N_GAMES][7][512];
+static IMG_Animation *asset_animations[N_GAMES][21];
+static int asset_animation_frame[N_GAMES][21];
+static Uint32 asset_animation_started[N_GAMES][21];
+static char asset_paths[N_GAMES][21][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
 static int pressed_action, mouse_down_action;
@@ -835,7 +835,7 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
 
 static void destroy_asset(int game, int index)
 {
-    if (game < 0 || game >= N_GAMES || index < 0 || index >= 7) return;
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= 21) return;
     if (assets[game][index]) SDL_DestroyTexture(assets[game][index]);
     assets[game][index] = NULL;
     if (asset_animations[game][index]) IMG_FreeAnimation(asset_animations[game][index]);
@@ -847,7 +847,7 @@ static void destroy_asset(int game, int index)
 
 static void load_asset(int game, int index, const char *path)
 {
-    if (game < 0 || game >= N_GAMES || index < 0 || index >= 7) return;
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= 21) return;
     const char *next = path ? path : "";
     if (!strcmp(asset_paths[game][index], next)) return;
     destroy_asset(game, index);
