@@ -272,13 +272,15 @@ public final class PipeCleanActivity extends SDLActivity {
         });
     }
 
-    /** Keep the Companion Deck's optional music player in sync with Audio & Menu. */
+    /** Publish current track state and a one-shot now-playing notification to the deck. */
     public void updateCompanionMusicPlaylist(String currentTitle, String[] playlistNames,
-                                             int selectedTrack, boolean playing) {
+                                             int selectedTrack, boolean playing,
+                                             int notificationSerial, boolean notificationAllowed) {
         runOnUiThread(() -> {
             if (companionPresentation != null)
                 companionPresentation.setMusicPlaylist(
-                    currentTitle, playlistNames, selectedTrack, playing);
+                    currentTitle, playlistNames, selectedTrack, playing,
+                    notificationSerial, notificationAllowed);
         });
     }
 
