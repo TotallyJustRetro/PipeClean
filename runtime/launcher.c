@@ -3115,6 +3115,10 @@ LauncherResult launcher_frame(float dt)
         ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
 
+    /* Cancel an older notification when entering Audio & Menu, but retain a
+       fresh track change made inside that page so it can show after leaving. */
+    if (tab == TAB_AUDIO && !music_notice_deferred)
+        music_notice_age = -1.0f;
     /* If navigation left Audio & Menu during this frame, start the deferred
        notification now so both the launcher and Companion Deck slide in together. */
     if (tab != TAB_AUDIO && music_notice_deferred && music_notice_age >= 0.0f) {
