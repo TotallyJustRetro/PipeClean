@@ -2846,7 +2846,8 @@ static void deck_layout_defaults(CompanionLayoutCfg *d)
     memset(d, 0, sizeof *d);
     d->header_scale = d->item_scale = d->controls_scale =
         d->timeline_scale = d->decoration_scale = 100;
-    for (int i = 0; i < 3; i++) d->decoration_extra_scale[i] = 100;
+    for (int i = 0; i < 3; i++) d->decoration_extra_scale[i] = d->decoration_extra_scale_y[i] = 100;
+d->header_scale_y = d->item_scale_y = d->controls_scale_y = d->timeline_scale_y = d->decoration_scale_y = 100;
     d->sounds_enabled = 1;
 }
 
@@ -2911,6 +2912,19 @@ static int *deck_element_scale(CompanionLayoutCfg *d, int element)
     }
 }
 
+static int *deck_element_scale_y(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_scale_y;
+    case DECK_ELEM_ITEM: return &d->item_scale_y;
+    case DECK_ELEM_CONTROLS: return &d->controls_scale_y;
+    case DECK_ELEM_TIMELINE: return &d->timeline_scale_y;
+    case DECK_ELEM_DECORATION: return &d->decoration_scale_y;
+    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_4
+        ? &d->decoration_extra_scale_y[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale_y;
+    }
+}
+
 static void deck_editor_element_base(int element, float *x, float *y, float *w, float *h)
 {
     switch (element) {
@@ -2929,15 +2943,16 @@ static void deck_editor_element_rect(CompanionLayoutCfg *d, int element,
                                      float px, float py, float pw, float ph,
                                      float *rx, float *ry, float *rw, float *rh)
 {
-    float x, y, w, h, scale;
+    float x, y, w, h;
     deck_editor_element_base(element, &x, &y, &w, &h);
-    scale = (float)*deck_element_scale(d, element) / 100.0f;
+    float scale_x = (float)*deck_element_scale(d, element) / 100.0f;
+    float scale_y = (float)*deck_element_scale_y(d, element) / 100.0f;
     x += (float)*deck_element_x(d, element);
     y += (float)*deck_element_y(d, element);
-    *rx = px + (x + w * 0.5f - w * scale * 0.5f) * (pw / 800.0f);
-    *ry = py + (y + h * 0.5f - h * scale * 0.5f) * (ph / 450.0f);
-    *rw = w * (pw / 800.0f) * scale;
-    *rh = h * (ph / 450.0f) * scale;
+    *rx = px + (x + w * 0.5f - w * scale_x * 0.5f) * (pw / 800.0f);
+    *ry = py + (y + h * 0.5f - h * scale_y * 0.5f) * (ph / 450.0f);
+    *rw = w * (pw / 800.0f) * scale_x;
+    *rh = h * (ph / 450.0f) * scale_y;
 }
 
 static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
@@ -3027,10 +3042,14 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
     float dx = x - companion_editor_last_x, dy = y - companion_editor_last_y;
     if (companion_editor_resizing) {
-        int *scale = deck_element_scale(d, companion_editor_element);
-        *scale += (int)((dx / (preview_w / 800.0f) + dy / (preview_h / 450.0f)) * 0.28f);
-        if (*scale < 25) *scale = 25;
-        if (*scale > 250) *scale = 250;
+        int *scale_x = deck_element_scale(d, companion_editor_element);
+        int *scale_y = deck_element_scale_y(d, companion_editor_element);
+        *scale_x += (int)((dx / (preview_w / 800.0f)) * 0.35f);
+        *scale_y += (int)((dy / (preview_h / 450.0f)) * 0.35f);
+        if (*scale_x < 25) *scale_x = 25;
+        if (*scale_x > 250) *scale_x = 250;
+        if (*scale_y < 25) *scale_y = 25;
+        if (*scale_y > 250) *scale_y = 250;
     } else {
         int *ox = deck_element_x(d, companion_editor_element);
         int *oy = deck_element_y(d, companion_editor_element);
