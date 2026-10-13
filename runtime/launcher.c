@@ -3188,20 +3188,37 @@ int launcher_companion_layout_preview_enabled(void)
     return companion_editor_open && companion_editor_page != 0;
 }
 
+static int deck_bundle_path_is_relative(const char *value)
+{
+    if (!value || !value[0] || value[0] == '/' || value[0] == '\\' ||
+        strchr(value, '\\') || (strlen(value) > 1 && value[1] == ':'))
+        return 0;
+    const char *segment = value;
+    for (const char *p = value; ; p++) {
+        if (*p == '/' || *p == 0) {
+            size_t length = (size_t)(p - segment);
+            if (length == 0 || (length == 1 && segment[0] == '.') ||
+                (length == 2 && segment[0] == '.' && segment[1] == '.'))
+                return 0;
+            if (!*p) break;
+            segment = p + 1;
+        }
+    }
+    return 1;
+}
+
 static void deck_set_path(char *dst, size_t cap, const char *value,
                           const char *base_dir)
 {
     if (!dst || cap == 0) return;
     dst[0] = 0;
     if (!value || !value[0]) return;
-    if (value[0] == '/' || (strlen(value) > 2 && value[1] == ':'))
-        snprintf(dst, cap, "%s", value);
-    else if (base_dir && base_dir[0])
+    /* Bundles may reference only assets inside their own extracted directory. */
+    if (!deck_bundle_path_is_relative(value)) return;
+    if (base_dir && base_dir[0])
         snprintf(dst, cap, "%s%s%s", base_dir,
                  (base_dir[strlen(base_dir) - 1] == '/' ||
                   base_dir[strlen(base_dir) - 1] == '\\') ? "" : "/", value);
-    else
-        snprintf(dst, cap, "%s", value);
 }
 
 static int deck_manifest_apply(int game, const char *path)
