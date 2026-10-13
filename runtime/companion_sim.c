@@ -6,6 +6,7 @@
 #include "games.h"
 #include "emu.h"
 #include "launcher.h"
+#include "audio.h"
 #include "util.h"
 #include <sys/stat.h>
 #include <time.h>
@@ -24,6 +25,7 @@
 #define SIM_SLOT_PREV 7
 #define SIM_SLOT_NEXT 8
 #define SIM_ITEM_USE 9
+#define SIM_BACKGROUND 10
 #define SIM_CLOSE_GAME 12
 #define SIM_SLOT_SELECT_BASE 20
 
@@ -902,7 +904,7 @@ static void draw_companion(const Settings *s)
 
     float bgx = 593, bgy = 13, bgw = 105, bgh = 42;
     transform_box(d, 0, 400, 31.5f, &bgx, &bgy, &bgw, &bgh);
-    draw_tiny_button((int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", "PNG / GIF", 0);
+    draw_tiny_button((int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", "PNG / GIF", SIM_BACKGROUND);
     float closex = 704, closey = 13, closew = 72, closeh = 42;
     transform_box(d, 0, 400, 31.5f, &closex, &closey, &closew, &closeh);
     draw_tiny_button((int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE", "GAME", SIM_CLOSE_GAME);
@@ -1077,6 +1079,23 @@ void companion_sim_render(Settings *s, SDL_Window *main_window)
     draw_companion(s);
 }
 
+static void play_custom_deck_sound(const CompanionLayoutCfg *d, int action)
+{
+    if (!d || !d->sounds_enabled) return;
+    const char *path = NULL;
+    switch (action) {
+    case SIM_SAVE: path = d->button_sound_path[DECK_SOUND_SAVE]; break;
+    case SIM_LOAD: path = d->button_sound_path[DECK_SOUND_LOAD]; break;
+    case SIM_PAUSE: path = d->button_sound_path[DECK_SOUND_PAUSE]; break;
+    case SIM_REWIND: path = d->button_sound_path[DECK_SOUND_REWIND]; break;
+    case SIM_BACKGROUND: path = d->button_sound_path[DECK_SOUND_BACKGROUND]; break;
+    case SIM_CLOSE_GAME: path = d->button_sound_path[DECK_SOUND_CLOSE]; break;
+    case SIM_ITEM_USE: path = current_item ? d->item_sound_path : d->empty_item_sound_path; break;
+    default: break;
+    }
+    if (path && path[0]) audio_deck_sfx_play(path);
+}
+
 static void push_action(int action, int pressed)
 {
     SDL_Event ev;
@@ -1184,6 +1203,8 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
         inverse_point(d, 0, &tx, &ty, 400, 31.5f);
         if (inside(tx, ty, 704, 13, 72, 42)) {
             mouse_down_action = SIM_CLOSE_GAME;
+        } else if (inside(tx, ty, 593, 13, 105, 42)) {
+            mouse_down_action = SIM_BACKGROUND;
         } else {
         inverse_point(d, 2, &tx, &ty, 400, 343);
         if (inside(tx, ty, 94, 320, 147, 42)) mouse_down_action = SIM_SAVE;
@@ -1201,13 +1222,22 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
         }
         }
         pressed_action = mouse_down_action;
-        if (mouse_down_action == SIM_REWIND) push_action(SIM_REWIND, 1);
+        if (mouse_down_action == SIM_REWIND) {
+            play_custom_deck_sound(d, SIM_REWIND);
+            push_action(SIM_REWIND, 1);
+        }
         return 1;
     }
     if (e->type == SDL_MOUSEBUTTONUP) {
         int up = mouse_down_action;
         if (up == SIM_REWIND) push_action(SIM_REWIND, 0);
-        else if (up) push_action(up, 1);
+        else if (up == SIM_BACKGROUND) {
+            play_custom_deck_sound(d, SIM_BACKGROUND);
+            launcher_open_companion_layout_picker(1, game);
+        } else if (up) {
+            play_custom_deck_sound(d, up);
+            push_action(up, 1);
+        }
         pressed_action = 0;
         mouse_down_action = 0;
         return 1;
