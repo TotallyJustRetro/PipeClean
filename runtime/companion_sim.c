@@ -476,7 +476,6 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
         else
             SDL_RenderWindowToLogical(deck_renderer, e->motion.x, e->motion.y, &logical_x, &logical_y);
         float x = logical_x, y = logical_y;
-        int game = current_game >= 0 && current_game < N_GAMES ? current_game : GAME_SML;
     int game = current_game >= 0 && current_game < N_GAMES ? current_game : GAME_SML;
     const CompanionLayoutCfg *d = &s->deck_layout[game];
 
