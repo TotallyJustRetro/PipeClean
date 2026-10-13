@@ -172,7 +172,9 @@ static const char *companion_layout_asset_paths(const CompanionLayoutCfg *d, int
     if (i == 15) return d->header_texture_path;
     if (i == 16) return d->status_texture_path;
     if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
-    if (i >= 21 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 21];
+    if (i >= 21 && i < 28) return d->decoration_extra_path[i - 21];
+    if (i == 28) return d->button_texture_by_action[4];
+    if (i == 29) return d->button_texture_by_action[5];
     return "";
 }
 
@@ -569,7 +571,9 @@ static const char *desktop_deck_asset_path(const CompanionLayoutCfg *d, int i)
     if (i == 15) return d->header_texture_path;
     if (i == 16) return d->status_texture_path;
     if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
-    if (i >= 21 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 21];
+    if (i >= 21 && i < 28) return d->decoration_extra_path[i - 21];
+    if (i == 28) return d->button_texture_by_action[4];
+    if (i == 29) return d->button_texture_by_action[5];
     return "";
 }
 
@@ -586,6 +590,8 @@ static const char *desktop_deck_picker_title(int kind)
     case 8: return "Choose rewind button sound";
     case 9: return "Choose background button sound";
     case 10: return "Choose close button sound";
+    case 24: return "Choose Background button texture (PNG/GIF)";
+    case 25: return "Choose Close Game button texture (PNG/GIF)";
     case 11: return "Choose item-use sound";
     case 12: return "Choose empty-item-slot sound";
     case 15: return "Choose Mushroom texture (PNG/GIF)";
@@ -712,7 +718,8 @@ static const char *desktop_deck_manifest_field(int i)
         "header_texture_path", "status_texture_path", "button_texture_save_path",
         "button_texture_load_path", "button_texture_pause_path", "button_texture_rewind_path",
         "decoration_path_1", "decoration_path_2", "decoration_path_3",
-        "decoration_path_4", "decoration_path_5", "decoration_path_6", "decoration_path_7"
+        "decoration_path_4", "decoration_path_5", "decoration_path_6", "decoration_path_7",
+        "button_texture_background_path", "button_texture_close_path"
     };
     return i >= 0 && i < N_DECK_ASSET_PATHS ? fields[i] : "";
 }
@@ -727,7 +734,8 @@ static const char *desktop_deck_entry_stem(int i)
         "header-texture", "status-texture", "save-button-texture",
         "load-button-texture", "pause-button-texture", "rewind-button-texture",
         "decoration-2", "decoration-3", "decoration-4", "decoration-5",
-        "decoration-6", "decoration-7", "decoration-8"
+        "decoration-6", "decoration-7", "decoration-8",
+        "background-button-texture", "close-button-texture"
     };
     return i >= 0 && i < N_DECK_ASSET_PATHS ? stems[i] : "asset";
 }
@@ -833,7 +841,7 @@ void launcher_open_companion_layout_picker(int kind, int game)
     int dialog_kind;
     if (kind == 14) dialog_kind = DLG_ZIP_SAVE;
     else if (kind == 13) dialog_kind = DLG_ZIP_OPEN;
-    else if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 23)) dialog_kind = DLG_IMAGE;
+    else if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 25)) dialog_kind = DLG_IMAGE;
     else dialog_kind = DLG_AUDIO;
     if (!dlg_pick(dialog_kind, desktop_deck_picker_title(kind), selected, sizeof selected)) return;
 
