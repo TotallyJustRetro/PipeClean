@@ -29,8 +29,8 @@
 
 static SDL_Window *deck_window;
 static SDL_Renderer *deck_renderer;
-static SDL_Texture *assets[N_GAMES][4];
-static char asset_paths[N_GAMES][4][512];
+static SDL_Texture *assets[N_GAMES][7];
+static char asset_paths[N_GAMES][7][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
 static int pressed_action, mouse_down_action;
@@ -776,9 +776,11 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
             i % 4 == 0 ? 240 : i % 3 == 0 ? 107 : 214,
             i % 4 == 0 ? 174 : i % 3 == 0 ? 34 : 107, 255);
     }
-    if (item > 0 && assets[game][2]) {
+    int item_asset = item >= 1 && item <= 3 ? item + 3 : 2;
+    if (item > 0 && !assets[game][item_asset]) item_asset = 2;
+    if (item > 0 && assets[game][item_asset]) {
         SDL_Rect dest = {cx - r * 46 / 100, cy - r * 46 / 100, r * 92 / 100, r * 92 / 100};
-        SDL_RenderCopy(deck_renderer, assets[game][2], NULL, &dest);
+        SDL_RenderCopy(deck_renderer, assets[game][item_asset], NULL, &dest);
     } else if (item > 0) {
         const char *label = item == 1 ? "MUSHROOM" :
             game == GAME_SML ? "SUPERBALL FLOWER" :
@@ -831,8 +833,11 @@ static void sync_assets(const Settings *s)
         const CompanionLayoutCfg *d = &s->deck_layout[g];
         load_asset(g, 0, d->background_path);
         load_asset(g, 1, d->button_texture_path);
-        load_asset(g, 2, d->item_texture_path);
+        load_asset(g, 2, d->item_texture_path); /* backward-compatible generic fallback */
         load_asset(g, 3, d->decoration_path);
+        load_asset(g, 4, d->item_texture_by_id[1]); /* Mushroom */
+        load_asset(g, 5, d->item_texture_by_id[2]); /* Superball / Fire Flower */
+        load_asset(g, 6, d->item_texture_by_id[3]); /* Carrot */
     }
 }
 
@@ -962,7 +967,7 @@ static void draw_companion(const Settings *s)
     const char *action_labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
     const char *action_subs[4] = {"SNAPSHOT", "RESTORE",
         current_paused ? "CONTINUE" : "HOLD GAME", "HOLD TO REWIND"};
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 7; i++) {
         float ax = 94.0f + i * 153.0f, ay = 320.0f;
         float aw = (i == 3) ? 153.0f : 145.0f, ah = 42.0f;
         transform_box(d, 2, 400, 343, &ax, &ay, &aw, &ah);
@@ -985,7 +990,7 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     if (!s->launcher_dual_screen) {
         if (deck_window) {
             for (int g = 0; g < N_GAMES; g++) {
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < 7; i++) {
                     if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
                     assets[g][i] = NULL;
                     asset_paths[g][i][0] = 0;
