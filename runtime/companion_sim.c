@@ -31,11 +31,11 @@
 
 static SDL_Window *deck_window;
 static SDL_Renderer *deck_renderer;
-static SDL_Texture *assets[N_GAMES][21];
-static IMG_Animation *asset_animations[N_GAMES][21];
-static int asset_animation_frame[N_GAMES][21];
-static Uint32 asset_animation_started[N_GAMES][21];
-static char asset_paths[N_GAMES][21][512];
+static SDL_Texture *assets[N_GAMES][24];
+static IMG_Animation *asset_animations[N_GAMES][24];
+static int asset_animation_frame[N_GAMES][24];
+static Uint32 asset_animation_started[N_GAMES][24];
+static char asset_paths[N_GAMES][24][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
 static int pressed_action, mouse_down_action;
@@ -835,7 +835,7 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
 
 static void destroy_asset(int game, int index)
 {
-    if (game < 0 || game >= N_GAMES || index < 0 || index >= 21) return;
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= 24) return;
     if (assets[game][index]) SDL_DestroyTexture(assets[game][index]);
     assets[game][index] = NULL;
     if (asset_animations[game][index]) IMG_FreeAnimation(asset_animations[game][index]);
@@ -847,7 +847,7 @@ static void destroy_asset(int game, int index)
 
 static void load_asset(int game, int index, const char *path)
 {
-    if (game < 0 || game >= N_GAMES || index < 0 || index >= 21) return;
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= 24) return;
     const char *next = path ? path : "";
     if (!strcmp(asset_paths[game][index], next)) return;
     destroy_asset(game, index);
@@ -879,7 +879,7 @@ static void update_animated_assets(void)
 {
     Uint32 now = SDL_GetTicks();
     for (int g = 0; g < N_GAMES; g++) {
-        for (int i = 0; i < 21; i++) {
+        for (int i = 0; i < 24; i++) {
             IMG_Animation *animation = asset_animations[g][i];
             if (!animation || animation->count < 2) continue;
             Uint32 total_ms = 0;
@@ -921,6 +921,8 @@ static void sync_assets(const Settings *s)
         load_asset(g, 8, d->status_texture_path);
         for (int b = 0; b < 4; b++)
             load_asset(g, 17 + b, d->button_texture_by_action[b]);
+        for (int slot = 0; slot < 3; slot++)
+            load_asset(g, 21 + slot, d->decoration_extra_path[slot]);
     }
 }
 
@@ -957,7 +959,15 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
     case 1: dx = d->item_dx; dy = d->item_dy; size = d->item_scale; break;
     case 2: dx = d->controls_dx; dy = d->controls_dy; size = d->controls_scale; break;
     case 3: dx = d->timeline_dx; dy = d->timeline_dy; size = d->timeline_scale; break;
-    default: dx = d->decoration_dx; dy = d->decoration_dy; size = d->decoration_scale; break;
+    case 4: dx = d->decoration_dx; dy = d->decoration_dy; size = d->decoration_scale; break;
+    default:
+        if (element >= 5 && element <= 7) {
+            int slot = element - 5;
+            dx = d->decoration_extra_dx[slot];
+            dy = d->decoration_extra_dy[slot];
+            size = d->decoration_extra_scale[slot];
+        }
+        break;
     }
     float scale = (float)(size > 0 ? size : 100) / 100.f;
     *x = cx + (*x - cx) * scale + dx;
@@ -1042,9 +1052,15 @@ static void draw_companion(const Settings *s)
 
     draw_slot_timeline(s, g);
 
-    float dx = 280, dy = 153, dw = 240, dh = 144;
-    transform_box(d, 4, 400, 225, &dx, &dy, &dw, &dh);
-    if (assets[g][3]) image_contain(assets[g][3], (int)dx, (int)dy, (int)dw, (int)dh);
+    for (int slot = 0; slot < 4; slot++) {
+        float dx = slot == 0 ? 280 : slot == 1 ? 20 : slot == 2 ? 610 : 315;
+        float dy = slot == 0 ? 153 : slot == 3 ? 245 : 78;
+        float dw = slot == 0 ? 240 : 170, dh = slot == 0 ? 144 : 120;
+        transform_box(d, 4 + slot, 400, 225, &dx, &dy, &dw, &dh);
+        int asset_index = slot == 0 ? 3 : 20 + slot;
+        if (assets[g][asset_index])
+            image_contain(assets[g][asset_index], (int)dx, (int)dy, (int)dw, (int)dh);
+    }
 
     SDL_RenderPresent(deck_renderer);
 }
@@ -1055,7 +1071,7 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     if (!s->launcher_dual_screen) {
         if (deck_window) {
             for (int g = 0; g < N_GAMES; g++) {
-                for (int i = 0; i < 21; i++) destroy_asset(g, i);
+                for (int i = 0; i < 24; i++) destroy_asset(g, i);
                 for (int i = 0; i < 10; i++) {
                     if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                     slot_thumb_texture[g][i] = NULL;
@@ -1309,7 +1325,7 @@ void companion_sim_shutdown(void)
 {
     if (deck_window) {
         for (int g = 0; g < N_GAMES; g++) {
-            for (int i = 0; i < 21; i++) destroy_asset(g, i);
+            for (int i = 0; i < 24; i++) destroy_asset(g, i);
             for (int i = 0; i < 10; i++) {
                 if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                 slot_thumb_texture[g][i] = NULL;
