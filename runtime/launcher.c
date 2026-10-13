@@ -3710,6 +3710,12 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "button_texture_rewind_path")) deck_set_path(fresh.button_texture_by_action[3], sizeof fresh.button_texture_by_action[3], eq, directory);
         else if (!strcmp(line, "item_sound_path")) deck_set_path(fresh.item_sound_path, sizeof fresh.item_sound_path, eq, directory);
         else if (!strcmp(line, "empty_item_sound_path")) deck_set_path(fresh.empty_item_sound_path, sizeof fresh.empty_item_sound_path, eq, directory);
+        else if (!strncmp(line, "asset_stretch_", 13)) {
+            char *end = NULL;
+            long asset = strtol(line + 13, &end, 10);
+            if (end && *end == 0 && asset >= 0 && asset < N_DECK_ASSET_PATHS)
+                fresh.asset_stretch[asset] = v ? 1 : 0;
+        }
         else {
             for (int b = 0; b < N_DECK_BUTTON_SOUNDS; b++) {
                 char key[48];
