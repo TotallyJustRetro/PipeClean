@@ -2984,6 +2984,17 @@ static void deck_editor_preview_image(const char *path, float x, float y, float 
     ui_image_file_fit(path, x, y, w, h);
 }
 
+static void deck_editor_preview_asset(const CompanionLayoutCfg *d, int asset_index,
+                                     const char *path, float x, float y, float w, float h)
+{
+    if (!path || !path[0] || w <= 0 || h <= 0) return;
+    if (d && asset_index >= 0 && asset_index < N_DECK_ASSET_PATHS &&
+        d->asset_stretch[asset_index])
+        ui_image_file_stretch(path, x, y, w, h);
+    else
+        ui_image_file_fit(path, x, y, w, h);
+}
+
 static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
 {
     ui_shadow(x, y, w, h, 11, 5, RGBA(0, 0, 0, 110));
@@ -2993,7 +3004,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
              companion_editor_game == GAME_SML2 ? RGBA(67, 49, 88, 255) : RGBA(24, 36, 58, 255),
              RGBA(16, 22, 38, 255));
     ui_clip(x + 2, y + 2, w - 4, h - 4);
-    deck_editor_preview_image(d->background_path, x + 2, y + 2, w - 4, h - 4);
+    deck_editor_preview_asset(d, 0, d->background_path, x + 2, y + 2, w - 4, h - 4);
     /* Background and all inserted artwork are fit-within by default; no asset is silently cropped. */
 
     for (int e = DECK_ELEM_DECORATION; e < N_DECK_ELEM; e++) {
@@ -3002,7 +3013,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         int slot = e - DECK_ELEM_DECORATION;
         const char *asset = deck_decoration_path_const(d, slot);
         if (asset[0]) {
-            deck_editor_preview_image(asset, rx, ry, rw, rh);
+            deck_editor_preview_asset(d, slot == 0 ? 3 : 20 + slot, asset, rx, ry, rw, rh);
             if (e == companion_editor_element)
                 ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
         } else {
@@ -3018,7 +3029,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         float rx, ry, rw, rh;
         deck_editor_element_rect(d, DECK_ELEM_HEADER, x, y, w, h, &rx, &ry, &rw, &rh);
         ui_rrect(rx, ry, rw, rh, 5, RGBA(28, 40, 58, 210));
-        deck_editor_preview_image(d->header_texture_path, rx + 1, ry + 1, rw - 2, rh - 2);
+        deck_editor_preview_asset(d, 15, d->header_texture_path, rx + 1, ry + 1, rw - 2, rh - 2);
         ui_text_fit(F_BOLD, 6.8f, rx + 7, ry + rh * .24f, rw - 14,
                     RGBA(127, 220, 236, 255), "PIPE CLEAN / POCKET QUEST");
         ui_text_fit(F_BOLD, 9, rx + 7, ry + rh * .52f, rw - 14,
@@ -3036,7 +3047,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
             ? deck_editor_preview_asset_path(d, 11 + item_id) : "";
         if (!item_path[0]) item_path = d->item_texture_path;
         float inset_x = rw * .16f, inset_y = rh * .13f;
-        if (item_path[0]) deck_editor_preview_image(item_path, rx + inset_x, ry + inset_y, rw - inset_x * 2, rh - inset_y * 2);
+        if (item_path[0]) deck_editor_preview_asset(d, item_path == d->item_texture_path ? 2 : 11 + item_id, item_path, rx + inset_x, ry + inset_y, rw - inset_x * 2, rh - inset_y * 2);
         else {
             ui_rrect(rx + rw * .25f, ry + rh * .25f, rw * .5f, rh * .48f, 8, RGBA(255, 205, 75, 245));
             ui_text_c(F_BOLD, 13, rx + rw * .5f, ry + rh * .36f, RGBA(61, 43, 20, 255), "?");
@@ -3055,7 +3066,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         float sx = x + w * (620.f / 800.f), sy = y + h * (76.f / 450.f);
         float sw = w * (156.f / 800.f), sh = h * (128.f / 450.f);
         ui_rrect(sx, sy, sw, sh, 7, RGBA(34, 44, 62, 240));
-        deck_editor_preview_image(d->status_texture_path, sx + 1, sy + 1, sw - 2, sh - 2);
+        deck_editor_preview_asset(d, 16, d->status_texture_path, sx + 1, sy + 1, sw - 2, sh - 2);
         ui_text_fit(F_BOLD, 6, sx + 5, sy + 6, sw - 10, RGBA(191, 202, 222, 255), "ADVENTURE STATUS");
         ui_text_fit(F_BOLD, 8, sx + 5, sy + sh * .45f, sw - 10, RGBA(250, 240, 220, 255), "LIVES  × 03");
         ui_text_fit(F_BOLD, 7, sx + 5, sy + sh * .66f, sw - 10, RGBA(112, 225, 182, 255),
@@ -3069,10 +3080,11 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         static const char *labels[4] = {"SAVE", "LOAD", "PAUSE", "REWIND"};
         for (int b = 0; b < 4; b++) {
             float bx = rx + b * (rw / 4.f), by = ry, bw = rw / 4.f - 2.f, bh = rh;
-            const char *custom = deck_editor_preview_asset_path(d, 17 + b);
-            if (!custom[0]) custom = d->button_texture_path;
+            int texture_index = 17 + b;
+            const char *custom = deck_editor_preview_asset_path(d, texture_index);
+            if (!custom[0]) texture_index = 1, custom = d->button_texture_path;
             ui_rrect(bx, by, bw, bh, 4, RGBA(29, 42, 60, 240));
-            deck_editor_preview_image(custom, bx + 1, by + 1, bw - 2, bh - 2);
+            deck_editor_preview_asset(d, texture_index, custom, bx + 1, by + 1, bw - 2, bh - 2);
             ui_stroke(bx, by, bw, bh, 4, .7f, RGBA(105, 137, 174, 230));
             ui_text_c(F_BOLD, 5.8f, bx + bw * .5f, by + bh * .39f, RGBA(246, 249, 255, 255), labels[b]);
         }
@@ -3162,7 +3174,7 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
         int *ox = deck_element_x(d, companion_editor_element);
         int *oy = deck_element_y(d, companion_editor_element);
         *ox += (int)(dx / (preview_w / 800.0f));
-        *oy += (int)(dy / (preview_h / 480.0f));
+        *oy += (int)(dy / (preview_h / 450.0f));
         if (*ox < -400) *ox = -400;
         if (*ox > 400) *ox = 400;
         if (*oy < -400) *oy = -400;
@@ -3174,7 +3186,7 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
 
 static void deck_editor_open_decoration_picker(int slot)
 {
-    if (slot < 0 || slot >= 4) return;
+    if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
     companion_editor_pending_decoration_slot = slot;
     deck_editor_snapshot();
     launcher_open_companion_layout_picker(DECK_PICK_DECORATION, companion_editor_game);
@@ -3184,7 +3196,7 @@ static void deck_editor_open_picker(int kind)
 {
     if (kind == DECK_PICK_DECORATION) {
         CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-        for (int slot = 0; slot < 4; slot++) {
+        for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
             const char *path = deck_decoration_path_const(d, slot);
             if (!path[0]) {
                 companion_editor_pending_decoration_slot = slot;
@@ -3193,7 +3205,7 @@ static void deck_editor_open_picker(int kind)
                 return;
             }
         }
-        launcher_toast("All four decoration slots are full. Remove one to add another.");
+        launcher_toast("All eight image layers are full. Remove a layer to add another.");
         return;
     }
     if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
@@ -3253,9 +3265,10 @@ static void deck_editor_list(float x, float y)
 static void deck_editor_layout(float x, float y)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-    ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, games[companion_editor_game].name);
-    ui_text_fit(F_REG, 9, x + 310, y + 87, 440, C_MUTED,
-                "LIVE LAYOUT STUDIO  /  TOUCH TO MOVE");
+    ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, "COMPANION DECK STUDIO");
+    ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, RGBA(116, 222, 255, 255),
+                companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" : "SUPER MARIO LAND 2  /  LIVE CANVAS");
+
     if (ui_button(x + 36, y + 105, 58, 34, "Back", B_GHOST, 1)) {
         companion_editor_page = 0;
         companion_editor_dragging = 0;
@@ -3273,7 +3286,7 @@ static void deck_editor_layout(float x, float y)
         deck_layout_defaults(d);
     }
 
-    const char *tab_labels[] = {"Layout", "Assets", "Items", "Sounds", "Layers"};
+    const char *tab_labels[] = {"Canvas", "Assets", "Items", "Sounds", "Layers"};
     const int tab_pages[] = {1, 4, 3, 2, 5};
     for (int t = 0; t < 5; t++) {
         float tx = x + 36 + t * 83;
@@ -3289,8 +3302,11 @@ static void deck_editor_layout(float x, float y)
         return;
     }
 
-    float px = x + 36, py = y + 194, pw = 280, ph = 157.5f;
-    ui_rrect(px - 6, py - 6, pw + 12, ph + 12, 10, RGBA(9, 14, 24, 255));
+    /* A larger landscape work surface makes hit targets usable with a finger,
+       while the compact inspector keeps all scale and selection controls visible. */
+    float px = x + 36, py = y + 194, pw = 380, ph = 213.75f;
+    ui_rrect(px - 7, py - 7, pw + 14, ph + 14, 12, RGBA(7, 13, 24, 255));
+    ui_stroke(px - 1, py - 1, pw + 2, ph + 2, 8, 1.0f, RGBA(66, 102, 148, 225));
     deck_editor_preview(d, px, py, pw, ph);
     companion_editor_preview_hover = ui_hover(px, py, pw, ph);
     if (ui_mouse.pressed && companion_editor_preview_hover)
@@ -3298,47 +3314,50 @@ static void deck_editor_layout(float x, float y)
     if (ui_mouse.down && companion_editor_dragging)
         deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
     if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
-    ui_text_fit(F_REG, 8, px, py + ph + 10, pw, C_MUTED,
-                "Drag the outline to move • side handle = width • bottom = height");
+    ui_text_fit(F_BOLD, 8.2f, px, py + ph + 10, pw,
+                RGBA(112, 225, 255, 245), "16:9  •  FIT = NO CROP  •  DRAG HANDLES TO RESIZE");
 
-    float rx = x + 338;
-    ui_text(F_BOLD, 10, rx, y + 189, C_MUTED, "SELECT ELEMENT");
+    float rx = x + 438;
+    ui_text(F_BOLD, 10, rx, y + 190, C_TEXT, "LAYERS & TRANSFORM");
+    ui_text_fit(F_REG, 8, rx + 148, y + 190, 180, C_MUTED,
+                "Select, move, reshape");
     for (int e = 0; e < N_DECK_ELEM; e++) {
         int col = e % 2, row = e / 2;
-        float by = y + 203 + row * 28.5f;
-        if (ui_button(rx + col * 207, by, 198, 26,
-                      deck_element_names[e], e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
+        float by = y + 204 + row * 27.0f;
+        if (ui_button(rx + col * 163, by, 157, 24,
+                      deck_element_names[e],
+                      e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
             companion_editor_element = e;
     }
 
     int *scale_x = deck_element_scale(d, companion_editor_element);
     int *scale_y = deck_element_scale_y(d, companion_editor_element);
-    char scale_text[80];
+    char scale_text[48];
     snprintf(scale_text, sizeof scale_text, "W %d%%", *scale_x);
-    ui_text(F_BOLD, 10, rx, y + 379, C_TEXT, scale_text);
-    if (ui_button(rx + 76, y + 371, 38, 30, "−", B_GHOST, *scale_x > 25)) {
+    ui_text(F_BOLD, 9, rx, y + 380, C_TEXT, scale_text);
+    if (ui_button(rx + 62, y + 367, 30, 30, "−", B_GHOST, *scale_x > 25)) {
         deck_editor_snapshot(); *scale_x -= 5; if (*scale_x < 25) *scale_x = 25;
     }
-    if (ui_button(rx + 118, y + 371, 38, 30, "+", B_GHOST, *scale_x < 250)) {
+    if (ui_button(rx + 96, y + 367, 30, 30, "+", B_GHOST, *scale_x < 250)) {
         deck_editor_snapshot(); *scale_x += 5; if (*scale_x > 250) *scale_x = 250;
     }
     snprintf(scale_text, sizeof scale_text, "H %d%%", *scale_y);
-    ui_text(F_BOLD, 10, rx + 170, y + 379, C_TEXT, scale_text);
-    if (ui_button(rx + 238, y + 371, 38, 30, "−", B_GHOST, *scale_y > 25)) {
+    ui_text(F_BOLD, 9, rx + 137, y + 380, C_TEXT, scale_text);
+    if (ui_button(rx + 202, y + 367, 30, 30, "−", B_GHOST, *scale_y > 25)) {
         deck_editor_snapshot(); *scale_y -= 5; if (*scale_y < 25) *scale_y = 25;
     }
-    if (ui_button(rx + 280, y + 371, 38, 30, "+", B_GHOST, *scale_y < 250)) {
+    if (ui_button(rx + 236, y + 367, 30, 30, "+", B_GHOST, *scale_y < 250)) {
         deck_editor_snapshot(); *scale_y += 5; if (*scale_y > 250) *scale_y = 250;
     }
-    if (ui_button(rx + 324, y + 371, 100, 30, "Center", B_GHOST, 1)) {
+    if (ui_button(rx, y + 405, 105, 28, "Center layer", B_GHOST, 1)) {
         deck_editor_snapshot();
         *deck_element_x(d, companion_editor_element) = 0;
         *deck_element_y(d, companion_editor_element) = 0;
     }
-    ui_text_fit(F_REG, 8, rx, y + 412, 420, C_DIM,
-                "Width and height are independent. Use the cyan handles for direct touch resizing.");
-    ui_text_fit(F_REG, 8, rx, y + 431, 420, C_DIM,
-                "Select an image layer in Layers to hide/remove it or assign another file.");
+    ui_text_fit(F_REG, 8, rx + 112, y + 412, 210, C_MUTED,
+                "Width and height are independent.");
+    ui_text_fit(F_REG, 8, rx, y + 441, 324, C_DIM,
+                "Fit keeps every pixel visible; Stretch fills the layer box.");
 }
 
 static void deck_editor_sounds(float x, float y)
