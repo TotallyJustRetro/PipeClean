@@ -3162,7 +3162,8 @@ LauncherResult launcher_frame(float dt)
 void launcher_event(const SDL_Event *e)
 {
     if (e && (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN ||
-              e->type == SDL_MOUSEWHEEL)) {
+              e->type == SDL_MOUSEWHEEL || e->type == SDL_FINGERDOWN ||
+              e->type == SDL_FINGERMOTION || e->type == SDL_FINGERUP)) {
         launcher_leave_controller_cursor();
     }
     if (romhack_title_editing_game >= 0) {
@@ -3213,7 +3214,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             if (!entry->title[0])
                 romhack_title_from_path(entry->path, entry->title, sizeof entry->title);
             romhack_title_editing_game = romhack_title_editing_index = -1;
@@ -3260,7 +3261,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             online_commit_shared_name();
         }
         return;
@@ -3362,7 +3363,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             online_name_editing = online_code_editing = online_server_editing = online_chat_editing = 0;
             SDL_StopTextInput();
             if (!editing_chat && !dst[0]) snprintf(dst, cap, "%s", fallback);
@@ -3406,7 +3407,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             multiplayer_name_editing = 0;
             SDL_StopTextInput();
             if (!name[0]) snprintf(name, 32, "%s", fallback);
