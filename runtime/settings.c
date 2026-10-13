@@ -326,8 +326,19 @@ static int field_table(Field *t, int cap)
         GI("deck_timeline_dx", d->timeline_dx, -400, 400); GI("deck_timeline_dy", d->timeline_dy, -400, 400); GI("deck_timeline_scale", d->timeline_scale, 25, 250);
         GI("deck_decoration_dx", d->decoration_dx, -400, 400); GI("deck_decoration_dy", d->decoration_dy, -400, 400); GI("deck_decoration_scale", d->decoration_scale, 25, 250);
         GI("deck_sounds_enabled", d->sounds_enabled, 0, 1);
-        GS("deck_background", d->background_path); GS("deck_button_texture", d->button_texture_path);
+        GS("deck_background", d->background_path);
+        GS("deck_header_texture", d->header_texture_path);
+        GS("deck_status_texture", d->status_texture_path);
+        GS("deck_button_texture", d->button_texture_path);
         GS("deck_item_texture", d->item_texture_path); GS("deck_decoration", d->decoration_path);
+        static const char *deck_button_texture_names[4] = {
+            "deck_button_save_texture", "deck_button_load_texture",
+            "deck_button_pause_texture", "deck_button_rewind_texture"
+        };
+        for (int b = 0; b < 4; b++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, deck_button_texture_names[b]);
+            S(gn[g][k], d->button_texture_by_action[b]); k++;
+        }
         for (int item_id = 1; item_id < N_DECK_ITEM_TEXTURE_IDS; item_id++) {
             snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_item_texture_%d", games[g].id, item_id);
             S(gn[g][k], d->item_texture_by_id[item_id]); k++;
