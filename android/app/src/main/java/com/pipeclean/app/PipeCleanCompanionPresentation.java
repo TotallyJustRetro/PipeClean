@@ -196,8 +196,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private boolean timelineTouchActive, timelineMoved;
         private float timelineDownX, timelineDownY, timelineStartFocus, timelineDragFocus;
         private static final int SLOT_SELECT_BASE = 20;
-        private static final int MUSIC_TOGGLE = 13, MUSIC_PREV = 14, MUSIC_NEXT = 15;
-        private static final int MUSIC_SELECT_BASE = 40;
         private Bitmap wallpaperBitmap;
         private Movie wallpaperMovie;
         private String wallpaperPath = "";
@@ -1279,33 +1277,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private int dashboardHitTest(float x, float y, boolean portrait) {
-            if (!dashboardDualScreen) return 0;
-            if (portrait) {
-                if (inside(x, y, 121, 613, 42, 29)) return MUSIC_PREV;
-                if (inside(x, y, 170, 613, 42, 29)) return MUSIC_TOGGLE;
-                if (inside(x, y, 219, 613, 42, 29)) return MUSIC_NEXT;
-                float rowY = 669;
-                float rowW = 394;
-                int count = musicPlaylist.length;
-                for (int row = 0; row < 4 && row < count; row++) {
-                    float ry = rowY + row * 27f;
-                    if (inside(x, y, 28, ry, rowW, 24))
-                        return MUSIC_SELECT_BASE + ((musicSelectedTrack + row) % count);
-                }
-            } else {
-                if (inside(x, y, 288, 378, 44, 32)) return MUSIC_PREV;
-                if (inside(x, y, 339, 378, 44, 32)) return MUSIC_TOGGLE;
-                if (inside(x, y, 390, 378, 44, 32)) return MUSIC_NEXT;
-                float rowY = 348;
-                float rowW = 313;
-                int count = musicPlaylist.length;
-                for (int row = 0; row < 3 && row < count; row++) {
-                    float ry = rowY + row * 25f;
-                    if (inside(x, y, 455, ry, rowW, 22))
-                        return MUSIC_SELECT_BASE + ((musicSelectedTrack + row) % count);
-                }
-            }
-            return 0;
+            return 0; // The now-playing banner is informational; playlist controls stay in Audio & Menu.
         }
 
         private int hitTest(float x,float y) {
@@ -1350,9 +1322,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     ((PipeCleanActivity)getContext()).resetCompanionBackground();
             } else if(action==CLOSE_GAME) {
                 if(game>=0) PipeCleanActivity.nativeCompanionAction(CLOSE_GAME,1);
-            } else if(action == MUSIC_TOGGLE || action == MUSIC_PREV || action == MUSIC_NEXT ||
-                      (action >= MUSIC_SELECT_BASE && action < MUSIC_SELECT_BASE + 12)) {
-                PipeCleanActivity.nativeCompanionAction(action, pressed);
             } else if(action!=0 && game>=0) {
                 PipeCleanActivity.nativeCompanionAction(action,pressed);
             }
