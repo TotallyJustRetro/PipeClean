@@ -165,6 +165,9 @@ static const char *companion_layout_asset_paths(const CompanionLayoutCfg *d, int
     if (i >= 4 && i < 4 + N_DECK_BUTTON_SOUNDS) return d->button_sound_path[i - 4];
     if (i == 10) return d->item_sound_path;
     if (i == 11) return d->empty_item_sound_path;
+    if (i == 12) return d->item_texture_by_id[1];
+    if (i == 13) return d->item_texture_by_id[2];
+    if (i == 14) return d->item_texture_by_id[3];
     return "";
 }
 
@@ -198,9 +201,9 @@ void launcher_open_companion_layout_picker(int kind, int game)
     jstring text = (*env)->NewStringUTF(env, manifest);
     jclass string_class = (*env)->FindClass(env, "java/lang/String");
     jobjectArray paths = string_class
-        ? (*env)->NewObjectArray(env, 12, string_class, NULL) : NULL;
+        ? (*env)->NewObjectArray(env, 15, string_class, NULL) : NULL;
     if (paths) {
-        for (int i = 0; i < 12; i++) {
+        for (int i = 0; i < 15; i++) {
             jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(d, i));
             if (path) {
                 (*env)->SetObjectArrayElement(env, paths, i, path);
@@ -361,7 +364,7 @@ static void companion_publish_launcher_dashboard(int selected_game)
     int editor_preview = launcher_companion_layout_preview_enabled();
     jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * 16);
     jobjectArray layout_paths = string_class
-        ? (*env)->NewObjectArray(env, N_GAMES * 12, string_class, NULL) : NULL;
+        ? (*env)->NewObjectArray(env, N_GAMES * 15, string_class, NULL) : NULL;
     if (layout_values) {
         jint values[N_GAMES * 16];
         for (int g = 0; g < N_GAMES; g++) {
@@ -389,10 +392,10 @@ static void companion_publish_launcher_dashboard(int selected_game)
     if (layout_paths) {
         for (int g = 0; g < N_GAMES; g++) {
             CompanionLayoutCfg *layout = &settings.deck_layout[g];
-            for (int i = 0; i < 12; i++) {
+            for (int i = 0; i < 15; i++) {
                 jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
                 if (path) {
-                    (*env)->SetObjectArrayElement(env, layout_paths, g * 12 + i, path);
+                    (*env)->SetObjectArrayElement(env, layout_paths, g * 15 + i, path);
                     (*env)->DeleteLocalRef(env, path);
                 }
             }
