@@ -37,7 +37,7 @@ public final class PipeCleanActivity extends SDLActivity {
     private int pendingDeckGame = -1;
     private int pendingDeckKind;
     private String pendingDeckManifest = "";
-    private String[] pendingDeckAssetPaths = new String[30];
+    private String[] pendingDeckAssetPaths = new String[38];
     private DisplayManager companionDisplayManager;
     private PipeCleanCompanionPresentation companionPresentation;
     private boolean companionEnabled;
@@ -350,7 +350,7 @@ public final class PipeCleanActivity extends SDLActivity {
             pendingDeckKind = kind;
             pendingDeckGame = game;
             pendingDeckManifest = manifest == null ? "" : manifest;
-            pendingDeckAssetPaths = assetPaths == null ? new String[30] : assetPaths.clone();
+            pendingDeckAssetPaths = assetPaths == null ? new String[38] : assetPaths.clone();
             try {
                 if (kind == 14) {
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
@@ -560,6 +560,14 @@ public final class PipeCleanActivity extends SDLActivity {
             case 27: return "decoration_path_7";
             case 28: return "button_texture_background_path";
             case 29: return "button_texture_close_path";
+            case 30: return "decoration_path_8";
+            case 31: return "decoration_path_9";
+            case 32: return "decoration_path_10";
+            case 33: return "decoration_path_11";
+            case 34: return "decoration_path_12";
+            case 35: return "decoration_path_13";
+            case 36: return "decoration_path_14";
+            case 37: return "decoration_path_15";
             default: return "empty_item_sound_path";
         }
     }
@@ -575,13 +583,15 @@ public final class PipeCleanActivity extends SDLActivity {
             "pause-button-texture", "rewind-button-texture",
             "decoration-2", "decoration-3", "decoration-4", "decoration-5",
             "decoration-6", "decoration-7", "decoration-8",
-            "background-button-texture", "close-button-texture"};
+            "background-button-texture", "close-button-texture",
+            "decoration-9", "decoration-10", "decoration-11", "decoration-12",
+            "decoration-13", "decoration-14", "decoration-15", "decoration-16"};
         return "assets/" + names[index] + ext;
     }
 
     private void exportDeckBundle(Uri uri, String manifest, String[] paths) throws Exception {
         if (uri == null) throw new Exception("No export destination");
-        if (paths == null) paths = new String[30];
+        if (paths == null) paths = new String[38];
         StringBuilder fullManifest = new StringBuilder(manifest == null ? "" : manifest);
         if (fullManifest.length() > 0 &&
             fullManifest.charAt(fullManifest.length() - 1) != '\n') fullManifest.append('\n');
@@ -589,7 +599,7 @@ public final class PipeCleanActivity extends SDLActivity {
              ZipOutputStream zip = new ZipOutputStream(raw)) {
             if (raw == null) throw new Exception("No destination stream");
             byte[] buffer = new byte[32 * 1024];
-            for (int i = 0; i < 30; i++) {
+            for (int i = 0; i < 38; i++) {
                 String path = i < paths.length ? paths[i] : "";
                 if (path == null || path.isEmpty()) continue;
                 File file = new File(path);
