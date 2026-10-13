@@ -179,13 +179,13 @@ void launcher_open_companion_layout_picker(int kind, int game)
     CompanionLayoutCfg *d = &settings.deck_layout[game];
     char manifest[2048];
     snprintf(manifest, sizeof manifest,
-        "layout_version=1\\n"
-        "header_dx=%d\\nheader_dy=%d\\nheader_scale=%d\\n"
-        "item_dx=%d\\nitem_dy=%d\\nitem_scale=%d\\n"
-        "controls_dx=%d\\ncontrols_dy=%d\\ncontrols_scale=%d\\n"
-        "timeline_dx=%d\\ntimeline_dy=%d\\ntimeline_scale=%d\\n"
-        "decoration_dx=%d\\ndecoration_dy=%d\\ndecoration_scale=%d\\n"
-        "sounds_enabled=%d\\n",
+        "layout_version=1\n"
+        "header_dx=%d\nheader_dy=%d\nheader_scale=%d\n"
+        "item_dx=%d\nitem_dy=%d\nitem_scale=%d\n"
+        "controls_dx=%d\ncontrols_dy=%d\ncontrols_scale=%d\n"
+        "timeline_dx=%d\ntimeline_dy=%d\ntimeline_scale=%d\n"
+        "decoration_dx=%d\ndecoration_dy=%d\ndecoration_scale=%d\n"
+        "sounds_enabled=%d\n",
         d->header_dx, d->header_dy, d->header_scale,
         d->item_dx, d->item_dy, d->item_scale,
         d->controls_dx, d->controls_dy, d->controls_scale,
@@ -208,7 +208,6 @@ void launcher_open_companion_layout_picker(int kind, int game)
     jmethodID method = (*env)->GetMethodID(
         env, cls, "openCompanionLayoutPicker", "(IILjava/lang/String;[Ljava/lang/String;)V");
     if (method && text && paths) {
-        jstring title = NULL;
         /* Activity chooses a suitable title based on kind. */
         (void)(*env)->CallVoidMethod(env, activity, method, (jint)kind, (jint)game, text, paths);
     }
@@ -2282,7 +2281,7 @@ int app_run(const char *autorun, const char *hack)
     SDL_EventState(SDL_FINGERUP, SDL_ENABLE);
     int img_flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP;
     if ((IMG_Init(img_flags) & img_flags) != img_flags) {
-        fprintf(stderr, "SDL_image: %s\\n", IMG_GetError());
+        fprintf(stderr, "SDL_image: %s\n", IMG_GetError());
     }
     settings_load();
 #if !defined(__ANDROID__)
@@ -2339,6 +2338,7 @@ int app_run(const char *autorun, const char *hack)
             }
             switch (e.type) {
             case SDL_QUIT: quit = 1; break;
+#if defined(__ANDROID__)
             case SDL_USEREVENT:
                 if (e.user.code == PIPECLEAN_LAYOUT_PICKER_EVENT_CODE) {
                     CompanionLayoutPickerResult *picked = (CompanionLayoutPickerResult *)e.user.data2;
@@ -2347,6 +2347,7 @@ int app_run(const char *autorun, const char *hack)
                     free(picked);
                 }
                 break;
+#endif
             case SDL_MOUSEBUTTONDOWN: if (e.button.button == SDL_BUTTON_LEFT) { mouse_sync(); ui_mouse_button(1); } break;
             case SDL_MOUSEBUTTONUP: if (e.button.button == SDL_BUTTON_LEFT) { mouse_sync(); ui_mouse_button(0); } break;
             case SDL_MOUSEWHEEL: ui_mouse.wheel += e.wheel.y; break;
