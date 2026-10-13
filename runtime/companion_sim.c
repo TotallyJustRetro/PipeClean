@@ -938,8 +938,10 @@ static void sync_assets(const Settings *s)
             load_asset(g, 17 + b, d->button_texture_by_action[b]);
         load_asset(g, 28, d->button_texture_by_action[4]);
         load_asset(g, 29, d->button_texture_by_action[5]);
-        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
-            load_asset(g, 21 + slot, d->decoration_extra_path[slot]);
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+            int asset_index = slot < 7 ? 21 + slot : 23 + slot;
+            load_asset(g, asset_index, d->decoration_extra_path[slot]);
+        }
     }
 }
 
@@ -1093,7 +1095,7 @@ static void draw_companion(const Settings *s)
         float dh = slot == 0 ? 144 : (slot == 1 || slot == 2) ? 120 :
                    (slot == 3) ? 120 : (slot == 4 || slot == 5) ? 92 : 86;
         transform_box(d, 5 + slot, 400, 225, &dx, &dy, &dw, &dh);
-        int asset_index = slot == 0 ? 3 : 20 + slot;
+        int asset_index = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
         if (assets[g][asset_index])
             draw_asset_image(s, g, asset_index, (int)dx, (int)dy, (int)dw, (int)dh);
     }
