@@ -328,6 +328,10 @@ static int field_table(Field *t, int cap)
         GI("deck_sounds_enabled", d->sounds_enabled, 0, 1);
         GS("deck_background", d->background_path); GS("deck_button_texture", d->button_texture_path);
         GS("deck_item_texture", d->item_texture_path); GS("deck_decoration", d->decoration_path);
+        for (int item_id = 1; item_id < N_DECK_ITEM_TEXTURE_IDS; item_id++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_item_texture_%d", games[g].id, item_id);
+            S(gn[g][k], d->item_texture_by_id[item_id]); k++;
+        }
         static const char *deck_sound_names[N_DECK_BUTTON_SOUNDS] = {
             "deck_sound_save", "deck_sound_load", "deck_sound_pause", "deck_sound_rewind",
             "deck_sound_background", "deck_sound_close"
