@@ -3118,9 +3118,10 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     deck_editor_element_rect(d, companion_editor_element, x, y, w, h, &sx, &sy, &sw, &sh);
     ui_stroke(sx, sy, sw, sh, 5, 2, RGBA(117, 213, 255, 255));
     /* Large, high-contrast handles are sized for touchscreens as well as a mouse. */
-    ui_rrect(sx + sw - 18, sy + sh * .5f - 9, 18, 18, 5, RGBA(250, 252, 255, 255));
-    ui_rrect(sx + sw * .5f - 9, sy + sh - 18, 18, 18, 5, RGBA(250, 252, 255, 255));
-    ui_rrect(sx + sw - 18, sy + sh - 18, 18, 18, 5, RGBA(93, 207, 255, 255));
+    /* Oversized grab handles are designed for touch input on handheld displays. */
+    ui_rrect(sx + sw - 26, sy + sh * .5f - 13, 26, 26, 7, RGBA(250, 252, 255, 255));
+    ui_rrect(sx + sw * .5f - 13, sy + sh - 26, 26, 26, 7, RGBA(250, 252, 255, 255));
+    ui_rrect(sx + sw - 26, sy + sh - 26, 26, 26, 7, RGBA(93, 207, 255, 255));
 }
 
 static void deck_editor_begin_drag(float x, float y, float preview_x, float preview_y,
@@ -3141,9 +3142,9 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
                                  &rx, &ry, &rw, &rh);
         if (x < rx || y < ry || x >= rx + rw || y >= ry + rh) continue;
         companion_editor_element = e;
-        int right_handle = x >= rx + rw - 22 && fabsf(y - (ry + rh * .5f)) <= 23;
-        int bottom_handle = y >= ry + rh - 22 && fabsf(x - (rx + rw * .5f)) <= 23;
-        int corner_handle = x >= rx + rw - 22 && y >= ry + rh - 22;
+        int right_handle = x >= rx + rw - 30 && fabsf(y - (ry + rh * .5f)) <= 30;
+        int bottom_handle = y >= ry + rh - 30 && fabsf(x - (rx + rw * .5f)) <= 30;
+        int corner_handle = x >= rx + rw - 30 && y >= ry + rh - 30;
         companion_editor_resizing = corner_handle ? 1 : right_handle ? 2 : bottom_handle ? 3 : 0;
         companion_editor_dragging = 1;
         companion_editor_last_x = x;
