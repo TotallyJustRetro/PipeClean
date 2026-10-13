@@ -2834,6 +2834,13 @@ static const char *deck_decoration_path_const(const CompanionLayoutCfg *d, int s
     if (!d || slot < 0 || slot >= N_DECK_DECORATIONS) return "";
     return slot == 0 ? d->decoration_path : d->decoration_extra_path[slot - 1];
 }
+static int deck_decoration_asset_index(int slot)
+{
+    if (slot < 0 || slot >= N_DECK_DECORATIONS) return -1;
+    if (slot == 0) return 3;                 /* legacy first decoration */
+    if (slot <= 7) return 20 + slot;         /* stable indices 21..27 */
+    return 22 + slot;                        /* new layers occupy indices 30..37 */
+}
 static int companion_editor_open, companion_editor_page;
 static int companion_editor_game = GAME_SML;
 static int companion_editor_element = DECK_ELEM_CONTROLS;
@@ -2894,7 +2901,7 @@ static int *deck_element_x(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_TIMELINE: return &d->timeline_dx;
     case DECK_ELEM_STATUS: return &d->status_dx;
     case DECK_ELEM_DECORATION: return &d->decoration_dx;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
         ? &d->decoration_extra_dx[element - DECK_ELEM_DECORATION_2] : &d->decoration_dx;
     }
 }
@@ -2907,7 +2914,7 @@ static int *deck_element_y(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_TIMELINE: return &d->timeline_dy;
     case DECK_ELEM_STATUS: return &d->status_dy;
     case DECK_ELEM_DECORATION: return &d->decoration_dy;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
         ? &d->decoration_extra_dy[element - DECK_ELEM_DECORATION_2] : &d->decoration_dy;
     }
 }
@@ -2920,7 +2927,7 @@ static int *deck_element_scale(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_TIMELINE: return &d->timeline_scale;
     case DECK_ELEM_STATUS: return &d->status_scale;
     case DECK_ELEM_DECORATION: return &d->decoration_scale;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
         ? &d->decoration_extra_scale[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale;
     }
 }
@@ -2934,7 +2941,7 @@ static int *deck_element_scale_y(CompanionLayoutCfg *d, int element)
     case DECK_ELEM_TIMELINE: return &d->timeline_scale_y;
     case DECK_ELEM_STATUS: return &d->status_scale_y;
     case DECK_ELEM_DECORATION: return &d->decoration_scale_y;
-    default: return element >= DECK_ELEM_DECORATION_2 && element <= DECK_ELEM_DECORATION_8
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
         ? &d->decoration_extra_scale_y[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale_y;
     }
 }
