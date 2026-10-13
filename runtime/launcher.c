@@ -3174,6 +3174,12 @@ static void deck_editor_draw(float x, float y)
 
 static void tab_display(float x, float y)
 {
+#if defined(__ANDROID__)
+    if (companion_editor_open) {
+        deck_editor_draw(x, y);
+        return;
+    }
+#endif
     ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
     ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "LAUNCHER DISPLAY");
     ui_text_wrap(F_REG, 12, x + 36, y + 112, 724, C_MUTED,
@@ -3236,6 +3242,19 @@ static void tab_display(float x, float y)
         settings_save();
         launcher_toast("Launcher display options reset.");
     }
+#if defined(__ANDROID__)
+    if (settings.launcher_dual_screen) {
+        if (ui_button(x + 230, y + 434, 280, 30, "Companion Deck layout editor", B_PRIMARY, 1)) {
+            companion_editor_open = 1;
+            companion_editor_page = 0;
+            companion_editor_game = GAME_SML;
+            deck_editor_history_clear();
+        }
+    } else {
+        ui_text_fit(F_REG, 10, x + 230, y + 441, 520, C_DIM,
+                    "Enable the Companion Deck to edit its per-game layouts.");
+    }
+#endif
 }
 
 /* ------------------------------------------------------------------ frame */
