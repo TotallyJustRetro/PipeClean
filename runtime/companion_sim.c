@@ -5,6 +5,9 @@
 #include "settings.h"
 #include "games.h"
 #include "emu.h"
+#include "launcher.h"
+#include "util.h"
+#include <sys/stat.h>
 #include <SDL_image.h>
 #include <stdio.h>
 #include <string.h>
@@ -30,6 +33,13 @@ static char asset_paths[N_GAMES][4][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
 static int pressed_action, mouse_down_action;
+static SDL_Texture *dashboard_preview_texture;
+static int dashboard_preview_game = -2;
+static Uint32 dashboard_preview_tick;
+static SDL_Texture *slot_thumb_texture[N_GAMES][10];
+static char slot_thumb_path[N_GAMES][10][1200];
+static time_t slot_thumb_mtime[N_GAMES][10];
+static Uint32 slot_thumb_scan_tick;
 static const uint8_t font5x7[36][7] = {
     {14,17,17,31,17,17,17}, /* A */
     {30,17,17,30,17,17,30}, /* B */
@@ -135,15 +145,492 @@ static void draw_text_fit(int x, int y, int max_width, int px,
 static void draw_panel(int x, int y, int w, int h, int game, int bright)
 {
     if (game == GAME_SML)
-        fill(x, y, w, h, bright ? 45 : 24, bright ? 75 : 43, bright ? 37 : 30, 245);
+        fill(x, y, w, h, bright ? 233 : 240, bright ? 243 : 245, bright ? 208 : 213, 242);
     else if (game == GAME_SML2)
-        fill(x, y, w, h, bright ? 69 : 38, bright ? 38 : 25, bright ? 73 : 47, 245);
+        fill(x, y, w, h, bright ? 65 : 53, bright ? 46 : 35, bright ? 83 : 66, 242);
     else
-        fill(x, y, w, h, bright ? 33 : 22, bright ? 63 : 42, bright ? 82 : 60, 245);
-    Uint8 ar = game == GAME_SML ? 118 : game == GAME_SML2 ? 255 : 110;
-    Uint8 ag = game == GAME_SML ? 207 : game == GAME_SML2 ? 202 : 229;
-    Uint8 ab = game == GAME_SML ? 111 : game == GAME_SML2 ? 91 : 244;
+        fill(x, y, w, h, bright ? 44 : 36, bright ? 61 : 53, bright ? 82 : 76, 242);
+    Uint8 ar = game == GAME_SML ? 128 : game == GAME_SML2 ? 173 : 87;
+    Uint8 ag = game == GAME_SML ? 169 : game == GAME_SML2 ? 123 : 125;
+    Uint8 ab = game == GAME_SML ? 81 : game == GAME_SML2 ? 65 : 157;
     outline(x, y, w, h, ar, ag, ab, 255);
+}
+
+
+static void fill_round_rect(int x, int y, int w, int h, int radius,
+                            Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    if (w <= 0 || h <= 0) return;
+    if (radius < 0) radius = 0;
+    if (radius > h / 2) radius = h / 2;
+    if (radius > w / 2) radius = w / 2;
+    color(r, g, b, a);
+    for (int row = 0; row < h; row++) {
+        float dy = row < radius ? (float)(radius - row) - 0.5f :
+                   row >= h - radius ? (float)(row - (h - radius)) + 0.5f : 0.0f;
+        int inset = dy > 0.0f ? radius - (int)sqrtf(fmaxf(0.0f, (float)radius * radius - dy * dy)) : 0;
+        if (inset * 2 < w) {
+            SDL_Rect rect = {x + inset, y + row, w - inset * 2, 1};
+            SDL_RenderFillRect(deck_renderer, &rect);
+        }
+    }
+}
+
+static void outline_round_rect(int x, int y, int w, int h, int radius,
+                               Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    if (w <= 0 || h <= 0) return;
+    if (radius < 0) radius = 0;
+    if (radius > h / 2) radius = h / 2;
+    if (radius > w / 2) radius = w / 2;
+    color(r, g, b, a);
+    SDL_RenderDrawLine(deck_renderer, x + radius, y, x + w - radius - 1, y);
+    SDL_RenderDrawLine(deck_renderer, x + radius, y + h - 1, x + w - radius - 1, y + h - 1);
+    for (int row = radius; row < h - radius; row++) {
+        SDL_RenderDrawPoint(deck_renderer, x, y + row);
+        SDL_RenderDrawPoint(deck_renderer, x + w - 1, y + row);
+    }
+    for (int row = 0; row < radius; row++) {
+        float dy = (float)(radius - row) - 0.5f;
+        int inset = radius - (int)sqrtf(fmaxf(0.0f, (float)radius * radius - dy * dy));
+        SDL_RenderDrawPoint(deck_renderer, x + inset, y + row);
+        SDL_RenderDrawPoint(deck_renderer, x + w - 1 - inset, y + row);
+        SDL_RenderDrawPoint(deck_renderer, x + inset, y + h - 1 - row);
+        SDL_RenderDrawPoint(deck_renderer, x + w - 1 - inset, y + h - 1 - row);
+    }
+}
+
+static void fill_circle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    if (radius <= 0) return;
+    color(r, g, b, a);
+    for (int dy = -radius; dy <= radius; dy++) {
+        int dx = (int)sqrtf(fmaxf(0.0f, (float)radius * radius - (float)dy * dy));
+        SDL_RenderDrawLine(deck_renderer, cx - dx, cy + dy, cx + dx, cy + dy);
+    }
+}
+
+static void outline_circle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    if (radius <= 0) return;
+    color(r, g, b, a);
+    for (int dy = -radius; dy <= radius; dy++) {
+        int dx = (int)sqrtf(fmaxf(0.0f, (float)radius * radius - (float)dy * dy));
+        SDL_RenderDrawPoint(deck_renderer, cx - dx, cy + dy);
+        SDL_RenderDrawPoint(deck_renderer, cx + dx, cy + dy);
+    }
+}
+
+static Uint8 theme_bg_r(int g) { return g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : 23; }
+static Uint8 theme_bg_g(int g) { return g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : 35; }
+static Uint8 theme_bg_b(int g) { return g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : 55; }
+static Uint8 theme_accent_r(int g) { return g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : 110; }
+static Uint8 theme_accent_g(int g) { return g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : 229; }
+static Uint8 theme_accent_b(int g) { return g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : 239; }
+static Uint8 theme_ink_r(int g) { return g == GAME_SML ? 37 : g == GAME_SML2 ? 255 : 234; }
+static Uint8 theme_ink_g(int g) { return g == GAME_SML ? 60 : g == GAME_SML2 ? 240 : 245; }
+static Uint8 theme_ink_b(int g) { return g == GAME_SML ? 32 : g == GAME_SML2 ? 210 : 255; }
+static Uint8 theme_muted_r(int g) { return g == GAME_SML ? 87 : g == GAME_SML2 ? 209 : 175; }
+static Uint8 theme_muted_g(int g) { return g == GAME_SML ? 118 : g == GAME_SML2 ? 183 : 195; }
+static Uint8 theme_muted_b(int g) { return g == GAME_SML ? 77 : g == GAME_SML2 ? 213 : 221; }
+static Uint8 theme_edge_r(int g) { return g == GAME_SML ? 128 : g == GAME_SML2 ? 173 : 87; }
+static Uint8 theme_edge_g(int g) { return g == GAME_SML ? 169 : g == GAME_SML2 ? 123 : 125; }
+static Uint8 theme_edge_b(int g) { return g == GAME_SML ? 81 : g == GAME_SML2 ? 65 : 157; }
+
+static void draw_android_card(int x, int y, int w, int h, int game, const char *label)
+{
+    draw_panel(x + 2, y + 4, w, h, game, 0);
+    fill_round_rect(x, y, w, h, 15,
+        game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
+        game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
+        game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
+    outline_round_rect(x + 1, y + 1, w - 2, h - 2, 14,
+        theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
+    fill(x + 12, y + 9, w - 24, 3,
+        theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 255);
+    draw_text(x + 12, y + 18, 1,
+        theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), label);
+}
+
+static void draw_android_header(int x, int y, int w, int h, int game)
+{
+    fill_round_rect(x + 2, y + 3, w, h, 12, 0, 0, 0, 106);
+    fill_round_rect(x, y, w, h, 12,
+        game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
+        game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
+        game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
+    outline_round_rect(x, y, w, h, 12,
+        theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
+    fill(x + 10, y + 5, w - 20, 2,
+        theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 255);
+}
+
+static const char *android_game_title(int game)
+{
+    if (game == GAME_SML) return "SUPER MARIO LAND";
+    if (game == GAME_SML2) return "6 GOLDEN COINS";
+    if (game == 0) return "DR MARIO";
+    return game >= 0 && game < N_GAMES && games[game].name ? games[game].name : "PIPECLEAN READY";
+}
+
+static void play_time_label(int seconds, char *out, size_t n)
+{
+    if (seconds < 0) seconds = 0;
+    int hours = seconds / 3600;
+    int minutes = (seconds % 3600) / 60;
+    if (hours > 0) snprintf(out, n, "%dH %02dM PLAYED", hours, minutes);
+    else snprintf(out, n, "%dM PLAYED", minutes);
+}
+
+static void refresh_dashboard_preview(int game)
+{
+    Uint32 now = SDL_GetTicks();
+    if (game == dashboard_preview_game && dashboard_preview_texture &&
+        (Uint32)(now - dashboard_preview_tick) < 5000u) return;
+    if (dashboard_preview_texture) {
+        SDL_DestroyTexture(dashboard_preview_texture);
+        dashboard_preview_texture = NULL;
+    }
+    dashboard_preview_game = game;
+    dashboard_preview_tick = now;
+    if (game < 0 || game >= N_GAMES || !deck_renderer) return;
+    const uint32_t *pixels = NULL;
+    int w = 0, h = 0;
+    if (!launcher_preview_pixels(game, &pixels, &w, &h) || !pixels ||
+        w <= 0 || h <= 0 || (uint64_t)w * (uint64_t)h > 1048576u) return;
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormatFrom(
+        (void *)pixels, w, h, 32, w * (int)sizeof(uint32_t), SDL_PIXELFORMAT_ARGB8888);
+    if (!surface) return;
+    dashboard_preview_texture = SDL_CreateTextureFromSurface(deck_renderer, surface);
+    SDL_FreeSurface(surface);
+    if (dashboard_preview_texture) SDL_SetTextureBlendMode(dashboard_preview_texture, SDL_BLENDMODE_BLEND);
+}
+
+static void draw_dashboard_preview(int x, int y, int w, int h, int game)
+{
+    fill_round_rect(x, y, w, h, 8, 7, 17, 31, 255);
+    outline_round_rect(x, y, w, h, 8, 55, 84, 117, 255);
+    refresh_dashboard_preview(game);
+    if (!dashboard_preview_texture) {
+        int cx = x + w / 2, cy = y + h / 2 - 4;
+        fill_circle(cx, cy, 15, theme_accent_r(-1), theme_accent_g(-1), theme_accent_b(-1), 255);
+        draw_text_fit(x + 20, cy + 23, w - 40, 1, 175, 195, 221, "GAME PREVIEW");
+        return;
+    }
+    int iw = 0, ih = 0;
+    SDL_QueryTexture(dashboard_preview_texture, NULL, NULL, &iw, &ih);
+    if (iw <= 0 || ih <= 0) return;
+    float fit = fminf((float)(w - 4) / iw, (float)(h - 4) / ih);
+    int dw = (int)(iw * fit + .5f), dh = (int)(ih * fit + .5f);
+    SDL_Rect dst = {x + (w - dw) / 2, y + (h - dh) / 2, dw, dh};
+    SDL_RenderCopy(deck_renderer, dashboard_preview_texture, NULL, &dst);
+}
+
+static void draw_dashboard(const Settings *s, int selected_game)
+{
+    fill(0, 0, 800, 450, 23, 35, 55, 255);
+    for (int i = 0; i < 32; i++) {
+        int sx = (i * 53 + 9) % 800, sy = (i * 31 + 17) % 450;
+        fill(sx, sy, (i % 5 == 0) ? 4 : 2, (i % 5 == 0) ? 4 : 2,
+             (i % 3 == 0) ? 110 : 203, (i % 3 == 0) ? 229 : 181,
+             (i % 3 == 0) ? 239 : 232, 150);
+    }
+    for (int y = 0; y < 450; y += 6) fill(0, y, 800, 1, 0, 0, 0, 18);
+
+    draw_android_header(18, 7, 282, 48, -1);
+    draw_text(27, 15, 1, 110, 229, 239, "PIPE CLEAN / GAME LIBRARY");
+    draw_text(27, 30, 2, 234, 245, 255, "READY TO PLAY");
+
+    draw_android_card(20, 65, 460, 362, -1, "SELECTED GAME");
+    draw_dashboard_preview(34, 94, 432, 199, selected_game);
+    const char *name = selected_game >= 0 && selected_game < N_GAMES &&
+        games[selected_game].name ? games[selected_game].name : "CHOOSE A GAME";
+    if (selected_game == GAME_SML) name = "SUPER MARIO LAND";
+    else if (selected_game == GAME_SML2) name = "SUPER MARIO LAND 2";
+    draw_text_fit(36, 306, 420, 2, 234, 245, 255, name);
+    int played = selected_game >= 0 && selected_game < N_GAMES ? s->game_play_seconds[selected_game] : 0;
+    char time_text[48];
+    play_time_label(played, time_text, sizeof time_text);
+    draw_text(36, 337, 1, 175, 195, 221, "TOTAL PLAY TIME");
+    draw_text_fit(36, 352, 420, 2, 110, 229, 239, time_text);
+
+    draw_android_card(492, 65, 288, 362, -1, "RECENTLY PLAYED");
+    int rows = 0;
+    for (int i = 0; i < N_RECENT_PLAYED; i++)
+        if (s->recent_played[i] >= 0 && s->recent_played[i] < N_GAMES) rows++;
+    if (rows == 0) {
+        draw_text(510, 113, 1, 175, 195, 221, "YOUR ADVENTURE");
+        draw_text_fit(510, 142, 246, 1, 234, 245, 255, "GAMES YOU LAUNCH APPEAR HERE");
+        draw_text_fit(510, 158, 246, 1, 175, 195, 221, "PLAY TIME IS SAVED AUTOMATICALLY");
+    } else {
+        int row = 0;
+        for (int i = 0; i < N_RECENT_PLAYED; i++) {
+            int id = s->recent_played[i];
+            if (id < 0 || id >= N_GAMES) continue;
+            int ry = 99 + row * 27;
+            fill_round_rect(504, ry, 264, 24, 6,
+                row == 0 ? 56 : 23, row == 0 ? 214 : 34, row == 0 ? 155 : 55, 65);
+            fill_circle(518, ry + 12, 4, 110, 229, 239, 255);
+            const char *recent_name = games[id].name ? games[id].name : "GAME";
+            if (id == GAME_SML) recent_name = "SUPER MARIO LAND";
+            else if (id == GAME_SML2) recent_name = "SUPER MARIO LAND 2";
+            draw_text_fit(531, ry + 3, 226, 1,
+                row == 0 ? 110 : 234, row == 0 ? 229 : 245, row == 0 ? 239 : 255, recent_name);
+            play_time_label(s->game_play_seconds[id], time_text, sizeof time_text);
+            draw_text_fit(531, ry + 14, 226, 1, 175, 195, 221, time_text);
+            row++;
+        }
+    }
+    /* The decorative corner markers and simple scan accents match the Android deck's frame. */
+    fill(9, 9, 12, 3, 110, 229, 239, 204); fill(9, 9, 3, 12, 110, 229, 239, 204);
+    fill(779, 9, 12, 3, 110, 229, 239, 204); fill(788, 9, 3, 12, 110, 229, 239, 204);
+    fill(9, 438, 12, 3, 110, 229, 239, 204); fill(9, 429, 3, 12, 110, 229, 239, 204);
+    fill(779, 438, 12, 3, 110, 229, 239, 204); fill(788, 429, 3, 12, 110, 229, 239, 204);
+}
+
+static int slot_file_occupied(int game, int slot)
+{
+    char id[128], path[1200];
+    if (game < 0 || game >= N_GAMES || slot < 0 || slot >= 10) return 0;
+    launcher_game_file_id(game, id, sizeof id);
+    snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), id, slot);
+    return file_exists(path);
+}
+
+static SDL_Texture *slot_thumbnail(int game, int slot)
+{
+    if (game < 0 || game >= N_GAMES || slot < 0 || slot >= 10) return NULL;
+    char id[128], path[1200];
+    struct stat st;
+    launcher_game_file_id(game, id, sizeof id);
+    snprintf(path, sizeof path, "%sstates/%s.slot%d.thumb.png", settings_dir(), id, slot);
+    if (stat(path, &st) != 0) snprintf(path, sizeof path, "%sstates/%s.slot%d.thumb.bmp", settings_dir(), id, slot);
+    time_t modified = stat(path, &st) == 0 ? st.st_mtime : 0;
+    if (strcmp(path, slot_thumb_path[game][slot]) != 0 ||
+        modified != slot_thumb_mtime[game][slot]) {
+        if (slot_thumb_texture[game][slot]) SDL_DestroyTexture(slot_thumb_texture[game][slot]);
+        slot_thumb_texture[game][slot] = NULL;
+        snprintf(slot_thumb_path[game][slot], sizeof slot_thumb_path[game][slot], "%s", path);
+        slot_thumb_mtime[game][slot] = modified;
+        if (modified) {
+            SDL_Surface *surface = IMG_Load(path);
+            if (surface) {
+                slot_thumb_texture[game][slot] = SDL_CreateTextureFromSurface(deck_renderer, surface);
+                SDL_FreeSurface(surface);
+                if (slot_thumb_texture[game][slot])
+                    SDL_SetTextureBlendMode(slot_thumb_texture[game][slot], SDL_BLENDMODE_BLEND);
+            }
+        }
+    }
+    return slot_thumb_texture[game][slot];
+}
+
+static void draw_slot_timeline(const Settings *s, int game)
+{
+    (void)s;
+    float x = 24, y = 365, w = 752, h = 83;
+    const CompanionLayoutCfg *d = &s->deck_layout[game];
+    transform_box(d, 3, 400, 406.5f, &x, &y, &w, &h);
+    draw_android_card((int)x, (int)y, (int)w, (int)h, game, "SAVE-STATE TIMELINE");
+    draw_text_fit((int)x + (int)w - 136, (int)y + 5, 124, 1,
+        theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), "SWIPE TO BROWSE");
+
+    float widths[10], gap = 5.0f, total = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        widths[i] = i == current_slot ? 150.0f : 56.0f;
+        total += widths[i] + (i ? gap : 0.0f);
+    }
+    float padding = fmaxf(0.0f, (w - 162.0f) * 0.5f);
+    float before = 0.0f;
+    for (int i = 0; i < current_slot; i++) before += widths[i] + gap;
+    float scroll = padding + before + widths[current_slot] * 0.5f - w * 0.5f;
+    float max_scroll = fmaxf(0.0f, padding + total - w);
+    if (scroll < 0) scroll = 0;
+    if (scroll > max_scroll) scroll = max_scroll;
+    float cursor = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        int selected = i == current_slot;
+        float tile_w = widths[i];
+        float tile_h = selected ? h - 20.0f : 36.0f;
+        float tile_x = x + padding + cursor - scroll;
+        float tile_y = y + h - tile_h - 1.0f;
+        if (tile_x + tile_w >= x && tile_x <= x + w) {
+            int occupied = slot_file_occupied(game, i);
+            fill_round_rect((int)tile_x + 1, (int)tile_y + 2, (int)tile_w, (int)tile_h, selected ? 8 : 5, 0, 0, 0, 90);
+            fill_round_rect((int)tile_x, (int)tile_y, (int)tile_w, (int)tile_h, selected ? 8 : 5,
+                occupied ? (game == GAME_SML ? 220 : game == GAME_SML2 ? 53 : 36) : 23,
+                occupied ? (game == GAME_SML ? 231 : game == GAME_SML2 ? 35 : 34) : 34,
+                occupied ? (game == GAME_SML ? 192 : game == GAME_SML2 ? 66 : 76) : 55, 245);
+            SDL_Texture *thumb = slot_thumbnail(game, i);
+            SDL_Rect image_dst = {(int)tile_x + 4, (int)tile_y + 4,
+                (int)tile_w - 8, (int)tile_h - (selected ? 25 : 11)};
+            if (thumb && image_dst.w > 4 && image_dst.h > 4)
+                SDL_RenderCopy(deck_renderer, thumb, NULL, &image_dst);
+            else {
+                const char *ph = occupied ? "SAVED" : (selected ? "EMPTY" : "-");
+                draw_text_fit((int)tile_x + 4, (int)tile_y + (int)tile_h / 2 - 4,
+                    (int)tile_w - 8, 1, occupied ? theme_accent_r(game) : theme_muted_r(game),
+                    occupied ? theme_accent_g(game) : theme_muted_g(game),
+                    occupied ? theme_accent_b(game) : theme_muted_b(game), ph);
+            }
+            if (selected) {
+                char slot_label[24];
+                snprintf(slot_label, sizeof slot_label, "SLOT %02d", i + 1);
+                draw_text_fit((int)tile_x + 4, (int)(y + h - 16), (int)tile_w - 8, 1,
+                    255, 214, 107, slot_label);
+                draw_text_fit((int)tile_x + 4, (int)(y + h - 7), (int)tile_w - 8, 1,
+                    theme_muted_r(game), theme_muted_g(game), theme_muted_b(game),
+                    occupied ? "SAVED" : "READY TO SAVE");
+            } else {
+                char n[8]; snprintf(n, sizeof n, "%02d", i + 1);
+                draw_text_fit((int)tile_x + 4, (int)(y + h - 9), (int)tile_w - 8, 1,
+                    occupied ? theme_ink_r(game) : theme_muted_r(game),
+                    occupied ? theme_ink_g(game) : theme_muted_g(game),
+                    occupied ? theme_ink_b(game) : theme_muted_b(game), n);
+            }
+            outline_round_rect((int)tile_x, (int)tile_y, (int)tile_w, (int)tile_h,
+                selected ? 8 : 5, selected ? 255 : theme_edge_r(game),
+                selected ? 214 : theme_edge_g(game), selected ? 107 : theme_edge_b(game), 255);
+        }
+        cursor += tile_w + gap;
+    }
+}
+
+static void draw_action_button(const Settings *s, int game, int action,
+                               int x, int y, int w, int h, const char *label,
+                               const char *sub, int hold)
+{
+    const CompanionLayoutCfg *d = &s->deck_layout[game];
+    fill_round_rect(x + 2, y + 4, w, h, 12, 0, 0, 0, 96);
+    fill_round_rect(x, y, w, h, 12,
+        action == pressed_action ? theme_accent_r(game) : (game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36),
+        action == pressed_action ? theme_accent_g(game) : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
+        action == pressed_action ? theme_accent_b(game) : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
+    if (assets[game][1]) {
+        SDL_Rect dest = {x + 1, y + 1, w - 2, h - 2};
+        SDL_RenderCopy(deck_renderer, assets[game][1], NULL, &dest);
+        fill_round_rect(x + 1, y + 1, w - 2, h - 2, 11, 3, 8, 16, pressed_action == action ? 55 : 68);
+    }
+    outline_round_rect(x + 1, y + 1, w - 2, h - 2, 11,
+        action == pressed_action ? 255 : theme_edge_r(game),
+        action == pressed_action ? 214 : theme_edge_g(game),
+        action == pressed_action ? 107 : theme_edge_b(game), 255);
+    fill(x + 10, y + 6, w - 20, 2,
+        action == pressed_action ? theme_ink_r(game) : theme_accent_r(game),
+        action == pressed_action ? theme_ink_g(game) : theme_accent_g(game),
+        action == pressed_action ? theme_ink_b(game) : theme_accent_b(game), 255);
+    /* The left glyph block mirrors the Android deck's icon/text hierarchy. */
+    fill_round_rect(x + 10, y + h / 2 - 9, 18, 18, 5,
+        theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 160);
+    draw_text_fit(x + 12, y + h / 2 - 3, 14, 1, 255, 255, 255, label);
+    draw_text_fit(x + 40, y + h / 2 - 10, w - 48, 1,
+        theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
+    draw_text_fit(x + 40, y + h / 2 + 3, w - 48, 1,
+        theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), sub);
+    if (hold) draw_text_fit(x + w - 33, y + h - 9, 29, 1, 255, 214, 107, "HOLD");
+    (void)d;
+}
+
+static void draw_tiny_button(int x, int y, int w, int h, int game, const char *label, int action)
+{
+    fill_round_rect(x, y, w, h, 8,
+        action == pressed_action ? 255 : (game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36),
+        action == pressed_action ? 214 : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
+        action == pressed_action ? 107 : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
+    outline_round_rect(x, y, w, h, 8,
+        theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
+    draw_text_fit(x + 4, y + h / 2 - 4, w - 8, 1,
+        theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
+}
+
+static void draw_android_scenery(int game)
+{
+    fill(0, 0, 800, 450, theme_bg_r(game), theme_bg_g(game), theme_bg_b(game), 255);
+    if (game == GAME_SML) {
+        fill(0, 375, 800, 75, 156, 201, 119, 255);
+        fill_circle(170, 410, 165, 145, 193, 109, 255);
+        fill_circle(395, 414, 133, 138, 185, 103, 255);
+        fill_circle(680, 405, 150, 153, 200, 117, 255);
+        for (int i = 0; i < 9; i++) fill(18 + i * 30, 436, 4, 4, 104, 151, 75, 255);
+    } else if (game == GAME_SML2) {
+        fill(0, 386, 800, 64, 57, 39, 73, 255);
+        fill_circle(180, 414, 155, 48, 32, 61, 255);
+        fill_circle(485, 420, 170, 52, 33, 66, 255);
+        fill_circle(734, 405, 130, 48, 32, 61, 255);
+        fill_circle(733, 66, 25, 255, 216, 122, 255);
+        fill_circle(744, 60, 21, 55, 35, 63, 255);
+        for (int i = 0; i < 32; i++) {
+            int sx = (i * 73 + 17) % 800, sy = (i * 47 + 21) % 390;
+            fill(sx, sy, (i % 5 == 0) ? 4 : 2, (i % 5 == 0) ? 4 : 2,
+                i % 3 == 0 ? 255 : 203, i % 3 == 0 ? 214 : 181, i % 3 == 0 ? 107 : 232, 255);
+        }
+    } else {
+        for (int i = 0; i < 32; i++)
+            fill((i * 53 + 9) % 800, (i * 31 + 17) % 450, 3, 3, 110, 229, 239, 180);
+    }
+    for (int y = 0; y < 450; y += 6) fill(0, y, 800, 1, 0, 0, 0, 18);
+    fill(9, 9, 12, 3, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+    fill(9, 9, 3, 12, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+    fill(779, 9, 12, 3, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+    fill(788, 9, 3, 12, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+    fill(9, 438, 12, 3, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+    fill(9, 429, 3, 12, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+    fill(779, 438, 12, 3, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+    fill(788, 429, 3, 12, theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 204);
+}
+
+static void draw_hero_item(const Settings *s, int game, int item, float center_x, float center_y, float radius)
+{
+    float t = SDL_GetTicks() / 1000.0f;
+    int cx = (int)center_x, cy = (int)center_y, r = (int)radius;
+    fill_circle(cx, cy, r + 22, 255, 216, 106, 40);
+    fill_circle(cx, cy, r + 11, 255, 216, 106, 40);
+    fill_circle(cx, cy, r - 7,
+        game == GAME_SML ? 38 : game == GAME_SML2 ? 33 : 26,
+        game == GAME_SML ? 60 : game == GAME_SML2 ? 20 : 41,
+        game == GAME_SML ? 32 : game == GAME_SML2 ? 46 : 58, 255);
+    outline_circle(cx, cy, r - 16, 255, 231, 160, 160);
+    for (int i = 0; i < 44; i++) {
+        float a = (float)(6.28318530718 * i / 44.0) + t * .34f;
+        float wobble = (i % 4 == 0) ? 2.8f : 0.0f;
+        float orbit = radius + ((i % 3 == 0) ? 8.0f : 4.0f) + wobble;
+        int bx = cx + (int)(cosf(a) * orbit), by = cy + (int)(sinf(a) * orbit);
+        int sz = (i % 5 == 0) ? 4 : (i % 2 == 0) ? 3 : 2;
+        fill(bx - sz / 2, by - sz / 2, sz, sz,
+            i % 4 == 0 ? 255 : i % 3 == 0 ? 172 : 255,
+            i % 4 == 0 ? 240 : i % 3 == 0 ? 107 : 214,
+            i % 4 == 0 ? 174 : i % 3 == 0 ? 34 : 107, 255);
+    }
+    if (item > 0 && assets[game][2]) {
+        SDL_Rect dest = {cx - r * 46 / 100, cy - r * 46 / 100, r * 92 / 100, r * 92 / 100};
+        SDL_RenderCopy(deck_renderer, assets[game][2], NULL, &dest);
+    } else if (item > 0) {
+        const char *label = item == 1 ? "MUSHROOM" :
+            game == GAME_SML ? "SUPERBALL FLOWER" :
+            item == 3 ? "CARROT" : "FIRE FLOWER";
+        fill_circle(cx, cy - 8, r / 3, 230, 53, 65, 255);
+        fill(cx - r / 3, cy - 1, r * 2 / 3, r / 4, 238, 238, 220, 255);
+        fill(cx - r / 4, cy + r / 5, r / 2, r / 2, 238, 238, 220, 255);
+        draw_text_fit(cx - r + 7, cy + r * 2 / 3, r * 2 - 14, 1,
+            theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
+    } else {
+        /* The empty pocket is represented by a lilac, pixel-like star. */
+        fill(cx - 2, cy - 27, 4, 54, 180, 161, 203, 255);
+        fill(cx - 27, cy - 2, 54, 4, 180, 161, 203, 255);
+        fill(cx - 14, cy - 14, 28, 28, 180, 161, 203, 255);
+        fill(cx - 8, cy - 8, 16, 16, 36, 53, 76, 255);
+    }
+    if (item > 0) {
+        const char *label = item == 1 ? "MUSHROOM" :
+            game == GAME_SML ? "SUPERBALL FLOWER" :
+            item == 3 ? "CARROT" : "FIRE FLOWER";
+        draw_text_fit(cx - r, cy + (int)(r * .66f), r * 2, 1,
+            theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
+        draw_text_fit(cx - r, cy + (int)(r * .81f), r * 2, 1,
+            theme_muted_r(game), theme_muted_g(game), theme_muted_b(game),
+            "TAP WHEN READY");
+    }
+    (void)s;
 }
 
 static void load_asset(int game, int index, const char *path)
@@ -208,133 +695,109 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
 static void draw_button(const Settings *s, int game, int action, int x, int y, int w, int h,
                         const char *label, int active)
 {
-    const CompanionLayoutCfg *d = &s->deck_layout[game];
-    fill(x + 2, y + 3, w, h, 4, 7, 12, 255);
-    fill(x, y, w, h, active ? 54 : 29, active ? 53 : 42, active ? 39 : 55, 255);
-    outline(x, y, w, h, active ? 246 : 79, active ? 203 : 113, active ? 91 : 139, 255);
-    if (assets[game][1]) {
-        SDL_Rect dest = {x + 1, y + 1, w - 2, h - 2};
-        SDL_RenderCopy(deck_renderer, assets[game][1], NULL, &dest);
-        fill(x + 1, y + 1, w - 2, h - 2, 3, 8, 16, active ? 55 : 90);
-    }
-    draw_text_fit(x + 8, y + h / 2 - 7, w - 16, 2, 244, 246, 255, label);
-    (void)d; (void)action;
-}
-
-static void draw_slot_timeline(const Settings *s, int game)
-{
-    const CompanionLayoutCfg *d = &s->deck_layout[game];
-    float x = 24, y = 365, w = 752, h = 83;
-    transform_box(d, 3, 400, 406.5f, &x, &y, &w, &h);
-    draw_panel((int)x, (int)y, (int)w, (int)h, game, 0);
-    draw_text((int)x + 12, (int)y + 7, 2, 174, 197, 223, "SAVE STATE TIMELINE");
-    for (int i = 0; i < 10; i++) {
-        int sx = (int)x + 10 + i * ((int)w - 20) / 10;
-        int sw = ((int)w - 24) / 10;
-        int selected = i == current_slot;
-        fill(sx, (int)y + 26, sw, (int)h - 34,
-             selected ? 38 : 13, selected ? 80 : 29, selected ? 68 : 43, 255);
-        outline(sx, (int)y + 26, sw, (int)h - 34,
-                selected ? 255 : 82, selected ? 207 : 99, selected ? 111 : 125, 255);
-        char number[4];
-        snprintf(number, sizeof number, "%02d", i + 1);
-        draw_text_fit(sx + 3, (int)y + 33, sw - 6, 2, 237, 243, 252, number);
-    }
+    pressed_action = active ? action : pressed_action;
+    const char *sub = action == SIM_SAVE ? "SNAPSHOT" : action == SIM_LOAD ? "RESTORE" :
+        action == SIM_PAUSE ? (current_paused ? "CONTINUE" : "HOLD GAME") : "HOLD TO REWIND";
+    draw_action_button(s, game, action, x, y, w, h, label, sub, action == SIM_REWIND);
 }
 
 static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
-    const CompanionLayoutCfg *d = g >= 0 ? &s->deck_layout[g] : &s->deck_layout[GAME_SML];
-    int theme_game = g >= 0 ? g : GAME_SML;
-    color(7, 12, 24, 255);
-    SDL_RenderClear(deck_renderer);
-    fill(0, 0, 800, 450, 8, 13, 25, 255);
-    int asset_game = g >= 0 ? g : GAME_SML;
-    if (assets[asset_game][0]) image_cover(assets[asset_game][0], 0, 0, 800, 450);
-    else {
-        fill(0, 0, 800, 290, 13, 24, 40, 255);
-        fill(0, 290, 800, 160, 15, 26, 31, 255);
-        for (int i = 0; i < 18; i++) fill((i * 53 + 17) % 800, (i * 29 + 31) % 280, 2, 2, 95, 147, 173, 180);
+    int editor_preview = launcher_companion_layout_preview_enabled();
+    int is_deck_game = g == GAME_SML || g == GAME_SML2;
+    int show_game_deck = editor_preview || (current_playing && is_deck_game);
+
+    if (!show_game_deck) {
+        fill(0, 0, 800, 450, 23, 35, 55, 255);
+        draw_dashboard(s, g);
+        SDL_RenderPresent(deck_renderer);
+        return;
     }
 
-    float hx = 18, hy = 7, hw = 758, hh = 55;
-    transform_box(d, 0, 400, 31, &hx, &hy, &hw, &hh);
-    draw_panel((int)hx, (int)hy, (int)hw, (int)hh, theme_game, 0);
-    draw_text_fit((int)hx + 12, (int)hy + 8, (int)hw - 24, 2, 111, 227, 225, "PIPECLEAN COMPANION DECK");
-    const char *name = g >= 0 && games[g].name ? games[g].name : "DESKTOP SIMULATOR";
-    draw_text_fit((int)hx + 12, (int)hy + 29, (int)hw - 24, 2, 242, 245, 250, name);
-    if (g >= 0) {
-        draw_text_fit(655, 22, 125, 2, 211, 224, 240, current_playing ? (current_paused ? "PAUSED" : "IN GAME") : "READY");
-    } else {
-        draw_text_fit(655, 22, 125, 2, 211, 224, 240, "READY");
-    }
+    if (g < 0 || g >= N_GAMES) g = GAME_SML;
+    const CompanionLayoutCfg *d = &s->deck_layout[g];
+    draw_android_scenery(g);
+    if (assets[g][0]) image_cover(assets[g][0], 0, 0, 800, 450);
 
-    /* Adventure status badge mirrors the Android Deck. */
-    draw_panel(620, 76, 156, 128, theme_game, 0);
-    if (g >= 0 && current_playing) {
-        draw_text(634, 88, 2, 150, 190, 217, "LIVES");
-        char lives[20];
-        snprintf(lives, sizeof lives, "X %02d", current_lives);
-        draw_text(634, 104, 3, 247, 226, 174, lives);
-        draw_text(634, 141, 2, 150, 190, 217, g == GAME_SML ? "WORLD / LEVEL" : "CURRENT STAGE");
-        char stage[32];
-        if (g == GAME_SML && current_world >= 0)
-            snprintf(stage, sizeof stage, "%d-%d", current_world + 1,
-                     current_stage >= 0 ? current_stage + 1 : 1);
-        else snprintf(stage, sizeof stage, "STAGE %02d", current_stage < 0 ? 0 : current_stage + 1);
-        draw_text_fit(634, 160, 128, 2, 247, 202, 91, stage);
-    } else {
-        draw_text(634, 91, 2, 150, 190, 217, "DECK STATUS");
-        draw_text(634, 111, 2, 236, 244, 253, "SECOND SCREEN");
-        draw_text(634, 131, 2, 125, 227, 177, "ATTACHED");
-        draw_text(634, 160, 2, 150, 190, 217, "LAUNCH A GAME");
-    }
+    float hx = 18, hy = 7, hw = 265, hh = 49;
+    transform_box(d, 0, 400, 31.5f, &hx, &hy, &hw, &hh);
+    draw_android_header((int)hx, (int)hy, (int)hw, (int)hh, g);
+    draw_text_fit((int)hx + 8, (int)hy + 10, (int)hw - 16, 1,
+        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), "PIPE CLEAN / POCKET QUEST");
+    draw_text_fit((int)hx + 8, (int)hy + 25, (int)hw - 16, 2,
+        theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), android_game_title(g));
 
-    /* Reserve item is the largest interactive element. */
+    float bgx = 593, bgy = 13, bgw = 105, bgh = 42;
+    transform_box(d, 0, 400, 31.5f, &bgx, &bgy, &bgw, &bgh);
+    draw_tiny_button((int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", 0);
+    float closex = 704, closey = 13, closew = 72, closeh = 42;
+    transform_box(d, 0, 400, 31.5f, &closex, &closey, &closew, &closeh);
+    draw_tiny_button((int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE GAME", SIM_CLOSE_GAME);
+
+    /* Left-hand save-slot preview / current save card. */
+    draw_android_card(24, 72, 160, 132, g, current_playing ? "ACTIVE SAVE" : "SAVE SLOT PREVIEW");
+    int occupied = slot_file_occupied(g, current_slot);
+    SDL_Texture *thumb = slot_thumbnail(g, current_slot);
+    SDL_Rect thumb_dst = {40, 103, 128, 56};
+    fill_round_rect(40, 103, 128, 56, 5, 20, 33, 48, 255);
+    if (thumb) SDL_RenderCopy(deck_renderer, thumb, NULL, &thumb_dst);
+    else draw_text_fit(45, 126, 118, 1,
+        occupied ? theme_accent_r(g) : theme_muted_r(g),
+        occupied ? theme_accent_g(g) : theme_muted_g(g),
+        occupied ? theme_accent_b(g) : theme_muted_b(g), occupied ? "THUMBNAIL PENDING" : "EMPTY SLOT");
+    char slot_text[32];
+    snprintf(slot_text, sizeof slot_text, "SLOT %02d", current_slot + 1);
+    draw_text(38, 170, 1, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), slot_text);
+    draw_text_fit(38, 188, 138, 1,
+        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g),
+        occupied ? "SAVED" : "READY TO SAVE");
+
+    /* The reserve item stays at the visual center and uses the per-game layout transform. */
     float ix = 272, iy = 36, iw = 256, ih = 256;
     transform_box(d, 1, 400, 164, &ix, &iy, &iw, &ih);
-    int cx = (int)(ix + iw / 2), cy = (int)(iy + ih / 2);
-    int radius = (int)(iw * .36f);
-    fill(cx - radius - 16, cy - radius - 16, (radius + 16) * 2, (radius + 16) * 2, 40, 40, 25, 100);
-    color(255, 221, 120, 255); SDL_RenderDrawRect(deck_renderer, &(SDL_Rect){cx-radius, cy-radius, radius*2, radius*2});
-    color(255, 224, 142, 255); SDL_RenderDrawRect(deck_renderer, &(SDL_Rect){cx-radius+5, cy-radius+5, radius*2-10, radius*2-10});
-    fill(cx - radius + 8, cy - radius + 8, radius*2 - 16, radius*2 - 16, 30, 42, 48, 255);
-    if (g >= 0 && assets[g][2]) {
-        SDL_Rect dest = {cx - radius + 8, cy - radius + 8, radius*2 - 16, radius*2 - 16};
-        SDL_RenderCopy(deck_renderer, assets[g][2], NULL, &dest);
-    } else {
-        draw_text_fit(cx - radius + 9, cy - 6, radius*2 - 18, 3, 255, 224, 127,
-                      current_item ? "ITEM" : "?");
-    }
-    if (current_item)
-        draw_text_fit(cx - 65, cy + radius - 1, 130, 2, 245, 247, 253, "USE ITEM");
-    else
-        draw_text_fit(cx - 65, cy + radius - 1, 130, 2, 190, 201, 217, "EMPTY SLOT");
+    draw_hero_item(s, g, current_item, ix + iw * .5f, iy + ih * .5f, iw * .5f);
 
-    /* Action controls use the same layout offsets/scales as Android. */
-    float cx0 = 94, cy0 = 320, cw = 612, ch = 46;
-    transform_box(d, 2, 400, 343, &cx0, &cy0, &cw, &ch);
-    int y = (int)cy0, hh0 = (int)ch - 4, gap = 8, left = (int)cx0 + 2;
-    int widths[4] = {(int)(cw * .24f), (int)(cw * .24f), (int)(cw * .24f), (int)(cw * .24f)};
-    const char *labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
-    const int actions[4] = {SIM_SAVE, SIM_LOAD, SIM_PAUSE, SIM_REWIND};
-    for (int i = 0; i < 4; i++) {
-        int bw = widths[i];
-        draw_button(s, theme_game, actions[i], left, y, bw, hh0, labels[i], pressed_action == actions[i]);
-        left += bw + gap;
-    }
-    draw_slot_timeline(s, theme_game);
+    /* Status card matches the Android deck's lives / stage block. */
+    draw_android_card(620, 76, 156, 128, g, "ADVENTURE STATUS");
+    fill_circle(637, 111, 8, 255, 214, 107, 190);
+    draw_text(652, 105, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g), "LIVES");
+    char lives_text[24];
+    snprintf(lives_text, sizeof lives_text, "X %02d", current_lives);
+    draw_text_fit(652, 119, 110, 2, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), lives_text);
+    draw_text(634, 145, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
+        g == GAME_SML ? "WORLD / LEVEL" : "CURRENT STAGE");
+    char stage_text[32];
+    if (g == GAME_SML && current_world >= 0 && current_stage >= 0)
+        snprintf(stage_text, sizeof stage_text, "%d - %d", current_world + 1, current_stage + 1);
+    else if (g == GAME_SML2 && current_stage >= 0)
+        snprintf(stage_text, sizeof stage_text, "STAGE %02d", current_stage + 1);
+    else snprintf(stage_text, sizeof stage_text, "--");
+    draw_text_fit(634, 163, 126, 2,
+        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), stage_text);
+    draw_text(634, 188, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
+        current_paused ? "PAUSED" : "IN PLAY");
+
+    /* Action controls use the same Android coordinates, with each transform shared with the editor. */
+    float bx = 94, by = 320, bw = 145, bh = 42;
+    transform_box(d, 2, 400, 343, &bx, &by, &bw, &bh);
+    int byi = (int)by, bhi = (int)bh, left = (int)bx;
+    draw_action_button(s, g, SIM_SAVE, left, byi, (int)(bw * .237f), bhi, "SAVE", "SNAPSHOT", 0);
+    left += (int)(bw * .237f) + 8;
+    draw_action_button(s, g, SIM_LOAD, left, byi, (int)(bw * .237f), bhi, "LOAD", "RESTORE", 0);
+    left += (int)(bw * .237f) + 8;
+    draw_action_button(s, g, SIM_PAUSE, left, byi, (int)(bw * .237f), bhi,
+        current_paused ? "RESUME" : "PAUSE", current_paused ? "CONTINUE" : "HOLD GAME", 0);
+    left += (int)(bw * .237f) + 8;
+    draw_action_button(s, g, SIM_REWIND, left, byi, (int)(bw * .237f), bhi,
+        "REWIND", "HOLD TO REWIND", 1);
+
+    draw_slot_timeline(s, g);
 
     float dx = 280, dy = 150, dw = 240, dh = 150;
     transform_box(d, 4, 400, 225, &dx, &dy, &dw, &dh);
-    if (g >= 0 && assets[g][3]) image_cover(assets[g][3], (int)dx, (int)dy, (int)dw, (int)dh);
-    else {
-        /* Decorative placement helper remains visible in simulation even without artwork. */
-        outline((int)dx, (int)dy, (int)dw, (int)dh, 118, 158, 195, 90);
-        draw_text_fit((int)dx + 6, (int)dy + (int)dh/2, (int)dw - 12, 2, 128, 154, 184, "ADD IMAGE IN EDITOR");
-    }
-    draw_text(18, 440, 1, 128, 154, 184, "PIPE CLEAN - DESKTOP COMPANION SIMULATOR");
+    if (assets[g][3]) image_cover(assets[g][3], (int)dx, (int)dy, (int)dw, (int)dh);
+
     SDL_RenderPresent(deck_renderer);
 }
 
@@ -343,12 +806,22 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     if (!s || !main_window) return;
     if (!s->launcher_dual_screen) {
         if (deck_window) {
-            for (int g = 0; g < N_GAMES; g++)
+            for (int g = 0; g < N_GAMES; g++) {
                 for (int i = 0; i < 4; i++) {
                     if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
                     assets[g][i] = NULL;
                     asset_paths[g][i][0] = 0;
                 }
+                for (int i = 0; i < 10; i++) {
+                    if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
+                    slot_thumb_texture[g][i] = NULL;
+                    slot_thumb_path[g][i][0] = 0;
+                    slot_thumb_mtime[g][i] = 0;
+                }
+            }
+            if (dashboard_preview_texture) SDL_DestroyTexture(dashboard_preview_texture);
+            dashboard_preview_texture = NULL;
+            dashboard_preview_game = -2;
             if (deck_renderer) SDL_DestroyRenderer(deck_renderer);
             deck_renderer = NULL;
             SDL_DestroyWindow(deck_window);
@@ -482,8 +955,13 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
     const CompanionLayoutCfg *d = &s->deck_layout[game];
 
     if (e->type == SDL_MOUSEBUTTONDOWN) {
+        if (!current_playing && !launcher_companion_layout_preview_enabled()) return 1;
         mouse_down_action = 0;
         float tx=x, ty=y;
+        inverse_point(d, 0, &tx, &ty, 400, 31.5f);
+        if (inside(tx, ty, 704, 13, 72, 42)) {
+            mouse_down_action = SIM_CLOSE_GAME;
+        } else {
         inverse_point(d, 2, &tx, &ty, 400, 343);
         if (inside(tx, ty, 94, 320, 147, 42)) mouse_down_action = SIM_SAVE;
         else if (inside(tx, ty, 247, 320, 147, 42)) mouse_down_action = SIM_LOAD;
@@ -504,6 +982,7 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
                 }
             }
         }
+        }
         pressed_action = mouse_down_action;
         if (mouse_down_action == SIM_REWIND) push_action(SIM_REWIND, 1);
         return 1;
@@ -522,12 +1001,22 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
 void companion_sim_shutdown(void)
 {
     if (deck_window) {
-        for (int g = 0; g < N_GAMES; g++)
+        for (int g = 0; g < N_GAMES; g++) {
             for (int i = 0; i < 4; i++) {
                 if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
                 assets[g][i] = NULL;
                 asset_paths[g][i][0] = 0;
             }
+            for (int i = 0; i < 10; i++) {
+                if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
+                slot_thumb_texture[g][i] = NULL;
+                slot_thumb_path[g][i][0] = 0;
+                slot_thumb_mtime[g][i] = 0;
+            }
+        }
+        if (dashboard_preview_texture) SDL_DestroyTexture(dashboard_preview_texture);
+        dashboard_preview_texture = NULL;
+        dashboard_preview_game = -2;
         if (deck_renderer) SDL_DestroyRenderer(deck_renderer);
         deck_renderer = NULL;
         SDL_DestroyWindow(deck_window);
