@@ -208,7 +208,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private static final int LAYOUT_GAME_COUNT = 7;
         private static final int LAYOUT_VALUE_COUNT = 16;
-        private static final int LAYOUT_PATH_COUNT = 15;
+        private static final int LAYOUT_PATH_COUNT = 21;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
         private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
@@ -648,13 +648,31 @@ final class PipeCleanCompanionPresentation extends Presentation {
             canvas.restore();
         }
 
+        private void drawLayoutImageContain(Canvas canvas, int g, int imageIndex,
+                                            float x, float y, float w, float h) {
+            if (!hasLayoutImage(g, imageIndex) || w <= 0 || h <= 0) return;
+            float iw, ih;
+            Bitmap bitmap = layoutBitmaps[g][imageIndex];
+            if (bitmap != null && !bitmap.isRecycled()) {
+                iw = bitmap.getWidth(); ih = bitmap.getHeight();
+            } else {
+                Movie movie = layoutMovies[g][imageIndex];
+                iw = movie == null ? 1 : movie.width();
+                ih = movie == null ? 1 : movie.height();
+            }
+            float scale = Math.min(w / iw, h / ih);
+            float dw = iw * scale, dh = ih * scale;
+            drawLayoutImage(canvas, g, imageIndex, x + (w - dw) * 0.5f,
+                y + (h - dh) * 0.5f, dw, dh);
+        }
+
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0 || !hasLayoutImage(g, 3)) return;
             canvas.save();
             applyLayoutTransform(canvas, 4, w, h, w * 0.5f, h * 0.5f);
             float dw = w * 0.30f, dh = h * 0.32f;
-            drawLayoutImage(canvas, g, 3, (w - dw) * 0.5f, (h - dh) * 0.5f, dw, dh);
+            drawLayoutImageContain(canvas, g, 3, (w - dw) * 0.5f, (h - dh) * 0.5f, dw, dh);
             canvas.restore();
         }
 
@@ -696,14 +714,18 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawLayoutButtonTexture(Canvas canvas, int action,
                                              float x, float y, float w, float h) {
             int g = activeLayoutGame();
-            if (g < 0 || !hasLayoutImage(g, 1)) return;
+            if (g < 0) return;
+            int actionIndex = action == SAVE_STATE ? 17 : action == LOAD_STATE ? 18 :
+                action == PAUSE_GAME ? 19 : action == REWIND_GAME ? 20 : 1;
+            if (!hasLayoutImage(g, actionIndex) && !hasLayoutImage(g, 1)) return;
+            if (!hasLayoutImage(g, actionIndex)) actionIndex = 1;
             Path clip = new Path();
             clip.addRoundRect(new RectF(x, y, x + w, y + h), 13, 13, Path.Direction.CW);
             canvas.save();
             canvas.clipPath(clip);
-            drawLayoutImage(canvas, g, 1, x, y, w, h);
+            drawLayoutImage(canvas, g, actionIndex, x, y, w, h);
             p.setStyle(Paint.Style.FILL);
-            p.setColor(action == downAction ? 0x66000000 : 0x44000000);
+            p.setColor(action == downAction ? 0x26000000 : 0x16000000);
             canvas.drawRoundRect(x, y, x + w, y + h, 13, 13, p);
             canvas.restore();
         }
@@ -1123,18 +1145,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             else button(c, 704, 13, 72, 42, "DECK", "LINKED", 0, false);
             c.restore();
 
-            card(c, 24, 72, 160, 132, game < 0 ? "SAVE SLOT PREVIEW" : "ACTIVE SAVE");
-            Bitmap currentThumb = slotThumbnails[slot];
-            if (currentThumb != null && !currentThumb.isRecycled()) {
-                p.setColor(0xFFFFFFFF);
-                c.drawBitmap(currentThumb, null, new RectF(40, 103, 168, 159), p);
-            } else {
-                rect(c, 40, 103, 128, 56, 0x55304050);
-                text(c, slotOccupied[slot] ? "THUMBNAIL PENDING" : "EMPTY SLOT", 104, 134, 7, muted(), true);
-            }
-            text(c, String.format(Locale.US, "SLOT %02d", slot + 1), 38, 178, 11, ink());
-            text(c, slotOccupied[slot] ? "SAVED  " + (slotTimeLabels[slot] == null ? "" : slotTimeLabels[slot])
-                                       : "READY TO SAVE", 38, 193, 7.5f, accent());
+            // Save-state thumbnails are represented by the timeline, avoiding a duplicate preview card.
 
             // Keep the reserve-item control as the visual centerpiece of the deck.
             c.save();
@@ -1351,6 +1362,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.drawRoundRect(x+2,y+3,x+w+2,y+h+3,13,13,p);
             p.setColor(panel());
             c.drawRoundRect(x,y,x+w,y+h,13,13,p);
+            int layoutGame = activeLayoutGame();
+            if (layoutGame >= 0 && hasLayoutImage(layoutGame, 15))
+                drawLayoutImageContain(c, layoutGame, 15, x + 2, y + 2, w - 4, h - 4);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.5f);
             c.drawRoundRect(x+0.75f,y+0.75f,x+w-.75f,y+h-.75f,12,12,p);
             p.setStyle(Paint.Style.FILL);
@@ -1363,6 +1377,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.drawRoundRect(x+2,y+4,x+w+2,y+h+4,16,16,p);
             p.setColor(panel());
             c.drawRoundRect(x,y,x+w,y+h,16,16,p);
+            int layoutGame = activeLayoutGame();
+            if ("ADVENTURE STATUS".equals(label) && layoutGame >= 0 && hasLayoutImage(layoutGame, 16))
+                drawLayoutImageContain(c, layoutGame, 16, x + 2, y + 2, w - 4, h - 4);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
             c.drawRoundRect(x+1,y+1,x+w-1,y+h-1,15,15,p);
             p.setStyle(Paint.Style.FILL);
