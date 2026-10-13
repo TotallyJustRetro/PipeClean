@@ -578,8 +578,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
             int g = activeLayoutGame();
             if (g < 0 || element < 0 || element >= 5) return;
             int base = element * 3;
-            float dx = layoutValues[g][base] * (w / 800f);
-            float dy = layoutValues[g][base + 1] * (h / 450f);
+            boolean portrait = h > w;
+            float referenceW = portrait ? 450f : 800f;
+            float referenceH = portrait ? 800f : 450f;
+            float dx = layoutValues[g][base] * (w / referenceW);
+            float dy = layoutValues[g][base + 1] * (h / referenceH);
             float scale = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
             canvas.translate(centerX + dx, centerY + dy);
             canvas.scale(scale, scale);
@@ -833,7 +836,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 }
             }
             boolean animatedLayout = false;
-            int activeGame = activeLayoutGame();
+            int activeGame = preview ? layoutPreviewGame : activeLayoutGame();
             if (activeGame >= 0) {
                 for (int i = 0; i < 4; i++)
                     if (layoutMovies[activeGame][i] != null) animatedLayout = true;
@@ -1478,31 +1481,61 @@ final class PipeCleanCompanionPresentation extends Presentation {
             return 0; // The now-playing banner is informational; playlist controls stay in Audio & Menu.
         }
 
+        private void inverseLayoutPoint(float[] point, int element, boolean portrait,
+                                        float centerX, float centerY) {
+            int g = activeLayoutGame();
+            if (g < 0) return;
+            int base = element * 3;
+            float referenceW = portrait ? 450f : 800f;
+            float referenceH = portrait ? 800f : 450f;
+            float dx = layoutValues[g][base] * (referenceW / 800f);
+            float dy = layoutValues[g][base + 1] * (referenceH / 450f);
+            float scale = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
+            point[0] = centerX + (point[0] - centerX - dx) / scale;
+            point[1] = centerY + (point[1] - centerY - dy) / scale;
+        }
+
         private int hitTest(float x,float y) {
             boolean portrait = getHeight() > getWidth();
+            if (layoutEditorPreview) return 0;
             if (dashboardMode) return dashboardHitTest(x, y, portrait);
+            float[] point = new float[] {x, y};
+            inverseLayoutPoint(point, 0, portrait, portrait ? 225f : 400f, portrait ? 30f : 31.5f);
+            float hx = point[0], hy = point[1];
             if(getHeight()>getWidth()) {
-                if(inside(x,y,238,16,20,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
-                if(inside(x,y,262,12,87,37)) return BACKGROUND;
-                if(inside(x,y,355,12,75,37)) return CLOSE_GAME;
-                int selected = timelineHit(x, y, 14, 704, 422, 92, true);
+                if(inside(hx,hy,238,16,20,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
+                if(inside(hx,hy,262,12,87,37)) return BACKGROUND;
+                if(inside(hx,hy,355,12,75,37)) return CLOSE_GAME;
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 3, true, 225f, 750f);
+                int selected = timelineHit(point[0], point[1], 14, 704, 422, 92, true);
                 if (selected != 0) return selected;
-                if(inside(x,y,20,526,198,52)) return SAVE;
-                if(inside(x,y,232,526,198,52)) return LOAD;
-                if(inside(x,y,20,584,198,52)) return PAUSE;
-                if(inside(x,y,232,584,198,52)) return REWIND;
-                if(inside(x,y,52,101,346,360)) return ITEM_USE;
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 2, true, 225f, 552f);
+                if(inside(point[0],point[1],20,526,198,52)) return SAVE;
+                if(inside(point[0],point[1],232,526,198,52)) return LOAD;
+                if(inside(point[0],point[1],20,584,198,52)) return PAUSE;
+                if(inside(point[0],point[1],232,584,198,52)) return REWIND;
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 1, true, 225f, 280f);
+                if(inside(point[0],point[1],52,101,346,360)) return ITEM_USE;
             } else {
-                if(inside(x,y,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
-                if(inside(x,y,593,13,105,42)) return BACKGROUND;
-                if(inside(x,y,704,13,72,42)) return CLOSE_GAME;
-                int selected = timelineHit(x, y, 24, 365, 752, 83, false);
+                if(inside(hx,hy,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
+                if(inside(hx,hy,593,13,105,42)) return BACKGROUND;
+                if(inside(hx,hy,704,13,72,42)) return CLOSE_GAME;
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 3, false, 400f, 406.5f);
+                int selected = timelineHit(point[0], point[1], 24, 365, 752, 83, false);
                 if (selected != 0) return selected;
-                if(inside(x,y,94,320,145,42)) return SAVE;
-                if(inside(x,y,247,320,145,42)) return LOAD;
-                if(inside(x,y,400,320,145,42)) return PAUSE;
-                if(inside(x,y,553,320,153,42)) return REWIND;
-                if(inside(x,y,236,8,328,310)) return ITEM_USE;
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 2, false, 400f, 343f);
+                if(inside(point[0],point[1],94,320,145,42)) return SAVE;
+                if(inside(point[0],point[1],247,320,145,42)) return LOAD;
+                if(inside(point[0],point[1],400,320,145,42)) return PAUSE;
+                if(inside(point[0],point[1],553,320,153,42)) return REWIND;
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 1, false, 400f, 164f);
+                if(inside(point[0],point[1],236,8,328,310)) return ITEM_USE;
             }
             return 0;
         }
