@@ -113,6 +113,7 @@ typedef struct {
     int controls_dx, controls_dy, controls_scale;
     int timeline_dx, timeline_dy, timeline_scale;
     int decoration_dx, decoration_dy, decoration_scale;
+    int decoration_extra_dx[3], decoration_extra_dy[3], decoration_extra_scale[3];
     int sounds_enabled;
     char background_path[512];
     char header_texture_path[512];
@@ -121,7 +122,8 @@ typedef struct {
     char button_texture_by_action[4][512]; /* Save, Load, Pause/Resume, Rewind. */
     char item_texture_path[512]; /* Legacy generic item image, used as fallback. */
     char item_texture_by_id[N_DECK_ITEM_TEXTURE_IDS][512];
-    char decoration_path[512]; /* Legacy first decoration slot. */
+    char decoration_path[512]; /* First decoration; retained for old configs. */
+    char decoration_extra_path[3][512];
     char button_sound_path[N_DECK_BUTTON_SOUNDS][512];
     char item_sound_path[512];
     char empty_item_sound_path[512];
