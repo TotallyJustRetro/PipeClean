@@ -730,12 +730,19 @@ static int desktop_bundle_export(int game, const char *zip_path)
         "controls_dx=%d\ncontrols_dy=%d\ncontrols_scale=%d\n"
         "timeline_dx=%d\ntimeline_dy=%d\ntimeline_scale=%d\n"
         "decoration_dx=%d\ndecoration_dy=%d\ndecoration_scale=%d\n"
+        "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\n"
+        "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\n"
+        "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\n"
         "sounds_enabled=%d\n",
         d->header_dx, d->header_dy, d->header_scale,
         d->item_dx, d->item_dy, d->item_scale,
         d->controls_dx, d->controls_dy, d->controls_scale,
         d->timeline_dx, d->timeline_dy, d->timeline_scale,
-        d->decoration_dx, d->decoration_dy, d->decoration_scale, d->sounds_enabled);
+        d->decoration_dx, d->decoration_dy, d->decoration_scale,
+        d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0],
+        d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1],
+        d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2],
+        d->sounds_enabled);
     if (len < 0 || (size_t)len >= sizeof manifest) return 0;
 
     mz_zip_archive zip;
