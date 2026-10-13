@@ -2978,12 +2978,6 @@ static const char *deck_editor_preview_asset_path(const CompanionLayoutCfg *d, i
     return "";
 }
 
-static void deck_editor_preview_image(const char *path, float x, float y, float w, float h)
-{
-    if (!path || !path[0] || w <= 0 || h <= 0) return;
-    ui_image_file_fit(path, x, y, w, h);
-}
-
 static void deck_editor_preview_asset(const CompanionLayoutCfg *d, int asset_index,
                                      const char *path, float x, float y, float w, float h)
 {
