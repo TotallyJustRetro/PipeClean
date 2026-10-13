@@ -37,7 +37,7 @@ public final class PipeCleanActivity extends SDLActivity {
     private int pendingDeckGame = -1;
     private int pendingDeckKind;
     private String pendingDeckManifest = "";
-    private String[] pendingDeckAssetPaths = new String[28];
+    private String[] pendingDeckAssetPaths = new String[30];
     private DisplayManager companionDisplayManager;
     private PipeCleanCompanionPresentation companionPresentation;
     private boolean companionEnabled;
@@ -350,7 +350,7 @@ public final class PipeCleanActivity extends SDLActivity {
             pendingDeckKind = kind;
             pendingDeckGame = game;
             pendingDeckManifest = manifest == null ? "" : manifest;
-            pendingDeckAssetPaths = assetPaths == null ? new String[28] : assetPaths.clone();
+            pendingDeckAssetPaths = assetPaths == null ? new String[30] : assetPaths.clone();
             try {
                 if (kind == 14) {
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
@@ -364,7 +364,7 @@ public final class PipeCleanActivity extends SDLActivity {
                 } else {
                     Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 23) || (kind >= 18 && kind <= 23)) {
+                    if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 25)) {
                         intent.setType("image/*");
                         intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
                             "image/png", "image/gif"
@@ -408,6 +408,8 @@ public final class PipeCleanActivity extends SDLActivity {
             case 21: return "Choose Load button texture (PNG/GIF)";
             case 22: return "Choose Pause/Resume button texture (PNG/GIF)";
             case 23: return "Choose Rewind button texture (PNG/GIF)";
+            case 24: return "Choose Background button texture (PNG/GIF)";
+            case 25: return "Choose Close Game button texture (PNG/GIF)";
             case 5: return "Choose Save button sound";
             case 6: return "Choose Load button sound";
             case 7: return "Choose Pause button sound";
@@ -450,7 +452,7 @@ public final class PipeCleanActivity extends SDLActivity {
         if (uri == null) return "";
         String name = documentName(uri);
         String ext = lowerExtension(name);
-        boolean image = (kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 23);
+        boolean image = (kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 25);
         boolean valid = image
             ? (".png".equals(ext) || ".gif".equals(ext))
             : (".wav".equals(ext) || ".mp3".equals(ext) || ".ogg".equals(ext) || ".flac".equals(ext));
@@ -556,6 +558,8 @@ public final class PipeCleanActivity extends SDLActivity {
             case 25: return "decoration_path_5";
             case 26: return "decoration_path_6";
             case 27: return "decoration_path_7";
+            case 28: return "button_texture_background_path";
+            case 29: return "button_texture_close_path";
             default: return "empty_item_sound_path";
         }
     }
@@ -570,13 +574,14 @@ public final class PipeCleanActivity extends SDLActivity {
             "header-texture", "status-texture", "save-button-texture", "load-button-texture",
             "pause-button-texture", "rewind-button-texture",
             "decoration-2", "decoration-3", "decoration-4", "decoration-5",
-            "decoration-6", "decoration-7", "decoration-8"};
+            "decoration-6", "decoration-7", "decoration-8",
+            "background-button-texture", "close-button-texture"};
         return "assets/" + names[index] + ext;
     }
 
     private void exportDeckBundle(Uri uri, String manifest, String[] paths) throws Exception {
         if (uri == null) throw new Exception("No export destination");
-        if (paths == null) paths = new String[28];
+        if (paths == null) paths = new String[30];
         StringBuilder fullManifest = new StringBuilder(manifest == null ? "" : manifest);
         if (fullManifest.length() > 0 &&
             fullManifest.charAt(fullManifest.length() - 1) != '\n') fullManifest.append('\n');
@@ -584,7 +589,7 @@ public final class PipeCleanActivity extends SDLActivity {
              ZipOutputStream zip = new ZipOutputStream(raw)) {
             if (raw == null) throw new Exception("No destination stream");
             byte[] buffer = new byte[32 * 1024];
-            for (int i = 0; i < 28; i++) {
+            for (int i = 0; i < 30; i++) {
                 String path = i < paths.length ? paths[i] : "";
                 if (path == null || path.isEmpty()) continue;
                 File file = new File(path);
