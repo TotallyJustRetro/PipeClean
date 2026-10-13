@@ -391,8 +391,10 @@ void settings_load(void)
     FILE *f = fopen(path, "r");
     if (!f) { legacy_ini_path(path, sizeof path); f = fopen(path, "r"); }
     if (!f) return;
-    Field tab[1100];
-    int nf = field_table(tab, 1100);
+    /* Per-game Companion Deck fit/stretch flags add 28 keys for each game.
+       Keep capacity comfortably above the full global + per-game settings table. */
+    Field tab[1800];
+    int nf = field_table(tab, 1800);
     int saw_launcher_dual_screen = 0;
     int saw_launcher_pipe_screen_swap = 0;
     char line[1100];
@@ -495,8 +497,10 @@ void settings_save(void)
     ini_path(path, sizeof path);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    Field tab[1100];
-    int nf = field_table(tab, 1100);
+    /* Per-game Companion Deck fit/stretch flags add 28 keys for each game.
+       Keep capacity comfortably above the full global + per-game settings table. */
+    Field tab[1800];
+    int nf = field_table(tab, 1800);
     for (int i = 0; i < nf; i++) {
         if (tab[i].ip) fprintf(f, "%s=%d\n", tab[i].name, *tab[i].ip);
         else fprintf(f, "%s=%s\n", tab[i].name, tab[i].sp);
