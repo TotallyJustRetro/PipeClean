@@ -2141,13 +2141,18 @@ int app_run(const char *autorun, const char *hack)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-    /* Finger events drive the touch overlay directly. Prevent SDL's synthetic
-       touch-as-mouse events from leaving the launcher pointer in a held state. */
-    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    /* Support both native finger events and SDL's touch-as-mouse fallback.
+       The launcher deduplicates their button transitions, so Android devices
+       that expose only one input path still get clickable UI controls. */
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_EVENTS)) {
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
+    /* Keep native touch events enabled even when SDL also emits mouse events. */
+    SDL_EventState(SDL_FINGERDOWN, SDL_ENABLE);
+    SDL_EventState(SDL_FINGERMOTION, SDL_ENABLE);
+    SDL_EventState(SDL_FINGERUP, SDL_ENABLE);
     int img_flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP;
     if ((IMG_Init(img_flags) & img_flags) != img_flags) {
         fprintf(stderr, "SDL_image: %s\\n", IMG_GetError());
@@ -2192,9 +2197,19 @@ int app_run(const char *autorun, const char *hack)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            launcher_touch_event(&e);
-            pad_event(&e);
-            launcher_event(&e);
+            /* Let the launcher relinquish its virtual controller cursor before
+               the direct finger path presses the UI. Mouse events retain their
+               existing dispatch order for normal desktop interaction. */
+            if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERMOTION ||
+                e.type == SDL_FINGERUP) {
+                launcher_event(&e);
+                launcher_touch_event(&e);
+                pad_event(&e);
+            } else {
+                launcher_touch_event(&e);
+                pad_event(&e);
+                launcher_event(&e);
+            }
             switch (e.type) {
             case SDL_QUIT: quit = 1; break;
             case SDL_MOUSEBUTTONDOWN: if (e.button.button == SDL_BUTTON_LEFT) { mouse_sync(); ui_mouse_button(1); } break;
@@ -2203,6 +2218,18 @@ int app_run(const char *autorun, const char *hack)
             case SDL_DROPFILE: launcher_drop(e.drop.file); SDL_free(e.drop.file); break;
             case SDL_WINDOWEVENT:
                 if (e.window.event == SDL_WINDOWEVENT_LEAVE) ui_mouse.inside = 0;
+                if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                    if (launcher_touch_active) ui_mouse_button(0);
+                    launcher_touch_active = 0;
+                    launcher_touch_pointer = 0;
+                }
+                break;
+            case SDL_APP_WILLENTERBACKGROUND:
+            case SDL_APP_TERMINATING:
+                if (launcher_touch_active) ui_mouse_button(0);
+                launcher_touch_active = 0;
+                launcher_touch_pointer = 0;
+                ui_mouse.inside = 0;
                 break;
             }
         }
