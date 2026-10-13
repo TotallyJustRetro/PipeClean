@@ -2888,11 +2888,11 @@ static int *deck_element_scale(CompanionLayoutCfg *d, int element)
 static void deck_editor_element_base(int element, float *x, float *y, float *w, float *h)
 {
     switch (element) {
-    case DECK_ELEM_HEADER:    *x = 18;  *y = 7;   *w = 265; *h = 49;  break;
-    case DECK_ELEM_ITEM:      *x = 327; *y = 174; *w = 146; *h = 146; break;
+    case DECK_ELEM_HEADER:    *x = 18;  *y = 7;   *w = 758; *h = 55;  break;
+    case DECK_ELEM_ITEM:      *x = 250; *y = 14;  *w = 300; *h = 300; break;
     case DECK_ELEM_CONTROLS:  *x = 94;  *y = 320; *w = 612; *h = 46;  break;
     case DECK_ELEM_TIMELINE:  *x = 24;  *y = 365; *w = 752; *h = 83;  break;
-    default:                  *x = 280; *y = 112; *w = 240; *h = 150; break;
+    default:                  *x = 280; *y = 150; *w = 240; *h = 150; break;
     }
 }
 
@@ -2905,10 +2905,10 @@ static void deck_editor_element_rect(CompanionLayoutCfg *d, int element,
     scale = (float)*deck_element_scale(d, element) / 100.0f;
     x += (float)*deck_element_x(d, element);
     y += (float)*deck_element_y(d, element);
-    *rx = px + x * (pw / 800.0f);
-    *ry = py + y * (ph / 480.0f);
+    *rx = px + (x + w * 0.5f - w * scale * 0.5f) * (pw / 800.0f);
+    *ry = py + (y + h * 0.5f - h * scale * 0.5f) * (ph / 450.0f);
     *rw = w * (pw / 800.0f) * scale;
-    *rh = h * (ph / 480.0f) * scale;
+    *rh = h * (ph / 450.0f) * scale;
 }
 
 static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
@@ -2993,7 +2993,7 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
     float dx = x - companion_editor_last_x, dy = y - companion_editor_last_y;
     if (companion_editor_resizing) {
         int *scale = deck_element_scale(d, companion_editor_element);
-        *scale += (int)((dx / (preview_w / 800.0f) + dy / (preview_h / 480.0f)) * 0.28f);
+        *scale += (int)((dx / (preview_w / 800.0f) + dy / (preview_h / 450.0f)) * 0.28f);
         if (*scale < 25) *scale = 25;
         if (*scale > 250) *scale = 250;
     } else {
@@ -3001,8 +3001,10 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
         int *oy = deck_element_y(d, companion_editor_element);
         *ox += (int)(dx / (preview_w / 800.0f));
         *oy += (int)(dy / (preview_h / 480.0f));
-        if (*ox < -400) *ox = -400; if (*ox > 400) *ox = 400;
-        if (*oy < -400) *oy = -400; if (*oy > 400) *oy = 400;
+        if (*ox < -400) *ox = -400;
+        if (*ox > 400) *ox = 400;
+        if (*oy < -400) *oy = -400;
+        if (*oy > 400) *oy = 400;
     }
     companion_editor_last_x = x;
     companion_editor_last_y = y;
@@ -3091,7 +3093,7 @@ static void deck_editor_layout(float x, float y)
     if (ui_button(x + 580, y + 105, 82, 27, "Add image", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_DECORATION);
     if (ui_button(x + 668, y + 105, 78, 27, "Sounds", B_GHOST, 1)) companion_editor_page = 2;
 
-    float px = x + 36, py = y + 145, pw = 344, ph = 206;
+    float px = x + 36, py = y + 145, pw = 344, ph = 193.5f;
     deck_editor_preview(d, px, py, pw, ph);
     companion_editor_preview_hover = ui_hover(px, py, pw, ph);
     if (ui_mouse.pressed && companion_editor_preview_hover)
