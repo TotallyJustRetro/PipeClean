@@ -423,18 +423,19 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     int game = rom_loaded_game();
     if (mp_ready || mp_active) return;
 
-    /* SML2 power-up values in $A216 are 1 (mushroom), 2 (fire flower),
-     * and 3 (carrot). When Mario already has a power-up, every new eligible
-     * pickup replaces the pocket item and the write is rolled back so his
-     * current form remains unchanged. A small Mario (old value 0) collects a
-     * mushroom normally. Stars are not represented by these item IDs and are
-     * deliberately never stored. */
+    /* SML2 $A216 tracks the selected power-up: 1 = big/mushroom,
+     * 2 = fire flower, 3 = carrot. The reserve holds the form Mario is
+     * switching away from, not the newly collected form. Mushroom/big Mario
+     * is not a reserve item, so 1 -> flower/carrot leaves the pocket empty.
+     * Flower/carrot transitions save the previous special form and allow the
+     * new value through. In particular, never roll back the game's write:
+     * doing so can undo damage downgrades and make Mario appear invincible.
+     * Stars use a separate path and are never captured. */
     if (game == GAME_SML2 && addr == 0xA216) {
         if (reserve_item_apply_active) return;
-        if (old_v >= 1 && old_v <= 3 && new_v >= 1 && new_v <= 3) {
-            reserve_item_state.kind = new_v;
+        if (old_v >= 2 && old_v <= 3 && new_v >= 2 && new_v <= 3) {
+            reserve_item_state.kind = old_v;
             reserve_item_state.spawn_pending = 0;
-            gb_watch_override(addr, old_v);
         }
         return;
     }
