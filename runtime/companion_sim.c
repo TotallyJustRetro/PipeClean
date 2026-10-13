@@ -1146,7 +1146,13 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
     const CompanionLayoutCfg *d = &s->deck_layout[game];
 
     if (e->type == SDL_MOUSEBUTTONDOWN) {
-        if (!current_playing && !launcher_companion_layout_preview_enabled()) return 1;
+        /* Android's DeckView is deliberately read-only while the layout editor
+           previews it; controls become live again once an SML game is running. */
+        if (!current_playing || launcher_companion_layout_preview_enabled()) {
+            mouse_down_action = 0;
+            pressed_action = 0;
+            return 1;
+        }
         mouse_down_action = 0;
         float tx=x, ty=y;
         inverse_point(d, 0, &tx, &ty, 400, 31.5f);
