@@ -260,6 +260,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             dashboardRecentGames = recentGames != null ? recentGames.clone() : new int[0];
             dashboardPlaySeconds = playSeconds != null ? playSeconds.clone() : new int[0];
             dashboardDualScreen = dualScreenEnabled;
+            if (!dashboardDualScreen) musicNoticeVisible = false;
             if (previewPixels != null && previewWidth > 0 && previewHeight > 0 &&
                 (long) previewWidth * previewHeight == previewPixels.length &&
                 (long) previewWidth * previewHeight <= 1048576L) {
