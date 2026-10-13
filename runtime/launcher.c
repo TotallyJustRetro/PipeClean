@@ -2020,7 +2020,9 @@ static void menu_music_title_from_path(const char *path, char *out, size_t n)
 
 static void menu_music_notice_start(void)
 {
-    if (!settings.menu_music) return;
+    /* Track changes made from Audio & Menu are intentionally silent visually:
+       that page is for playlist management, not the transient now-playing UI. */
+    if (!settings.menu_music || tab == TAB_AUDIO) return;
     music_notice_serial++;
     if (!music_notice_serial) music_notice_serial = 1;
     music_notice_age = 0.0f;
@@ -3100,7 +3102,10 @@ LauncherResult launcher_frame(float dt)
         ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
 
-    /* Music status is a temporary overlay, never part of the Audio & Menu page. */
+    /* Music status is a temporary overlay, never part of the Audio & Menu page.
+       Clear any older notice when entering the management page so it cannot
+       reappear if the user immediately leaves that page. */
+    if (tab == TAB_AUDIO) music_notice_age = -1.0f;
     menu_music_notice_draw(vx, vy);
 
     /* Draw a high-contrast virtual pointer while controller navigation is active. */
