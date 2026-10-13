@@ -374,6 +374,7 @@ void companion_sim_sync(const Settings *s, SDL_Window *main_window)
         x, y, 800, 450, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!deck_window) {
         fprintf(stderr, "Companion Deck simulator window: %s\n", SDL_GetError());
+        s->launcher_dual_screen = 0;
         settings_save();
         return;
     }
@@ -383,6 +384,7 @@ void companion_sim_sync(const Settings *s, SDL_Window *main_window)
     if (!deck_renderer) {
         fprintf(stderr, "Companion Deck simulator renderer: %s\n", SDL_GetError());
         SDL_DestroyWindow(deck_window); deck_window = NULL;
+        s->launcher_dual_screen = 0;
         settings_save();
         return;
     }
