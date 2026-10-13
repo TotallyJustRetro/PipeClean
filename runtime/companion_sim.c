@@ -441,77 +441,137 @@ static SDL_Texture *slot_thumbnail(int game, int slot)
     return slot_thumb_texture[game][slot];
 }
 
+static time_t slot_state_mtime(int game, int slot)
+{
+    char id[128], path[1200];
+    struct stat st;
+    if (game < 0 || game >= N_GAMES || slot < 0 || slot >= 10) return 0;
+    launcher_game_file_id(game, id, sizeof id);
+    snprintf(path, sizeof path, "%sstates/%s.slot%d.pcs", settings_dir(), id, slot);
+    return stat(path, &st) == 0 ? st.st_mtime : 0;
+}
+
 static void draw_slot_timeline(const Settings *s, int game)
 {
-    (void)s;
-    float x = 24, y = 365, w = 752, h = 83;
+    float x = 24.0f, y = 365.0f, w = 752.0f, h = 83.0f;
     const CompanionLayoutCfg *d = &s->deck_layout[game];
-    transform_box(d, 3, 400, 406.5f, &x, &y, &w, &h);
-    draw_android_card((int)x, (int)y, (int)w, (int)h, game, "SAVE-STATE TIMELINE");
-    draw_text_fit((int)x + (int)w - 136, (int)y + 5, 124, 1,
+    transform_box(d, 3, 400.0f, 406.5f, &x, &y, &w, &h);
+    draw_text((int)x + 2, (int)y + 2, 1,
+        theme_accent_r(game), theme_accent_g(game), theme_accent_b(game),
+        "SAVE-STATE TIMELINE");
+    draw_text_fit((int)(x + w - 142), (int)y + 2, 136, 1,
         theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), "SWIPE TO BROWSE");
 
-    float widths[10], gap = 5.0f, total = 0.0f;
+    /* Match Android's ten-tile carousel: active tile is wider/taller and centered,
+       with symmetric end padding so the first and last slots can sit in the middle. */
+    float focus = (float)current_slot;
+    float gap = 5.0f;
+    float widths[10], centers[10], cursor = 0.0f;
     for (int i = 0; i < 10; i++) {
-        widths[i] = i == current_slot ? 150.0f : 56.0f;
-        total += widths[i] + (i ? gap : 0.0f);
+        float weight = fmaxf(0.0f, 1.0f - fabsf((float)i - focus));
+        widths[i] = 72.0f + 90.0f * weight;
+        centers[i] = cursor + widths[i] * 0.5f;
+        cursor += widths[i] + gap;
     }
-    float padding = fmaxf(0.0f, (w - 162.0f) * 0.5f);
-    float before = 0.0f;
-    for (int i = 0; i < current_slot; i++) before += widths[i] + gap;
-    float scroll = padding + before + widths[current_slot] * 0.5f - w * 0.5f;
-    float max_scroll = fmaxf(0.0f, padding + total - w);
-    if (scroll < 0) scroll = 0;
-    if (scroll > max_scroll) scroll = max_scroll;
-    float cursor = 0.0f;
+    float side_padding = fmaxf(0.0f, (w - 162.0f) * 0.5f);
+    for (int i = 0; i < 10; i++) centers[i] += side_padding;
+    float total_width = side_padding * 2.0f + cursor - gap;
+    int left_index = (int)floorf(focus);
+    int right_index = left_index < 9 ? left_index + 1 : left_index;
+    float blend = focus - left_index;
+    float focus_center = centers[left_index] +
+        (centers[right_index] - centers[left_index]) * blend;
+    float scroll = fmaxf(0.0f, fminf(fmaxf(0.0f, total_width - w),
+                                     focus_center - w * 0.5f));
+
+    float base_height = 36.0f, active_height = h - 20.0f;
+    cursor = 0.0f;
+    SDL_Rect clip = {(int)x, (int)y + 14, (int)w, (int)h - 14};
+    SDL_RenderSetClipRect(deck_renderer, &clip);
     for (int i = 0; i < 10; i++) {
-        int selected = i == current_slot;
+        float weight = fmaxf(0.0f, 1.0f - fabsf((float)i - focus));
         float tile_w = widths[i];
-        float tile_h = selected ? h - 20.0f : 36.0f;
-        float tile_x = x + padding + cursor - scroll;
+        float tile_h = base_height + (active_height - base_height) * weight;
+        float tile_x = x + side_padding + cursor - scroll;
         float tile_y = y + h - tile_h - 1.0f;
+        float tile_bottom = y + h - 1.0f;
+        int selected = weight > 0.55f;
         if (tile_x + tile_w >= x && tile_x <= x + w) {
             int occupied = slot_file_occupied(game, i);
-            fill_round_rect((int)tile_x + 1, (int)tile_y + 2, (int)tile_w, (int)tile_h, selected ? 8 : 5, 0, 0, 0, 90);
-            fill_round_rect((int)tile_x, (int)tile_y, (int)tile_w, (int)tile_h, selected ? 8 : 5,
-                occupied ? (game == GAME_SML ? 220 : game == GAME_SML2 ? 53 : 36) : 23,
-                occupied ? (game == GAME_SML ? 231 : game == GAME_SML2 ? 35 : 34) : 34,
-                occupied ? (game == GAME_SML ? 192 : game == GAME_SML2 ? 66 : 76) : 55, 245);
+            fill_round_rect((int)tile_x + 1, (int)tile_y + 2, (int)tile_w, (int)tile_h,
+                            selected ? 8 : 5, 0, 0, 0, 90);
+            fill_round_rect((int)tile_x, (int)tile_y, (int)tile_w, (int)tile_h,
+                selected ? 8 : 5,
+                occupied ? (game == GAME_SML ? 233 : game == GAME_SML2 ? 53 : 36) : 23,
+                occupied ? (game == GAME_SML ? 243 : game == GAME_SML2 ? 35 : 34) : 34,
+                occupied ? (game == GAME_SML ? 208 : game == GAME_SML2 ? 66 : 76) : 55, 245);
+
+            float image_margin = selected ? 4.0f : 3.0f;
+            float label_area = selected ? 19.0f : 9.0f;
+            float image_top = tile_y + image_margin;
+            float image_bottom = fmaxf(image_top + 3.0f, tile_bottom - label_area - 2.0f);
             SDL_Texture *thumb = slot_thumbnail(game, i);
-            SDL_Rect image_dst = {(int)tile_x + 4, (int)tile_y + 4,
-                (int)tile_w - 8, (int)tile_h - (selected ? 25 : 11)};
-            if (thumb && image_dst.w > 4 && image_dst.h > 4)
+            SDL_Rect image_dst = {(int)(tile_x + image_margin), (int)image_top,
+                (int)(tile_w - image_margin * 2.0f), (int)(image_bottom - image_top)};
+            if (thumb && image_dst.w > 4 && image_dst.h > 3) {
                 SDL_RenderCopy(deck_renderer, thumb, NULL, &image_dst);
-            else {
-                const char *ph = occupied ? "SAVED" : (selected ? "EMPTY" : "-");
-                draw_text_fit((int)tile_x + 4, (int)tile_y + (int)tile_h / 2 - 4,
-                    (int)tile_w - 8, 1, occupied ? theme_accent_r(game) : theme_muted_r(game),
-                    occupied ? theme_accent_g(game) : theme_muted_g(game),
-                    occupied ? theme_accent_b(game) : theme_muted_b(game), ph);
-            }
-            if (selected) {
-                char slot_label[24];
-                snprintf(slot_label, sizeof slot_label, "SLOT %02d", i + 1);
-                draw_text_fit((int)tile_x + 4, (int)(y + h - 16), (int)tile_w - 8, 1,
-                    255, 214, 107, slot_label);
-                draw_text_fit((int)tile_x + 4, (int)(y + h - 7), (int)tile_w - 8, 1,
-                    theme_muted_r(game), theme_muted_g(game), theme_muted_b(game),
-                    occupied ? "SAVED" : "READY TO SAVE");
             } else {
-                char n[8]; snprintf(n, sizeof n, "%02d", i + 1);
-                draw_text_fit((int)tile_x + 4, (int)(y + h - 9), (int)tile_w - 8, 1,
+                fill_round_rect(image_dst.x, image_dst.y, image_dst.w, image_dst.h, 4,
+                    occupied ? theme_accent_r(game) : 48,
+                    occupied ? theme_accent_g(game) : 64,
+                    occupied ? theme_accent_b(game) : 83, occupied ? 72 : 100);
+                if (selected) {
+                    draw_text_fit(image_dst.x + 2, image_dst.y + image_dst.h / 2 - 3,
+                        image_dst.w - 4, 1,
+                        occupied ? theme_accent_r(game) : theme_muted_r(game),
+                        occupied ? theme_accent_g(game) : theme_muted_g(game),
+                        occupied ? theme_accent_b(game) : theme_muted_b(game),
+                        occupied ? "SAVED" : "EMPTY");
+                } else if (!occupied) {
+                    fill(image_dst.x + image_dst.w / 2 - 2, image_dst.y + image_dst.h / 2,
+                         4, 1, theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), 150);
+                }
+            }
+
+            if (selected) {
+                char slot_label[24], time_label[32];
+                snprintf(slot_label, sizeof slot_label, "SLOT %02d", i + 1);
+                draw_text_fit((int)(tile_x + tile_w * .5f - (tile_w - 8) * .5f),
+                    (int)tile_bottom - 13, (int)tile_w - 8, 1,
+                    255, 214, 107, slot_label);
+                time_t saved_at = slot_state_mtime(game, i);
+                if (occupied && saved_at > 0) {
+                    struct tm saved_tm;
+#ifdef _WIN32
+                    if (localtime_s(&saved_tm, &saved_at) == 0)
+#else
+                    if (localtime_r(&saved_at, &saved_tm) != NULL)
+#endif
+                        strftime(time_label, sizeof time_label, "SAVED %H:%M", &saved_tm);
+                    else snprintf(time_label, sizeof time_label, "SAVED");
+                } else snprintf(time_label, sizeof time_label, "%s", occupied ? "SAVED" : "READY TO SAVE");
+                draw_text_fit((int)(tile_x + 4), (int)tile_bottom - 3,
+                    (int)tile_w - 8, 1,
+                    theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), time_label);
+            } else {
+                char slot_label[8];
+                snprintf(slot_label, sizeof slot_label, "%02d", i + 1);
+                draw_text_fit((int)(tile_x + 2), (int)tile_bottom - 9,
+                    (int)tile_w - 4, 1,
                     occupied ? theme_ink_r(game) : theme_muted_r(game),
                     occupied ? theme_ink_g(game) : theme_muted_g(game),
-                    occupied ? theme_ink_b(game) : theme_muted_b(game), n);
+                    occupied ? theme_ink_b(game) : theme_muted_b(game), slot_label);
             }
             outline_round_rect((int)tile_x, (int)tile_y, (int)tile_w, (int)tile_h,
-                selected ? 8 : 5, selected ? 255 : theme_edge_r(game),
-                selected ? 214 : theme_edge_g(game), selected ? 107 : theme_edge_b(game), 255);
+                selected ? 8 : 5,
+                selected ? 255 : theme_edge_r(game),
+                selected ? 214 : theme_edge_g(game),
+                selected ? 107 : theme_edge_b(game), 255);
         }
         cursor += tile_w + gap;
     }
+    SDL_RenderSetClipRect(deck_renderer, NULL);
 }
-
 static void draw_action_button(const Settings *s, int game, int action,
                                int x, int y, int w, int h, const char *label,
                                const char *sub, int hold)
@@ -549,17 +609,28 @@ static void draw_action_button(const Settings *s, int game, int action,
     (void)d;
 }
 
-static void draw_tiny_button(int x, int y, int w, int h, int game, const char *label, int action)
+static void draw_tiny_button(int x, int y, int w, int h, int game,
+                             const char *label, const char *sub, int action)
 {
     int highlighted = action != 0 && action == pressed_action;
     fill_round_rect(x, y, w, h, 8,
         highlighted ? 255 : (game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36),
         highlighted ? 214 : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
         highlighted ? 107 : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
-    outline_round_rect(x, y, w, h, 8,
-        theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
-    draw_text_fit(x + 4, y + h / 2 - 4, w - 8, 1,
+    if (assets[game][1]) {
+        SDL_Rect dest = {x + 1, y + 1, w - 2, h - 2};
+        SDL_RenderCopy(deck_renderer, assets[game][1], NULL, &dest);
+        fill_round_rect(x + 1, y + 1, w - 2, h - 2, 7, 3, 8, 16,
+                        highlighted ? 55 : 68);
+    }
+    outline_round_rect(x + 1, y + 1, w - 2, h - 2, 8,
+        highlighted ? 255 : theme_edge_r(game),
+        highlighted ? 214 : theme_edge_g(game),
+        highlighted ? 107 : theme_edge_b(game), 255);
+    draw_text_fit(x + 4, y + 5, w - 8, 1,
         theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
+    draw_text_fit(x + 4, y + h - 13, w - 8, 1,
+        theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), sub ? sub : "");
 }
 
 static void draw_android_scenery(int game)
@@ -740,10 +811,10 @@ static void draw_companion(const Settings *s)
 
     float bgx = 593, bgy = 13, bgw = 105, bgh = 42;
     transform_box(d, 0, 400, 31.5f, &bgx, &bgy, &bgw, &bgh);
-    draw_tiny_button((int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", 0);
+    draw_tiny_button((int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", "PNG / GIF", 0);
     float closex = 704, closey = 13, closew = 72, closeh = 42;
     transform_box(d, 0, 400, 31.5f, &closex, &closey, &closew, &closeh);
-    draw_tiny_button((int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE GAME", SIM_CLOSE_GAME);
+    draw_tiny_button((int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE", "GAME", SIM_CLOSE_GAME);
 
     /* Left-hand save-slot preview / current save card. */
     draw_android_card(24, 72, 160, 132, g, current_playing ? "ACTIVE SAVE" : "SAVE SLOT PREVIEW");
@@ -914,6 +985,38 @@ static void push_action(int action, int pressed)
     (void)SDL_PushEvent(&ev);
 }
 
+static int timeline_hit_slot(const Settings *s, int game, float x, float y)
+{
+    float tx = x, ty = y, tw = 752.0f, th = 83.0f;
+    const CompanionLayoutCfg *d = &s->deck_layout[game];
+    transform_box(d, 3, 400.0f, 406.5f, &tx, &ty, &tw, &th);
+    float base_x = 24.0f, base_y = 365.0f, w = 752.0f, h = 83.0f;
+    float logical_x = x, logical_y = y;
+    inverse_point(d, 3, &logical_x, &logical_y, 400.0f, 406.5f);
+    if (!inside(logical_x, logical_y, base_x, base_y + 14.0f, w, h - 14.0f)) return -1;
+
+    float focus = (float)current_slot, gap = 5.0f;
+    float widths[10], centers[10], cursor = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        float weight = fmaxf(0.0f, 1.0f - fabsf((float)i - focus));
+        widths[i] = 72.0f + 90.0f * weight;
+        centers[i] = cursor + widths[i] * 0.5f;
+        cursor += widths[i] + gap;
+    }
+    float side_padding = fmaxf(0.0f, (w - 162.0f) * 0.5f);
+    for (int i = 0; i < 10; i++) centers[i] += side_padding;
+    float total_width = side_padding * 2.0f + cursor - gap;
+    float scroll = fmaxf(0.0f, fminf(fmaxf(0.0f, total_width - w),
+                                     centers[current_slot] - w * 0.5f));
+    cursor = 0.0f;
+    for (int i = 0; i < 10; i++) {
+        float tile_x = base_x + side_padding + cursor - scroll;
+        if (logical_x >= tile_x && logical_x < tile_x + widths[i]) return i;
+        cursor += widths[i] + gap;
+    }
+    return -1;
+}
+
 static int inside(float x, float y, float rx, float ry, float rw, float rh)
 {
     return x >= rx && x < rx + rw && y >= ry && y < ry + rh;
@@ -981,14 +1084,8 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
             inverse_point(d, 1, &tx, &ty, 400, 164);
             if (inside(tx, ty, 236, 8, 328, 310)) mouse_down_action = SIM_ITEM_USE;
             else {
-                tx=x; ty=y;
-                inverse_point(d, 3, &tx, &ty, 400, 406.5f);
-                if (inside(tx, ty, 24, 365, 752, 83)) {
-                    int slot = (int)((tx - 24) * 10 / 752);
-                    if (slot < 0) slot = 0;
-                    if (slot > 9) slot = 9;
-                    mouse_down_action = SIM_SLOT_SELECT_BASE + slot;
-                }
+                int slot = timeline_hit_slot(s, game, x, y);
+                if (slot >= 0) mouse_down_action = SIM_SLOT_SELECT_BASE + slot;
             }
         }
         }
