@@ -3189,15 +3189,15 @@ static void deck_editor_layout(float x, float y)
     int *scale_y = deck_element_scale_y(d, companion_editor_element);
     char scale_text[64];
     snprintf(scale_text, sizeof scale_text, "Width: %d%%", *scale_x);
-    ui_text(F_BOLD, 10, rx, y + 267, C_TEXT, scale_text);
-    if (ui_button(rx + 102, y + 255, 44, 24, "−", B_GHOST, *scale_x > 25)) {
+    ui_text(F_BOLD, 10, rx, y + 278, C_TEXT, scale_text);
+    if (ui_button(rx + 102, y + 261, 44, 24, "−", B_GHOST, *scale_x > 25)) {
         deck_editor_snapshot(); *scale_x -= 10; if (*scale_x < 25) *scale_x = 25;
     }
-    if (ui_button(rx + 152, y + 255, 44, 24, "+", B_GHOST, *scale_x < 250)) {
+    if (ui_button(rx + 152, y + 261, 44, 24, "+", B_GHOST, *scale_x < 250)) {
         deck_editor_snapshot(); *scale_x += 10; if (*scale_x > 250) *scale_x = 250;
     }
     snprintf(scale_text, sizeof scale_text, "Height: %d%%", *scale_y);
-    ui_text(F_BOLD, 10, rx, y + 302, C_TEXT, scale_text);
+    ui_text(F_BOLD, 10, rx, y + 307, C_TEXT, scale_text);
     if (ui_button(rx + 102, y + 290, 44, 24, "−", B_GHOST, *scale_y > 25)) {
         deck_editor_snapshot(); *scale_y -= 10; if (*scale_y < 25) *scale_y = 25;
     }
