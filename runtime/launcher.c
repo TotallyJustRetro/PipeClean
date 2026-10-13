@@ -2217,6 +2217,10 @@ static void tab_audio(float x, float y)
     if (ui_toggle(x + lw - 18 - 44, y + 252, &s->menu_music)) {
         audio_menu_apply();
         audio_menu_music(1);
+        if (s->menu_music) {
+            audio_music_preview();
+            menu_music_notice_start();
+        }
         settings_save();
     }
     label(x + 18, y + 296, "Volume");
@@ -2225,70 +2229,36 @@ static void tab_audio(float x, float y)
         settings_save();
     }
     snprintf(t, sizeof t, "%d%%", s->menu_music_vol); ui_text_r(F_REG, 13, x + lw - 18, y + 296, C_TEXT, t);
-#if defined(__ANDROID__)
-    if (s->launcher_dual_screen) {
-        ui_rrect(x + 18, y + 309, lw - 36, 58, 12, HEX(0x111722));
-        ui_stroke(x + 18, y + 309, lw - 36, 58, 12, 1, C_LINE);
-        ui_text(F_BOLD, 10, x + 32, y + 329, C_ACCENT, "PLAYER MOVED TO COMPANION DECK");
-        ui_text_fit(F_REG, 9, x + 32, y + 345, lw - 64, C_DIM,
-                    "Vinyl animation, song preview and play controls are on the lower display.");
-    } else
-#endif
-        menu_music_preview(x + 18, y + 309, lw - 36, 58);
-
-    ui_text(F_BOLD, 10, x + 18, y + 375, C_TEXT, "PLAYLIST");
+    ui_text(F_BOLD, 10, x + 18, y + 321, C_TEXT, "PLAYLIST");
     snprintf(t, sizeof t, "%02d / %02d", s->menu_playlist_count, MAX_MENU_TRACKS);
-    ui_text_r(F_REG, 9, x + lw - 122, y + 376, C_DIM, t);
+    ui_text_r(F_REG, 9, x + lw - 122, y + 322, C_DIM, t);
     int max_page = s->menu_playlist_count > 0 ? (s->menu_playlist_count - 1) / 3 : 0;
     if (menu_playlist_page > max_page) menu_playlist_page = max_page;
     if (menu_playlist_page < 0) menu_playlist_page = 0;
-    if (ui_button(x + lw - 92, y + 370, 36, 21, "Prev", B_GHOST,
-#if defined(__ANDROID__)
-                  !s->launcher_dual_screen && max_page > 0
-#else
-                  max_page > 0
-#endif
-                  ))
+    if (ui_button(x + lw - 92, y + 316, 36, 21, "Prev", B_GHOST, max_page > 0))
         menu_playlist_page = (menu_playlist_page + max_page) % (max_page + 1);
-    if (ui_button(x + lw - 50, y + 370, 32, 21, "Next", B_GHOST,
-#if defined(__ANDROID__)
-                  !s->launcher_dual_screen && max_page > 0
-#else
-                  max_page > 0
-#endif
-                  ))
+    if (ui_button(x + lw - 50, y + 316, 32, 21, "Next", B_GHOST, max_page > 0))
         menu_playlist_page = (menu_playlist_page + 1) % (max_page + 1);
 
-#if defined(__ANDROID__)
-    if (s->launcher_dual_screen) {
-        ui_rrect(x + 18, y + 393, lw - 36, 71, 8, HEX(0x171D2A));
-        ui_text_fit(F_REG, 10, x + 28, y + 410, lw - 56, C_TEXT,
-                    "Track selection is on the Companion Deck.");
-        ui_text_fit(F_REG, 9, x + 28, y + 429, lw - 56, C_DIM,
-                    "Use Add / Remove below to manage your playlist.");
-    } else
-#endif
-    {
-        for (int row = 0; row < 3; row++) {
-            int index = menu_playlist_page * 3 + row;
-            float ry = y + 393 + row * 23.0f;
-            if (index < s->menu_playlist_count && index < MAX_MENU_TRACKS) {
-                char title[512];
-                menu_music_title_from_path(s->menu_playlist[index], title, sizeof title);
-                int active = s->menu_music_path[0] && !strcmp(s->menu_music_path, s->menu_playlist[index]);
-                if (ui_button(x + 18, ry, lw - 36, 21, title,
-                              active ? B_PRIMARY : B_GHOST, 1))
-                    launcher_menu_music_select(index);
-            } else {
-                ui_rrect(x + 18, ry, lw - 36, 21, 6, HEX(0x171D2A));
-                ui_text_fit(F_REG, 9, x + 28, ry + 5, lw - 56, C_DIM,
-                            s->menu_playlist_count ? "Empty playlist slot" : "Add a WAV, MP3, OGG or FLAC track");
-            }
+    for (int row = 0; row < 3; row++) {
+        int index = menu_playlist_page * 3 + row;
+        float ry = y + 340 + row * 24.0f;
+        if (index < s->menu_playlist_count && index < MAX_MENU_TRACKS) {
+            char title[512];
+            menu_music_title_from_path(s->menu_playlist[index], title, sizeof title);
+            int active = s->menu_music_path[0] && !strcmp(s->menu_music_path, s->menu_playlist[index]);
+            if (ui_button(x + 18, ry, lw - 36, 22, title,
+                          active ? B_PRIMARY : B_GHOST, 1))
+                launcher_menu_music_select(index);
+        } else {
+            ui_rrect(x + 18, ry, lw - 36, 22, 6, HEX(0x171D2A));
+            ui_text_fit(F_REG, 9, x + 28, ry + 5, lw - 56, C_DIM,
+                        s->menu_playlist_count ? "Empty playlist slot" : "Add a WAV, MP3, OGG or FLAC track");
         }
     }
 
     float action_w = (lw - 36 - 18) / 4.0f;
-    float action_y = y + 466;
+    float action_y = y + 421;
     if (ui_button(x + 18, action_y, action_w, 28, "Add track", B_NORMAL, 1))
         menu_playlist_import_dialog();
     if (ui_button(x + 18 + action_w + 6, action_y, action_w, 28, "Remove", B_GHOST,
@@ -2302,6 +2272,7 @@ static void tab_audio(float x, float y)
         audio_menu_apply();
         audio_music_preview();
         audio_menu_music(1);
+        menu_music_notice_start();
         settings_save();
     }
 
@@ -2926,6 +2897,10 @@ LauncherResult launcher_frame(float dt)
     }
     launcher_controller_update(dt);
     anim_clock += dt;
+    if (music_notice_age >= 0.0f) {
+        music_notice_age += dt;
+        if (music_notice_age > 2.75f) music_notice_age = -1.0f;
+    }
     int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? mp_config_game : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
     ui_accent = tab < N_GAMES ? games[tab].accent : ((tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? games[mp_config_game].accent : 0x4C8DFF);
@@ -3124,6 +3099,9 @@ LauncherResult launcher_frame(float dt)
         ui_rrect(tx, ty, tw, 40, 12, RGBA(40, 46, 66, (int)(250 * a)));
         ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
+
+    /* Music status is a temporary overlay, never part of the Audio & Menu page. */
+    menu_music_notice_draw(vx, vy);
 
     /* Draw a high-contrast virtual pointer while controller navigation is active. */
     if (launcher_controller_cursor_active) {
