@@ -730,7 +730,7 @@ static void draw_action_button(const Settings *s, int game, int action,
     (void)d;
 }
 
-static void draw_tiny_button(int x, int y, int w, int h, int game,
+static void draw_tiny_button(const Settings *s, int x, int y, int w, int h, int game,
                              const char *label, const char *sub, int action)
 {
     int highlighted = action != 0 && action == pressed_action;
@@ -739,8 +739,7 @@ static void draw_tiny_button(int x, int y, int w, int h, int game,
         highlighted ? 214 : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
         highlighted ? 107 : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
     if (assets[game][1]) {
-        SDL_Rect dest = {x + 1, y + 1, w - 2, h - 2};
-        SDL_RenderCopy(deck_renderer, assets[game][1], NULL, &dest);
+        draw_asset_image(s, game, 1, x + 1, y + 1, w - 2, h - 2);
         fill_round_rect(x + 1, y + 1, w - 2, h - 2, 7, 3, 8, 16,
                         highlighted ? 55 : 68);
     }
@@ -1021,10 +1020,10 @@ static void draw_companion(const Settings *s)
 
     float bgx = 593, bgy = 13, bgw = 105, bgh = 42;
     transform_box(d, 0, 400, 31.5f, &bgx, &bgy, &bgw, &bgh);
-    draw_tiny_button((int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", "PNG / GIF", SIM_BACKGROUND);
+    draw_tiny_button(s, (int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", "PNG / GIF", SIM_BACKGROUND);
     float closex = 704, closey = 13, closew = 72, closeh = 42;
     transform_box(d, 0, 400, 31.5f, &closex, &closey, &closew, &closeh);
-    draw_tiny_button((int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE", "GAME", SIM_CLOSE_GAME);
+    draw_tiny_button(s, (int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE", "GAME", SIM_CLOSE_GAME);
 
     /* Save-state thumbnails are represented by the timeline below. */
     /* The reserve item stays at the visual center and uses the per-game layout transform. */
