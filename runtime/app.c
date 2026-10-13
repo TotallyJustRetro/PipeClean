@@ -121,6 +121,104 @@ JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionD
     SDL_AtomicSet(&companion_display_available, available ? 1 : 0);
 }
 
+#define PIPECLEAN_LAYOUT_PICKER_EVENT_CODE 0x5044
+typedef struct {
+    int game;
+    char path[1024];
+} CompanionLayoutPickerResult;
+
+JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionLayoutPickerResult(
+    JNIEnv *env, jclass cls, jint kind, jint game, jstring path)
+{
+    (void)cls;
+    const char *utf = path ? (*env)->GetStringUTFChars(env, path, NULL) : NULL;
+    CompanionLayoutPickerResult *payload =
+        (CompanionLayoutPickerResult *)calloc(1, sizeof *payload);
+    if (!payload) {
+        if (utf) (*env)->ReleaseStringUTFChars(env, path, utf);
+        return;
+    }
+    payload->game = (int)game;
+    if (utf) {
+        snprintf(payload->path, sizeof payload->path, "%s", utf);
+        (*env)->ReleaseStringUTFChars(env, path, utf);
+    }
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_USEREVENT;
+    event.user.code = PIPECLEAN_LAYOUT_PICKER_EVENT_CODE;
+    event.user.data1 = (void *)(intptr_t)kind;
+    event.user.data2 = payload;
+    if (SDL_PushEvent(&event) < 0) free(payload);
+}
+
+static const char *companion_layout_asset_paths(const CompanionLayoutCfg *d, int i)
+{
+    if (!d) return "";
+    if (i == 0) return d->background_path;
+    if (i == 1) return d->button_texture_path;
+    if (i == 2) return d->item_texture_path;
+    if (i == 3) return d->decoration_path;
+    if (i >= 4 && i < 4 + N_DECK_BUTTON_SOUNDS) return d->button_sound_path[i - 4];
+    if (i == 10) return d->item_sound_path;
+    if (i == 11) return d->empty_item_sound_path;
+    return "";
+}
+
+/* Opens an Android SAF picker. The bundle manifest contains only portable
+   layout values; asset paths are supplied separately so export can package them. */
+void launcher_open_companion_layout_picker(int kind, int game)
+{
+    if (game < 0 || game >= N_GAMES) return;
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+
+    CompanionLayoutCfg *d = &settings.deck_layout[game];
+    char manifest[2048];
+    snprintf(manifest, sizeof manifest,
+        "layout_version=1\\n"
+        "header_dx=%d\\nheader_dy=%d\\nheader_scale=%d\\n"
+        "item_dx=%d\\nitem_dy=%d\\nitem_scale=%d\\n"
+        "controls_dx=%d\\ncontrols_dy=%d\\ncontrols_scale=%d\\n"
+        "timeline_dx=%d\\ntimeline_dy=%d\\ntimeline_scale=%d\\n"
+        "decoration_dx=%d\\ndecoration_dy=%d\\ndecoration_scale=%d\\n"
+        "sounds_enabled=%d\\n",
+        d->header_dx, d->header_dy, d->header_scale,
+        d->item_dx, d->item_dy, d->item_scale,
+        d->controls_dx, d->controls_dy, d->controls_scale,
+        d->timeline_dx, d->timeline_dy, d->timeline_scale,
+        d->decoration_dx, d->decoration_dy, d->decoration_scale,
+        d->sounds_enabled);
+    jstring text = (*env)->NewStringUTF(env, manifest);
+    jclass string_class = (*env)->FindClass(env, "java/lang/String");
+    jobjectArray paths = string_class
+        ? (*env)->NewObjectArray(env, 12, string_class, NULL) : NULL;
+    if (paths) {
+        for (int i = 0; i < 12; i++) {
+            jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(d, i));
+            if (path) {
+                (*env)->SetObjectArrayElement(env, paths, i, path);
+                (*env)->DeleteLocalRef(env, path);
+            }
+        }
+    }
+    jmethodID method = (*env)->GetMethodID(
+        env, cls, "openCompanionLayoutPicker", "(IILjava/lang/String;[Ljava/lang/String;)V");
+    if (method && text && paths) {
+        jstring title = NULL;
+        /* Activity chooses a suitable title based on kind. */
+        (void)(*env)->CallVoidMethod(env, activity, method, (jint)kind, (jint)game, text, paths);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    if (paths) (*env)->DeleteLocalRef(env, paths);
+    if (string_class) (*env)->DeleteLocalRef(env, string_class);
+    if (text) (*env)->DeleteLocalRef(env, text);
+    (*env)->DeleteLocalRef(env, cls);
+}
+
 static void companion_publish_state(int game, const Frame *frame, int paused)
 {
     static unsigned tick;
@@ -256,6 +354,32 @@ static void companion_publish_launcher_dashboard(int selected_game)
         ? (*env)->NewObjectArray(env, N_GAMES, string_class, NULL) : NULL;
     jintArray recent = (*env)->NewIntArray(env, N_RECENT_PLAYED);
     jintArray seconds = (*env)->NewIntArray(env, N_GAMES);
+    int layout_game = launcher_companion_layout_target_game(selected_game);
+    if (layout_game < 0 || layout_game >= N_GAMES) layout_game = selected_game;
+    CompanionLayoutCfg *layout = &settings.deck_layout[layout_game];
+    jintArray layout_values = (*env)->NewIntArray(env, 16);
+    jobjectArray layout_paths = string_class
+        ? (*env)->NewObjectArray(env, 12, string_class, NULL) : NULL;
+    if (layout_values) {
+        jint values[16] = {
+            layout->header_dx, layout->header_dy, layout->header_scale,
+            layout->item_dx, layout->item_dy, layout->item_scale,
+            layout->controls_dx, layout->controls_dy, layout->controls_scale,
+            layout->timeline_dx, layout->timeline_dy, layout->timeline_scale,
+            layout->decoration_dx, layout->decoration_dy, layout->decoration_scale,
+            layout->sounds_enabled
+        };
+        (*env)->SetIntArrayRegion(env, layout_values, 0, 16, values);
+    }
+    if (layout_paths) {
+        for (int i = 0; i < 12; i++) {
+            jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
+            if (path) {
+                (*env)->SetObjectArrayElement(env, layout_paths, i, path);
+                (*env)->DeleteLocalRef(env, path);
+            }
+        }
+    }
     if (game_names) {
         for (int i = 0; i < N_GAMES; i++) {
             jstring name = (*env)->NewStringUTF(env, games[i].name ? games[i].name : "Game");
@@ -293,11 +417,12 @@ static void companion_publish_launcher_dashboard(int selected_game)
     }
     jmethodID dashboard_method = (*env)->GetMethodID(
         env, cls, "updateLauncherDashboard",
-        "(I[Ljava/lang/String;[I[III[IZ)V");
-    if (dashboard_method && game_names && recent && seconds) {
+        "(I[Ljava/lang/String;[I[III[I[I[Ljava/lang/String;Z)V");
+    if (dashboard_method && game_names && recent && seconds && layout_values && layout_paths) {
         (void)(*env)->CallVoidMethod(env, activity, dashboard_method,
             (jint)selected_game, game_names, recent, seconds,
             (jint)preview_w, (jint)preview_h, preview,
+            (jint)layout_game, layout_values, layout_paths,
             settings.launcher_dual_screen ? JNI_TRUE : JNI_FALSE);
     }
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
@@ -346,6 +471,8 @@ static void companion_publish_launcher_dashboard(int selected_game)
     if (game_names) (*env)->DeleteLocalRef(env, game_names);
     if (recent) (*env)->DeleteLocalRef(env, recent);
     if (seconds) (*env)->DeleteLocalRef(env, seconds);
+    if (layout_values) (*env)->DeleteLocalRef(env, layout_values);
+    if (layout_paths) (*env)->DeleteLocalRef(env, layout_paths);
     if (string_class) (*env)->DeleteLocalRef(env, string_class);
     (*env)->DeleteLocalRef(env, cls);
 }
@@ -2212,6 +2339,14 @@ int app_run(const char *autorun, const char *hack)
             }
             switch (e.type) {
             case SDL_QUIT: quit = 1; break;
+            case SDL_USEREVENT:
+                if (e.user.code == PIPECLEAN_LAYOUT_PICKER_EVENT_CODE) {
+                    CompanionLayoutPickerResult *picked = (CompanionLayoutPickerResult *)e.user.data2;
+                    launcher_companion_layout_picker_result((int)(intptr_t)e.user.data1,
+                        picked ? picked->game : -1, picked ? picked->path : "");
+                    free(picked);
+                }
+                break;
             case SDL_MOUSEBUTTONDOWN: if (e.button.button == SDL_BUTTON_LEFT) { mouse_sync(); ui_mouse_button(1); } break;
             case SDL_MOUSEBUTTONUP: if (e.button.button == SDL_BUTTON_LEFT) { mouse_sync(); ui_mouse_button(0); } break;
             case SDL_MOUSEWHEEL: ui_mouse.wheel += e.wheel.y; break;
