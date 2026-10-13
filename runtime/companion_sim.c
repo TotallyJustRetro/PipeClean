@@ -495,7 +495,7 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
             if (inside(tx, ty, 236, 8, 328, 310)) mouse_down_action = SIM_ITEM_USE;
             else {
                 tx=x; ty=y;
-                inverse_point(d, 3, &tx, &ty, 400, 400);
+                inverse_point(d, 3, &tx, &ty, 400, 406.5f);
                 if (inside(tx, ty, 24, 365, 752, 83)) {
                     int slot = (int)((tx - 24) * 10 / 752);
                     if (slot < 0) slot = 0;
@@ -526,6 +526,7 @@ void companion_sim_shutdown(void)
             for (int i = 0; i < 4; i++) {
                 if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
                 assets[g][i] = NULL;
+                asset_paths[g][i][0] = 0;
             }
         if (deck_renderer) SDL_DestroyRenderer(deck_renderer);
         deck_renderer = NULL;
