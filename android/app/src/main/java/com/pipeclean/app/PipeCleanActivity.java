@@ -37,7 +37,7 @@ public final class PipeCleanActivity extends SDLActivity {
     private int pendingDeckGame = -1;
     private int pendingDeckKind;
     private String pendingDeckManifest = "";
-    private String[] pendingDeckAssetPaths = new String[12];
+    private String[] pendingDeckAssetPaths = new String[15];
     private DisplayManager companionDisplayManager;
     private PipeCleanCompanionPresentation companionPresentation;
     private boolean companionEnabled;
