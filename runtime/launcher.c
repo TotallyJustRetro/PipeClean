@@ -2163,13 +2163,21 @@ static void menu_music_preview(float x, float y, float w, float h)
     }
 #endif
     float tx = x + size + 24.0f + slide;
-    float tw = w - (tx - x) - 12.0f;
+    float controlX = x + w - 91.0f;
+    float tw = controlX - tx - 8.0f;
     ui_text(F_BOLD, 8, tx, y + 7, settings.menu_music ? C_OK : C_DIM,
             settings.menu_music ? "NOW PLAYING" : "MUSIC PAUSED");
     ui_text_fit(F_BOLD, 13, tx, y + 20, tw, C_TEXT, title);
     ui_text_fit(F_REG, 9, tx, y + h - 17, tw, C_DIM,
-                settings.menu_music_path[0] ? "Custom track • loops in the launcher"
+                settings.menu_music_path[0] ? "Playlist track"
                                             : "Built-in PipeClean menu theme");
+    if (ui_button(x + w - 91, y + 17, 27, 26, "‹", B_GHOST, 1))
+        launcher_menu_music_step(-1);
+    if (ui_button(x + w - 59, y + 17, 27, 26,
+                  settings.menu_music ? "Ⅱ" : "▶", B_GHOST, 1))
+        launcher_menu_music_toggle();
+    if (ui_button(x + w - 27, y + 17, 27, 26, "›", B_GHOST, 1))
+        launcher_menu_music_step(1);
 }
 
 static void menu_playlist_import_dialog(void)
