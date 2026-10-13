@@ -3290,7 +3290,8 @@ void launcher_companion_layout_picker_result(int kind, int game, const char *pat
             companion_editor_game = game;
             companion_editor_page = 1;
             companion_editor_open = 1;
-            deck_editor_history_clear();
+            companion_editor_dragging = companion_editor_resizing = 0;
+            companion_redo_count = 0;
             settings_save();
             launcher_toast("Companion Deck bundle imported.");
         } else launcher_toast("That bundle has no valid layout manifest.");
