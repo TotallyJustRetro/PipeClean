@@ -1105,10 +1105,7 @@ static void sub_display(int g, float x, float y)
     label(x + 18, yy, "Starting window size"); ui_seg(x + 18, yy + 22, 500, 36, size_names, N_SIZE, &c->size);
 
     float rx = x + 548, rw = 260;
-    const int dual_screen_available = g == GAME_SML || g == GAME_SML2;
-    /* The SML games need one short row for the Thor deck toggle. Keep the
-       other Display pages unchanged, but tighten this preview to make room. */
-    const float look_compact = dual_screen_available ? 40.0f : 0.0f;
+    const float look_compact = 0.0f; /* Dual-screen placement is a launcher-wide Android option. */
     card(rx, y, rw, 476, "LOOK");
     draw_preview(g, rx + 16, y + 40, rw - 32, 190 - look_compact, 1);
     label(rx + 18, y + 246 - look_compact, "Background picture");
@@ -1134,24 +1131,7 @@ static void sub_display(int g, float x, float y)
         label(rx + 18, y + 428 - look_compact, "Widescreen");
         ui_text(F_REG, 12, rx + 18, y + 450 - look_compact, C_DIM, "Not available for this game");
     }
-    if (dual_screen_available) {
-        label(rx + 18, y + 438, "Dual");
-        if (ui_toggle(rx + 58, y + 436, &c->dual_screen)) {
-            if (!c->dual_screen) c->pipe_screen_swap = 0;
-            settings_save();
-        }
-        if (g == GAME_SML) {
-            label(rx + 122, y + 438, "Auto Pipe");
-            if (ui_toggle(rx + rw - 54, y + 436, &c->pipe_screen_swap)) settings_save();
-        }
-        ui_text_fit(F_REG, 10, rx + 18, y + 462, rw - 36, C_DIM,
-                    g == GAME_SML ? "Swap gameplay to the second display during pipe/bonus-room transitions." :
-                                    "AYN Thor lower-screen deck (Android).");
-        if (ui_hover(rx + 18, y + 434, rw - 36, 40))
-            ui_hint(g == GAME_SML
-                ? "Requires Dual Screen. Super Mario Land switches gameplay to the second display during underground/bonus-room states, then switches back on exit."
-                : "Shows the PipeClean companion deck on a detected second display while this game is running.");
-    }
+    /* Dual-screen and Auto Pipe placement moved to Launcher Display settings. */
 }
 
 /* ------------------------------------------------------------------ game tab: Controls */
