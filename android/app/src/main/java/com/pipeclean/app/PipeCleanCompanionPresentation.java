@@ -81,6 +81,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
     void setBackgroundFile(String path) { deck.setBackgroundFile(path); }
 
+    void setDeckLayout(int layoutGame, int[] values, String[] paths, boolean editorPreview) {
+        deck.setDeckLayout(layoutGame, values, paths, editorPreview);
+    }
+
     void updateSaveSlots(int game, int selectedSlot, String[] statePaths, String[] thumbnailPaths) {
         deck.setSaveSlots(game, selectedSlot, statePaths, thumbnailPaths);
     }
@@ -795,19 +799,29 @@ final class PipeCleanCompanionPresentation extends Presentation {
             boolean portrait = getHeight() > getWidth();
             float w = portrait ? 450f : 800f, h = portrait ? 800f : 450f;
             float scale = Math.min(getWidth() / w, getHeight() / h);
+            boolean preview = layoutEditorPreview && layoutPreviewGame >= 0;
+            int previousGame = game;
+            boolean previousDashboardMode = dashboardMode;
+            if (preview) {
+                game = layoutPreviewGame;
+                dashboardMode = false;
+            }
             c.save();
             c.translate((getWidth() - w * scale) * 0.5f, (getHeight() - h * scale) * 0.5f);
             c.scale(scale, scale);
             drawWallpaper(c, w, h);
+            if (!dashboardMode) drawLayoutBackground(c, w, h);
             if (dashboardMode) {
                 if (portrait) drawLauncherDashboardPortrait(c); else drawLauncherDashboardLandscape(c);
             } else {
                 if (portrait) drawPortrait(c); else drawLandscape(c);
             }
+            drawLayoutDecoration(c, w, h);
             drawMusicNotification(c, portrait, w, h);
             drawCornerGems(c, w, h);
             c.restore();
-            // The hero button, GIF wallpaper, and slot carousel animate smoothly.
+            game = previousGame;
+            dashboardMode = previousDashboardMode;
             if (animatedSlot < 0f) animatedSlot = slot;
             if (!timelineTouchActive) {
                 float delta = slot - animatedSlot;
@@ -818,7 +832,14 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     animatedSlot = slot;
                 }
             }
-            postInvalidateDelayed(16);
+            boolean animatedLayout = false;
+            int activeGame = activeLayoutGame();
+            if (activeGame >= 0) {
+                for (int i = 0; i < 4; i++)
+                    if (layoutMovies[activeGame][i] != null) animatedLayout = true;
+            }
+            if (wallpaperMovie != null || animatedLayout) postInvalidateOnAnimation();
+            else postInvalidateDelayed(40);
         }
 
         private void drawWallpaper(Canvas c, float w, float h) {
@@ -1232,7 +1253,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
 
             if(itemId>0) {
-                drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
+                int layoutGame = activeLayoutGame();
+                if (layoutGame >= 0 && hasLayoutImage(layoutGame, 2))
+                    drawLayoutImage(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
+                        radius*0.92f, radius*0.92f);
+                else
+                    drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
                 // Only occupied pockets need a label or usage hint.
                 textFit(c, itemName(), cx, cy + radius * 0.66f, radius * 1.55f,
                     Math.max(8f, radius * 0.11f), ink(), true);
@@ -1320,8 +1346,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             p.setStyle(Paint.Style.FILL);
             p.setColor(0x60000000);
             c.drawRoundRect(x+2,y+4,x+w+2,y+h+4,13,13,p);
+            int layoutGame = activeLayoutGame();
             p.setColor(action==downAction?accent():panel());
             c.drawRoundRect(x,y,x+w,y+h,13,13,p);
+            if (layoutGame >= 0) drawLayoutButtonTexture(c, action, x, y, w, h);
             p.setColor(action==downAction?gold():edge());
             p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
             c.drawRoundRect(x+1,y+1,x+w-1,y+h-1,12,12,p);
