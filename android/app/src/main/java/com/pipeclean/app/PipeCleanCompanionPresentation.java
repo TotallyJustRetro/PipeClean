@@ -586,7 +586,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float dx = layoutValues[g][base] * (w / 800f);
             float dy = layoutValues[g][base + 1] * (h / 450f);
             float scaleX = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
-            int scaleYIndex = element < 5 ? 25 + element : 29 + (element - 5);
+            int scaleYIndex = element < 5 ? 25 + element : 30 + (element - 5);
             float scaleY = Math.max(0.25f, Math.min(2.5f, layoutValues[g][scaleYIndex] / 100f));
             canvas.translate(centerX + dx, centerY + dy);
             canvas.scale(scaleX, scaleY);
