@@ -1083,17 +1083,21 @@ static void draw_companion(const Settings *s)
 
     draw_slot_timeline(s, g);
 
+    static const float decoration_x[N_DECK_DECORATIONS] = {
+        280, 20, 610, 315, 26, 634, 190, 488, 26, 675, 195, 565, 40, 695, 315, 495
+    };
+    static const float decoration_y[N_DECK_DECORATIONS] = {
+        153, 78, 78, 245, 218, 218, 85, 260, 135, 135, 290, 290, 35, 35, 175, 175
+    };
+    static const float decoration_w[N_DECK_DECORATIONS] = {
+        240, 170, 170, 170, 140, 140, 122, 122, 100, 100, 100, 100, 95, 95, 112, 112
+    };
+    static const float decoration_h[N_DECK_DECORATIONS] = {
+        144, 120, 120, 120, 92, 92, 86, 86, 70, 70, 70, 70, 65, 65, 74, 74
+    };
     for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
-        float dx = slot == 0 ? 280 : slot == 1 ? 20 : slot == 2 ? 610 :
-                   slot == 3 ? 315 : slot == 4 ? 26 : slot == 5 ? 634 :
-                   slot == 6 ? 190 : 488;
-        float dy = slot == 0 ? 153 : (slot == 1 || slot == 2) ? 78 :
-                   slot == 3 ? 245 : (slot == 4 || slot == 5) ? 218 :
-                   slot == 6 ? 85 : 260;
-        float dw = slot == 0 ? 240 : (slot == 1 || slot == 2) ? 170 :
-                   (slot == 3) ? 170 : (slot == 4 || slot == 5) ? 140 : 122;
-        float dh = slot == 0 ? 144 : (slot == 1 || slot == 2) ? 120 :
-                   (slot == 3) ? 120 : (slot == 4 || slot == 5) ? 92 : 86;
+        float dx = decoration_x[slot], dy = decoration_y[slot];
+        float dw = decoration_w[slot], dh = decoration_h[slot];
         transform_box(d, 5 + slot, 400, 225, &dx, &dy, &dw, &dh);
         int asset_index = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
         if (assets[g][asset_index])
