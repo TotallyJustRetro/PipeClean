@@ -412,7 +412,7 @@ static void companion_publish_launcher_dashboard(int selected_game)
     jobjectArray layout_paths = string_class
         ? (*env)->NewObjectArray(env, N_GAMES * N_DECK_ASSET_PATHS, string_class, NULL) : NULL;
     if (layout_values) {
-        jint values[N_GAMES * N_DECK_LAYOUT_VALUES];
+        jint values[N_GAMES * N_DECK_LAYOUT_VALUES] = {0};
         for (int g = 0; g < N_GAMES; g++) {
             CompanionLayoutCfg *layout = &settings.deck_layout[g];
             int base = g * N_DECK_LAYOUT_VALUES;
