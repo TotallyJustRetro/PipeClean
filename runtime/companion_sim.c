@@ -811,7 +811,7 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
             i % 4 == 0 ? 240 : i % 3 == 0 ? 107 : 214,
             i % 4 == 0 ? 174 : i % 3 == 0 ? 34 : 107, 255);
     }
-    int item_asset = item >= 1 && item <= 3 ? item + 3 : 2;
+    int item_asset = item >= 1 && item <= 3 ? item + 11 : 2;
     if (item > 0 && !assets[game][item_asset]) item_asset = 2;
     if (item > 0 && assets[game][item_asset]) {
         draw_asset_image(s, game, item_asset,
@@ -926,11 +926,11 @@ static void sync_assets(const Settings *s)
         load_asset(g, 1, d->button_texture_path);
         load_asset(g, 2, d->item_texture_path); /* backward-compatible generic fallback */
         load_asset(g, 3, d->decoration_path);
-        load_asset(g, 4, d->item_texture_by_id[1]); /* Mushroom */
-        load_asset(g, 5, d->item_texture_by_id[2]); /* Superball / Fire Flower */
-        load_asset(g, 6, d->item_texture_by_id[3]); /* Carrot */
-        load_asset(g, 7, d->header_texture_path);
-        load_asset(g, 8, d->status_texture_path);
+        load_asset(g, 12, d->item_texture_by_id[1]); /* Mushroom */
+        load_asset(g, 13, d->item_texture_by_id[2]); /* Superball / Fire Flower */
+        load_asset(g, 14, d->item_texture_by_id[3]); /* Carrot */
+        load_asset(g, 15, d->header_texture_path);
+        load_asset(g, 16, d->status_texture_path);
         for (int b = 0; b < 4; b++)
             load_asset(g, 17 + b, d->button_texture_by_action[b]);
         for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
