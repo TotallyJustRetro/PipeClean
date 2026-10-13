@@ -37,6 +37,10 @@ static int pressed_action, mouse_down_action;
 static SDL_Texture *dashboard_preview_texture;
 static int dashboard_preview_game = -2;
 static Uint32 dashboard_preview_tick;
+static int desktop_music_notice_serial;
+static Uint32 desktop_music_notice_started;
+static int desktop_music_notice_visible;
+static char desktop_music_notice_title[512] = "PipeClean Chiptune";
 static SDL_Texture *slot_thumb_texture[N_GAMES][10];
 static char slot_thumb_path[N_GAMES][10][1200];
 static time_t slot_thumb_mtime[N_GAMES][10];
@@ -402,6 +406,78 @@ static void draw_dashboard(const Settings *s, int selected_game)
     fill(779, 9, 12, 3, 110, 229, 239, 204); fill(788, 9, 3, 12, 110, 229, 239, 204);
     fill(9, 438, 12, 3, 110, 229, 239, 204); fill(9, 429, 3, 12, 110, 229, 239, 204);
     fill(779, 438, 12, 3, 110, 229, 239, 204); fill(788, 429, 3, 12, 110, 229, 239, 204);
+}
+
+static void update_desktop_music_notice(const Settings *s)
+{
+    int serial = launcher_music_notification_serial();
+    if (!launcher_music_notification_allowed()) {
+        desktop_music_notice_visible = 0;
+        desktop_music_notice_serial = serial;
+        return;
+    }
+    if (serial != desktop_music_notice_serial) {
+        desktop_music_notice_serial = serial;
+        if (s->menu_music && serial != 0) {
+            const char *path = s->menu_music_path;
+            if (!path[0]) {
+                snprintf(desktop_music_notice_title, sizeof desktop_music_notice_title,
+                         "PipeClean Chiptune");
+            } else {
+                const char *base = strrchr(path, '/');
+                const char *winbase = strrchr(path, '\\');
+                if (winbase && (!base || winbase > base)) base = winbase;
+                base = base ? base + 1 : path;
+                snprintf(desktop_music_notice_title, sizeof desktop_music_notice_title, "%s", base);
+                char *dot = strrchr(desktop_music_notice_title, '.');
+                if (dot && dot != desktop_music_notice_title) *dot = 0;
+                if (!desktop_music_notice_title[0])
+                    snprintf(desktop_music_notice_title, sizeof desktop_music_notice_title, "Untitled track");
+            }
+            desktop_music_notice_started = SDL_GetTicks();
+            desktop_music_notice_visible = 1;
+        } else {
+            desktop_music_notice_visible = 0;
+        }
+    }
+    if ((Uint32)(SDL_GetTicks() - desktop_music_notice_started) >= 2750u)
+        desktop_music_notice_visible = 0;
+}
+
+static void draw_vinyl_notification(const Settings *s)
+{
+    update_desktop_music_notice(s);
+    if (!desktop_music_notice_visible || !launcher_music_notification_allowed()) return;
+    Uint32 elapsed = SDL_GetTicks() - desktop_music_notice_started;
+    const float width = 368.0f, height = 58.0f;
+    float offset = 0.0f;
+    if (elapsed < 300u) {
+        float q = elapsed / 300.0f;
+        float ease = 1.0f - (1.0f - q) * (1.0f - q) * (1.0f - q);
+        offset = -width * (1.0f - ease);
+    } else if (elapsed > 2340u) {
+        float q = fminf(1.0f, (elapsed - 2340u) / 360.0f);
+        float ease = q * q * (3.0f - 2.0f * q);
+        offset = -width * ease;
+    }
+    int x = 18 + (int)offset, y = 450 - (int)height - 11;
+    fill_round_rect(x, y, (int)width, (int)height, 12, 17, 23, 34, 232);
+    outline_round_rect(x, y, (int)width, (int)height, 12, 92, 111, 147, 230);
+    int cx = x + 31, cy = y + 29;
+    fill_circle(cx, cy, 21, 7, 9, 15, 255);
+    outline_circle(cx, cy, 18, 59, 67, 87, 255);
+    outline_circle(cx, cy, 15, 59, 67, 87, 255);
+    outline_circle(cx, cy, 12, 59, 67, 87, 255);
+    outline_circle(cx, cy, 9, 59, 67, 87, 255);
+    float angle = s->menu_music ? elapsed * 0.0010472f : -0.45f;
+    color(128, 217, 227, 255);
+    SDL_RenderDrawLine(deck_renderer, cx, cy,
+        cx + (int)(cosf(angle) * 17.0f), cy + (int)(sinf(angle) * 17.0f));
+    fill_circle(cx, cy, 5, 128, 217, 227, 255);
+    fill_circle(cx, cy, 1, 7, 9, 15, 255);
+    draw_text(x + 61, y + 11, 1, 113, 215, 163, "NOW PLAYING");
+    draw_text_fit(x + 61, y + 27, (int)width - 73, 2,
+        234, 245, 255, desktop_music_notice_title);
 }
 
 static int slot_file_occupied(int game, int slot)
@@ -792,6 +868,7 @@ static void draw_companion(const Settings *s)
     if (!show_game_deck) {
         fill(0, 0, 800, 450, 23, 35, 55, 255);
         draw_dashboard(s, g);
+        draw_vinyl_notification(s);
         SDL_RenderPresent(deck_renderer);
         return;
     }
@@ -991,9 +1068,7 @@ static void inverse_point(const CompanionLayoutCfg *d, int element, float *x, fl
 
 static int timeline_hit_slot(const Settings *s, int game, float x, float y)
 {
-    float tx = x, ty = y, tw = 752.0f, th = 83.0f;
     const CompanionLayoutCfg *d = &s->deck_layout[game];
-    transform_box(d, 3, 400.0f, 406.5f, &tx, &ty, &tw, &th);
     float base_x = 24.0f, base_y = 365.0f, w = 752.0f, h = 83.0f;
     float logical_x = x, logical_y = y;
     inverse_point(d, 3, &logical_x, &logical_y, 400.0f, 406.5f);
