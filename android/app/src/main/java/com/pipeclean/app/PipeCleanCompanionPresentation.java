@@ -561,9 +561,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     android.util.Log.w("PipeClean", "Couldn't decode Companion Deck GIF.", ex);
                 }
             } else {
-                BitmapFactory.Options options = new BitmapFactory.Options();
-                options.inScaled = false;
-                layoutBitmaps[gameIndex][imageIndex] = BitmapFactory.decodeFile(path, options);
+                layoutBitmaps[gameIndex][imageIndex] = decodeSampledBitmap(path);
             }
         }
 
@@ -1388,6 +1386,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void smallButton(Canvas c,float x,float y,float w,float h,String label,int action) {
             p.setColor(action==downAction?gold():panel());
             c.drawRoundRect(x,y,x+w,y+h,9,9,p);
+            drawLayoutButtonTexture(c, action, x, y, w, h);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.5f);
             c.drawRoundRect(x+0.75f,y+0.75f,x+w-.75f,y+h-.75f,8,8,p);
             p.setStyle(Paint.Style.FILL);
