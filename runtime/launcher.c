@@ -51,7 +51,9 @@ static int bg_for_game = -1;
 static float anim_clock;
 static int menu_playlist_page;
 static unsigned music_notice_serial;
+static unsigned music_notice_announced_serial;
 static float music_notice_age = -1.0f;
+static int music_notice_deferred;
 static char music_notice_path[512];
 static void menu_music_notice_start(void);
 static int wide_dirty, wide_note[N_GAMES];
@@ -2020,18 +2022,21 @@ static void menu_music_title_from_path(const char *path, char *out, size_t n)
 
 static void menu_music_notice_start(void)
 {
-    /* Track changes made from Audio & Menu are intentionally silent visually:
-       that page is for playlist management, not the transient now-playing UI. */
-    if (!settings.menu_music || tab == TAB_AUDIO) return;
+    if (!settings.menu_music) return;
     music_notice_serial++;
     if (!music_notice_serial) music_notice_serial = 1;
     music_notice_age = 0.0f;
+    music_notice_deferred = tab == TAB_AUDIO;
     snprintf(music_notice_path, sizeof music_notice_path, "%s", settings.menu_music_path);
 }
 
 int launcher_music_notification_serial(void)
 {
-    return (int)music_notice_serial;
+    /* If a track changed on Audio & Menu, wait until the user leaves that
+       page before exposing the new serial to the Android Companion Deck. */
+    if (tab != TAB_AUDIO && music_notice_age >= 0.0f && music_notice_age <= 2.75f)
+        music_notice_announced_serial = music_notice_serial;
+    return (int)music_notice_announced_serial;
 }
 
 int launcher_music_notification_allowed(void)
@@ -2899,9 +2904,17 @@ LauncherResult launcher_frame(float dt)
     }
     launcher_controller_update(dt);
     anim_clock += dt;
+    if (tab != TAB_AUDIO && music_notice_deferred && music_notice_age >= 0.0f) {
+        /* Re-enter the animation at the start when leaving the management tab. */
+        music_notice_age = 0.0f;
+        music_notice_deferred = 0;
+    }
     if (music_notice_age >= 0.0f) {
         music_notice_age += dt;
-        if (music_notice_age > 2.75f) music_notice_age = -1.0f;
+        if (music_notice_age > 2.75f) {
+            music_notice_age = -1.0f;
+            music_notice_deferred = 0;
+        }
     }
     int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? mp_config_game : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
@@ -3102,10 +3115,7 @@ LauncherResult launcher_frame(float dt)
         ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
 
-    /* Music status is a temporary overlay, never part of the Audio & Menu page.
-       Clear any older notice when entering the management page so it cannot
-       reappear if the user immediately leaves that page. */
-    if (tab == TAB_AUDIO) music_notice_age = -1.0f;
+    /* Music status is a temporary overlay, never part of the Audio & Menu page. */
     menu_music_notice_draw(vx, vy);
 
     /* Draw a high-contrast virtual pointer while controller navigation is active. */
