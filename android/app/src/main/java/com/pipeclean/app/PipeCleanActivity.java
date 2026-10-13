@@ -258,6 +258,30 @@ public final class PipeCleanActivity extends SDLActivity {
         });
     }
 
+    /** Publish launcher metadata and the cached game preview to the pre-game dashboard. */
+    public void updateLauncherDashboard(int selectedGame, String[] gameNames,
+                                        int[] recentGames, int[] playSeconds,
+                                        int previewWidth, int previewHeight, int[] previewPixels,
+                                        boolean dualScreenEnabled) {
+        runOnUiThread(() -> {
+            showCompanionDisplay();
+            if (companionPresentation != null)
+                companionPresentation.setLauncherDashboardState(
+                    selectedGame, gameNames, recentGames, playSeconds,
+                    previewWidth, previewHeight, previewPixels, dualScreenEnabled);
+        });
+    }
+
+    /** Keep the Companion Deck's optional music player in sync with Audio & Menu. */
+    public void updateCompanionMusicPlaylist(String currentTitle, String[] playlistNames,
+                                             int selectedTrack, boolean playing) {
+        runOnUiThread(() -> {
+            if (companionPresentation != null)
+                companionPresentation.setMusicPlaylist(
+                    currentTitle, playlistNames, selectedTrack, playing);
+        });
+    }
+
     /** Publish save-state paths for the Companion Deck timeline. */
     public void updateCompanionSaveSlots(int game, int selectedSlot,
                                          String[] statePaths, String[] thumbnailPaths) {
