@@ -127,7 +127,8 @@ public final class PipeCleanActivity extends SDLActivity {
                 // Belt-and-suspenders recovery: accidental dismissals must not detach
                 // the lower screen from the app. Explicit teardown clears our reference
                 // before this callback runs, so closing the app remains allowed.
-                if (!isFinishing() && companionPresentation == created && !created.isShowing())
+                if (!isFinishing() && !isDestroyed() &&
+                    companionPresentation == created && !created.isShowing())
                     showCompanionDisplay();
             }));
             companionPresentation = created;
@@ -249,6 +250,7 @@ public final class PipeCleanActivity extends SDLActivity {
                         paused != 0, slot, palette, filter, item);
                     companionPresentation.setPipeSwapMode(companionPipeSwapMode);
                 } else {
+                    companionPipeSwapMode = false;
                     companionPresentation.showIdleState();
                     companionPresentation.setPipeSwapMode(false);
                 }
@@ -285,12 +287,13 @@ public final class PipeCleanActivity extends SDLActivity {
         });
     }
 
-    /** Called when gameplay exits so the second screen returns to the system display. */
+    /** Enable game-specific deck controls, or return the still-visible deck to idle. */
     public void setCompanionEnabled(boolean enabled) {
         runOnUiThread(() -> {
             companionEnabled = enabled;
             showCompanionDisplay();
             if (!companionEnabled && companionPresentation != null) {
+                companionPipeSwapMode = false;
                 companionPresentation.showIdleState();
                 companionPresentation.setPipeSwapMode(false);
             } else if (companionPresentation != null) {
