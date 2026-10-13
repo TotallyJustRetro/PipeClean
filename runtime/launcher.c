@@ -2961,7 +2961,30 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
     case DECK_ELEM_DECORATION_5: *x = 26; *y = 218; *w = 140; *h = 92; break;
     case DECK_ELEM_DECORATION_6: *x = 634; *y = 218; *w = 140; *h = 92; break;
     case DECK_ELEM_DECORATION_7: *x = 190; *y = 85; *w = 122; *h = 86; break;
-    default: *x = 488; *y = 260; *w = 122; *h = 86; break;
+    default:
+        if (element >= DECK_ELEM_DECORATION_8 && element < N_DECK_ELEM) {
+            static const float bx[N_DECK_DECORATIONS] = {
+                280, 20, 610, 315, 26, 634, 190, 488,
+                26, 675, 195, 565, 40, 695, 315, 495
+            };
+            static const float by[N_DECK_DECORATIONS] = {
+                153, 78, 78, 245, 218, 218, 85, 260,
+                135, 135, 290, 290, 35, 35, 175, 175
+            };
+            static const float bw[N_DECK_DECORATIONS] = {
+                240, 170, 170, 170, 140, 140, 122, 122,
+                100, 100, 100, 100, 95, 95, 112, 112
+            };
+            static const float bh[N_DECK_DECORATIONS] = {
+                144, 120, 120, 120, 92, 92, 86, 86,
+                70, 70, 70, 70, 65, 65, 74, 74
+            };
+            int slot = element - DECK_ELEM_DECORATION;
+            *x = bx[slot]; *y = by[slot]; *w = bw[slot]; *h = bh[slot];
+        } else {
+            *x = 488; *y = 260; *w = 122; *h = 86;
+        }
+        break;
     }
 }
 
@@ -2995,6 +3018,7 @@ static const char *deck_editor_preview_asset_path(const CompanionLayoutCfg *d, i
     if (index >= 21 && index < 28) return d->decoration_extra_path[index - 21];
     if (index == 28) return d->button_texture_by_action[4];
     if (index == 29) return d->button_texture_by_action[5];
+    if (index >= 30 && index < N_DECK_ASSET_PATHS) return d->decoration_extra_path[index - 23];
     return "";
 }
 
@@ -3027,7 +3051,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         int slot = e - DECK_ELEM_DECORATION;
         const char *asset = deck_decoration_path_const(d, slot);
         if (asset[0]) {
-            deck_editor_preview_asset(d, slot == 0 ? 3 : 20 + slot, asset, rx, ry, rw, rh);
+            deck_editor_preview_asset(d, deck_decoration_asset_index(slot), asset, rx, ry, rw, rh);
             if (e == companion_editor_element)
                 ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
         } else {
