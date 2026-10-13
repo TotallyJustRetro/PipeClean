@@ -3791,6 +3791,18 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "decoration_8_dy")) fresh.decoration_extra_dy[6] = v;
         else if (!strcmp(line, "decoration_8_scale")) fresh.decoration_extra_scale[6] = v;
         else if (!strcmp(line, "decoration_8_scale_y")) fresh.decoration_extra_scale_y[6] = v;
+        else if (!strncmp(line, "decoration_", 11)) {
+            int layer = 0;
+            char component[16] = {0};
+            if (sscanf(line, "decoration_%d_%15s", &layer, component) == 2 &&
+                layer >= 9 && layer <= N_DECK_DECORATIONS) {
+                int slot = layer - 2;
+                if (!strcmp(component, "dx")) fresh.decoration_extra_dx[slot] = v;
+                else if (!strcmp(component, "dy")) fresh.decoration_extra_dy[slot] = v;
+                else if (!strcmp(component, "scale")) fresh.decoration_extra_scale[slot] = v;
+                else if (!strcmp(component, "scale_y")) fresh.decoration_extra_scale_y[slot] = v;
+            }
+        }
         else if (!strcmp(line, "sounds_enabled")) fresh.sounds_enabled = v ? 1 : 0;
         else if (!strcmp(line, "background_path")) deck_set_path(fresh.background_path, sizeof fresh.background_path, eq, directory);
         else if (!strcmp(line, "button_texture_path")) deck_set_path(fresh.button_texture_path, sizeof fresh.button_texture_path, eq, directory);
@@ -3806,6 +3818,14 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "decoration_path_5")) deck_set_path(fresh.decoration_extra_path[4], sizeof fresh.decoration_extra_path[4], eq, directory);
         else if (!strcmp(line, "decoration_path_6")) deck_set_path(fresh.decoration_extra_path[5], sizeof fresh.decoration_extra_path[5], eq, directory);
         else if (!strcmp(line, "decoration_path_7")) deck_set_path(fresh.decoration_extra_path[6], sizeof fresh.decoration_extra_path[6], eq, directory);
+        else if (!strncmp(line, "decoration_path_", 16)) {
+            char *end = NULL;
+            long layer_key = strtol(line + 16, &end, 10);
+            if (end && *end == 0 && layer_key >= 8 && layer_key < N_DECK_DECORATIONS) {
+                int slot = (int)layer_key;
+                deck_set_path(fresh.decoration_extra_path[slot], sizeof fresh.decoration_extra_path[slot], eq, directory);
+            }
+        }
         else if (!strcmp(line, "header_texture_path")) deck_set_path(fresh.header_texture_path, sizeof fresh.header_texture_path, eq, directory);
         else if (!strcmp(line, "status_texture_path")) deck_set_path(fresh.status_texture_path, sizeof fresh.status_texture_path, eq, directory);
         else if (!strcmp(line, "button_texture_save_path")) deck_set_path(fresh.button_texture_by_action[0], sizeof fresh.button_texture_by_action[0], eq, directory);
@@ -3846,6 +3866,16 @@ static int deck_manifest_apply(int game, const char *path)
     if (fresh.status_dy < -400) fresh.status_dy = -400; if (fresh.status_dy > 400) fresh.status_dy = 400;
     if (fresh.decoration_dx < -400) fresh.decoration_dx = -400; if (fresh.decoration_dx > 400) fresh.decoration_dx = 400;
     if (fresh.decoration_dy < -400) fresh.decoration_dy = -400; if (fresh.decoration_dy > 400) fresh.decoration_dy = 400;
+    for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+        if (fresh.decoration_extra_dx[slot] < -400) fresh.decoration_extra_dx[slot] = -400;
+        if (fresh.decoration_extra_dx[slot] > 400) fresh.decoration_extra_dx[slot] = 400;
+        if (fresh.decoration_extra_dy[slot] < -400) fresh.decoration_extra_dy[slot] = -400;
+        if (fresh.decoration_extra_dy[slot] > 400) fresh.decoration_extra_dy[slot] = 400;
+        if (fresh.decoration_extra_scale[slot] < 25) fresh.decoration_extra_scale[slot] = 25;
+        if (fresh.decoration_extra_scale[slot] > 250) fresh.decoration_extra_scale[slot] = 250;
+        if (fresh.decoration_extra_scale_y[slot] < 25) fresh.decoration_extra_scale_y[slot] = 25;
+        if (fresh.decoration_extra_scale_y[slot] > 250) fresh.decoration_extra_scale_y[slot] = 250;
+    }
     if (fresh.header_scale < 25) fresh.header_scale = 25; if (fresh.header_scale > 250) fresh.header_scale = 250;
     if (fresh.item_scale < 25) fresh.item_scale = 25; if (fresh.item_scale > 250) fresh.item_scale = 250;
     if (fresh.controls_scale < 25) fresh.controls_scale = 25; if (fresh.controls_scale > 250) fresh.controls_scale = 250;
