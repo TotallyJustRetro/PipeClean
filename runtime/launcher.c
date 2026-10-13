@@ -3418,8 +3418,16 @@ static void deck_editor_items(float x, float y)
         ui_text_fit(F_BOLD, 11, x + 50, ry + 12, 195, ready ? C_TEXT : C_DIM, labels[row]);
         const char *asset_path = d->item_texture_by_id[item];
         int asset_index = 11 + item;
-        ui_text_fit(F_REG, 8, x + 50, ry + 34, 334, asset_path[0] ? C_MUTED : C_DIM,
-                    asset_path[0] ? path_base(asset_path) : "No custom texture assigned");
+        ui_text_fit(F_REG, 8, x + 50, ry + 34, 260, asset_path[0] ? C_MUTED : C_DIM,
+                    asset_path[0] ? path_base(asset_path) :
+                    d->item_texture_path[0] ? "Using shared fallback texture" : "Using built-in item art");
+        ui_rrect(x + 320, ry + 8, 60, 54, 6, RGBA(7, 13, 24, 255));
+        ui_stroke(x + 320, ry + 8, 60, 54, 6, 1.0f, RGBA(77, 111, 149, 180));
+        const char *preview_path = asset_path[0] ? asset_path : d->item_texture_path;
+        if (preview_path[0])
+            ui_image_file_fit(preview_path, x + 324, ry + 11, 52, 48);
+        else
+            ui_text_fit(F_BOLD, 7, x + 324, ry + 30, 52, C_DIM, "BUILT-IN");
         if (!ready) {
             ui_text_fit(F_REG, 8, x + 394, ry + 39, 110, C_DIM, "SML2 ONLY");
             continue;
@@ -3478,8 +3486,14 @@ static void deck_editor_assets(float x, float y)
                  i == 0 ? RGBA(44, 85, 117, 180) : C_PANEL);
         ui_text_fit(F_BOLD, 10, x + 49, ry + 13, 164, C_TEXT, rows[i].label);
         const char *name = rows[i].path[0] ? path_base(rows[i].path) : "Built-in appearance";
-        ui_text_fit(F_REG, 8, x + 218, ry + 13, 224,
+        ui_text_fit(F_REG, 8, x + 218, ry + 13, 140,
                     rows[i].path[0] ? C_MUTED : C_DIM, name);
+        ui_rrect(x + 366, ry + 4, 56, 29, 5, RGBA(7, 13, 24, 255));
+        ui_stroke(x + 366, ry + 4, 56, 29, 5, 1.0f, RGBA(77, 111, 149, 180));
+        if (rows[i].path[0])
+            ui_image_file_fit(rows[i].path, x + 369, ry + 6, 50, 25);
+        else
+            ui_text_fit(F_BOLD, 6.5f, x + 369, ry + 14, 50, C_DIM, "DEFAULT");
         int stretch = d->asset_stretch[rows[i].asset_index];
         if (ui_button(x + 450, ry + 4, 78, 29, stretch ? "STRETCH" : "FIT / NO CROP",
                       stretch ? B_PRIMARY : B_NORMAL, 1)) {
@@ -3518,9 +3532,15 @@ static void deck_editor_decorations(float x, float y)
         char label[32];
         snprintf(label, sizeof label, "LAYER %02d", slot + 1);
         ui_text(F_BOLD, 8.5f, x + 48, ry + 6, C_TEXT, label);
-        ui_text_fit(F_REG, 7.5f, x + 48, ry + 18, 382,
+        ui_text_fit(F_REG, 7.5f, x + 48, ry + 18, 318,
                     asset_path[0] ? C_MUTED : C_DIM,
                     asset_path[0] ? path_base(asset_path) : "EMPTY — READY FOR AN IMAGE");
+        ui_rrect(x + 372, ry + 3, 54, 26, 5, RGBA(7, 13, 24, 255));
+        ui_stroke(x + 372, ry + 3, 54, 26, 5, 1.0f, RGBA(77, 111, 149, 180));
+        if (asset_path[0])
+            ui_image_file_fit(asset_path, x + 375, ry + 4, 48, 24);
+        else
+            ui_text_fit(F_BOLD, 6.5f, x + 375, ry + 12, 48, C_DIM, "EMPTY");
         int asset_index = slot == 0 ? 3 : 20 + slot;
         int stretch = d->asset_stretch[asset_index];
         if (ui_button(x + 438, ry + 2, 82, 28, stretch ? "STRETCH" : "FIT / NO CROP",
