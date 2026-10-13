@@ -207,7 +207,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String wallpaperPath = "";
 
         private static final int LAYOUT_GAME_COUNT = 7;
-        private static final int LAYOUT_VALUE_COUNT = 25;
+        private static final int LAYOUT_VALUE_COUNT = 33;
         private static final int LAYOUT_PATH_COUNT = 24;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
@@ -585,9 +585,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
             int base = element < 5 ? element * 3 : 16 + (element - 5) * 3;
             float dx = layoutValues[g][base] * (w / 800f);
             float dy = layoutValues[g][base + 1] * (h / 450f);
-            float scale = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
+            float scaleX = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
+            int scaleYIndex = element < 5 ? 25 + element : 29 + (element - 5);
+            float scaleY = Math.max(0.25f, Math.min(2.5f, layoutValues[g][scaleYIndex] / 100f));
             canvas.translate(centerX + dx, centerY + dy);
-            canvas.scale(scale, scale);
+            canvas.scale(scaleX, scaleY);
             canvas.translate(-centerX, -centerY);
         }
 
