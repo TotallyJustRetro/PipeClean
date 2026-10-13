@@ -35,6 +35,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
     PipeCleanCompanionPresentation(Context context, Display display) {
         super(context, display);
+        // The Companion Deck is paired with the app's primary screen, not a pop-up.
+        // Back/B and outside touches must never dismiss the secondary-screen surface.
+        setCancelable(false);
+        setCanceledOnTouchOutside(false);
         host = (Activity) context;
         deck = new DeckView(context);
         gameFrameView = new GameFrameView(context);
@@ -56,6 +60,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
                      int slot, int palette, int filter, int item) {
         deck.setState(game, lives, stage, world, paused, slot, palette, filter, item);
     }
+
+    void showIdleState() { deck.showIdleState(); }
 
     void setBackgroundFile(String path) { deck.setBackgroundFile(path); }
 
@@ -199,8 +205,21 @@ final class PipeCleanCompanionPresentation extends Presentation {
             postInvalidate();
         }
 
+        void showIdleState() {
+            game = -1;
+            lives = 0;
+            stage = -1;
+            world = -1;
+            paused = false;
+            item = 0;
+            downAction = 0;
+            itemPressed = false;
+            postInvalidate();
+        }
+
         void setSaveSlots(int game, int selectedSlot, String[] statePaths, String[] thumbnailPaths) {
-            this.game = game;
+            // Save-slot metadata can arrive before a game launches. Keep it updated
+            // without changing the deck from its idle/active game state.
             this.slot = Math.max(0, Math.min(9, selectedSlot));
             for (int i = 0; i < 10; i++) {
                 String statePath = statePaths != null && i < statePaths.length && statePaths[i] != null
@@ -595,9 +614,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, title(), 25, 43, 16, ink());
             if (!wallpaperPath.isEmpty()) smallButton(c, 552, 17, 34, 34, "×", RESET_BACKGROUND);
             button(c, 593, 13, 105, 42, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
-            button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
+            if (game >= 0) button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
+            else button(c, 704, 13, 72, 42, "DECK", "LINKED", 0, false);
 
-            card(c, 24, 72, 160, 132, "ACTIVE SAVE");
+            card(c, 24, 72, 160, 132, game < 0 ? "SAVE SLOT PREVIEW" : "ACTIVE SAVE");
             Bitmap currentThumb = slotThumbnails[slot];
             if (currentThumb != null && !currentThumb.isRecycled()) {
                 p.setColor(0xFFFFFFFF);
@@ -613,13 +633,23 @@ final class PipeCleanCompanionPresentation extends Presentation {
             // Keep the reserve-item control as the visual centerpiece of the deck.
             drawHeroItem(c, 400, 164, 128, item);
 
-            card(c, 620, 76, 156, 128, "ADVENTURE STATUS");
-            drawMiniStar(c, 637, 112, 8);
-            text(c, "LIVES", 652, 110, 7, muted());
-            text(c, String.format(Locale.US, "× %02d", lives), 652, 128, 12, ink());
-            text(c, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", 634, 151, 7.3f, muted());
-            textFit(c, stageText(), 634, 171, 126, 11, accent());
-            text(c, paused ? "PAUSED" : "IN PLAY", 634, 191, 8, muted());
+            if (game < 0) {
+                card(c, 620, 76, 156, 128, "DECK STATUS");
+                drawMiniStar(c, 637, 112, 8);
+                text(c, "SECOND SCREEN", 652, 110, 6.5f, muted());
+                text(c, "ATTACHED", 652, 128, 12, ink());
+                text(c, "NEXT STEP", 634, 151, 7.3f, muted());
+                textFit(c, "LAUNCH A GAME", 634, 171, 126, 10, accent());
+                text(c, "QUICK ACTIONS IN GAME", 634, 191, 6.2f, muted());
+            } else {
+                card(c, 620, 76, 156, 128, "ADVENTURE STATUS");
+                drawMiniStar(c, 637, 112, 8);
+                text(c, "LIVES", 652, 110, 7, muted());
+                text(c, String.format(Locale.US, "× %02d", lives), 652, 128, 12, ink());
+                text(c, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", 634, 151, 7.3f, muted());
+                textFit(c, stageText(), 634, 171, 126, 11, accent());
+                text(c, paused ? "PAUSED" : "IN PLAY", 634, 191, 8, muted());
+            }
 
             // Pin the timeline to the bottom edge; controls remain above it.
             drawSaveTimeline(c, 24, 365, 752, 83, false);
@@ -628,10 +658,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private void drawDockLandscape(Canvas c) {
             float y=320, h=42;
-            button(c,94,y,145,h,"SAVE","SNAPSHOT",SAVE,false);
-            button(c,247,y,145,h,"LOAD","RESTORE",LOAD,false);
-            button(c,400,y,145,h,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,553,y,153,h,"REWIND","HOLD TO REWIND",REWIND,true);
+            boolean idle = game < 0;
+            button(c,94,y,145,h,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
+            button(c,247,y,145,h,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
+            button(c,400,y,145,h,idle?"PAUSE":paused?"RESUME":"PAUSE",
+                idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
+            button(c,553,y,153,h,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
         }
 
         private void drawPortrait(Canvas c) {
@@ -640,14 +672,20 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, title(), 20, 43, 13, ink());
             if (!wallpaperPath.isEmpty()) smallButton(c, 238, 16, 20, 27, "×", RESET_BACKGROUND);
             button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
-            button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            if (game >= 0) button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            else button(c, 355, 12, 75, 37, "DECK", "LINKED", 0, false);
 
-            badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", lives));
-            badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
+            if (game < 0) {
+                badge(c, 20, 55, 128, 47, "DECK STATUS", "LINKED");
+                badge(c, 158, 55, 272, 47, "NEXT STEP", "LAUNCH A GAME");
+            } else {
+                badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", lives));
+                badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
+            }
 
             drawHeroItem(c, 225, 280, 146, item);
 
-            card(c, 35, 466, 380, 58, "ACTIVE SAVE SLOT");
+            card(c, 35, 466, 380, 58, game < 0 ? "SAVE SLOT PREVIEW" : "ACTIVE SAVE SLOT");
             Bitmap currentThumb = slotThumbnails[slot];
             if (currentThumb != null && !currentThumb.isRecycled()) {
                 p.setColor(0xFFFFFFFF);
@@ -660,10 +698,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, slotOccupied[slot] ? "SAVED  " + (slotTimeLabels[slot] == null ? "" : slotTimeLabels[slot])
                                        : "READY TO SAVE", 145, 512, 8, accent());
 
-            button(c,20,526,198,52,"SAVE","SNAPSHOT",SAVE,false);
-            button(c,232,526,198,52,"LOAD","RESTORE",LOAD,false);
-            button(c,20,584,198,52,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,232,584,198,52,"REWIND","HOLD TO REWIND",REWIND,true);
+            boolean idle = game < 0;
+            button(c,20,526,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
+            button(c,232,526,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
+            button(c,20,584,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",
+                idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
+            button(c,232,584,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
 
             drawSaveTimeline(c, 14, 704, 422, 92, true);
         }
