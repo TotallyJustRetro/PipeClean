@@ -350,7 +350,7 @@ public final class PipeCleanActivity extends SDLActivity {
             pendingDeckKind = kind;
             pendingDeckGame = game;
             pendingDeckManifest = manifest == null ? "" : manifest;
-            pendingDeckAssetPaths = assetPaths == null ? new String[15] : assetPaths.clone();
+            pendingDeckAssetPaths = assetPaths == null ? new String[21] : assetPaths.clone();
             try {
                 if (kind == 14) {
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
@@ -364,7 +364,7 @@ public final class PipeCleanActivity extends SDLActivity {
                 } else {
                     Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17)) {
+                    if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17) || (kind >= 18 && kind <= 23)) {
                         intent.setType("image/*");
                         intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
                             "image/png", "image/gif"
@@ -402,6 +402,12 @@ public final class PipeCleanActivity extends SDLActivity {
             case 15: return "Choose Mushroom item texture (PNG/GIF)";
             case 16: return "Choose Fire Flower / Superball Flower texture (PNG/GIF)";
             case 17: return "Choose Carrot item texture (PNG/GIF)";
+            case 18: return "Choose custom header texture (PNG/GIF)";
+            case 19: return "Choose Adventure Status texture (PNG/GIF)";
+            case 20: return "Choose Save button texture (PNG/GIF)";
+            case 21: return "Choose Load button texture (PNG/GIF)";
+            case 22: return "Choose Pause/Resume button texture (PNG/GIF)";
+            case 23: return "Choose Rewind button texture (PNG/GIF)";
             case 5: return "Choose Save button sound";
             case 6: return "Choose Load button sound";
             case 7: return "Choose Pause button sound";
@@ -537,6 +543,12 @@ public final class PipeCleanActivity extends SDLActivity {
             case 12: return "item_texture_path_1";
             case 13: return "item_texture_path_2";
             case 14: return "item_texture_path_3";
+            case 15: return "header_texture_path";
+            case 16: return "status_texture_path";
+            case 17: return "button_texture_save_path";
+            case 18: return "button_texture_load_path";
+            case 19: return "button_texture_pause_path";
+            case 20: return "button_texture_rewind_path";
             default: return "empty_item_sound_path";
         }
     }
@@ -547,7 +559,9 @@ public final class PipeCleanActivity extends SDLActivity {
         String[] names = {"background", "button-texture", "item-texture", "decoration",
             "save-sound", "load-sound", "pause-sound", "rewind-sound",
             "background-sound", "close-sound", "item-sound", "empty-item-sound",
-            "mushroom-texture", "special-item-texture", "carrot-texture"};
+            "mushroom-texture", "special-item-texture", "carrot-texture",
+            "header-texture", "status-texture", "save-button-texture", "load-button-texture",
+            "pause-button-texture", "rewind-button-texture"};
         return "assets/" + names[index] + ext;
     }
 
@@ -561,7 +575,7 @@ public final class PipeCleanActivity extends SDLActivity {
              ZipOutputStream zip = new ZipOutputStream(raw)) {
             if (raw == null) throw new Exception("No destination stream");
             byte[] buffer = new byte[32 * 1024];
-            for (int i = 0; i < 15; i++) {
+            for (int i = 0; i < 21; i++) {
                 String path = i < paths.length ? paths[i] : "";
                 if (path == null || path.isEmpty()) continue;
                 File file = new File(path);
