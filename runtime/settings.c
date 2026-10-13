@@ -189,7 +189,15 @@ void settings_defaults(Settings *s)
     s->launcher_ui_scale = 100;
     s->launcher_window_size = 1;
     s->launcher_fullscreen = 0;
-    for (int i = 0; i < N_GAMES; i++) game_cfg_defaults(&s->g[i], i);
+    s->launcher_dual_screen = 0;
+    s->recent_played_count = 0;
+    s->menu_playlist_count = 0;
+    s->menu_playlist_selected = 0;
+    for (int i = 0; i < N_RECENT_PLAYED; i++) s->recent_played[i] = -1;
+    for (int i = 0; i < N_GAMES; i++) {
+        s->game_play_seconds[i] = 0;
+        game_cfg_defaults(&s->g[i], i);
+    }
 }
 
 const char *settings_dir(void)
@@ -239,6 +247,25 @@ static int field_table(Field *t, int cap)
     I("launcher_ui_scale", s->launcher_ui_scale, 75, 125);
     I("launcher_window_size", s->launcher_window_size, 0, 2);
     I("launcher_fullscreen", s->launcher_fullscreen, 0, 1);
+    I("launcher_dual_screen", s->launcher_dual_screen, 0, 1);
+    I("recent_played_count", s->recent_played_count, 0, N_RECENT_PLAYED);
+    static char recent_names[N_RECENT_PLAYED][32];
+    for (int i = 0; i < N_RECENT_PLAYED; i++) {
+        snprintf(recent_names[i], sizeof recent_names[i], "recent_played_%d", i);
+        I(recent_names[i], s->recent_played[i], -1, N_GAMES - 1);
+    }
+    static char played_seconds_names[N_GAMES][40];
+    for (int i = 0; i < N_GAMES; i++) {
+        snprintf(played_seconds_names[i], sizeof played_seconds_names[i], "game_play_seconds_%d", i);
+        I(played_seconds_names[i], s->game_play_seconds[i], 0, 2147483647);
+    }
+    I("menu_playlist_count", s->menu_playlist_count, 0, MAX_MENU_TRACKS);
+    I("menu_playlist_selected", s->menu_playlist_selected, 0, MAX_MENU_TRACKS - 1);
+    static char playlist_names[MAX_MENU_TRACKS][40];
+    for (int i = 0; i < MAX_MENU_TRACKS; i++) {
+        snprintf(playlist_names[i], sizeof playlist_names[i], "menu_playlist_%d", i);
+        S(playlist_names[i], s->menu_playlist[i]);
+    }
     S("online_name", s->online_name); S("online_server", s->online_server); I("online_connection_mode", s->online_connection_mode, 0, 1); I("online_color", s->online_color, 0, 0xFFFFFF);
     I("touch_controls", s->touch_controls, 0, 1);
     FilterCfg *f = &s->flt;
@@ -303,11 +330,13 @@ void settings_load(void)
     if (!f) return;
     Field tab[800];
     int nf = field_table(tab, 800);
-    char line[700];
+    int saw_launcher_dual_screen = 0;
+    char line[1100];
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
         if (!eq) continue;
         *eq = 0;
+        if (!strcmp(line, "launcher_dual_screen")) saw_launcher_dual_screen = 1;
         char *v = eq + 1;
         size_t l = strlen(v);
         while (l && (v[l - 1] == '\n' || v[l - 1] == '\r')) v[--l] = 0;
@@ -340,6 +369,37 @@ void settings_load(void)
         }
     }
     fclose(f);
+    if (!saw_launcher_dual_screen) {
+        /* Migrate the old per-game switch so existing Android users keep their
+         * preference after the option moves into Launcher Display settings. */
+        for (int g = 0; g < N_GAMES; g++) {
+            if (settings.g[g].dual_screen) {
+                settings.launcher_dual_screen = 1;
+                break;
+            }
+        }
+    }
+    int highest_playlist = 0;
+    for (int i = 0; i < MAX_MENU_TRACKS; i++)
+        if (settings.menu_playlist[i][0]) highest_playlist = i + 1;
+    if (settings.menu_playlist_count < highest_playlist)
+        settings.menu_playlist_count = highest_playlist;
+    if (settings.menu_playlist_count > MAX_MENU_TRACKS)
+        settings.menu_playlist_count = MAX_MENU_TRACKS;
+    if (settings.menu_playlist_count == 0 && settings.menu_music_path[0]) {
+        snprintf(settings.menu_playlist[0], sizeof settings.menu_playlist[0], "%s",
+                 settings.menu_music_path);
+        settings.menu_playlist_count = 1;
+        settings.menu_playlist_selected = 0;
+    }
+    if (settings.menu_playlist_count <= 0) settings.menu_playlist_selected = 0;
+    else if (settings.menu_playlist_selected >= settings.menu_playlist_count)
+        settings.menu_playlist_selected = settings.menu_playlist_count - 1;
+    if (settings.recent_played_count > N_RECENT_PLAYED)
+        settings.recent_played_count = N_RECENT_PLAYED;
+    for (int i = 0; i < N_RECENT_PLAYED; i++)
+        if (settings.recent_played[i] < -1 || settings.recent_played[i] >= N_GAMES)
+            settings.recent_played[i] = -1;
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &settings.g[g];
         int highest = 0;
