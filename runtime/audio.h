@@ -8,4 +8,5 @@ void audio_menu_apply(void); void audio_mp_set_game(int game); void audio_menu_m
 void audio_p2_sfx(int event); void audio_p2_sfx_preview(int event);
 /* Separate independently imported/built-in SFX banks for multiplayer players 2-4. */
 void audio_mp_sfx(int player, int event); void audio_mp_sfx_preview(int player, int event);
+void audio_deck_sfx_play(const char *path);
 int audio_pad_open(void); void audio_pad_close(void); int audio_pad_available(void); void audio_pad_set_gain(float speaker,float haptics); void audio_pad_push(const int16_t *stereo,int frames); void audio_pad_play_beep(int kind);
