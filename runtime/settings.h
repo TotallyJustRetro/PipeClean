@@ -108,7 +108,7 @@ enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
  * 3 = SML2 carrot. Index 0 is unused; item_texture_path is the legacy fallback. */
 #define N_DECK_ITEM_TEXTURE_IDS 4
 #define N_DECK_DECORATIONS 8
-#define N_DECK_LAYOUT_VALUES 81
+#define N_DECK_LAYOUT_VALUES 83
 #define N_DECK_ASSET_PATHS 30
 typedef struct {
     int header_dx, header_dy, header_scale, header_scale_y;
