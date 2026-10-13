@@ -3804,8 +3804,10 @@ void launcher_companion_layout_picker_result(int kind, int game, const char *pat
     else if (kind == DECK_PICK_BUTTON_REWIND_TEXTURE) snprintf(d->button_texture_by_action[3], sizeof d->button_texture_by_action[3], "%s", path);
     else if (kind == DECK_PICK_DECORATION) {
         int slot = companion_editor_pending_decoration_slot;
+        if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
         char *target = deck_decoration_path(d, slot);
-        if (target) snprintf(target, 512, "%s", path);
+        if (!target) return;
+        snprintf(target, 512, "%s", path);
         companion_editor_element = DECK_ELEM_DECORATION + slot;
     }
     else if (kind >= DECK_PICK_SOUND_SAVE && kind <= DECK_PICK_SOUND_CLOSE)
