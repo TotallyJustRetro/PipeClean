@@ -273,14 +273,14 @@ public final class PipeCleanActivity extends SDLActivity {
                                         int[] recentGames, int[] playSeconds,
                                         int previewWidth, int previewHeight, int[] previewPixels,
                                         int layoutGame, int[] layoutValues, String[] layoutPaths,
-                                        boolean dualScreenEnabled) {
+                                        boolean dualScreenEnabled, boolean editorPreview) {
         runOnUiThread(() -> {
             showCompanionDisplay();
             if (companionPresentation != null) {
                 companionPresentation.setLauncherDashboardState(
                     selectedGame, gameNames, recentGames, playSeconds,
                     previewWidth, previewHeight, previewPixels, dualScreenEnabled);
-                companionPresentation.setDeckLayout(layoutGame, layoutValues, layoutPaths);
+                companionPresentation.setDeckLayout(layoutGame, layoutValues, layoutPaths, editorPreview);
             }
         });
     }
