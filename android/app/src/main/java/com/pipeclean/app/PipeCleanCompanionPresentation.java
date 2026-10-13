@@ -81,8 +81,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
     void setBackgroundFile(String path) { deck.setBackgroundFile(path); }
 
-    void setDeckLayout(int layoutGame, int[] values, String[] paths, boolean editorPreview) {
-        deck.setDeckLayout(layoutGame, values, paths, editorPreview);
+    void setDeckLayout(int layoutGame, int[] values, String[] paths,
+                       boolean editorPreview, int editorPreviewItem) {
+        deck.setDeckLayout(layoutGame, values, paths, editorPreview, editorPreviewItem);
     }
 
     void updateSaveSlots(int game, int selectedSlot, String[] statePaths, String[] thumbnailPaths) {
