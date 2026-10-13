@@ -110,6 +110,19 @@ static void draw_text(int x, int y, int px, Uint8 r, Uint8 g, Uint8 b, const cha
 {
     if (px < 1) px = 1;
     for (const unsigned char *p = (const unsigned char *)(text ? text : ""); *p; ++p) {
+        if (p[0] == 0xE2 && p[1] == 0x80 && p[2] == 0xA2) {
+            fill(x + 2 * px, y + 3 * px, px, px, r, g, b, 255);
+            x += 5 * px;
+            p += 2;
+            continue;
+        }
+        if (p[0] == 0xC3 && p[1] == 0x97) {
+            fill(x + px, y + 1 * px, 3 * px, px, r, g, b, 255);
+            fill(x + 2 * px, y, px, 4 * px, r, g, b, 255);
+            x += 6 * px;
+            p++;
+            continue;
+        }
         if (*p == ' ') { x += 4 * px; continue; }
         if (*p == '-') { fill(x + px, y + 3 * px, 3 * px, px, r, g, b, 255); x += 5 * px; continue; }
         if (*p == ':') {
@@ -341,7 +354,7 @@ static void draw_dashboard(const Settings *s, int selected_game)
     for (int y = 0; y < 450; y += 6) fill(0, y, 800, 1, 0, 0, 0, 18);
 
     draw_android_header(18, 7, 282, 48, -1);
-    draw_text(27, 15, 1, 110, 229, 239, "PIPE CLEAN / GAME LIBRARY");
+    draw_text(27, 15, 1, 110, 229, 239, "PIPE CLEAN  \xE2\x80\xA2  GAME LIBRARY");
     draw_text(27, 30, 2, 234, 245, 255, "READY TO PLAY");
 
     draw_android_card(20, 65, 460, 362, -1, "SELECTED GAME");
@@ -525,7 +538,9 @@ static void draw_action_button(const Settings *s, int game, int action,
     /* The left glyph block mirrors the Android deck's icon/text hierarchy. */
     fill_round_rect(x + 10, y + h / 2 - 9, 18, 18, 5,
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 160);
-    draw_text_fit(x + 12, y + h / 2 - 3, 14, 1, 255, 255, 255, label);
+    const char *glyph = action == SIM_SAVE ? "S" : action == SIM_LOAD ? "L" :
+        action == SIM_PAUSE ? "P" : action == SIM_REWIND ? "R" : "•";
+    draw_text_fit(x + 16, y + h / 2 - 3, 8, 1, 255, 255, 255, glyph);
     draw_text_fit(x + 40, y + h / 2 - 10, w - 48, 1,
         theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
     draw_text_fit(x + 40, y + h / 2 + 3, w - 48, 1,
@@ -719,7 +734,7 @@ static void draw_companion(const Settings *s)
     transform_box(d, 0, 400, 31.5f, &hx, &hy, &hw, &hh);
     draw_android_header((int)hx, (int)hy, (int)hw, (int)hh, g);
     draw_text_fit((int)hx + 8, (int)hy + 10, (int)hw - 16, 1,
-        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), "PIPE CLEAN / POCKET QUEST");
+        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), "PIPE CLEAN  \xE2\x80\xA2  POCKET QUEST");
     draw_text_fit((int)hx + 8, (int)hy + 25, (int)hw - 16, 2,
         theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), android_game_title(g));
 
@@ -758,7 +773,7 @@ static void draw_companion(const Settings *s)
     fill_circle(637, 111, 8, 255, 214, 107, 190);
     draw_text(652, 105, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g), "LIVES");
     char lives_text[24];
-    snprintf(lives_text, sizeof lives_text, "X %02d", current_lives);
+    snprintf(lives_text, sizeof lives_text, "\xC3\x97 %02d", current_lives);
     draw_text_fit(652, 119, 110, 2, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), lives_text);
     draw_text(634, 145, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
         g == GAME_SML ? "WORLD / LEVEL" : "CURRENT STAGE");
