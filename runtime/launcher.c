@@ -3445,6 +3445,15 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "decoration_dx")) fresh.decoration_dx = v;
         else if (!strcmp(line, "decoration_dy")) fresh.decoration_dy = v;
         else if (!strcmp(line, "decoration_scale")) fresh.decoration_scale = v;
+        else if (!strcmp(line, "decoration_2_dx")) fresh.decoration_extra_dx[0] = v;
+        else if (!strcmp(line, "decoration_2_dy")) fresh.decoration_extra_dy[0] = v;
+        else if (!strcmp(line, "decoration_2_scale")) fresh.decoration_extra_scale[0] = v;
+        else if (!strcmp(line, "decoration_3_dx")) fresh.decoration_extra_dx[1] = v;
+        else if (!strcmp(line, "decoration_3_dy")) fresh.decoration_extra_dy[1] = v;
+        else if (!strcmp(line, "decoration_3_scale")) fresh.decoration_extra_scale[1] = v;
+        else if (!strcmp(line, "decoration_4_dx")) fresh.decoration_extra_dx[2] = v;
+        else if (!strcmp(line, "decoration_4_dy")) fresh.decoration_extra_dy[2] = v;
+        else if (!strcmp(line, "decoration_4_scale")) fresh.decoration_extra_scale[2] = v;
         else if (!strcmp(line, "sounds_enabled")) fresh.sounds_enabled = v ? 1 : 0;
         else if (!strcmp(line, "background_path")) deck_set_path(fresh.background_path, sizeof fresh.background_path, eq, directory);
         else if (!strcmp(line, "button_texture_path")) deck_set_path(fresh.button_texture_path, sizeof fresh.button_texture_path, eq, directory);
@@ -3453,6 +3462,9 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "item_texture_path_2")) deck_set_path(fresh.item_texture_by_id[2], sizeof fresh.item_texture_by_id[2], eq, directory);
         else if (!strcmp(line, "item_texture_path_3")) deck_set_path(fresh.item_texture_by_id[3], sizeof fresh.item_texture_by_id[3], eq, directory);
         else if (!strcmp(line, "decoration_path")) deck_set_path(fresh.decoration_path, sizeof fresh.decoration_path, eq, directory);
+        else if (!strcmp(line, "decoration_path_1")) deck_set_path(fresh.decoration_extra_path[0], sizeof fresh.decoration_extra_path[0], eq, directory);
+        else if (!strcmp(line, "decoration_path_2")) deck_set_path(fresh.decoration_extra_path[1], sizeof fresh.decoration_extra_path[1], eq, directory);
+        else if (!strcmp(line, "decoration_path_3")) deck_set_path(fresh.decoration_extra_path[2], sizeof fresh.decoration_extra_path[2], eq, directory);
         else if (!strcmp(line, "header_texture_path")) deck_set_path(fresh.header_texture_path, sizeof fresh.header_texture_path, eq, directory);
         else if (!strcmp(line, "status_texture_path")) deck_set_path(fresh.status_texture_path, sizeof fresh.status_texture_path, eq, directory);
         else if (!strcmp(line, "button_texture_save_path")) deck_set_path(fresh.button_texture_by_action[0], sizeof fresh.button_texture_by_action[0], eq, directory);
