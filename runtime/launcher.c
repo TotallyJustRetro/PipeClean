@@ -2799,7 +2799,9 @@ enum {
     DECK_PICK_DECORATION, DECK_PICK_SOUND_SAVE, DECK_PICK_SOUND_LOAD,
     DECK_PICK_SOUND_PAUSE, DECK_PICK_SOUND_REWIND, DECK_PICK_SOUND_BACKGROUND,
     DECK_PICK_SOUND_CLOSE, DECK_PICK_ITEM_SOUND, DECK_PICK_EMPTY_SOUND,
-    DECK_PICK_IMPORT, DECK_PICK_EXPORT
+    DECK_PICK_IMPORT, DECK_PICK_EXPORT,
+    DECK_PICK_ITEM_MUSHROOM = 15, DECK_PICK_ITEM_SPECIAL = 16,
+    DECK_PICK_ITEM_CARROT = 17
 };
 enum { DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS,
        DECK_ELEM_TIMELINE, DECK_ELEM_DECORATION, N_DECK_ELEM };
@@ -2932,7 +2934,8 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
             ui_text_fit(F_BOLD, 8, rx + 5, ry + 4, rw - 10, RGBA(245, 249, 255, 255), "PIPE CLEAN");
         } else if (e == DECK_ELEM_ITEM) {
             ui_rrect(rx, ry, rw, rh, 10, fill);
-            if (d->item_texture_path[0])
+            if (d->item_texture_path[0] || d->item_texture_by_id[1][0] ||
+                d->item_texture_by_id[2][0] || d->item_texture_by_id[3][0])
                 ui_text_fit(F_BOLD, 7, rx + 4, ry + rh * 0.42f, rw - 8, RGBA(255,255,255,255), "CUSTOM ITEM");
             else {
                 ui_rrect(rx + rw * .22f, ry + rh * .28f, rw * .56f, rh * .44f, 8, RGBA(255, 210, 82, 255));
@@ -3012,13 +3015,8 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
 
 static void deck_editor_open_picker(int kind)
 {
-#if defined(__ANDROID__)
     if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
     launcher_open_companion_layout_picker(kind, companion_editor_game);
-#else
-    (void)kind;
-    launcher_toast("Asset picking and ZIP import/export are available in the Android editor.");
-#endif
 }
 
 static void deck_editor_undo(void)
@@ -3094,7 +3092,7 @@ static void deck_editor_layout(float x, float y)
 
     if (ui_button(x + 361, y + 105, 76, 27, "Background", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_BACKGROUND);
     if (ui_button(x + 443, y + 105, 67, 27, "Buttons", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_BUTTON_TEXTURE);
-    if (ui_button(x + 516, y + 105, 58, 27, "Item", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_ITEM_TEXTURE);
+    if (ui_button(x + 516, y + 105, 58, 27, "Items...", B_GHOST, 1)) companion_editor_page = 3;
     if (ui_button(x + 580, y + 105, 82, 27, "Add image", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_DECORATION);
     if (ui_button(x + 668, y + 105, 78, 27, "Sounds", B_GHOST, 1)) companion_editor_page = 2;
 
@@ -3173,11 +3171,52 @@ static void deck_editor_sounds(float x, float y)
         deck_editor_open_picker(DECK_PICK_EMPTY_SOUND);
 }
 
+static void deck_editor_items(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    const int item_ids[3] = {1, 2, 3};
+    const int pick_kinds[3] = {DECK_PICK_ITEM_MUSHROOM, DECK_PICK_ITEM_SPECIAL, DECK_PICK_ITEM_CARROT};
+    const char *labels[3];
+    labels[0] = "Mushroom";
+    labels[1] = companion_editor_game == GAME_SML ? "Superball Flower" : "Fire Flower";
+    labels[2] = "Carrot";
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "RESERVE ITEM TEXTURES");
+    if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1)) {
+        companion_editor_page = 1;
+        return;
+    }
+    ui_text_wrap(F_REG, 10, x + 114, y + 108, 640, C_MUTED,
+                 "Choose a separate transparent PNG or GIF for each power-up. An empty per-item path falls back to the legacy generic item texture.", 2);
+    for (int row = 0; row < 3; row++) {
+        int item = item_ids[row];
+        float ry = y + 153 + row * 82;
+        int ready = item != 3 || companion_editor_game == GAME_SML2;
+        ui_rrect(x + 36, ry, 728, 70, 8, C_PANEL);
+        ui_text_fit(F_BOLD, 11, x + 50, ry + 12, 195, ready ? C_TEXT : C_DIM, labels[row]);
+        const char *asset_path = d->item_texture_by_id[item];
+        ui_text_fit(F_REG, 8, x + 50, ry + 34, 455, asset_path[0] ? C_MUTED : C_DIM,
+                    asset_path[0] ? asset_path : "No custom texture assigned");
+        if (!ready) {
+            ui_text_fit(F_REG, 8, x + 514, ry + 39, 110, C_DIM, "SML2 ONLY");
+            continue;
+        }
+        if (ui_button(x + 594, ry + 18, 82, 32, "Choose...", B_GHOST, 1))
+            deck_editor_open_picker(pick_kinds[row]);
+        if (ui_button(x + 684, ry + 18, 64, 32, "Clear", B_GHOST, asset_path[0] != 0)) {
+            deck_editor_snapshot();
+            d->item_texture_by_id[item][0] = 0;
+            settings_save();
+            launcher_toast("Item texture cleared.");
+        }
+    }
+}
+
 static void deck_editor_draw(float x, float y)
 {
     ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
     if (companion_editor_page == 0) deck_editor_list(x, y);
     else if (companion_editor_page == 2) deck_editor_sounds(x, y);
+    else if (companion_editor_page == 3) deck_editor_items(x, y);
     else deck_editor_layout(x, y);
 }
 
@@ -3268,6 +3307,9 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "background_path")) deck_set_path(fresh.background_path, sizeof fresh.background_path, eq, directory);
         else if (!strcmp(line, "button_texture_path")) deck_set_path(fresh.button_texture_path, sizeof fresh.button_texture_path, eq, directory);
         else if (!strcmp(line, "item_texture_path")) deck_set_path(fresh.item_texture_path, sizeof fresh.item_texture_path, eq, directory);
+        else if (!strcmp(line, "item_texture_path_1")) deck_set_path(fresh.item_texture_by_id[1], sizeof fresh.item_texture_by_id[1], eq, directory);
+        else if (!strcmp(line, "item_texture_path_2")) deck_set_path(fresh.item_texture_by_id[2], sizeof fresh.item_texture_by_id[2], eq, directory);
+        else if (!strcmp(line, "item_texture_path_3")) deck_set_path(fresh.item_texture_by_id[3], sizeof fresh.item_texture_by_id[3], eq, directory);
         else if (!strcmp(line, "decoration_path")) deck_set_path(fresh.decoration_path, sizeof fresh.decoration_path, eq, directory);
         else if (!strcmp(line, "item_sound_path")) deck_set_path(fresh.item_sound_path, sizeof fresh.item_sound_path, eq, directory);
         else if (!strcmp(line, "empty_item_sound_path")) deck_set_path(fresh.empty_item_sound_path, sizeof fresh.empty_item_sound_path, eq, directory);
@@ -3326,6 +3368,9 @@ void launcher_companion_layout_picker_result(int kind, int game, const char *pat
     if (kind == DECK_PICK_BACKGROUND) snprintf(d->background_path, sizeof d->background_path, "%s", path);
     else if (kind == DECK_PICK_BUTTON_TEXTURE) snprintf(d->button_texture_path, sizeof d->button_texture_path, "%s", path);
     else if (kind == DECK_PICK_ITEM_TEXTURE) snprintf(d->item_texture_path, sizeof d->item_texture_path, "%s", path);
+    else if (kind == DECK_PICK_ITEM_MUSHROOM) snprintf(d->item_texture_by_id[1], sizeof d->item_texture_by_id[1], "%s", path);
+    else if (kind == DECK_PICK_ITEM_SPECIAL) snprintf(d->item_texture_by_id[2], sizeof d->item_texture_by_id[2], "%s", path);
+    else if (kind == DECK_PICK_ITEM_CARROT) snprintf(d->item_texture_by_id[3], sizeof d->item_texture_by_id[3], "%s", path);
     else if (kind == DECK_PICK_DECORATION) snprintf(d->decoration_path, sizeof d->decoration_path, "%s", path);
     else if (kind >= DECK_PICK_SOUND_SAVE && kind <= DECK_PICK_SOUND_CLOSE)
         snprintf(d->button_sound_path[kind - DECK_PICK_SOUND_SAVE],
