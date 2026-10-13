@@ -2791,7 +2791,7 @@ static void tab_online(float x, float y)
 }
 
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(PIPECLEAN_DEV_BUILD)
 /* Companion Deck layout editor: only SML1 and SML2 have live widgets today.
  * Rows for the other games stay visible so the editor can grow without a UI redesign. */
 enum {
@@ -3012,8 +3012,13 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
 
 static void deck_editor_open_picker(int kind)
 {
+#if defined(__ANDROID__)
     if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
     launcher_open_companion_layout_picker(kind, companion_editor_game);
+#else
+    (void)kind;
+    launcher_toast("Asset picking and ZIP import/export are available in the Android editor.");
+#endif
 }
 
 static void deck_editor_undo(void)
@@ -3330,11 +3335,11 @@ void launcher_companion_layout_picker_result(int kind, int game, const char *pat
     settings_save();
     launcher_toast("Companion Deck asset assigned.");
 }
-#endif /* __ANDROID__ */
+#endif /* Android or developer build */
 
 static void tab_display(float x, float y)
 {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(PIPECLEAN_DEV_BUILD)
     if (companion_editor_open) {
         deck_editor_draw(x, y);
         return;
@@ -3411,7 +3416,7 @@ static void tab_display(float x, float y)
         settings_save();
         launcher_toast("Launcher display options reset.");
     }
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(PIPECLEAN_DEV_BUILD)
     if (settings.launcher_dual_screen) {
         if (ui_button(x + 230, y + 434, 280, 30, "Companion Deck layout editor", B_PRIMARY, 1)) {
             companion_editor_open = 1;
