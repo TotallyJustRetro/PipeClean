@@ -290,6 +290,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 ? Math.max(0, Math.min(musicPlaylist.length - 1, selectedTrack)) : 0;
             musicPlaying = playing;
             musicNoticeAllowed = notificationAllowed;
+            if (!notificationAllowed) musicNoticeVisible = false;
             if (notificationSerial != musicNoticeSerial) {
                 musicNoticeSerial = notificationSerial;
                 if (notificationAllowed && dashboardDualScreen && playing) {
