@@ -2213,7 +2213,16 @@ static void tab_audio(float x, float y)
         settings_save();
     }
     snprintf(t, sizeof t, "%d%%", s->menu_music_vol); ui_text_r(F_REG, 13, x + lw - 18, y + 296, C_TEXT, t);
-    menu_music_preview(x + 18, y + 309, lw - 36, 58);
+#if defined(__ANDROID__)
+    if (s->launcher_dual_screen) {
+        ui_rrect(x + 18, y + 309, lw - 36, 58, 12, HEX(0x111722));
+        ui_stroke(x + 18, y + 309, lw - 36, 58, 12, 1, C_LINE);
+        ui_text(F_BOLD, 10, x + 32, y + 329, C_ACCENT, "PLAYER MOVED TO COMPANION DECK");
+        ui_text_fit(F_REG, 9, x + 32, y + 345, lw - 64, C_DIM,
+                    "Vinyl animation, song preview and play controls are on the lower display.");
+    } else
+#endif
+        menu_music_preview(x + 18, y + 309, lw - 36, 58);
 
     ui_text(F_BOLD, 10, x + 18, y + 375, C_TEXT, "PLAYLIST");
     snprintf(t, sizeof t, "%02d / %02d", s->menu_playlist_count, MAX_MENU_TRACKS);
@@ -2221,25 +2230,48 @@ static void tab_audio(float x, float y)
     int max_page = s->menu_playlist_count > 0 ? (s->menu_playlist_count - 1) / 3 : 0;
     if (menu_playlist_page > max_page) menu_playlist_page = max_page;
     if (menu_playlist_page < 0) menu_playlist_page = 0;
-    if (ui_button(x + lw - 92, y + 370, 36, 21, "Prev", B_GHOST, max_page > 0))
+    if (ui_button(x + lw - 92, y + 370, 36, 21, "Prev", B_GHOST,
+#if defined(__ANDROID__)
+                  !s->launcher_dual_screen && max_page > 0
+#else
+                  max_page > 0
+#endif
+                  ))
         menu_playlist_page = (menu_playlist_page + max_page) % (max_page + 1);
-    if (ui_button(x + lw - 50, y + 370, 32, 21, "Next", B_GHOST, max_page > 0))
+    if (ui_button(x + lw - 50, y + 370, 32, 21, "Next", B_GHOST,
+#if defined(__ANDROID__)
+                  !s->launcher_dual_screen && max_page > 0
+#else
+                  max_page > 0
+#endif
+                  ))
         menu_playlist_page = (menu_playlist_page + 1) % (max_page + 1);
 
-    for (int row = 0; row < 3; row++) {
-        int index = menu_playlist_page * 3 + row;
-        float ry = y + 393 + row * 23.0f;
-        if (index < s->menu_playlist_count && index < MAX_MENU_TRACKS) {
-            char title[512];
-            menu_music_title_from_path(s->menu_playlist[index], title, sizeof title);
-            int active = s->menu_music_path[0] && !strcmp(s->menu_music_path, s->menu_playlist[index]);
-            if (ui_button(x + 18, ry, lw - 36, 21, title,
-                          active ? B_PRIMARY : B_GHOST, 1))
-                launcher_menu_music_select(index);
-        } else {
-            ui_rrect(x + 18, ry, lw - 36, 21, 6, HEX(0x171D2A));
-            ui_text_fit(F_REG, 9, x + 28, ry + 5, lw - 56, C_DIM,
-                        s->menu_playlist_count ? "Empty playlist slot" : "Add a WAV, MP3, OGG or FLAC track");
+#if defined(__ANDROID__)
+    if (s->launcher_dual_screen) {
+        ui_rrect(x + 18, y + 393, lw - 36, 71, 8, HEX(0x171D2A));
+        ui_text_fit(F_REG, 10, x + 28, y + 410, lw - 56, C_TEXT,
+                    "Track selection is on the Companion Deck.");
+        ui_text_fit(F_REG, 9, x + 28, y + 429, lw - 56, C_DIM,
+                    "Use Add / Remove below to manage your playlist.");
+    } else
+#endif
+    {
+        for (int row = 0; row < 3; row++) {
+            int index = menu_playlist_page * 3 + row;
+            float ry = y + 393 + row * 23.0f;
+            if (index < s->menu_playlist_count && index < MAX_MENU_TRACKS) {
+                char title[512];
+                menu_music_title_from_path(s->menu_playlist[index], title, sizeof title);
+                int active = s->menu_music_path[0] && !strcmp(s->menu_music_path, s->menu_playlist[index]);
+                if (ui_button(x + 18, ry, lw - 36, 21, title,
+                              active ? B_PRIMARY : B_GHOST, 1))
+                    launcher_menu_music_select(index);
+            } else {
+                ui_rrect(x + 18, ry, lw - 36, 21, 6, HEX(0x171D2A));
+                ui_text_fit(F_REG, 9, x + 28, ry + 5, lw - 56, C_DIM,
+                            s->menu_playlist_count ? "Empty playlist slot" : "Add a WAV, MP3, OGG or FLAC track");
+            }
         }
     }
 
