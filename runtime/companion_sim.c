@@ -32,6 +32,9 @@
 static SDL_Window *deck_window;
 static SDL_Renderer *deck_renderer;
 static SDL_Texture *assets[N_GAMES][7];
+static IMG_Animation *asset_animations[N_GAMES][7];
+static int asset_animation_frame[N_GAMES][7];
+static Uint32 asset_animation_started[N_GAMES][7];
 static char asset_paths[N_GAMES][7][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
@@ -812,20 +815,76 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
     (void)s;
 }
 
-static void load_asset(int game, int index, const char *path)
+static void destroy_asset(int game, int index)
 {
-    if (game < 0 || game >= N_GAMES || index < 0 || index >= 4) return;
-    const char *next = path ? path : "";
-    if (!strcmp(asset_paths[game][index], next)) return;
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= 7) return;
     if (assets[game][index]) SDL_DestroyTexture(assets[game][index]);
     assets[game][index] = NULL;
+    if (asset_animations[game][index]) IMG_FreeAnimation(asset_animations[game][index]);
+    asset_animations[game][index] = NULL;
+    asset_animation_frame[game][index] = 0;
+    asset_animation_started[game][index] = 0;
+    asset_paths[game][index][0] = 0;
+}
+
+static void load_asset(int game, int index, const char *path)
+{
+    if (game < 0 || game >= N_GAMES || index < 0 || index >= 7) return;
+    const char *next = path ? path : "";
+    if (!strcmp(asset_paths[game][index], next)) return;
+    destroy_asset(game, index);
     snprintf(asset_paths[game][index], sizeof asset_paths[game][index], "%s", next);
     if (!next[0]) return;
-    SDL_Surface *surface = IMG_Load(next);
-    if (!surface) return;
-    assets[game][index] = SDL_CreateTextureFromSurface(deck_renderer, surface);
-    SDL_FreeSurface(surface);
+
+    size_t path_len = strlen(next);
+    if (path_len >= 4 && SDL_strcasecmp(next + path_len - 4, ".gif") == 0)
+        asset_animations[game][index] = IMG_LoadAnimation(next);
+    if (asset_animations[game][index] && asset_animations[game][index]->count > 0) {
+        assets[game][index] = SDL_CreateTextureFromSurface(
+            deck_renderer, asset_animations[game][index]->frames[0]);
+        asset_animation_started[game][index] = SDL_GetTicks();
+        asset_animation_frame[game][index] = 0;
+    } else {
+        if (asset_animations[game][index]) {
+            IMG_FreeAnimation(asset_animations[game][index]);
+            asset_animations[game][index] = NULL;
+        }
+        SDL_Surface *surface = IMG_Load(next);
+        if (!surface) return;
+        assets[game][index] = SDL_CreateTextureFromSurface(deck_renderer, surface);
+        SDL_FreeSurface(surface);
+    }
     if (assets[game][index]) SDL_SetTextureBlendMode(assets[game][index], SDL_BLENDMODE_BLEND);
+}
+
+static void update_animated_assets(void)
+{
+    Uint32 now = SDL_GetTicks();
+    for (int g = 0; g < N_GAMES; g++) {
+        for (int i = 0; i < 7; i++) {
+            IMG_Animation *animation = asset_animations[g][i];
+            if (!animation || animation->count < 2) continue;
+            Uint32 total_ms = 0;
+            for (int f = 0; f < animation->count; f++)
+                total_ms += (Uint32)(animation->delays[f] > 0 ? animation->delays[f] : 100);
+            if (!total_ms) continue;
+            Uint32 elapsed = (Uint32)(now - asset_animation_started[g][i]) % total_ms;
+            int frame = 0;
+            while (frame + 1 < animation->count) {
+                Uint32 delay = (Uint32)(animation->delays[frame] > 0 ? animation->delays[frame] : 100);
+                if (elapsed < delay) break;
+                elapsed -= delay;
+                frame++;
+            }
+            if (frame == asset_animation_frame[g][i]) continue;
+            SDL_Texture *texture = SDL_CreateTextureFromSurface(deck_renderer, animation->frames[frame]);
+            if (!texture) continue;
+            SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+            if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
+            assets[g][i] = texture;
+            asset_animation_frame[g][i] = frame;
+        }
+    }
 }
 
 static void sync_assets(const Settings *s)
@@ -992,11 +1051,7 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     if (!s->launcher_dual_screen) {
         if (deck_window) {
             for (int g = 0; g < N_GAMES; g++) {
-                for (int i = 0; i < 7; i++) {
-                    if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
-                    assets[g][i] = NULL;
-                    asset_paths[g][i][0] = 0;
-                }
+                for (int i = 0; i < 7; i++) destroy_asset(g, i);
                 for (int i = 0; i < 10; i++) {
                     if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                     slot_thumb_texture[g][i] = NULL;
@@ -1076,6 +1131,7 @@ void companion_sim_render(Settings *s, SDL_Window *main_window)
     companion_sim_sync(s, main_window);
     if (!deck_window || !deck_renderer) return;
     sync_assets(s);
+    update_animated_assets();
     draw_companion(s);
 }
 
@@ -1249,11 +1305,7 @@ void companion_sim_shutdown(void)
 {
     if (deck_window) {
         for (int g = 0; g < N_GAMES; g++) {
-            for (int i = 0; i < 7; i++) {
-                if (assets[g][i]) SDL_DestroyTexture(assets[g][i]);
-                assets[g][i] = NULL;
-                asset_paths[g][i][0] = 0;
-            }
+            for (int i = 0; i < 7; i++) destroy_asset(g, i);
             for (int i = 0; i < 10; i++) {
                 if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                 slot_thumb_texture[g][i] = NULL;
