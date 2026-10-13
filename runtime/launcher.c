@@ -3263,6 +3263,96 @@ static void deck_editor_open_decoration_picker(int slot)
     launcher_open_companion_layout_picker(DECK_PICK_DECORATION, companion_editor_game);
 }
 
+static void deck_editor_swap_decoration_layers(CompanionLayoutCfg *d, int a, int b)
+{
+    if (!d || a < 0 || b < 0 || a >= N_DECK_DECORATIONS ||
+        b >= N_DECK_DECORATIONS || a == b) return;
+    char path_tmp[512];
+    char *pa = deck_decoration_path(d, a);
+    char *pb = deck_decoration_path(d, b);
+    if (!pa || !pb) return;
+    memcpy(path_tmp, pa, sizeof path_tmp);
+    memcpy(pa, pb, sizeof path_tmp);
+    memcpy(pb, path_tmp, sizeof path_tmp);
+    int *ax = deck_element_x(d, DECK_ELEM_DECORATION + a);
+    int *ay = deck_element_y(d, DECK_ELEM_DECORATION + a);
+    int *asx = deck_element_scale(d, DECK_ELEM_DECORATION + a);
+    int *asy = deck_element_scale_y(d, DECK_ELEM_DECORATION + a);
+    int *bx = deck_element_x(d, DECK_ELEM_DECORATION + b);
+    int *by = deck_element_y(d, DECK_ELEM_DECORATION + b);
+    int *bsx = deck_element_scale(d, DECK_ELEM_DECORATION + b);
+    int *bsy = deck_element_scale_y(d, DECK_ELEM_DECORATION + b);
+    int t;
+#define DECK_SWAP_INT(p, q) do { t = *(p); *(p) = *(q); *(q) = t; } while (0)
+    DECK_SWAP_INT(ax, bx);
+    DECK_SWAP_INT(ay, by);
+    DECK_SWAP_INT(asx, bsx);
+    DECK_SWAP_INT(asy, bsy);
+#undef DECK_SWAP_INT
+    int ia = deck_decoration_asset_index(a);
+    int ib = deck_decoration_asset_index(b);
+    if (ia >= 0 && ib >= 0) {
+        t = d->asset_stretch[ia];
+        d->asset_stretch[ia] = d->asset_stretch[ib];
+        d->asset_stretch[ib] = t;
+    }
+}
+
+static void deck_editor_move_decoration(int slot, int delta)
+{
+    int other = slot + delta;
+    if (slot < 0 || slot >= N_DECK_DECORATIONS ||
+        other < 0 || other >= N_DECK_DECORATIONS) return;
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    deck_editor_snapshot();
+    deck_editor_swap_decoration_layers(d, slot, other);
+    companion_editor_element = DECK_ELEM_DECORATION + other;
+    settings_save();
+    launcher_toast(delta < 0 ? "Layer moved back." : "Layer moved forward.");
+}
+
+static void deck_editor_duplicate_decoration(int slot)
+{
+    if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    char *source = deck_decoration_path(d, slot);
+    if (!source || !source[0]) {
+        launcher_toast("Choose an image before duplicating this layer.");
+        return;
+    }
+    int target = -1;
+    for (int i = 0; i < N_DECK_DECORATIONS; i++) {
+        const char *candidate = deck_decoration_path_const(d, i);
+        if (!candidate[0]) { target = i; break; }
+    }
+    if (target < 0) {
+        launcher_toast("All sixteen image layers are in use.");
+        return;
+    }
+    deck_editor_snapshot();
+    char *destination = deck_decoration_path(d, target);
+    snprintf(destination, 512, "%s", source);
+    *deck_element_x(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_x(d, DECK_ELEM_DECORATION + slot) + 10;
+    *deck_element_y(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_y(d, DECK_ELEM_DECORATION + slot) + 10;
+    *deck_element_scale(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_scale(d, DECK_ELEM_DECORATION + slot);
+    *deck_element_scale_y(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_scale_y(d, DECK_ELEM_DECORATION + slot);
+    if (*deck_element_x(d, DECK_ELEM_DECORATION + target) > 400)
+        *deck_element_x(d, DECK_ELEM_DECORATION + target) = 400;
+    if (*deck_element_y(d, DECK_ELEM_DECORATION + target) > 400)
+        *deck_element_y(d, DECK_ELEM_DECORATION + target) = 400;
+    int source_asset = deck_decoration_asset_index(slot);
+    int target_asset = deck_decoration_asset_index(target);
+    if (source_asset >= 0 && target_asset >= 0)
+        d->asset_stretch[target_asset] = d->asset_stretch[source_asset];
+    companion_editor_element = DECK_ELEM_DECORATION + target;
+    settings_save();
+    launcher_toast("Image layer duplicated.");
+}
+
 static void deck_editor_open_picker(int kind)
 {
     if (kind == DECK_PICK_DECORATION) {
