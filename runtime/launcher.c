@@ -3010,6 +3010,7 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
 
 static void deck_editor_open_picker(int kind)
 {
+    if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
     launcher_open_companion_layout_picker(kind, companion_editor_game);
 }
 
@@ -3169,6 +3170,138 @@ static void deck_editor_draw(float x, float y)
     if (companion_editor_page == 0) deck_editor_list(x, y);
     else if (companion_editor_page == 2) deck_editor_sounds(x, y);
     else deck_editor_layout(x, y);
+}
+
+int launcher_companion_layout_target_game(int selected_game)
+{
+    if (companion_editor_open && companion_editor_game >= 0 && companion_editor_game < N_GAMES)
+        return companion_editor_game;
+    return selected_game;
+}
+
+static void deck_set_path(char *dst, size_t cap, const char *value,
+                          const char *base_dir)
+{
+    if (!dst || cap == 0) return;
+    dst[0] = 0;
+    if (!value || !value[0]) return;
+    if (value[0] == '/' || (strlen(value) > 2 && value[1] == ':'))
+        snprintf(dst, cap, "%s", value);
+    else if (base_dir && base_dir[0])
+        snprintf(dst, cap, "%s%s%s", base_dir,
+                 (base_dir[strlen(base_dir) - 1] == '/' ||
+                  base_dir[strlen(base_dir) - 1] == '\\\\') ? "" : "/", value);
+    else
+        snprintf(dst, cap, "%s", value);
+}
+
+static int deck_manifest_apply(int game, const char *path)
+{
+    if (game < 0 || game >= N_GAMES || !path || !path[0]) return 0;
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char directory[1024];
+    snprintf(directory, sizeof directory, "%s", path);
+    char *slash = strrchr(directory, '/');
+#ifdef _WIN32
+    char *backslash = strrchr(directory, '\\\\');
+    if (!slash || (backslash && backslash > slash)) slash = backslash;
+#endif
+    if (slash) slash[1] = 0; else directory[0] = 0;
+    CompanionLayoutCfg fresh;
+    deck_layout_defaults(&fresh);
+    char line[1400];
+    while (fgets(line, sizeof line, f)) {
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq++ = 0;
+        size_t n = strlen(eq);
+        while (n && (eq[n - 1] == '\\n' || eq[n - 1] == '\\r')) eq[--n] = 0;
+        int v = atoi(eq);
+        if (!strcmp(line, "header_dx")) fresh.header_dx = v;
+        else if (!strcmp(line, "header_dy")) fresh.header_dy = v;
+        else if (!strcmp(line, "header_scale")) fresh.header_scale = v;
+        else if (!strcmp(line, "item_dx")) fresh.item_dx = v;
+        else if (!strcmp(line, "item_dy")) fresh.item_dy = v;
+        else if (!strcmp(line, "item_scale")) fresh.item_scale = v;
+        else if (!strcmp(line, "controls_dx")) fresh.controls_dx = v;
+        else if (!strcmp(line, "controls_dy")) fresh.controls_dy = v;
+        else if (!strcmp(line, "controls_scale")) fresh.controls_scale = v;
+        else if (!strcmp(line, "timeline_dx")) fresh.timeline_dx = v;
+        else if (!strcmp(line, "timeline_dy")) fresh.timeline_dy = v;
+        else if (!strcmp(line, "timeline_scale")) fresh.timeline_scale = v;
+        else if (!strcmp(line, "decoration_dx")) fresh.decoration_dx = v;
+        else if (!strcmp(line, "decoration_dy")) fresh.decoration_dy = v;
+        else if (!strcmp(line, "decoration_scale")) fresh.decoration_scale = v;
+        else if (!strcmp(line, "sounds_enabled")) fresh.sounds_enabled = v ? 1 : 0;
+        else if (!strcmp(line, "background_path")) deck_set_path(fresh.background_path, sizeof fresh.background_path, eq, directory);
+        else if (!strcmp(line, "button_texture_path")) deck_set_path(fresh.button_texture_path, sizeof fresh.button_texture_path, eq, directory);
+        else if (!strcmp(line, "item_texture_path")) deck_set_path(fresh.item_texture_path, sizeof fresh.item_texture_path, eq, directory);
+        else if (!strcmp(line, "decoration_path")) deck_set_path(fresh.decoration_path, sizeof fresh.decoration_path, eq, directory);
+        else if (!strcmp(line, "item_sound_path")) deck_set_path(fresh.item_sound_path, sizeof fresh.item_sound_path, eq, directory);
+        else if (!strcmp(line, "empty_item_sound_path")) deck_set_path(fresh.empty_item_sound_path, sizeof fresh.empty_item_sound_path, eq, directory);
+        else {
+            for (int b = 0; b < N_DECK_BUTTON_SOUNDS; b++) {
+                char key[48];
+                snprintf(key, sizeof key, "button_sound_path%d", b);
+                if (!strcmp(line, key)) {
+                    deck_set_path(fresh.button_sound_path[b], sizeof fresh.button_sound_path[b], eq, directory);
+                    break;
+                }
+            }
+        }
+    }
+    fclose(f);
+    if (fresh.header_dx < -400) fresh.header_dx = -400; if (fresh.header_dx > 400) fresh.header_dx = 400;
+    if (fresh.header_dy < -400) fresh.header_dy = -400; if (fresh.header_dy > 400) fresh.header_dy = 400;
+    if (fresh.item_dx < -400) fresh.item_dx = -400; if (fresh.item_dx > 400) fresh.item_dx = 400;
+    if (fresh.item_dy < -400) fresh.item_dy = -400; if (fresh.item_dy > 400) fresh.item_dy = 400;
+    if (fresh.controls_dx < -400) fresh.controls_dx = -400; if (fresh.controls_dx > 400) fresh.controls_dx = 400;
+    if (fresh.controls_dy < -400) fresh.controls_dy = -400; if (fresh.controls_dy > 400) fresh.controls_dy = 400;
+    if (fresh.timeline_dx < -400) fresh.timeline_dx = -400; if (fresh.timeline_dx > 400) fresh.timeline_dx = 400;
+    if (fresh.timeline_dy < -400) fresh.timeline_dy = -400; if (fresh.timeline_dy > 400) fresh.timeline_dy = 400;
+    if (fresh.decoration_dx < -400) fresh.decoration_dx = -400; if (fresh.decoration_dx > 400) fresh.decoration_dx = 400;
+    if (fresh.decoration_dy < -400) fresh.decoration_dy = -400; if (fresh.decoration_dy > 400) fresh.decoration_dy = 400;
+    if (fresh.header_scale < 25) fresh.header_scale = 25; if (fresh.header_scale > 250) fresh.header_scale = 250;
+    if (fresh.item_scale < 25) fresh.item_scale = 25; if (fresh.item_scale > 250) fresh.item_scale = 250;
+    if (fresh.controls_scale < 25) fresh.controls_scale = 25; if (fresh.controls_scale > 250) fresh.controls_scale = 250;
+    if (fresh.timeline_scale < 25) fresh.timeline_scale = 25; if (fresh.timeline_scale > 250) fresh.timeline_scale = 250;
+    if (fresh.decoration_scale < 25) fresh.decoration_scale = 25; if (fresh.decoration_scale > 250) fresh.decoration_scale = 250;
+    settings.deck_layout[game] = fresh;
+    return 1;
+}
+
+void launcher_companion_layout_picker_result(int kind, int game, const char *path)
+{
+    if (game < 0 || game >= N_GAMES) return;
+    if (!path || !path[0]) return; /* user canceled the Android picker */
+    CompanionLayoutCfg *d = &settings.deck_layout[game];
+    if (kind == DECK_PICK_IMPORT) {
+        if (deck_manifest_apply(game, path)) {
+            companion_editor_game = game;
+            companion_editor_page = 1;
+            companion_editor_open = 1;
+            deck_editor_history_clear();
+            settings_save();
+            launcher_toast("Companion Deck bundle imported.");
+        } else launcher_toast("That bundle has no valid layout manifest.");
+        return;
+    }
+    if (kind == DECK_PICK_EXPORT) {
+        launcher_toast("Companion Deck bundle exported.");
+        return;
+    }
+    if (kind == DECK_PICK_BACKGROUND) snprintf(d->background_path, sizeof d->background_path, "%s", path);
+    else if (kind == DECK_PICK_BUTTON_TEXTURE) snprintf(d->button_texture_path, sizeof d->button_texture_path, "%s", path);
+    else if (kind == DECK_PICK_ITEM_TEXTURE) snprintf(d->item_texture_path, sizeof d->item_texture_path, "%s", path);
+    else if (kind == DECK_PICK_DECORATION) snprintf(d->decoration_path, sizeof d->decoration_path, "%s", path);
+    else if (kind >= DECK_PICK_SOUND_SAVE && kind <= DECK_PICK_SOUND_CLOSE)
+        snprintf(d->button_sound_path[kind - DECK_PICK_SOUND_SAVE],
+                 sizeof d->button_sound_path[0], "%s", path);
+    else if (kind == DECK_PICK_ITEM_SOUND) snprintf(d->item_sound_path, sizeof d->item_sound_path, "%s", path);
+    else if (kind == DECK_PICK_EMPTY_SOUND) snprintf(d->empty_item_sound_path, sizeof d->empty_item_sound_path, "%s", path);
+    settings_save();
+    launcher_toast("Companion Deck asset assigned.");
 }
 #endif /* __ANDROID__ */
 
