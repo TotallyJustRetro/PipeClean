@@ -200,9 +200,9 @@ void settings_defaults(Settings *s)
         game_cfg_defaults(&s->g[i], i);
         CompanionLayoutCfg *d = &s->deck_layout[i];
         d->header_scale = d->item_scale = d->controls_scale =
-            d->timeline_scale = d->decoration_scale = 100;
+            d->timeline_scale = d->status_scale = d->decoration_scale = 100;
         d->header_scale_y = d->item_scale_y = d->controls_scale_y =
-            d->timeline_scale_y = d->decoration_scale_y = 100;
+            d->timeline_scale_y = d->status_scale_y = d->decoration_scale_y = 100;
         for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
             d->decoration_extra_scale[slot] = d->decoration_extra_scale_y[slot] = 100;
         d->sounds_enabled = 1;
@@ -328,6 +328,7 @@ static int field_table(Field *t, int cap)
         GI("deck_item_dx", d->item_dx, -400, 400); GI("deck_item_dy", d->item_dy, -400, 400); GI("deck_item_scale", d->item_scale, 25, 250); GI("deck_item_scale_y", d->item_scale_y, 25, 250);
         GI("deck_controls_dx", d->controls_dx, -400, 400); GI("deck_controls_dy", d->controls_dy, -400, 400); GI("deck_controls_scale", d->controls_scale, 25, 250); GI("deck_controls_scale_y", d->controls_scale_y, 25, 250);
         GI("deck_timeline_dx", d->timeline_dx, -400, 400); GI("deck_timeline_dy", d->timeline_dy, -400, 400); GI("deck_timeline_scale", d->timeline_scale, 25, 250); GI("deck_timeline_scale_y", d->timeline_scale_y, 25, 250);
+        GI("deck_status_dx", d->status_dx, -400, 400); GI("deck_status_dy", d->status_dy, -400, 400); GI("deck_status_scale", d->status_scale, 25, 250); GI("deck_status_scale_y", d->status_scale_y, 25, 250);
         GI("deck_decoration_dx", d->decoration_dx, -400, 400); GI("deck_decoration_dy", d->decoration_dy, -400, 400); GI("deck_decoration_scale", d->decoration_scale, 25, 250); GI("deck_decoration_scale_y", d->decoration_scale_y, 25, 250);
         for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
             int slot_id = slot + 2;
