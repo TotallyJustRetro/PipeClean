@@ -715,8 +715,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
                                              float x, float y, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0) return;
-            int actionIndex = action == SAVE_STATE ? 17 : action == LOAD_STATE ? 18 :
-                action == PAUSE_GAME ? 19 : action == REWIND_GAME ? 20 : 1;
+            int actionIndex = action == SAVE ? 17 : action == LOAD ? 18 :
+                action == PAUSE ? 19 : action == REWIND ? 20 : 1;
             if (!hasLayoutImage(g, actionIndex) && !hasLayoutImage(g, 1)) return;
             if (!hasLayoutImage(g, actionIndex)) actionIndex = 1;
             Path clip = new Path();
