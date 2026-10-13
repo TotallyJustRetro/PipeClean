@@ -203,7 +203,7 @@ void settings_defaults(Settings *s)
             d->timeline_scale = d->decoration_scale = 100;
         d->header_scale_y = d->item_scale_y = d->controls_scale_y =
             d->timeline_scale_y = d->decoration_scale_y = 100;
-        for (int slot = 0; slot < 3; slot++)
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
             d->decoration_extra_scale[slot] = d->decoration_extra_scale_y[slot] = 100;
         d->sounds_enabled = 1;
     }
@@ -329,7 +329,7 @@ static int field_table(Field *t, int cap)
         GI("deck_controls_dx", d->controls_dx, -400, 400); GI("deck_controls_dy", d->controls_dy, -400, 400); GI("deck_controls_scale", d->controls_scale, 25, 250); GI("deck_controls_scale_y", d->controls_scale_y, 25, 250);
         GI("deck_timeline_dx", d->timeline_dx, -400, 400); GI("deck_timeline_dy", d->timeline_dy, -400, 400); GI("deck_timeline_scale", d->timeline_scale, 25, 250); GI("deck_timeline_scale_y", d->timeline_scale_y, 25, 250);
         GI("deck_decoration_dx", d->decoration_dx, -400, 400); GI("deck_decoration_dy", d->decoration_dy, -400, 400); GI("deck_decoration_scale", d->decoration_scale, 25, 250); GI("deck_decoration_scale_y", d->decoration_scale_y, 25, 250);
-        for (int slot = 0; slot < 3; slot++) {
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
             int slot_id = slot + 2;
             snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_dx", games[g].id, slot_id);
             I(gn[g][k], d->decoration_extra_dx[slot], -400, 400); k++;
@@ -346,7 +346,7 @@ static int field_table(Field *t, int cap)
         GS("deck_status_texture", d->status_texture_path);
         GS("deck_button_texture", d->button_texture_path);
         GS("deck_item_texture", d->item_texture_path); GS("deck_decoration", d->decoration_path);
-        for (int slot = 0; slot < 3; slot++) {
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
             snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d", games[g].id, slot + 2);
             S(gn[g][k], d->decoration_extra_path[slot]); k++;
         }
