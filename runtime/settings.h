@@ -107,9 +107,16 @@ enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
 /* Reserve item IDs: 1 = mushroom, 2 = SML1 superball / SML2 fire flower,
  * 3 = SML2 carrot. Index 0 is unused; item_texture_path is the legacy fallback. */
 #define N_DECK_ITEM_TEXTURE_IDS 4
-#define N_DECK_DECORATIONS 8
-#define N_DECK_LAYOUT_VALUES 83
-#define N_DECK_ASSET_PATHS 30
+#define N_DECK_DECORATIONS 16
+#define N_DECK_ASSET_PATHS 38
+#define N_DECK_LAYOUT_ASSET_MODE_BASE 49
+#define N_DECK_STATUS_VALUE_BASE (N_DECK_LAYOUT_ASSET_MODE_BASE + N_DECK_ASSET_PATHS)
+#define N_DECK_EXTENDED_DECORATION_COUNT (N_DECK_DECORATIONS - 8)
+#define N_DECK_EXTENDED_DECORATION_VALUE_BASE (N_DECK_STATUS_VALUE_BASE + 4)
+#define N_DECK_EXTENDED_DECORATION_SCALE_Y_BASE \
+    (N_DECK_EXTENDED_DECORATION_VALUE_BASE + N_DECK_EXTENDED_DECORATION_COUNT * 3)
+#define N_DECK_LAYOUT_VALUES \
+    (N_DECK_EXTENDED_DECORATION_SCALE_Y_BASE + N_DECK_EXTENDED_DECORATION_COUNT)
 typedef struct {
     int header_dx, header_dy, header_scale, header_scale_y;
     int item_dx, item_dy, item_scale, item_scale_y;
