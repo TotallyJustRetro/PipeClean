@@ -3045,8 +3045,30 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
     companion_editor_last_y = y;
 }
 
+static void deck_editor_open_decoration_picker(int slot)
+{
+    if (slot < 0 || slot >= 4) return;
+    companion_editor_pending_decoration_slot = slot;
+    deck_editor_snapshot();
+    launcher_open_companion_layout_picker(DECK_PICK_DECORATION, companion_editor_game);
+}
+
 static void deck_editor_open_picker(int kind)
 {
+    if (kind == DECK_PICK_DECORATION) {
+        CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+        for (int slot = 0; slot < 4; slot++) {
+            const char *path = deck_decoration_path_const(d, slot);
+            if (!path[0]) {
+                companion_editor_pending_decoration_slot = slot;
+                deck_editor_snapshot();
+                launcher_open_companion_layout_picker(kind, companion_editor_game);
+                return;
+            }
+        }
+        launcher_toast("All four decoration slots are full. Remove one to add another.");
+        return;
+    }
     if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
     launcher_open_companion_layout_picker(kind, companion_editor_game);
 }
@@ -3255,8 +3277,12 @@ static void deck_editor_assets(float x, float y)
         companion_editor_page = 1;
         return;
     }
-    ui_text_wrap(F_REG, 10, x + 114, y + 108, 640, C_MUTED,
+    ui_text_wrap(F_REG, 10, x + 114, y + 108, 490, C_MUTED,
         "Each region and action button can use its own image. PNG keeps transparency; GIF is animated on the companion display.", 2);
+    if (ui_button(x + 638, y + 107, 126, 28, "Decorations…", B_GHOST, 1)) {
+        companion_editor_page = 5;
+        return;
+    }
 
     struct AssetRow { const char *label; char *path; int kind; } rows[] = {
         {"Background", d->background_path, DECK_PICK_BACKGROUND},
@@ -3284,6 +3310,38 @@ static void deck_editor_assets(float x, float y)
     }
 }
 
+static void deck_editor_decorations(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "DECORATION LAYERS");
+    if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1)) {
+        companion_editor_page = 4;
+        return;
+    }
+    ui_text_wrap(F_REG, 10, x + 114, y + 108, 620, C_MUTED,
+        "Add up to four independent images. Select a layer on the preview to move and resize it; Clear removes only that layer.", 2);
+    for (int slot = 0; slot < 4; slot++) {
+        char *path = deck_decoration_path(d, slot);
+        float ry = y + 153 + slot * 62;
+        ui_rrect(x + 36, ry, 728, 53, 8, C_PANEL);
+        char label[32];
+        snprintf(label, sizeof label, "Decoration %d", slot + 1);
+        ui_text_fit(F_BOLD, 10, x + 50, ry + 13, 140, C_TEXT, label);
+        ui_text_fit(F_REG, 8, x + 50, ry + 32, 410, path[0] ? C_MUTED : C_DIM,
+                    path[0] ? path : "Empty slot");
+        if (ui_button(x + 570, ry + 11, 82, 31, "Choose…", B_GHOST, 1))
+            deck_editor_open_decoration_picker(slot);
+        if (ui_button(x + 659, ry + 11, 91, 31, "Remove", B_GHOST, path[0] != 0)) {
+            deck_editor_snapshot();
+            path[0] = 0;
+            if (companion_editor_element == DECK_ELEM_DECORATION + slot)
+                companion_editor_element = DECK_ELEM_DECORATION;
+            settings_save();
+            launcher_toast("Decoration removed.");
+        }
+    }
+}
+
 static void deck_editor_draw(float x, float y)
 {
     ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
@@ -3291,6 +3349,7 @@ static void deck_editor_draw(float x, float y)
     else if (companion_editor_page == 2) deck_editor_sounds(x, y);
     else if (companion_editor_page == 3) deck_editor_items(x, y);
     else if (companion_editor_page == 4) deck_editor_assets(x, y);
+    else if (companion_editor_page == 5) deck_editor_decorations(x, y);
     else deck_editor_layout(x, y);
 }
 
@@ -3466,7 +3525,12 @@ void launcher_companion_layout_picker_result(int kind, int game, const char *pat
     else if (kind == DECK_PICK_BUTTON_LOAD_TEXTURE) snprintf(d->button_texture_by_action[1], sizeof d->button_texture_by_action[1], "%s", path);
     else if (kind == DECK_PICK_BUTTON_PAUSE_TEXTURE) snprintf(d->button_texture_by_action[2], sizeof d->button_texture_by_action[2], "%s", path);
     else if (kind == DECK_PICK_BUTTON_REWIND_TEXTURE) snprintf(d->button_texture_by_action[3], sizeof d->button_texture_by_action[3], "%s", path);
-    else if (kind == DECK_PICK_DECORATION) snprintf(d->decoration_path, sizeof d->decoration_path, "%s", path);
+    else if (kind == DECK_PICK_DECORATION) {
+        int slot = companion_editor_pending_decoration_slot;
+        char *target = deck_decoration_path(d, slot);
+        if (target) snprintf(target, 512, "%s", path);
+        companion_editor_element = DECK_ELEM_DECORATION + slot;
+    }
     else if (kind >= DECK_PICK_SOUND_SAVE && kind <= DECK_PICK_SOUND_CLOSE)
         snprintf(d->button_sound_path[kind - DECK_PICK_SOUND_SAVE],
                  sizeof d->button_sound_path[0], "%s", path);
