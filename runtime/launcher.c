@@ -2811,6 +2811,7 @@ static const char *deck_element_names[N_DECK_ELEM] = {
 static int companion_editor_open, companion_editor_page;
 static int companion_editor_game = GAME_SML;
 static int companion_editor_element = DECK_ELEM_CONTROLS;
+static int companion_editor_preview_item = 1;
 static int companion_editor_sound_selection;
 static int companion_editor_dragging, companion_editor_resizing;
 static float companion_editor_last_x, companion_editor_last_y;
@@ -3200,9 +3201,14 @@ static void deck_editor_items(float x, float y)
             ui_text_fit(F_REG, 8, x + 514, ry + 39, 110, C_DIM, "SML2 ONLY");
             continue;
         }
-        if (ui_button(x + 594, ry + 18, 82, 32, "Choose...", B_GHOST, 1))
+        if (ui_button(x + 514, ry + 18, 72, 32,
+                      companion_editor_preview_item == item ? "Preview*" : "Preview",
+                      companion_editor_preview_item == item ? B_PRIMARY : B_GHOST, ready)) {
+            companion_editor_preview_item = item;
+        }
+        if (ui_button(x + 592, ry + 18, 82, 32, "Choose...", B_GHOST, ready))
             deck_editor_open_picker(pick_kinds[row]);
-        if (ui_button(x + 684, ry + 18, 64, 32, "Clear", B_GHOST, asset_path[0] != 0)) {
+        if (ui_button(x + 680, ry + 18, 68, 32, "Clear", B_GHOST, ready && asset_path[0] != 0)) {
             deck_editor_snapshot();
             d->item_texture_by_id[item][0] = 0;
             settings_save();
@@ -3230,6 +3236,15 @@ int launcher_companion_layout_target_game(int selected_game)
 int launcher_companion_layout_preview_enabled(void)
 {
     return companion_editor_open && companion_editor_page != 0;
+}
+
+int launcher_companion_layout_preview_item(void)
+{
+    if (!companion_editor_open || companion_editor_page != 3) return 0;
+    if (companion_editor_preview_item < 1 ||
+        companion_editor_preview_item >= N_DECK_ITEM_TEXTURE_IDS) return 0;
+    if (companion_editor_preview_item == 3 && companion_editor_game != GAME_SML2) return 0;
+    return companion_editor_preview_item;
 }
 
 static int deck_bundle_path_is_relative(const char *value)
