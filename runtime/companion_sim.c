@@ -738,8 +738,11 @@ static void draw_tiny_button(const Settings *s, int x, int y, int w, int h, int 
         highlighted ? 255 : (game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36),
         highlighted ? 214 : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
         highlighted ? 107 : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
-    if (assets[game][1]) {
-        draw_asset_image(s, game, 1, x + 1, y + 1, w - 2, h - 2);
+    int texture_index = action == SIM_BACKGROUND ? 28 :
+                        action == SIM_CLOSE_GAME ? 29 : 1;
+    if (!assets[game][texture_index]) texture_index = 1;
+    if (assets[game][texture_index]) {
+        draw_asset_image(s, game, texture_index, x + 1, y + 1, w - 2, h - 2);
         fill_round_rect(x + 1, y + 1, w - 2, h - 2, 7, 3, 8, 16,
                         highlighted ? 55 : 68);
     }
@@ -933,6 +936,8 @@ static void sync_assets(const Settings *s)
         load_asset(g, 16, d->status_texture_path);
         for (int b = 0; b < 4; b++)
             load_asset(g, 17 + b, d->button_texture_by_action[b]);
+        load_asset(g, 28, d->button_texture_by_action[4]);
+        load_asset(g, 29, d->button_texture_by_action[5]);
         for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
             load_asset(g, 21 + slot, d->decoration_extra_path[slot]);
     }
