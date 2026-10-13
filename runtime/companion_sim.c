@@ -31,7 +31,7 @@
 
 static SDL_Window *deck_window;
 static SDL_Renderer *deck_renderer;
-static SDL_Texture *assets[N_GAMES][7];
+static SDL_Texture *assets[N_GAMES][21];
 static IMG_Animation *asset_animations[N_GAMES][7];
 static int asset_animation_frame[N_GAMES][7];
 static Uint32 asset_animation_started[N_GAMES][7];
@@ -280,6 +280,8 @@ static Uint8 theme_edge_r(int g) { return g == GAME_SML ? 128 : g == GAME_SML2 ?
 static Uint8 theme_edge_g(int g) { return g == GAME_SML ? 169 : g == GAME_SML2 ? 123 : 125; }
 static Uint8 theme_edge_b(int g) { return g == GAME_SML ? 81 : g == GAME_SML2 ? 65 : 157; }
 
+static void image_contain(SDL_Texture *texture, int x, int y, int w, int h);
+
 static void draw_android_card(int x, int y, int w, int h, int game, const char *label)
 {
     fill_round_rect(x + 2, y + 4, w, h, 16, 0, 0, 0, 96);
@@ -287,6 +289,8 @@ static void draw_android_card(int x, int y, int w, int h, int game, const char *
         game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
         game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
         game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
+    if (game >= 0 && game < N_GAMES && !strcmp(label, "ADVENTURE STATUS") && assets[game][8])
+        image_contain(assets[game][8], x + 2, y + 2, w - 4, h - 4);
     outline_round_rect(x + 1, y + 1, w - 2, h - 2, 14,
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
     fill(x + 12, y + 9, w - 24, 3,
@@ -302,6 +306,8 @@ static void draw_android_header(int x, int y, int w, int h, int game)
         game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
         game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
         game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
+    if (game >= 0 && game < N_GAMES && assets[game][7])
+        image_contain(assets[game][7], x + 2, y + 2, w - 4, h - 4);
     outline_round_rect(x, y, w, h, 12,
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
     fill(x + 10, y + 5, w - 20, 2,
@@ -681,10 +687,13 @@ static void draw_action_button(const Settings *s, int game, int action,
         action == pressed_action ? theme_accent_r(game) : (game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36),
         action == pressed_action ? theme_accent_g(game) : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
         action == pressed_action ? theme_accent_b(game) : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
-    if (assets[game][1]) {
-        SDL_Rect dest = {x + 1, y + 1, w - 2, h - 2};
-        SDL_RenderCopy(deck_renderer, assets[game][1], NULL, &dest);
-        fill_round_rect(x + 1, y + 1, w - 2, h - 2, 11, 3, 8, 16, pressed_action == action ? 55 : 68);
+    int action_texture_index = action == SIM_SAVE ? 17 : action == SIM_LOAD ? 18 :
+        action == SIM_PAUSE ? 19 : action == SIM_REWIND ? 20 : 1;
+    SDL_Texture *action_texture = assets[game][action_texture_index]
+        ? assets[game][action_texture_index] : assets[game][1];
+    if (action_texture) {
+        image_contain(action_texture, x + 2, y + 2, w - 4, h - 4);
+        fill_round_rect(x + 1, y + 1, w - 2, h - 2, 11, 3, 8, 16, pressed_action == action ? 24 : 34);
     }
     outline_round_rect(x + 1, y + 1, w - 2, h - 2, 11,
         action == pressed_action ? 255 : theme_edge_r(game),
@@ -870,7 +879,7 @@ static void update_animated_assets(void)
 {
     Uint32 now = SDL_GetTicks();
     for (int g = 0; g < N_GAMES; g++) {
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < 21; i++) {
             IMG_Animation *animation = asset_animations[g][i];
             if (!animation || animation->count < 2) continue;
             Uint32 total_ms = 0;
@@ -908,6 +917,10 @@ static void sync_assets(const Settings *s)
         load_asset(g, 4, d->item_texture_by_id[1]); /* Mushroom */
         load_asset(g, 5, d->item_texture_by_id[2]); /* Superball / Fire Flower */
         load_asset(g, 6, d->item_texture_by_id[3]); /* Carrot */
+        load_asset(g, 7, d->header_texture_path);
+        load_asset(g, 8, d->status_texture_path);
+        for (int b = 0; b < 4; b++)
+            load_asset(g, 17 + b, d->button_texture_by_action[b]);
     }
 }
 
@@ -922,6 +935,17 @@ static void image_cover(SDL_Texture *texture, int x, int y, int w, int h)
     SDL_RenderSetClipRect(deck_renderer, &(SDL_Rect){x, y, w, h});
     SDL_RenderCopy(deck_renderer, texture, NULL, &dest);
     SDL_RenderSetClipRect(deck_renderer, NULL);
+}
+
+static void image_contain(SDL_Texture *texture, int x, int y, int w, int h)
+{
+    if (!texture || w <= 0 || h <= 0) return;
+    int tw = 0, th = 0;
+    if (SDL_QueryTexture(texture, NULL, NULL, &tw, &th) || tw <= 0 || th <= 0) return;
+    float scale = fminf((float)w / tw, (float)h / th);
+    int dw = (int)(tw * scale + .5f), dh = (int)(th * scale + .5f);
+    SDL_Rect dest = {x + (w - dw) / 2, y + (h - dh) / 2, dw, dh};
+    SDL_RenderCopy(deck_renderer, texture, NULL, &dest);
 }
 
 static void transform_box(const CompanionLayoutCfg *d, int element,
@@ -977,36 +1001,7 @@ static void draw_companion(const Settings *s)
     transform_box(d, 0, 400, 31.5f, &closex, &closey, &closew, &closeh);
     draw_tiny_button((int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE", "GAME", SIM_CLOSE_GAME);
 
-    /* Left-hand save-slot preview / current save card. */
-    draw_android_card(24, 72, 160, 132, g, current_playing ? "ACTIVE SAVE" : "SAVE SLOT PREVIEW");
-    int occupied = slot_file_occupied(g, current_slot);
-    SDL_Texture *thumb = occupied ? slot_thumbnail(g, current_slot) : NULL;
-    SDL_Rect thumb_dst = {40, 103, 128, 56};
-    fill_round_rect(40, 103, 128, 56, 5, 20, 33, 48, 255);
-    if (thumb) SDL_RenderCopy(deck_renderer, thumb, NULL, &thumb_dst);
-    else draw_text_fit(45, 126, 118, 1,
-        occupied ? theme_accent_r(g) : theme_muted_r(g),
-        occupied ? theme_accent_g(g) : theme_muted_g(g),
-        occupied ? theme_accent_b(g) : theme_muted_b(g), occupied ? "THUMBNAIL PENDING" : "EMPTY SLOT");
-    char slot_text[32];
-    snprintf(slot_text, sizeof slot_text, "SLOT %02d", current_slot + 1);
-    draw_text(38, 170, 1, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), slot_text);
-    char active_save_label[40];
-    time_t active_saved_at = slot_state_mtime(g, current_slot);
-    if (occupied && active_saved_at > 0) {
-        struct tm saved_tm;
-#ifdef _WIN32
-        if (localtime_s(&saved_tm, &active_saved_at) == 0)
-#else
-        if (localtime_r(&active_saved_at, &saved_tm) != NULL)
-#endif
-            strftime(active_save_label, sizeof active_save_label, "SAVED %H:%M", &saved_tm);
-        else snprintf(active_save_label, sizeof active_save_label, "SAVED");
-    } else snprintf(active_save_label, sizeof active_save_label, "%s",
-                    occupied ? "SAVED" : "READY TO SAVE");
-    draw_text_fit(38, 188, 138, 1,
-        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), active_save_label);
-
+    /* Save-state thumbnails are represented by the timeline below. */
     /* The reserve item stays at the visual center and uses the per-game layout transform. */
     float ix = 272, iy = 36, iw = 256, ih = 256;
     transform_box(d, 1, 400, 164, &ix, &iy, &iw, &ih);
@@ -1049,7 +1044,7 @@ static void draw_companion(const Settings *s)
 
     float dx = 280, dy = 153, dw = 240, dh = 144;
     transform_box(d, 4, 400, 225, &dx, &dy, &dw, &dh);
-    if (assets[g][3]) image_cover(assets[g][3], (int)dx, (int)dy, (int)dw, (int)dh);
+    if (assets[g][3]) image_contain(assets[g][3], (int)dx, (int)dy, (int)dw, (int)dh);
 
     SDL_RenderPresent(deck_renderer);
 }
@@ -1060,7 +1055,7 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     if (!s->launcher_dual_screen) {
         if (deck_window) {
             for (int g = 0; g < N_GAMES; g++) {
-                for (int i = 0; i < 7; i++) destroy_asset(g, i);
+                for (int i = 0; i < 21; i++) destroy_asset(g, i);
                 for (int i = 0; i < 10; i++) {
                     if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                     slot_thumb_texture[g][i] = NULL;
@@ -1314,7 +1309,7 @@ void companion_sim_shutdown(void)
 {
     if (deck_window) {
         for (int g = 0; g < N_GAMES; g++) {
-            for (int i = 0; i < 7; i++) destroy_asset(g, i);
+            for (int i = 0; i < 21; i++) destroy_asset(g, i);
             for (int i = 0; i < 10; i++) {
                 if (slot_thumb_texture[g][i]) SDL_DestroyTexture(slot_thumb_texture[g][i]);
                 slot_thumb_texture[g][i] = NULL;
