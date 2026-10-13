@@ -2201,26 +2201,64 @@ static void tab_audio(float x, float y)
 
     card(x, y + 212, lw, 292, "MENU MUSIC");
     label(x + 18, y + 256, "Play music in the launcher");
-    if (ui_toggle(x + lw - 18 - 44, y + 252, &s->menu_music)) audio_menu_apply();
+    if (ui_toggle(x + lw - 18 - 44, y + 252, &s->menu_music)) {
+        audio_menu_apply();
+        audio_menu_music(1);
+        settings_save();
+    }
     label(x + 18, y + 296, "Volume");
-    if (ui_slider(x + 100, y + 294, lw - 100 - 70, &s->menu_music_vol, 0, 100)) audio_menu_apply();
+    if (ui_slider(x + 100, y + 294, lw - 100 - 70, &s->menu_music_vol, 0, 100)) {
+        audio_menu_apply();
+        settings_save();
+    }
     snprintf(t, sizeof t, "%d%%", s->menu_music_vol); ui_text_r(F_REG, 13, x + lw - 18, y + 296, C_TEXT, t);
-    label(x + 18, y + 334, "Track");
-    path_box(x + 18, y + 356, lw - 36, s->menu_music_path, "Built-in chiptune");
-    float bw = (lw - 36 - 16) / 3;
-    if (ui_button(x + 18, y + 404, bw, 36, "Import…", B_NORMAL, 1)) {
-        char p[1100];
-        if (dlg_pick(DLG_AUDIO, "Choose a music file", p, sizeof p)) {
-            char old[512]; snprintf(old, sizeof old, "%s", s->menu_music_path);
-            snprintf(s->menu_music_path, sizeof s->menu_music_path, "%s", p);
-            audio_menu_apply();
-            if (!s->menu_music_path[0]) { launcher_toast("Couldn't read that audio file."); snprintf(s->menu_music_path, sizeof s->menu_music_path, "%s", old); audio_menu_apply(); }
-            else { audio_music_preview(); launcher_toast("Menu music changed."); }
+    menu_music_preview(x + 18, y + 309, lw - 36, 58);
+
+    ui_text(F_BOLD, 10, x + 18, y + 375, C_TEXT, "PLAYLIST");
+    snprintf(t, sizeof t, "%02d / %02d", s->menu_playlist_count, MAX_MENU_TRACKS);
+    ui_text_r(F_REG, 9, x + lw - 122, y + 376, C_DIM, t);
+    int max_page = s->menu_playlist_count > 0 ? (s->menu_playlist_count - 1) / 3 : 0;
+    if (menu_playlist_page > max_page) menu_playlist_page = max_page;
+    if (menu_playlist_page < 0) menu_playlist_page = 0;
+    if (ui_button(x + lw - 92, y + 370, 36, 21, "Prev", B_GHOST, max_page > 0))
+        menu_playlist_page = (menu_playlist_page + max_page) % (max_page + 1);
+    if (ui_button(x + lw - 50, y + 370, 32, 21, "Next", B_GHOST, max_page > 0))
+        menu_playlist_page = (menu_playlist_page + 1) % (max_page + 1);
+
+    for (int row = 0; row < 3; row++) {
+        int index = menu_playlist_page * 3 + row;
+        float ry = y + 393 + row * 23.0f;
+        if (index < s->menu_playlist_count && index < MAX_MENU_TRACKS) {
+            char title[512];
+            menu_music_title_from_path(s->menu_playlist[index], title, sizeof title);
+            int active = s->menu_music_path[0] && !strcmp(s->menu_music_path, s->menu_playlist[index]);
+            if (ui_button(x + 18, ry, lw - 36, 21, title,
+                          active ? B_PRIMARY : B_GHOST, 1))
+                launcher_menu_music_select(index);
+        } else {
+            ui_rrect(x + 18, ry, lw - 36, 21, 6, HEX(0x171D2A));
+            ui_text_fit(F_REG, 9, x + 28, ry + 5, lw - 56, C_DIM,
+                        s->menu_playlist_count ? "Empty playlist slot" : "Add a WAV, MP3, OGG or FLAC track");
         }
     }
-    if (ui_button(x + 18 + bw + 8, y + 404, bw, 36, "Built-in", B_GHOST, s->menu_music_path[0] != 0)) { s->menu_music_path[0] = 0; audio_menu_apply(); }
-    if (ui_button(x + 18 + (bw + 8) * 2, y + 404, bw, 36, "Restart", B_GHOST, 1)) audio_music_preview();
-    ui_text_wrap(F_REG, 12, x + 18, y + 456, lw - 36, C_DIM, "WAV, MP3, OGG or FLAC. It loops while you are in the launcher and stops when a game starts. You can also drop a file onto this tab.", 3);
+
+    float action_w = (lw - 36 - 18) / 4.0f;
+    float action_y = y + 466;
+    if (ui_button(x + 18, action_y, action_w, 28, "Add track", B_NORMAL, 1))
+        menu_playlist_import_dialog();
+    if (ui_button(x + 18 + action_w + 6, action_y, action_w, 28, "Remove", B_GHOST,
+                  s->menu_playlist_count > 0))
+        menu_playlist_remove_selected();
+    if (ui_button(x + 18 + (action_w + 6) * 2, action_y, action_w, 28, "Built-in", B_GHOST,
+                  s->menu_music_path[0] != 0))
+        menu_music_set_builtin();
+    if (ui_button(x + 18 + (action_w + 6) * 3, action_y, action_w, 28, "Restart", B_GHOST, 1)) {
+        settings.menu_music = 1;
+        audio_menu_apply();
+        audio_music_preview();
+        audio_menu_music(1);
+        settings_save();
+    }
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 504, "INTERFACE SOUNDS");
