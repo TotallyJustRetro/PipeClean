@@ -78,7 +78,10 @@ public final class PipeCleanActivity extends SDLActivity {
     }
 
     private void showCompanionDisplay() {
-        if (!companionEnabled || companionDisplayManager == null || isFinishing()) {
+        // The companion screen is part of the app shell, not a temporary game dialog.
+        // Keep it present whenever a secondary display exists, including the game picker
+        // and idle state. Only the app's destruction or display removal tears it down.
+        if (companionDisplayManager == null || isFinishing()) {
             dismissCompanionDisplay();
             return;
         }
@@ -103,15 +106,33 @@ public final class PipeCleanActivity extends SDLActivity {
         if (companionPresentation != null) {
             Display current = companionPresentation.getDisplay();
             if (current != null && current.getDisplayId() == target.getDisplayId()) {
-                nativeCompanionDisplayAvailable(1);
-                return;
+                try {
+                    // If Android or an input key dismissed the Presentation, recreate it
+                    // on the same display instead of leaving a blank lower screen.
+                    if (!companionPresentation.isShowing()) companionPresentation.show();
+                    if (companionPresentation.isShowing()) {
+                        companionPresentation.setPipeSwapMode(companionEnabled && companionPipeSwapMode);
+                        nativeCompanionDisplayAvailable(1);
+                        return;
+                    }
+                } catch (Exception ex) {
+                    android.util.Log.w("PipeClean", "Couldn't restore the companion display.", ex);
+                }
             }
             dismissCompanionDisplay();
         }
         try {
-            companionPresentation = new PipeCleanCompanionPresentation(this, target);
-            companionPresentation.show();
-            companionPresentation.setPipeSwapMode(companionPipeSwapMode);
+            PipeCleanCompanionPresentation created = new PipeCleanCompanionPresentation(this, target);
+            created.setOnDismissListener(dialog -> new Handler(Looper.getMainLooper()).post(() -> {
+                // Belt-and-suspenders recovery: accidental dismissals must not detach
+                // the lower screen from the app. Explicit teardown clears our reference
+                // before this callback runs, so closing the app remains allowed.
+                if (!isFinishing() && companionPresentation == created && !created.isShowing())
+                    showCompanionDisplay();
+            }));
+            companionPresentation = created;
+            created.show();
+            created.setPipeSwapMode(companionEnabled && companionPipeSwapMode);
             nativeCompanionDisplayAvailable(1);
         } catch (Exception ex) {
             dismissCompanionDisplay();
@@ -218,12 +239,19 @@ public final class PipeCleanActivity extends SDLActivity {
                                      int item, int dualScreenEnabled) {
         runOnUiThread(() -> {
             companionEnabled = dualScreenEnabled != 0 && (game == 1 || game == 2);
-            if (companionEnabled) showCompanionDisplay();
-            else dismissCompanionDisplay();
+            // Always retain the second-screen deck. Game-specific widgets are live only
+            // when the selected game has Companion support enabled; otherwise show a
+            // useful READY screen rather than dismissing the entire lower display.
+            showCompanionDisplay();
             if (companionPresentation != null) {
-                companionPresentation.updateState(game, lives, stage, world,
-                    paused != 0, slot, palette, filter, item);
-                companionPresentation.setPipeSwapMode(companionPipeSwapMode);
+                if (companionEnabled) {
+                    companionPresentation.updateState(game, lives, stage, world,
+                        paused != 0, slot, palette, filter, item);
+                    companionPresentation.setPipeSwapMode(companionPipeSwapMode);
+                } else {
+                    companionPresentation.showIdleState();
+                    companionPresentation.setPipeSwapMode(false);
+                }
             }
         });
     }
@@ -243,7 +271,7 @@ public final class PipeCleanActivity extends SDLActivity {
         runOnUiThread(() -> {
             companionPipeSwapMode = enabled;
             if (companionPresentation != null)
-                companionPresentation.setPipeSwapMode(companionPipeSwapMode);
+                companionPresentation.setPipeSwapMode(companionEnabled && companionPipeSwapMode);
         });
     }
 
@@ -261,8 +289,13 @@ public final class PipeCleanActivity extends SDLActivity {
     public void setCompanionEnabled(boolean enabled) {
         runOnUiThread(() -> {
             companionEnabled = enabled;
-            if (companionEnabled) showCompanionDisplay();
-            else dismissCompanionDisplay();
+            showCompanionDisplay();
+            if (!companionEnabled && companionPresentation != null) {
+                companionPresentation.showIdleState();
+                companionPresentation.setPipeSwapMode(false);
+            } else if (companionPresentation != null) {
+                companionPresentation.setPipeSwapMode(companionPipeSwapMode);
+            }
         });
     }
 
