@@ -3136,7 +3136,9 @@ static void deck_editor_sounds(float x, float y)
     if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1))
         companion_editor_page = 1;
     ui_text(F_REG, 11, x + 114, y + 114, C_TEXT, "Enable custom action sounds");
-    if (ui_toggle(x + 320, y + 110, &d->sounds_enabled)) { }
+    if (ui_mouse.pressed && ui_hover(x + 320, y + 110, 52, 24))
+        deck_editor_snapshot();
+    (void)ui_toggle(x + 320, y + 110, &d->sounds_enabled);
     static const char *labels[N_DECK_BUTTON_SOUNDS] = {
         "Save button", "Load button", "Pause button", "Rewind button",
         "Background button", "Close button"
