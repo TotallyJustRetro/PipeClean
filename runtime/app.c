@@ -30,6 +30,9 @@
 #include "branding.h"
 #include "dev_diag.h"
 #include "widescreen.h"
+#if !defined(__ANDROID__)
+#include "companion_sim.h"
+#endif
 #include <SDL_image.h>
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -1621,6 +1624,9 @@ static int play_multiplayer(int g)
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (companion_handle_event(g, &e, &paused, &quit)) continue;
+#if !defined(__ANDROID__)
+            if (companion_sim_handle_event(&e, &settings)) continue;
+#endif
             if (dev_diag_handle_event(&e)) continue;
             if (e.type == SDL_WINDOWEVENT &&
                 e.window.event == SDL_WINDOWEVENT_CLOSE &&
@@ -1903,6 +1909,10 @@ static int play_multiplayer(int g)
         }
 
         companion_publish_state(g, f, paused);
+#if !defined(__ANDROID__)
+        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot);
+        companion_sim_render(&settings, win);
+#endif
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (have && !companion_pipe_swap_active) {
@@ -2158,6 +2168,9 @@ static int play(int g)
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (companion_handle_event(g, &e, &paused, &quit)) continue;
+#if !defined(__ANDROID__)
+            if (companion_sim_handle_event(&e, &settings)) continue;
+#endif
             touch_handle_event(&e);
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
@@ -2234,6 +2247,10 @@ static int play(int g)
             pad_set_screen_color(render_avg_color());
         }
         companion_publish_state(g, f, paused);
+#if !defined(__ANDROID__)
+        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot);
+        companion_sim_render(&settings, win);
+#endif
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (paused) {
@@ -2340,6 +2357,9 @@ int app_run(const char *autorun, const char *hack)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+#if !defined(__ANDROID__)
+            if (companion_sim_handle_event(&e, &settings)) continue;
+#endif
             /* Let the launcher relinquish its virtual controller cursor before
                the direct finger path presses the UI. Mouse events retain their
                existing dispatch order for normal desktop interaction. */
@@ -2411,6 +2431,10 @@ int app_run(const char *autorun, const char *hack)
             }
         }
         SDL_RenderPresent(ren);
+#if !defined(__ANDROID__)
+        companion_sim_set_state(-1, NULL, 0, 0);
+        companion_sim_render(&settings, win);
+#endif
         companion_publish_launcher_dashboard(launcher_current_game());
         if (r.play >= 0) {
             audio_sfx(SFX_CONFIRM);
@@ -2422,6 +2446,9 @@ int app_run(const char *autorun, const char *hack)
         }
         if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_SHOWN)) SDL_Delay(30);
     }
+#if !defined(__ANDROID__)
+    companion_sim_shutdown();
+#endif
     launcher_shutdown();
     branding_shutdown();
     settings_save();
