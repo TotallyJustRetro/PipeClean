@@ -282,15 +282,29 @@ static Uint8 theme_edge_b(int g) { return g == GAME_SML ? 81 : g == GAME_SML2 ? 
 
 static void image_contain(SDL_Texture *texture, int x, int y, int w, int h);
 
-static void draw_android_card(int x, int y, int w, int h, int game, const char *label)
+static void draw_asset_image(const Settings *s, int game, int asset_index,
+                              int x, int y, int w, int h)
+{
+    if (game < 0 || game >= N_GAMES || asset_index < 0 ||
+        asset_index >= N_DECK_ASSET_PATHS || w <= 0 || h <= 0 ||
+        !assets[game][asset_index]) return;
+    if (s && s->deck_layout[game].asset_stretch[asset_index]) {
+        SDL_Rect destination = {x, y, w, h};
+        SDL_RenderCopy(deck_renderer, assets[game][asset_index], NULL, &destination);
+    } else {
+        image_contain(assets[game][asset_index], x, y, w, h);
+    }
+}
+
+static void draw_android_card(const Settings *s, int x, int y, int w, int h, int game, const char *label)
 {
     fill_round_rect(x + 2, y + 4, w, h, 16, 0, 0, 0, 96);
     fill_round_rect(x, y, w, h, 15,
         game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
         game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
         game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
-    if (game >= 0 && game < N_GAMES && !strcmp(label, "ADVENTURE STATUS") && assets[game][8])
-        image_contain(assets[game][8], x + 2, y + 2, w - 4, h - 4);
+    if (game >= 0 && game < N_GAMES && !strcmp(label, "ADVENTURE STATUS"))
+        draw_asset_image(s, game, 16, x + 2, y + 2, w - 4, h - 4);
     outline_round_rect(x + 1, y + 1, w - 2, h - 2, 14,
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
     fill(x + 12, y + 9, w - 24, 3,
@@ -299,15 +313,15 @@ static void draw_android_card(int x, int y, int w, int h, int game, const char *
         theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), label);
 }
 
-static void draw_android_header(int x, int y, int w, int h, int game)
+static void draw_android_header(const Settings *s, int x, int y, int w, int h, int game)
 {
     fill_round_rect(x + 2, y + 3, w, h, 12, 0, 0, 0, 106);
     fill_round_rect(x, y, w, h, 12,
         game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
         game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
         game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
-    if (game >= 0 && game < N_GAMES && assets[game][7])
-        image_contain(assets[game][7], x + 2, y + 2, w - 4, h - 4);
+    if (game >= 0 && game < N_GAMES)
+        draw_asset_image(s, game, 15, x + 2, y + 2, w - 4, h - 4);
     outline_round_rect(x, y, w, h, 12,
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
     fill(x + 10, y + 5, w - 20, 2,
@@ -386,11 +400,11 @@ static void draw_dashboard(const Settings *s, int selected_game)
     }
     for (int y = 0; y < 450; y += 6) fill(0, y, 800, 1, 0, 0, 0, 18);
 
-    draw_android_header(18, 7, 282, 48, -1);
+    draw_android_header(s, 18, 7, 282, 48, -1);
     draw_text(27, 15, 1, 110, 229, 239, "PIPE CLEAN  \xE2\x80\xA2  GAME LIBRARY");
     draw_text(27, 28, 2, 234, 245, 255, "READY TO PLAY");
 
-    draw_android_card(20, 65, 460, 362, -1, "SELECTED GAME");
+    draw_android_card(s, 20, 65, 460, 362, -1, "SELECTED GAME");
     draw_dashboard_preview(34, 94, 432, 199, selected_game);
     const char *name = selected_game >= 0 && selected_game < N_GAMES &&
         games[selected_game].name ? games[selected_game].name : "CHOOSE A GAME";
@@ -403,7 +417,7 @@ static void draw_dashboard(const Settings *s, int selected_game)
     draw_text(36, 332, 1, 175, 195, 221, "TOTAL PLAY TIME");
     draw_text_fit(36, 339, 420, 2, 110, 229, 239, time_text);
 
-    draw_android_card(492, 65, 288, 362, -1, "RECENTLY PLAYED");
+    draw_android_card(s, 492, 65, 288, 362, -1, "RECENTLY PLAYED");
     int rows = 0;
     for (int i = 0; i < N_RECENT_PLAYED; i++)
         if (s->recent_played[i] >= 0 && s->recent_played[i] < N_GAMES) rows++;
@@ -689,10 +703,9 @@ static void draw_action_button(const Settings *s, int game, int action,
         action == pressed_action ? theme_accent_b(game) : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
     int action_texture_index = action == SIM_SAVE ? 17 : action == SIM_LOAD ? 18 :
         action == SIM_PAUSE ? 19 : action == SIM_REWIND ? 20 : 1;
-    SDL_Texture *action_texture = assets[game][action_texture_index]
-        ? assets[game][action_texture_index] : assets[game][1];
-    if (action_texture) {
-        image_contain(action_texture, x + 2, y + 2, w - 4, h - 4);
+    if (!assets[game][action_texture_index]) action_texture_index = 1;
+    if (assets[game][action_texture_index]) {
+        draw_asset_image(s, game, action_texture_index, x + 2, y + 2, w - 4, h - 4);
         fill_round_rect(x + 1, y + 1, w - 2, h - 2, 11, 3, 8, 16, pressed_action == action ? 24 : 34);
     }
     outline_round_rect(x + 1, y + 1, w - 2, h - 2, 11,
@@ -802,7 +815,7 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
     int item_asset = item >= 1 && item <= 3 ? item + 3 : 2;
     if (item > 0 && !assets[game][item_asset]) item_asset = 2;
     if (item > 0 && assets[game][item_asset]) {
-        image_contain(assets[game][item_asset],
+        draw_asset_image(s, game, item_asset,
             cx - r * 46 / 100, cy - r * 46 / 100, r * 92 / 100, r * 92 / 100);
     } else if (item > 0) {
         const char *label = item == 1 ? "MUSHROOM" :
@@ -996,11 +1009,11 @@ static void draw_companion(const Settings *s)
     if (g < 0 || g >= N_GAMES) g = GAME_SML;
     const CompanionLayoutCfg *d = &s->deck_layout[g];
     draw_android_scenery(g);
-    if (assets[g][0]) image_contain(assets[g][0], 0, 0, 800, 450);
+    draw_asset_image(s, g, 0, 0, 0, 800, 450);
 
     float hx = 18, hy = 7, hw = 265, hh = 49;
     transform_box(d, 0, 400, 31.5f, &hx, &hy, &hw, &hh);
-    draw_android_header((int)hx, (int)hy, (int)hw, (int)hh, g);
+    draw_android_header(s, (int)hx, (int)hy, (int)hw, (int)hh, g);
     draw_text_fit((int)hx + 8, (int)hy + 10, (int)hw - 16, 1,
         theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), "PIPE CLEAN  \xE2\x80\xA2  POCKET QUEST");
     draw_text_fit((int)hx + 8, (int)hy + 25, (int)hw - 16, 2,
@@ -1020,7 +1033,7 @@ static void draw_companion(const Settings *s)
     draw_hero_item(s, g, current_item, ix + iw * .5f, iy + ih * .5f, iw * .5f);
 
     /* Status card matches the Android deck's lives / stage block. */
-    draw_android_card(620, 76, 156, 128, g, "ADVENTURE STATUS");
+    draw_android_card(s, 620, 76, 156, 128, g, "ADVENTURE STATUS");
     fill_circle(637, 111, 8, 255, 214, 107, 190);
     draw_text(652, 105, 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g), "LIVES");
     char lives_text[24];
@@ -1068,7 +1081,7 @@ static void draw_companion(const Settings *s)
         transform_box(d, 4 + slot, 400, 225, &dx, &dy, &dw, &dh);
         int asset_index = slot == 0 ? 3 : 20 + slot;
         if (assets[g][asset_index])
-            image_contain(assets[g][asset_index], (int)dx, (int)dy, (int)dw, (int)dh);
+            draw_asset_image(s, g, asset_index, (int)dx, (int)dy, (int)dw, (int)dh);
     }
 
     SDL_RenderPresent(deck_renderer);
