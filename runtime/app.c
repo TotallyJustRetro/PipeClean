@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <ctype.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -500,6 +501,262 @@ static void companion_publish_launcher_dashboard(int selected_game)
 }
 
 #else
+#include "miniz.h"
+#include <time.h>
+#include <sys/stat.h>
+
+static const char *desktop_deck_asset_path(const CompanionLayoutCfg *d, int i)
+{
+    if (!d) return "";
+    if (i == 0) return d->background_path;
+    if (i == 1) return d->button_texture_path;
+    if (i == 2) return d->item_texture_path;
+    if (i == 3) return d->decoration_path;
+    if (i >= 4 && i < 4 + N_DECK_BUTTON_SOUNDS) return d->button_sound_path[i - 4];
+    if (i == 10) return d->item_sound_path;
+    if (i == 11) return d->empty_item_sound_path;
+    if (i == 12) return d->item_texture_by_id[1];
+    if (i == 13) return d->item_texture_by_id[2];
+    if (i == 14) return d->item_texture_by_id[3];
+    return "";
+}
+
+static const char *desktop_deck_picker_title(int kind)
+{
+    switch (kind) {
+    case 1: return "Choose Companion Deck background (PNG/GIF)";
+    case 2: return "Choose Companion Deck button texture (PNG/GIF)";
+    case 3: return "Choose legacy generic item texture (PNG/GIF)";
+    case 4: return "Choose Companion Deck decoration (PNG/GIF)";
+    case 5: return "Choose save button sound";
+    case 6: return "Choose load button sound";
+    case 7: return "Choose pause button sound";
+    case 8: return "Choose rewind button sound";
+    case 9: return "Choose background button sound";
+    case 10: return "Choose close button sound";
+    case 11: return "Choose item-use sound";
+    case 12: return "Choose empty-item-slot sound";
+    case 15: return "Choose Mushroom texture (PNG/GIF)";
+    case 16: return "Choose Fire Flower / Superball Flower texture (PNG/GIF)";
+    case 17: return "Choose Carrot texture (PNG/GIF)";
+    case 13: return "Import Companion Deck ZIP bundle";
+    case 14: return "Export Companion Deck ZIP bundle";
+    default: return "Choose Companion Deck asset";
+    }
+}
+
+static const char *desktop_deck_game_slug(int game)
+{
+    if (game < 0 || game >= N_GAMES || !games[game].id) return "game";
+    return games[game].id;
+}
+
+static int desktop_bundle_entry_safe(const char *name)
+{
+    if (!name || !name[0] || name[0] == '/' || name[0] == '\\' ||
+        strchr(name, '\\') || strchr(name, ':') || strlen(name) >= 768) return 0;
+    const char *segment = name;
+    for (const char *p = name; ; ++p) {
+        unsigned char ch = (unsigned char)*p;
+        if (ch && !(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z') &&
+            !(ch >= '0' && ch <= '9') && ch != '_' && ch != '-' && ch != '.' && ch != '/')
+            return 0;
+        if (ch == '/' || ch == 0) {
+            size_t n = (size_t)(p - segment);
+            if (n == 0 || (n == 1 && segment[0] == '.') ||
+                (n == 2 && segment[0] == '.' && segment[1] == '.')) return 0;
+            if (!ch) break;
+            segment = p + 1;
+        }
+    }
+    return 1;
+}
+
+static int desktop_bundle_make_parents(const char *path)
+{
+    char parent[2048];
+    size_t n = strlen(path);
+    if (!n || n >= sizeof parent) return 0;
+    memcpy(parent, path, n + 1);
+    for (char *p = parent + 1; *p; ++p) {
+        if (*p == '/' || *p == '\\') {
+            char save = *p;
+            *p = 0;
+            if (parent[0] && mkdir_u(parent) != 0 && !file_exists(parent)) return 0;
+            *p = save;
+        }
+    }
+    return 1;
+}
+
+static int desktop_bundle_import(int game, const char *zip_path, char *manifest_out, size_t manifest_cap)
+{
+    if (game < 0 || game >= N_GAMES || !zip_path || !zip_path[0] ||
+        !manifest_out || manifest_cap == 0) return 0;
+    manifest_out[0] = 0;
+
+    char container[1200], root[1600];
+    snprintf(container, sizeof container, "%sCompanionDeckBundles", settings_dir());
+    if (mkdir_u(container) != 0 && !file_exists(container)) return 0;
+    snprintf(root, sizeof root, "%s/%s-import-%lu-%u", container,
+        desktop_deck_game_slug(game), (unsigned long)time(NULL), (unsigned)SDL_GetTicks());
+    if (mkdir_u(root) != 0 && !file_exists(root)) return 0;
+    const size_t root_len = strlen(root);
+
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof zip);
+    if (!mz_zip_reader_init_file(&zip, zip_path, 0)) return 0;
+    mz_uint entries = mz_zip_reader_get_num_files(&zip);
+    if (entries == 0 || entries > 128) {
+        mz_zip_reader_end(&zip);
+        return 0;
+    }
+
+    uint64_t total = 0;
+    int ok = 1;
+    for (mz_uint i = 0; i < entries && ok; i++) {
+        char name[768], dst[2400];
+        if (!mz_zip_reader_get_filename(&zip, i, name, sizeof name) ||
+            !desktop_bundle_entry_safe(name)) { ok = 0; break; }
+        if (mz_zip_reader_is_file_a_directory(&zip, i)) continue;
+        mz_zip_archive_file_stat st;
+        if (!mz_zip_reader_file_stat(&zip, i, &st) || st.m_uncomp_size > 40u * 1024u * 1024u) {
+            ok = 0; break;
+        }
+        total += st.m_uncomp_size;
+        if (total > 40u * 1024u * 1024u) { ok = 0; break; }
+        int written = snprintf(dst, sizeof dst, "%s/%s", root, name);
+        if (written < 0 || (size_t)written >= sizeof dst ||
+            strncmp(dst, root, root_len) != 0 || dst[root_len] != '/') { ok = 0; break; }
+        if (!desktop_bundle_make_parents(dst) ||
+            !mz_zip_reader_extract_to_file(&zip, i, dst, 0)) { ok = 0; break; }
+    }
+    mz_zip_reader_end(&zip);
+    if (!ok) return 0;
+
+    int n = snprintf(manifest_out, manifest_cap, "%s/manifest.ini", root);
+    if (n < 0 || (size_t)n >= manifest_cap) return 0;
+    struct stat st;
+    return stat(manifest_out, &st) == 0 && st.st_size > 0;
+}
+
+static const char *desktop_deck_manifest_field(int i)
+{
+    static const char *fields[15] = {
+        "background_path", "button_texture_path", "item_texture_path", "decoration_path",
+        "button_sound_path0", "button_sound_path1", "button_sound_path2", "button_sound_path3",
+        "button_sound_path4", "button_sound_path5", "item_sound_path", "empty_item_sound_path",
+        "item_texture_path_1", "item_texture_path_2", "item_texture_path_3"
+    };
+    return i >= 0 && i < 15 ? fields[i] : "";
+}
+
+static const char *desktop_deck_entry_stem(int i)
+{
+    static const char *stems[15] = {
+        "background", "button-texture", "item-texture", "decoration",
+        "save-sound", "load-sound", "pause-sound", "rewind-sound",
+        "background-sound", "close-sound", "item-sound", "empty-item-sound",
+        "mushroom-texture", "special-item-texture", "carrot-texture"
+    };
+    return i >= 0 && i < 15 ? stems[i] : "asset";
+}
+
+static void desktop_deck_extension(const char *path, char out[12])
+{
+    const char *dot = strrchr(path ? path : "", '.');
+    const char *slash = path ? strrchr(path, '/') : NULL;
+    const char *backslash = path ? strrchr(path, '\\') : NULL;
+    if (backslash && (!slash || backslash > slash)) slash = backslash;
+    if (!dot || (slash && dot < slash) || strlen(dot) > 10) {
+        snprintf(out, 12, ".bin");
+        return;
+    }
+    size_t i = 0;
+    for (; dot[i] && i < 10; i++) out[i] = (char)tolower((unsigned char)dot[i]);
+    out[i] = 0;
+    if (strcmp(out, ".png") && strcmp(out, ".gif") && strcmp(out, ".wav") &&
+        strcmp(out, ".mp3") && strcmp(out, ".ogg") && strcmp(out, ".flac") &&
+        strcmp(out, ".bmp") && strcmp(out, ".jpg") && strcmp(out, ".jpeg") &&
+        strcmp(out, ".tga")) snprintf(out, 12, ".bin");
+}
+
+static int desktop_bundle_export(int game, const char *zip_path)
+{
+    if (game < 0 || game >= N_GAMES || !zip_path || !zip_path[0]) return 0;
+    const CompanionLayoutCfg *d = &settings.deck_layout[game];
+    char manifest[8192];
+    int len = snprintf(manifest, sizeof manifest,
+        "layout_version=2\n"
+        "header_dx=%d\nheader_dy=%d\nheader_scale=%d\n"
+        "item_dx=%d\nitem_dy=%d\nitem_scale=%d\n"
+        "controls_dx=%d\ncontrols_dy=%d\ncontrols_scale=%d\n"
+        "timeline_dx=%d\ntimeline_dy=%d\ntimeline_scale=%d\n"
+        "decoration_dx=%d\ndecoration_dy=%d\ndecoration_scale=%d\n"
+        "sounds_enabled=%d\n",
+        d->header_dx, d->header_dy, d->header_scale,
+        d->item_dx, d->item_dy, d->item_scale,
+        d->controls_dx, d->controls_dy, d->controls_scale,
+        d->timeline_dx, d->timeline_dy, d->timeline_scale,
+        d->decoration_dx, d->decoration_dy, d->decoration_scale, d->sounds_enabled);
+    if (len < 0 || (size_t)len >= sizeof manifest) return 0;
+
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof zip);
+    if (!mz_zip_writer_init_file(&zip, zip_path, 0)) return 0;
+    int ok = 1;
+    for (int i = 0; i < 15 && ok; i++) {
+        const char *path = desktop_deck_asset_path(d, i);
+        if (!path || !path[0] || !file_exists(path)) continue;
+        struct stat st;
+        if (stat(path, &st) != 0 || st.st_size <= 0) continue;
+        char ext[12], entry[128];
+        desktop_deck_extension(path, ext);
+        snprintf(entry, sizeof entry, "assets/%s%s", desktop_deck_entry_stem(i), ext);
+        if (!mz_zip_writer_add_file(&zip, entry, path, NULL, 0, MZ_BEST_COMPRESSION)) {
+            ok = 0; break;
+        }
+        int extra = snprintf(manifest + len, sizeof manifest - (size_t)len,
+                             "%s=%s\n", desktop_deck_manifest_field(i), entry);
+        if (extra < 0 || (size_t)extra >= sizeof manifest - (size_t)len) {
+            ok = 0; break;
+        }
+        len += extra;
+    }
+    if (ok && !mz_zip_writer_add_mem(&zip, "manifest.ini", manifest, (size_t)len,
+                                     MZ_BEST_COMPRESSION)) ok = 0;
+    if (ok && !mz_zip_writer_finalize_archive(&zip)) ok = 0;
+    if (!mz_zip_writer_end(&zip)) ok = 0;
+    return ok;
+}
+
+void launcher_open_companion_layout_picker(int kind, int game)
+{
+    if (game < 0 || game >= N_GAMES) return;
+    char selected[2048];
+    int dialog_kind;
+    if (kind == 14) dialog_kind = DLG_ZIP_SAVE;
+    else if (kind == 13) dialog_kind = DLG_ZIP_OPEN;
+    else if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17)) dialog_kind = DLG_IMAGE;
+    else dialog_kind = DLG_AUDIO;
+    if (!dlg_pick(dialog_kind, desktop_deck_picker_title(kind), selected, sizeof selected)) return;
+
+    if (kind == 14) {
+        if (desktop_bundle_export(game, selected))
+            launcher_companion_layout_picker_result(kind, game, "EXPORTED");
+        else launcher_toast("Couldn't export the Companion Deck ZIP bundle.");
+        return;
+    }
+    if (kind == 13) {
+        char manifest[2048];
+        if (desktop_bundle_import(game, selected, manifest, sizeof manifest))
+            launcher_companion_layout_picker_result(kind, game, manifest);
+        else launcher_toast("That ZIP has no valid layout manifest or contains unsafe/oversized entries.");
+        return;
+    }
+    launcher_companion_layout_picker_result(kind, game, selected);
+}
+
 static void companion_publish_state(int game, const Frame *frame, int paused)
 {
     (void)game; (void)frame; (void)paused;
