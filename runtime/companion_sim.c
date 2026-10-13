@@ -259,7 +259,7 @@ static Uint8 theme_edge_b(int g) { return g == GAME_SML ? 81 : g == GAME_SML2 ? 
 
 static void draw_android_card(int x, int y, int w, int h, int game, const char *label)
 {
-    draw_panel(x + 2, y + 4, w, h, game, 0);
+    fill_round_rect(x + 2, y + 4, w, h, 16, 0, 0, 0, 96);
     fill_round_rect(x, y, w, h, 15,
         game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
         game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
@@ -268,7 +268,7 @@ static void draw_android_card(int x, int y, int w, int h, int game, const char *
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
     fill(x + 12, y + 9, w - 24, 3,
         theme_accent_r(game), theme_accent_g(game), theme_accent_b(game), 255);
-    draw_text(x + 12, y + 18, 1,
+    draw_text(x + 12, y + 21, 1,
         theme_muted_r(game), theme_muted_g(game), theme_muted_b(game), label);
 }
 
@@ -359,7 +359,7 @@ static void draw_dashboard(const Settings *s, int selected_game)
 
     draw_android_header(18, 7, 282, 48, -1);
     draw_text(27, 15, 1, 110, 229, 239, "PIPE CLEAN  \xE2\x80\xA2  GAME LIBRARY");
-    draw_text(27, 30, 2, 234, 245, 255, "READY TO PLAY");
+    draw_text(27, 28, 2, 234, 245, 255, "READY TO PLAY");
 
     draw_android_card(20, 65, 460, 362, -1, "SELECTED GAME");
     draw_dashboard_preview(34, 94, 432, 199, selected_game);
@@ -367,21 +367,21 @@ static void draw_dashboard(const Settings *s, int selected_game)
         games[selected_game].name ? games[selected_game].name : "CHOOSE A GAME";
     if (selected_game == GAME_SML) name = "SUPER MARIO LAND";
     else if (selected_game == GAME_SML2) name = "SUPER MARIO LAND 2";
-    draw_text_fit(36, 306, 420, 2, 234, 245, 255, name);
+    draw_text_fit(36, 300, 420, 2, 234, 245, 255, name);
     int played = selected_game >= 0 && selected_game < N_GAMES ? s->game_play_seconds[selected_game] : 0;
     char time_text[48];
     play_time_label(played, time_text, sizeof time_text);
-    draw_text(36, 337, 1, 175, 195, 221, "TOTAL PLAY TIME");
-    draw_text_fit(36, 352, 420, 2, 110, 229, 239, time_text);
+    draw_text(36, 332, 1, 175, 195, 221, "TOTAL PLAY TIME");
+    draw_text_fit(36, 339, 420, 2, 110, 229, 239, time_text);
 
     draw_android_card(492, 65, 288, 362, -1, "RECENTLY PLAYED");
     int rows = 0;
     for (int i = 0; i < N_RECENT_PLAYED; i++)
         if (s->recent_played[i] >= 0 && s->recent_played[i] < N_GAMES) rows++;
     if (rows == 0) {
-        draw_text(510, 113, 1, 175, 195, 221, "YOUR ADVENTURE");
-        draw_text_fit(510, 142, 246, 1, 234, 245, 255, "GAMES YOU LAUNCH APPEAR HERE");
-        draw_text_fit(510, 158, 246, 1, 175, 195, 221, "PLAY TIME IS SAVED AUTOMATICALLY");
+        draw_text(510, 119, 1, 175, 195, 221, "YOUR ADVENTURE");
+        draw_text_fit(510, 145, 246, 1, 234, 245, 255, "GAMES YOU LAUNCH APPEAR HERE");
+        draw_text_fit(510, 166, 246, 1, 175, 195, 221, "PLAY TIME IS SAVED AUTOMATICALLY");
     } else {
         int row = 0;
         for (int i = 0; i < N_RECENT_PLAYED; i++) {
@@ -394,10 +394,10 @@ static void draw_dashboard(const Settings *s, int selected_game)
             const char *recent_name = games[id].name ? games[id].name : "GAME";
             if (id == GAME_SML) recent_name = "SUPER MARIO LAND";
             else if (id == GAME_SML2) recent_name = "SUPER MARIO LAND 2";
-            draw_text_fit(531, ry + 3, 226, 1,
+            draw_text_fit(531, ry - 4, 226, 1,
                 row == 0 ? 110 : 234, row == 0 ? 229 : 245, row == 0 ? 239 : 255, recent_name);
             play_time_label(s->game_play_seconds[id], time_text, sizeof time_text);
-            draw_text_fit(531, ry + 14, 226, 1, 175, 195, 221, time_text);
+            draw_text_fit(531, ry + 7, 226, 1, 175, 195, 221, time_text);
             row++;
         }
     }
