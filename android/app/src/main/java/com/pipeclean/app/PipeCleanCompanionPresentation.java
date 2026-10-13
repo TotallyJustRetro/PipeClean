@@ -209,7 +209,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private static final int LAYOUT_GAME_COUNT = 7;
         private static final int LAYOUT_DECORATION_COUNT = 8;
         private static final int LAYOUT_ELEMENT_COUNT = 4 + LAYOUT_DECORATION_COUNT;
-        private static final int LAYOUT_VALUE_COUNT = 49;
+        private static final int LAYOUT_VALUE_COUNT = 77;
         private static final int LAYOUT_PATH_COUNT = 28;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
@@ -628,7 +628,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawLayoutBackground(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g >= 0 && hasLayoutImage(g, 0))
-                drawLayoutImageContain(canvas, g, 0, 0, 0, w, h);
+                drawLayoutImageAsset(canvas, g, 0, 0, 0, w, h);
         }
 
         private void drawLayoutImageCover(Canvas canvas, int g, int imageIndex,
@@ -670,6 +670,22 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 y + (h - dh) * 0.5f, dw, dh);
         }
 
+        /**
+         * Draw assigned artwork using its per-asset mode. Fit is the safe default:
+         * the whole source image remains visible, with no crop. Stretch deliberately
+         * fills the target box and may change the image's aspect ratio.
+         */
+        private void drawLayoutImageAsset(Canvas canvas, int g, int imageIndex,
+                                          float x, float y, float w, float h) {
+            if (g < 0 || g >= LAYOUT_GAME_COUNT || imageIndex < 0 ||
+                imageIndex >= LAYOUT_PATH_COUNT) return;
+            int modeIndex = 49 + imageIndex;
+            if (modeIndex < layoutValues[g].length && layoutValues[g][modeIndex] != 0)
+                drawLayoutImage(canvas, g, imageIndex, x, y, w, h);
+            else
+                drawLayoutImageContain(canvas, g, imageIndex, x, y, w, h);
+        }
+
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0) return;
@@ -690,7 +706,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 int element = 4 + slot;
                 canvas.save();
                 applyLayoutTransform(canvas, element, w, h, bx + bw * 0.5f, by + bh * 0.5f);
-                drawLayoutImageContain(canvas, g, imageIndex, bx, by, bw, bh);
+                drawLayoutImageAsset(canvas, g, imageIndex, bx, by, bw, bh);
                 canvas.restore();
             }
         }
@@ -742,7 +758,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             clip.addRoundRect(new RectF(x, y, x + w, y + h), 13, 13, Path.Direction.CW);
             canvas.save();
             canvas.clipPath(clip);
-            drawLayoutImageContain(canvas, g, actionIndex, x, y, w, h);
+            drawLayoutImageAsset(canvas, g, actionIndex, x, y, w, h);
             p.setStyle(Paint.Style.FILL);
             p.setColor(action == downAction ? 0x26000000 : 0x16000000);
             canvas.drawRoundRect(x, y, x + w, y + h, 13, 13, p);
@@ -1308,10 +1324,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 int layoutGame = activeLayoutGame();
                 int textureIndex = 11 + itemId;
                 if (layoutGame >= 0 && itemId > 0 && hasLayoutImage(layoutGame, textureIndex))
-                    drawLayoutImageContain(c, layoutGame, textureIndex, cx-radius*0.46f, cy-radius*0.46f,
+                    drawLayoutImageAsset(c, layoutGame, textureIndex, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else if (layoutGame >= 0 && hasLayoutImage(layoutGame, 2))
-                    drawLayoutImageContain(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
+                    drawLayoutImageAsset(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else
                     drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
@@ -1371,7 +1387,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.drawRoundRect(x,y,x+w,y+h,13,13,p);
             int layoutGame = activeLayoutGame();
             if (layoutGame >= 0 && hasLayoutImage(layoutGame, 15))
-                drawLayoutImageContain(c, layoutGame, 15, x + 2, y + 2, w - 4, h - 4);
+                drawLayoutImageAsset(c, layoutGame, 15, x + 2, y + 2, w - 4, h - 4);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.5f);
             c.drawRoundRect(x+0.75f,y+0.75f,x+w-.75f,y+h-.75f,12,12,p);
             p.setStyle(Paint.Style.FILL);
@@ -1386,7 +1402,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.drawRoundRect(x,y,x+w,y+h,16,16,p);
             int layoutGame = activeLayoutGame();
             if ("ADVENTURE STATUS".equals(label) && layoutGame >= 0 && hasLayoutImage(layoutGame, 16))
-                drawLayoutImageContain(c, layoutGame, 16, x + 2, y + 2, w - 4, h - 4);
+                drawLayoutImageAsset(c, layoutGame, 16, x + 2, y + 2, w - 4, h - 4);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(2);
             c.drawRoundRect(x+1,y+1,x+w-1,y+h-1,15,15,p);
             p.setStyle(Paint.Style.FILL);
