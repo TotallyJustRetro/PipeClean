@@ -3822,7 +3822,7 @@ static int deck_manifest_apply(int game, const char *path)
             char *end = NULL;
             long layer_key = strtol(line + 16, &end, 10);
             if (end && *end == 0 && layer_key >= 8 && layer_key < N_DECK_DECORATIONS) {
-                int slot = (int)layer_key;
+                int slot = (int)layer_key - 1; /* manifest suffix 8 is the ninth visual layer */
                 deck_set_path(fresh.decoration_extra_path[slot], sizeof fresh.decoration_extra_path[slot], eq, directory);
             }
         }
