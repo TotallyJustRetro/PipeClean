@@ -2239,6 +2239,7 @@ int app_run(const char *autorun, const char *hack)
                 break;
             }
         }
+        if (audio_music_take_finished()) launcher_menu_music_step(1);
         if (!launcher_touch_pointer) mouse_sync();
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
