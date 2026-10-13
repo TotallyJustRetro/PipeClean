@@ -8,6 +8,7 @@
 #include "launcher.h"
 #include "util.h"
 #include <sys/stat.h>
+#include <time.h>
 #include <SDL_image.h>
 #include <stdio.h>
 #include <string.h>
@@ -39,7 +40,6 @@ static Uint32 dashboard_preview_tick;
 static SDL_Texture *slot_thumb_texture[N_GAMES][10];
 static char slot_thumb_path[N_GAMES][10][1200];
 static time_t slot_thumb_mtime[N_GAMES][10];
-static Uint32 slot_thumb_scan_tick;
 static const uint8_t font5x7[36][7] = {
     {14,17,17,31,17,17,17}, /* A */
     {30,17,17,30,17,17,30}, /* B */
@@ -156,6 +156,9 @@ static void draw_panel(int x, int y, int w, int h, int game, int bright)
     outline(x, y, w, h, ar, ag, ab, 255);
 }
 
+
+static void transform_box(const CompanionLayoutCfg *d, int element,
+                           float cx, float cy, float *x, float *y, float *w, float *h);
 
 static void fill_round_rect(int x, int y, int w, int h, int radius,
                             Uint8 r, Uint8 g, Uint8 b, Uint8 a)
@@ -285,7 +288,7 @@ static void play_time_label(int seconds, char *out, size_t n)
 static void refresh_dashboard_preview(int game)
 {
     Uint32 now = SDL_GetTicks();
-    if (game == dashboard_preview_game && dashboard_preview_texture &&
+    if (game == dashboard_preview_game &&
         (Uint32)(now - dashboard_preview_tick) < 5000u) return;
     if (dashboard_preview_texture) {
         SDL_DestroyTexture(dashboard_preview_texture);
@@ -533,10 +536,11 @@ static void draw_action_button(const Settings *s, int game, int action,
 
 static void draw_tiny_button(int x, int y, int w, int h, int game, const char *label, int action)
 {
+    int highlighted = action != 0 && action == pressed_action;
     fill_round_rect(x, y, w, h, 8,
-        action == pressed_action ? 255 : (game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36),
-        action == pressed_action ? 214 : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
-        action == pressed_action ? 107 : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
+        highlighted ? 255 : (game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36),
+        highlighted ? 214 : (game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53),
+        highlighted ? 107 : (game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76), 245);
     outline_round_rect(x, y, w, h, 8,
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 255);
     draw_text_fit(x + 4, y + h / 2 - 4, w - 8, 1,
@@ -692,15 +696,6 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
     *h *= scale;
 }
 
-static void draw_button(const Settings *s, int game, int action, int x, int y, int w, int h,
-                        const char *label, int active)
-{
-    pressed_action = active ? action : pressed_action;
-    const char *sub = action == SIM_SAVE ? "SNAPSHOT" : action == SIM_LOAD ? "RESTORE" :
-        action == SIM_PAUSE ? (current_paused ? "CONTINUE" : "HOLD GAME") : "HOLD TO REWIND";
-    draw_action_button(s, game, action, x, y, w, h, label, sub, action == SIM_REWIND);
-}
-
 static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
@@ -779,18 +774,17 @@ static void draw_companion(const Settings *s)
         current_paused ? "PAUSED" : "IN PLAY");
 
     /* Action controls use the same Android coordinates, with each transform shared with the editor. */
-    float bx = 94, by = 320, bw = 145, bh = 42;
-    transform_box(d, 2, 400, 343, &bx, &by, &bw, &bh);
-    int byi = (int)by, bhi = (int)bh, left = (int)bx;
-    draw_action_button(s, g, SIM_SAVE, left, byi, (int)(bw * .237f), bhi, "SAVE", "SNAPSHOT", 0);
-    left += (int)(bw * .237f) + 8;
-    draw_action_button(s, g, SIM_LOAD, left, byi, (int)(bw * .237f), bhi, "LOAD", "RESTORE", 0);
-    left += (int)(bw * .237f) + 8;
-    draw_action_button(s, g, SIM_PAUSE, left, byi, (int)(bw * .237f), bhi,
-        current_paused ? "RESUME" : "PAUSE", current_paused ? "CONTINUE" : "HOLD GAME", 0);
-    left += (int)(bw * .237f) + 8;
-    draw_action_button(s, g, SIM_REWIND, left, byi, (int)(bw * .237f), bhi,
-        "REWIND", "HOLD TO REWIND", 1);
+    const int action_ids[4] = {SIM_SAVE, SIM_LOAD, SIM_PAUSE, SIM_REWIND};
+    const char *action_labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
+    const char *action_subs[4] = {"SNAPSHOT", "RESTORE",
+        current_paused ? "CONTINUE" : "HOLD GAME", "HOLD TO REWIND"};
+    for (int i = 0; i < 4; i++) {
+        float ax = 94.0f + i * 153.0f, ay = 320.0f;
+        float aw = (i == 3) ? 153.0f : 145.0f, ah = 42.0f;
+        transform_box(d, 2, 400, 343, &ax, &ay, &aw, &ah);
+        draw_action_button(s, g, action_ids[i], (int)ax, (int)ay,
+            (int)aw, (int)ah, action_labels[i], action_subs[i], i == 3);
+    }
 
     draw_slot_timeline(s, g);
 
