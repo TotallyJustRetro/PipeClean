@@ -37,7 +37,7 @@ public final class PipeCleanActivity extends SDLActivity {
     private int pendingDeckGame = -1;
     private int pendingDeckKind;
     private String pendingDeckManifest = "";
-    private String[] pendingDeckAssetPaths = new String[15];
+    private String[] pendingDeckAssetPaths = new String[21];
     private DisplayManager companionDisplayManager;
     private PipeCleanCompanionPresentation companionPresentation;
     private boolean companionEnabled;
@@ -364,7 +364,7 @@ public final class PipeCleanActivity extends SDLActivity {
                 } else {
                     Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17) || (kind >= 18 && kind <= 23)) {
+                    if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 23) || (kind >= 18 && kind <= 23)) {
                         intent.setType("image/*");
                         intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
                             "image/png", "image/gif"
@@ -450,7 +450,7 @@ public final class PipeCleanActivity extends SDLActivity {
         if (uri == null) return "";
         String name = documentName(uri);
         String ext = lowerExtension(name);
-        boolean image = (kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17);
+        boolean image = (kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 23);
         boolean valid = image
             ? (".png".equals(ext) || ".gif".equals(ext))
             : (".wav".equals(ext) || ".mp3".equals(ext) || ".ogg".equals(ext) || ".flac".equals(ext));
@@ -567,7 +567,7 @@ public final class PipeCleanActivity extends SDLActivity {
 
     private void exportDeckBundle(Uri uri, String manifest, String[] paths) throws Exception {
         if (uri == null) throw new Exception("No export destination");
-        if (paths == null) paths = new String[15];
+        if (paths == null) paths = new String[21];
         StringBuilder fullManifest = new StringBuilder(manifest == null ? "" : manifest);
         if (fullManifest.length() > 0 &&
             fullManifest.charAt(fullManifest.length() - 1) != '\n') fullManifest.append('\n');
