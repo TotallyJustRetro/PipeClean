@@ -487,8 +487,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
             headerPlate(c, 18, 7, 265, 49);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 26, 23, 10, accent());
             text(c, title(), 25, 43, 16, ink());
-            badge(c, 294, 13, 104, 42, "LIVES", String.format(Locale.US, "× %02d", lives));
-            badge(c, 407, 13, 135, 42, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
             if (!wallpaperPath.isEmpty()) smallButton(c, 552, 17, 34, 34, "×", RESET_BACKGROUND);
             button(c, 593, 13, 105, 42, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
             button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
@@ -506,24 +504,26 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, slotOccupied[slot] ? "SAVED  " + (slotTimeLabels[slot] == null ? "" : slotTimeLabels[slot])
                                        : "READY TO SAVE", 38, 193, 7.5f, accent());
 
-            drawHeroItem(c, 400, 132, 52, item);
-            textFit(c, itemName(), 400, 195, 220, 10, ink(), true);
-            textFit(c, actionHint(), 400, 210, 260, 7.5f, muted(), true);
+            // Keep the reserve-item control as the visual centerpiece of the deck.
+            drawHeroItem(c, 400, 150, 94, item);
+            textFit(c, itemName(), 400, 279, 250, 10, ink(), true);
+            textFit(c, actionHint(), 400, 292, 280, 7.5f, muted(), true);
 
             card(c, 620, 76, 156, 128, "ADVENTURE STATUS");
-            drawMiniStar(c, 644, 112, 8);
-            text(c, paused ? "PAUSED" : "IN PLAY", 660, 114, 10, ink());
-            text(c, "GAME-AWARE DECK", 634, 139, 7.3f, muted());
-            textFit(c, sml1() ? "PIPE / WORLD RUN" : "GOLDEN COIN QUEST",
-                634, 157, 126, 8, accent());
-            text(c, "10 SAVE SLOTS", 634, 183, 8, muted());
+            drawMiniStar(c, 637, 112, 8);
+            text(c, "LIVES", 652, 110, 7, muted());
+            text(c, String.format(Locale.US, "× %02d", lives), 652, 128, 12, ink());
+            text(c, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", 634, 151, 7.3f, muted());
+            textFit(c, stageText(), 634, 171, 126, 11, accent());
+            text(c, paused ? "PAUSED" : "IN PLAY", 634, 191, 8, muted());
 
-            drawSaveTimeline(c, 24, 226, 752, 104, false);
+            // Pin the timeline to the bottom edge; controls remain above it.
+            drawSaveTimeline(c, 24, 348, 752, 95, false);
             drawDockLandscape(c);
         }
 
         private void drawDockLandscape(Canvas c) {
-            float x0=28, y=354, w=118, h=66, step=124;
+            float y=300, h=44;
             button(c,94,y,145,h,"SAVE","SNAPSHOT",SAVE,false);
             button(c,247,y,145,h,"LOAD","RESTORE",LOAD,false);
             button(c,400,y,145,h,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
@@ -541,9 +541,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
             badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", lives));
             badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
 
-            drawHeroItem(c, 225, 230, 78, item);
-            textFit(c, itemName(), 225, 338, 380, 15, ink(), true);
-            textFit(c, actionHint(), 225, 354, 400, 8, muted(), true);
+            drawHeroItem(c, 225, 233, 92, item);
+            textFit(c, itemName(), 225, 360, 380, 15, ink(), true);
+            textFit(c, actionHint(), 225, 373, 400, 8, muted(), true);
 
             card(c, 35, 390, 380, 70, "ACTIVE SAVE SLOT");
             Bitmap currentThumb = slotThumbnails[slot];
@@ -563,10 +563,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             button(c,20,548,198,58,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
             button(c,232,548,198,58,"REWIND","HOLD TO REWIND",REWIND,true);
 
-            drawSaveTimeline(c, 14, 615, 422, 92, true);
-            text(c, paused ? "GAME PAUSED" : "READY WHEN YOU ARE", 225, 757, 10, accent(), true);
-            text(c, wallpaperPath.isEmpty() ? "DEFAULT ARTWORK" : "CUSTOM WALLPAPER ACTIVE",
-                 225, 777, 8, muted(), true);
+            drawSaveTimeline(c, 14, 692, 422, 92, true);
         }
 
         private void drawHeroItem(Canvas c, float cx, float cy, float radius, int itemId) {
@@ -812,24 +809,24 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,238,16,20,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(x,y,262,12,87,37)) return BACKGROUND;
                 if(inside(x,y,355,12,75,37)) return CLOSE_GAME;
-                int selected = timelineHit(x, y, 14, 615, 422, 92, true);
+                int selected = timelineHit(x, y, 14, 692, 422, 92, true);
                 if (selected != 0) return selected;
                 if(inside(x,y,20,480,198,58)) return SAVE;
                 if(inside(x,y,232,480,198,58)) return LOAD;
                 if(inside(x,y,20,548,198,58)) return PAUSE;
                 if(inside(x,y,232,548,198,58)) return REWIND;
-                if(inside(x,y,110,132,230,225)) return ITEM_USE;
+                if(inside(x,y,105,108,240,280)) return ITEM_USE;
             } else {
                 if(inside(x,y,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(x,y,593,13,105,42)) return BACKGROUND;
                 if(inside(x,y,704,13,72,42)) return CLOSE_GAME;
-                int selected = timelineHit(x, y, 24, 226, 752, 104, false);
+                int selected = timelineHit(x, y, 24, 348, 752, 95, false);
                 if (selected != 0) return selected;
-                if(inside(x,y,94,354,145,66)) return SAVE;
-                if(inside(x,y,247,354,145,66)) return LOAD;
-                if(inside(x,y,400,354,145,66)) return PAUSE;
-                if(inside(x,y,553,354,153,66)) return REWIND;
-                if(inside(x,y,330,78,140,135)) return ITEM_USE;
+                if(inside(x,y,94,300,145,44)) return SAVE;
+                if(inside(x,y,247,300,145,44)) return LOAD;
+                if(inside(x,y,400,300,145,44)) return PAUSE;
+                if(inside(x,y,553,300,153,44)) return REWIND;
+                if(inside(x,y,278,26,244,270)) return ITEM_USE;
             }
             return 0;
         }
