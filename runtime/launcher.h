@@ -25,5 +25,7 @@ void launcher_set_renderer(SDL_Renderer *r);
 /* Companion dashboard and menu-music actions shared with the Android host. */
 int launcher_preview_pixels(int game, const uint32_t **pixels, int *w, int *h);
 void launcher_menu_music_toggle(void);
+int launcher_music_notification_serial(void);
+int launcher_music_notification_allowed(void);
 void launcher_menu_music_step(int delta);
 void launcher_menu_music_select(int index);
