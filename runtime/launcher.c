@@ -2804,7 +2804,8 @@ enum {
     DECK_PICK_ITEM_CARROT = 17,
     DECK_PICK_HEADER_TEXTURE = 18, DECK_PICK_STATUS_TEXTURE = 19,
     DECK_PICK_BUTTON_SAVE_TEXTURE = 20, DECK_PICK_BUTTON_LOAD_TEXTURE = 21,
-    DECK_PICK_BUTTON_PAUSE_TEXTURE = 22, DECK_PICK_BUTTON_REWIND_TEXTURE = 23
+    DECK_PICK_BUTTON_PAUSE_TEXTURE = 22, DECK_PICK_BUTTON_REWIND_TEXTURE = 23,
+    DECK_PICK_BUTTON_BACKGROUND_TEXTURE = 24, DECK_PICK_BUTTON_CLOSE_TEXTURE = 25
 };
 enum {
     DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS, DECK_ELEM_TIMELINE,
@@ -2979,7 +2980,9 @@ static const char *deck_editor_preview_asset_path(const CompanionLayoutCfg *d, i
     if (index == 15) return d->header_texture_path;
     if (index == 16) return d->status_texture_path;
     if (index >= 17 && index <= 20) return d->button_texture_by_action[index - 17];
-    if (index >= 21 && index < N_DECK_ASSET_PATHS) return d->decoration_extra_path[index - 21];
+    if (index >= 21 && index < 28) return d->decoration_extra_path[index - 21];
+    if (index == 28) return d->button_texture_by_action[4];
+    if (index == 29) return d->button_texture_by_action[5];
     return "";
 }
 
@@ -3035,6 +3038,39 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
                     RGBA(247, 249, 255, 255), companion_editor_game == GAME_SML ? "SUPER MARIO LAND" : "SUPER MARIO LAND 2");
         if (DECK_ELEM_HEADER == companion_editor_element)
             ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
+    }
+
+    /* The top-right quick actions have independent textures too, and follow the header's placement transform. */
+    {
+        float sx = (float)(d->header_scale > 0 ? d->header_scale : 100) / 100.f;
+        float sy = (float)(d->header_scale_y > 0 ? d->header_scale_y : 100) / 100.f;
+        float bx = 593, by = 13, bw = 105, bh = 42;
+        bx = 400.f + (bx - 400.f) * sx + d->header_dx;
+        by = 31.5f + (by - 31.5f) * sy + d->header_dy;
+        bw *= sx; bh *= sy;
+        const char *path = d->button_texture_by_action[4][0]
+            ? d->button_texture_by_action[4] : d->button_texture_path;
+        ui_rrect(x + w * bx / 800.f, y + h * by / 450.f,
+                 w * bw / 800.f, h * bh / 450.f, 4, RGBA(34, 48, 67, 240));
+        deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 28, path,
+            x + w * bx / 800.f + 1, y + h * by / 450.f + 1,
+            w * bw / 800.f - 2, h * bh / 450.f - 2);
+        ui_text_c(F_BOLD, 5.4f, x + w * (bx + bw * .5f) / 800.f,
+                  y + h * (by + bh * .43f) / 450.f, RGBA(246, 249, 255, 255), "BACKGROUND");
+
+        float cx = 704, cy = 13, cw = 72, ch = 42;
+        cx = 400.f + (cx - 400.f) * sx + d->header_dx;
+        cy = 31.5f + (cy - 31.5f) * sy + d->header_dy;
+        cw *= sx; ch *= sy;
+        path = d->button_texture_by_action[5][0]
+            ? d->button_texture_by_action[5] : d->button_texture_path;
+        ui_rrect(x + w * cx / 800.f, y + h * cy / 450.f,
+                 w * cw / 800.f, h * ch / 450.f, 4, RGBA(34, 48, 67, 240));
+        deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 29, path,
+            x + w * cx / 800.f + 1, y + h * cy / 450.f + 1,
+            w * cw / 800.f - 2, h * ch / 450.f - 2);
+        ui_text_c(F_BOLD, 5.4f, x + w * (cx + cw * .5f) / 800.f,
+                  y + h * (cy + ch * .43f) / 450.f, RGBA(246, 249, 255, 255), "CLOSE");
     }
 
     /* Reserve item — use its exact assigned texture, or the legacy generic fallback. */
@@ -3476,38 +3512,40 @@ static void deck_editor_assets(float x, float y)
     }
 
     struct AssetRow { const char *label; char *path; int kind; int asset_index; } rows[] = {
-        {"Background", d->background_path, DECK_PICK_BACKGROUND, 0},
+        {"Background image", d->background_path, DECK_PICK_BACKGROUND, 0},
         {"Header plate", d->header_texture_path, DECK_PICK_HEADER_TEXTURE, 15},
         {"Adventure status", d->status_texture_path, DECK_PICK_STATUS_TEXTURE, 16},
         {"Save button", d->button_texture_by_action[0], DECK_PICK_BUTTON_SAVE_TEXTURE, 17},
         {"Load button", d->button_texture_by_action[1], DECK_PICK_BUTTON_LOAD_TEXTURE, 18},
         {"Pause / Resume", d->button_texture_by_action[2], DECK_PICK_BUTTON_PAUSE_TEXTURE, 19},
-        {"Rewind button", d->button_texture_by_action[3], DECK_PICK_BUTTON_REWIND_TEXTURE, 20}
+        {"Rewind button", d->button_texture_by_action[3], DECK_PICK_BUTTON_REWIND_TEXTURE, 20},
+        {"Background button", d->button_texture_by_action[4], DECK_PICK_BUTTON_BACKGROUND_TEXTURE, 28},
+        {"Close Game button", d->button_texture_by_action[5], DECK_PICK_BUTTON_CLOSE_TEXTURE, 29}
     };
     for (int i = 0; i < (int)(sizeof rows / sizeof rows[0]); i++) {
-        float ry = y + 151 + i * 43;
-        ui_rrect(x + 36, ry, 728, 37, 7,
+        float ry = y + 151 + i * 31.0f;
+        ui_rrect(x + 36, ry, 728, 28, 6,
                  i == 0 ? RGBA(44, 85, 117, 180) : C_PANEL);
-        ui_text_fit(F_BOLD, 10, x + 49, ry + 13, 164, C_TEXT, rows[i].label);
+        ui_text_fit(F_BOLD, 9, x + 49, ry + 9, 164, C_TEXT, rows[i].label);
         const char *name = rows[i].path[0] ? path_base(rows[i].path) : "Built-in appearance";
-        ui_text_fit(F_REG, 8, x + 218, ry + 13, 140,
+        ui_text_fit(F_REG, 7.5f, x + 218, ry + 9, 140,
                     rows[i].path[0] ? C_MUTED : C_DIM, name);
-        ui_rrect(x + 366, ry + 4, 56, 29, 5, RGBA(7, 13, 24, 255));
-        ui_stroke(x + 366, ry + 4, 56, 29, 5, 1.0f, RGBA(77, 111, 149, 180));
+        ui_rrect(x + 366, ry + 3, 56, 22, 5, RGBA(7, 13, 24, 255));
+        ui_stroke(x + 366, ry + 3, 56, 22, 5, 1.0f, RGBA(77, 111, 149, 180));
         if (rows[i].path[0])
-            ui_image_file_fit(rows[i].path, x + 369, ry + 6, 50, 25);
+            ui_image_file_fit(rows[i].path, x + 369, ry + 4, 50, 20);
         else
-            ui_text_fit(F_BOLD, 6.5f, x + 369, ry + 14, 50, C_DIM, "DEFAULT");
+            ui_text_fit(F_BOLD, 6.5f, x + 369, ry + 9, 50, C_DIM, "DEFAULT");
         int stretch = d->asset_stretch[rows[i].asset_index];
-        if (ui_button(x + 450, ry + 4, 78, 29, stretch ? "STRETCH" : "FIT / NO CROP",
+        if (ui_button(x + 450, ry + 3, 78, 22, stretch ? "STRETCH" : "FIT / NO CROP",
                       stretch ? B_PRIMARY : B_NORMAL, 1)) {
             deck_editor_snapshot();
             d->asset_stretch[rows[i].asset_index] = !stretch;
             settings_save();
         }
-        if (ui_button(x + 536, ry + 4, 82, 29, "Choose…", B_GHOST, 1))
+        if (ui_button(x + 536, ry + 3, 82, 22, "Choose…", B_GHOST, 1))
             deck_editor_open_picker(rows[i].kind);
-        if (ui_button(x + 626, ry + 4, 124, 29, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
+        if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
             deck_editor_snapshot();
             rows[i].path[0] = 0;
             d->asset_stretch[rows[i].asset_index] = 0;
@@ -3738,6 +3776,8 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "button_texture_load_path")) deck_set_path(fresh.button_texture_by_action[1], sizeof fresh.button_texture_by_action[1], eq, directory);
         else if (!strcmp(line, "button_texture_pause_path")) deck_set_path(fresh.button_texture_by_action[2], sizeof fresh.button_texture_by_action[2], eq, directory);
         else if (!strcmp(line, "button_texture_rewind_path")) deck_set_path(fresh.button_texture_by_action[3], sizeof fresh.button_texture_by_action[3], eq, directory);
+        else if (!strcmp(line, "button_texture_background_path")) deck_set_path(fresh.button_texture_by_action[4], sizeof fresh.button_texture_by_action[4], eq, directory);
+        else if (!strcmp(line, "button_texture_close_path")) deck_set_path(fresh.button_texture_by_action[5], sizeof fresh.button_texture_by_action[5], eq, directory);
         else if (!strcmp(line, "item_sound_path")) deck_set_path(fresh.item_sound_path, sizeof fresh.item_sound_path, eq, directory);
         else if (!strcmp(line, "empty_item_sound_path")) deck_set_path(fresh.empty_item_sound_path, sizeof fresh.empty_item_sound_path, eq, directory);
         else if (!strncmp(line, "asset_stretch_", 13)) {
@@ -3814,6 +3854,8 @@ void launcher_companion_layout_picker_result(int kind, int game, const char *pat
     else if (kind == DECK_PICK_BUTTON_LOAD_TEXTURE) snprintf(d->button_texture_by_action[1], sizeof d->button_texture_by_action[1], "%s", path);
     else if (kind == DECK_PICK_BUTTON_PAUSE_TEXTURE) snprintf(d->button_texture_by_action[2], sizeof d->button_texture_by_action[2], "%s", path);
     else if (kind == DECK_PICK_BUTTON_REWIND_TEXTURE) snprintf(d->button_texture_by_action[3], sizeof d->button_texture_by_action[3], "%s", path);
+    else if (kind == DECK_PICK_BUTTON_BACKGROUND_TEXTURE) snprintf(d->button_texture_by_action[4], sizeof d->button_texture_by_action[4], "%s", path);
+    else if (kind == DECK_PICK_BUTTON_CLOSE_TEXTURE) snprintf(d->button_texture_by_action[5], sizeof d->button_texture_by_action[5], "%s", path);
     else if (kind == DECK_PICK_DECORATION) {
         int slot = companion_editor_pending_decoration_slot;
         if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
