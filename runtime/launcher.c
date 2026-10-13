@@ -3548,7 +3548,14 @@ static void deck_editor_decorations(float x, float y)
 
 static void deck_editor_draw(float x, float y)
 {
-    ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
+    /* Shared studio frame: depth, restrained neon accent, and a header rail
+       make the individual editor pages feel like one finished tool. */
+    ui_shadow(x + 18, y + 70, 772, 404, 14, 7, RGBA(0, 0, 0, 112));
+    ui_rrect(x + 18, y + 70, 772, 404, 12, RGBA(15, 22, 35, 255));
+    ui_vgrad(x + 20, y + 72, 768, 48,
+             RGBA(43, 68, 96, 255), RGBA(22, 31, 47, 255));
+    ui_rect(x + 30, y + 72, 748, 2, RGBA(99, 220, 255, 230));
+    ui_stroke(x + 18, y + 70, 772, 404, 12, 1.0f, RGBA(77, 111, 149, 190));
     if (companion_editor_page == 0) deck_editor_list(x, y);
     else if (companion_editor_page == 2) deck_editor_sounds(x, y);
     else if (companion_editor_page == 3) deck_editor_items(x, y);
