@@ -539,7 +539,7 @@ static void draw_action_button(const Settings *s, int game, int action,
     fill_round_rect(x + 10, y + h / 2 - 9, 18, 18, 5,
         theme_edge_r(game), theme_edge_g(game), theme_edge_b(game), 160);
     const char *glyph = action == SIM_SAVE ? "S" : action == SIM_LOAD ? "L" :
-        action == SIM_PAUSE ? "P" : action == SIM_REWIND ? "R" : "•";
+        action == SIM_PAUSE ? "P" : action == SIM_REWIND ? "R" : "B";
     draw_text_fit(x + 16, y + h / 2 - 3, 8, 1, 255, 255, 255, glyph);
     draw_text_fit(x + 40, y + h / 2 - 10, w - 48, 1,
         theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
