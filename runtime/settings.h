@@ -109,7 +109,7 @@ enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
 #define N_DECK_ITEM_TEXTURE_IDS 4
 #define N_DECK_DECORATIONS 8
 #define N_DECK_LAYOUT_VALUES 81
-#define N_DECK_ASSET_PATHS 28
+#define N_DECK_ASSET_PATHS 30
 typedef struct {
     int header_dx, header_dy, header_scale, header_scale_y;
     int item_dx, item_dy, item_scale, item_scale_y;
@@ -124,7 +124,7 @@ typedef struct {
     char header_texture_path[512];
     char status_texture_path[512];
     char button_texture_path[512]; /* Legacy fallback for all action buttons. */
-    char button_texture_by_action[4][512]; /* Save, Load, Pause/Resume, Rewind. */
+    char button_texture_by_action[6][512]; /* Save, Load, Pause/Resume, Rewind, Background, Close Game. */
     char item_texture_path[512]; /* Legacy generic item image, used as fallback. */
     char item_texture_by_id[N_DECK_ITEM_TEXTURE_IDS][512];
     char decoration_path[512]; /* First decoration; retained for old configs. */
