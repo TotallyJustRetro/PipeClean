@@ -3893,7 +3893,7 @@ static int deck_manifest_apply(int game, const char *path)
         else if (!strcmp(line, "decoration_8_dy")) fresh.decoration_extra_dy[6] = v;
         else if (!strcmp(line, "decoration_8_scale")) fresh.decoration_extra_scale[6] = v;
         else if (!strcmp(line, "decoration_8_scale_y")) fresh.decoration_extra_scale_y[6] = v;
-        else if (!strncmp(line, "decoration_", 11)) {
+        else if (!strncmp(line, "decoration_", 11) && strncmp(line, "decoration_path_", 16) != 0) {
             int layer = 0;
             char component[16] = {0};
             if (sscanf(line, "decoration_%d_%15s", &layer, component) == 2 &&
