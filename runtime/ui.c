@@ -1,4 +1,5 @@
 #include "ui.h"
+#include <SDL_image.h>
 #include "font.h"
 #include <math.h>
 #include <string.h>
@@ -40,6 +41,41 @@ typedef struct {
     unsigned used;
 } Atlas;
 #define MAX_ATLAS 24
+#define MAX_UI_FILE_TEXTURES 96
+typedef struct { char path[512]; SDL_Texture *texture; unsigned used; } UiFileTexture;
+static UiFileTexture file_textures[MAX_UI_FILE_TEXTURES];
+static unsigned file_texture_tick;
+
+static SDL_Texture *ui_file_texture(const char *path)
+{
+    if (!ren || !path || !path[0]) return NULL;
+    for (int i = 0; i < MAX_UI_FILE_TEXTURES; i++) {
+        if (file_textures[i].texture && strcmp(file_textures[i].path, path) == 0) {
+            file_textures[i].used = ++file_texture_tick;
+            return file_textures[i].texture;
+        }
+    }
+    SDL_Surface *surface = IMG_Load(path);
+    if (!surface) return NULL;
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(ren, surface);
+    SDL_FreeSurface(surface);
+    if (!texture) return NULL;
+    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+
+    int chosen = -1;
+    unsigned oldest = UINT32_MAX;
+    for (int i = 0; i < MAX_UI_FILE_TEXTURES; i++) {
+        if (!file_textures[i].texture) { chosen = i; break; }
+        if (file_textures[i].used < oldest) { oldest = file_textures[i].used; chosen = i; }
+    }
+    if (chosen < 0) { SDL_DestroyTexture(texture); return NULL; }
+    if (file_textures[chosen].texture) SDL_DestroyTexture(file_textures[chosen].texture);
+    file_textures[chosen].texture = texture;
+    snprintf(file_textures[chosen].path, sizeof file_textures[chosen].path, "%s", path);
+    file_textures[chosen].used = ++file_texture_tick;
+    return texture;
+}
+
 static Atlas atlas[MAX_ATLAS];
 static unsigned atlas_tick;
 
@@ -268,6 +304,11 @@ void ui_shutdown(void)
 {
     if (color_wheel_tex) SDL_DestroyTexture(color_wheel_tex);
     color_wheel_tex = NULL;
+    for (int i = 0; i < MAX_UI_FILE_TEXTURES; i++) {
+        if (file_textures[i].texture) SDL_DestroyTexture(file_textures[i].texture);
+        memset(&file_textures[i], 0, sizeof file_textures[i]);
+    }
+    file_texture_tick = 0;
     for (int i = 0; i < MAX_ATLAS; i++) atlas_free(&atlas[i]);
     for (int i = 0; i < n_corners; i++) {
         if (corners[i].disc) SDL_DestroyTexture(corners[i].disc);
@@ -501,6 +542,17 @@ void ui_image(SDL_Texture *t, const SDL_Rect *src, float x, float y, float w, fl
     SDL_SetTextureColorMod(t, 255, 255, 255);
     SDL_SetTextureAlphaMod(t, 255);
     SDL_RenderCopy(ren, t, src, &d);
+}
+
+void ui_image_file_fit(const char *path, float x, float y, float w, float h)
+{
+    SDL_Texture *texture = ui_file_texture(path);
+    if (!texture || w <= 0 || h <= 0) return;
+    int iw = 0, ih = 0;
+    if (SDL_QueryTexture(texture, NULL, NULL, &iw, &ih) != 0 || iw <= 0 || ih <= 0) return;
+    float scale = fminf(w / iw, h / ih);
+    float dw = iw * scale, dh = ih * scale;
+    ui_image(texture, NULL, x + (w - dw) * 0.5f, y + (h - dh) * 0.5f, dw, dh);
 }
 
 /* ------------------------------------------------------------ text */
