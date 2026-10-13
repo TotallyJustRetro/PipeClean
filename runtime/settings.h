@@ -108,7 +108,7 @@ enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
  * 3 = SML2 carrot. Index 0 is unused; item_texture_path is the legacy fallback. */
 #define N_DECK_ITEM_TEXTURE_IDS 4
 #define N_DECK_DECORATIONS 8
-#define N_DECK_LAYOUT_VALUES 49
+#define N_DECK_LAYOUT_VALUES 77
 #define N_DECK_ASSET_PATHS 28
 typedef struct {
     int header_dx, header_dy, header_scale, header_scale_y;
@@ -128,6 +128,9 @@ typedef struct {
     char item_texture_by_id[N_DECK_ITEM_TEXTURE_IDS][512];
     char decoration_path[512]; /* First decoration; retained for old configs. */
     char decoration_extra_path[N_DECK_DECORATIONS - 1][512];
+    /* 1 = stretch to the assigned box; 0 = contain the full image without cropping.
+       Indexed by the stable Companion Deck asset path table. */
+    int asset_stretch[N_DECK_ASSET_PATHS];
     char button_sound_path[N_DECK_BUTTON_SOUNDS][512];
     char item_sound_path[512];
     char empty_item_sound_path[512];
