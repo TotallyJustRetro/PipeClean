@@ -2815,8 +2815,8 @@ static void tab_display(float x, float y)
         settings_save();
     ui_text_fit(F_REG, 10, x + 36, y + 352, 710, C_DIM,
                 settings.launcher_dual_screen
-                    ? "Music player, rotating vinyl and playlist are shown on the lower display."
-                    : "Music player, rotating vinyl and playlist stay on the main display.");
+                    ? "Track changes slide a vinyl/song banner onto the bottom of the Companion Deck. Playlist stays in Audio & Menu."
+                    : "Track changes slide a vinyl/song banner into the launcher’s top-left. Playlist stays in Audio & Menu.");
 
     ui_text(F_REG, 13, x + 36, y + 380, C_TEXT, "Auto Pipe Swap (SML1)");
     if (ui_toggle(x + 310, y + 376, &settings.launcher_pipe_screen_swap))
