@@ -255,6 +255,15 @@ static int simulator_layout_preview_enabled(void)
 #endif
 }
 
+static int simulator_layout_preview_item(void)
+{
+#if defined(PIPECLEAN_DEV_BUILD)
+    return launcher_companion_layout_preview_item();
+#else
+    return 0;
+#endif
+}
+
 static Uint8 theme_bg_r(int g) { return g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : 23; }
 static Uint8 theme_bg_g(int g) { return g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : 35; }
 static Uint8 theme_bg_b(int g) { return g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : 55; }
@@ -1113,7 +1122,7 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
     current_paused = paused;
     current_slot = selected_slot < 0 ? 0 : selected_slot > 9 ? 9 : selected_slot;
     current_playing = frame != NULL;
-    current_item = frame ? frame->reserve_item : 0;
+    current_item = frame ? frame->reserve_item : simulator_layout_preview_item();
     current_stage = -1;
     current_world = -1;
     current_lives = 0;
