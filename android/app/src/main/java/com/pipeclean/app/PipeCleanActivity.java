@@ -348,7 +348,7 @@ public final class PipeCleanActivity extends SDLActivity {
             pendingDeckKind = kind;
             pendingDeckGame = game;
             pendingDeckManifest = manifest == null ? "" : manifest;
-            pendingDeckAssetPaths = assetPaths == null ? new String[12] : assetPaths.clone();
+            pendingDeckAssetPaths = assetPaths == null ? new String[15] : assetPaths.clone();
             try {
                 if (kind == 14) {
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
@@ -362,7 +362,7 @@ public final class PipeCleanActivity extends SDLActivity {
                 } else {
                     Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    if (kind >= 1 && kind <= 4) {
+                    if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17)) {
                         intent.setType("image/*");
                         intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
                             "image/png", "image/gif"
@@ -397,6 +397,9 @@ public final class PipeCleanActivity extends SDLActivity {
             case 2: return "Choose Companion Deck button texture (PNG/GIF)";
             case 3: return "Choose Companion Deck item texture (PNG/GIF)";
             case 4: return "Choose a decorative image (PNG/GIF)";
+            case 15: return "Choose Mushroom item texture (PNG/GIF)";
+            case 16: return "Choose Fire Flower / Superball Flower texture (PNG/GIF)";
+            case 17: return "Choose Carrot item texture (PNG/GIF)";
             case 5: return "Choose Save button sound";
             case 6: return "Choose Load button sound";
             case 7: return "Choose Pause button sound";
@@ -439,7 +442,7 @@ public final class PipeCleanActivity extends SDLActivity {
         if (uri == null) return "";
         String name = documentName(uri);
         String ext = lowerExtension(name);
-        boolean image = kind >= 1 && kind <= 4;
+        boolean image = (kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17);
         boolean valid = image
             ? (".png".equals(ext) || ".gif".equals(ext))
             : (".wav".equals(ext) || ".mp3".equals(ext) || ".ogg".equals(ext) || ".flac".equals(ext));
@@ -528,6 +531,10 @@ public final class PipeCleanActivity extends SDLActivity {
             case 8: return "button_sound_path4";
             case 9: return "button_sound_path5";
             case 10: return "item_sound_path";
+            case 11: return "empty_item_sound_path";
+            case 12: return "item_texture_path_1";
+            case 13: return "item_texture_path_2";
+            case 14: return "item_texture_path_3";
             default: return "empty_item_sound_path";
         }
     }
@@ -537,13 +544,14 @@ public final class PipeCleanActivity extends SDLActivity {
         if (ext.isEmpty() || ext.length() > 8) ext = ".bin";
         String[] names = {"background", "button-texture", "item-texture", "decoration",
             "save-sound", "load-sound", "pause-sound", "rewind-sound",
-            "background-sound", "close-sound", "item-sound", "empty-item-sound"};
+            "background-sound", "close-sound", "item-sound", "empty-item-sound",
+            "mushroom-texture", "special-item-texture", "carrot-texture"};
         return "assets/" + names[index] + ext;
     }
 
     private void exportDeckBundle(Uri uri, String manifest, String[] paths) throws Exception {
         if (uri == null) throw new Exception("No export destination");
-        if (paths == null) paths = new String[12];
+        if (paths == null) paths = new String[15];
         StringBuilder fullManifest = new StringBuilder(manifest == null ? "" : manifest);
         if (fullManifest.length() > 0 &&
             fullManifest.charAt(fullManifest.length() - 1) != '\n') fullManifest.append('\n');
@@ -551,7 +559,7 @@ public final class PipeCleanActivity extends SDLActivity {
              ZipOutputStream zip = new ZipOutputStream(raw)) {
             if (raw == null) throw new Exception("No destination stream");
             byte[] buffer = new byte[32 * 1024];
-            for (int i = 0; i < 12; i++) {
+            for (int i = 0; i < 15; i++) {
                 String path = i < paths.length ? paths[i] : "";
                 if (path == null || path.isEmpty()) continue;
                 File file = new File(path);
