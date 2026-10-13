@@ -101,7 +101,7 @@ typedef struct {
 } FilterCfg;
 
 /* Custom Companion Deck layout controls and assets. Offsets use the deck's
- * 800x480 reference coordinates and scales are percentages. */
+ * 800x450 reference coordinates and scales are percentages. */
 enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
        DECK_SOUND_BACKGROUND, DECK_SOUND_CLOSE, N_DECK_BUTTON_SOUNDS };
 /* Reserve item IDs: 1 = mushroom, 2 = SML1 superball / SML2 fire flower,
