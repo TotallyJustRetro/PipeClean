@@ -208,9 +208,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private static final int LAYOUT_GAME_COUNT = 7;
         private static final int LAYOUT_DECORATION_COUNT = 8;
-        private static final int LAYOUT_ELEMENT_COUNT = 4 + LAYOUT_DECORATION_COUNT;
-        private static final int LAYOUT_VALUE_COUNT = 77;
-        private static final int LAYOUT_PATH_COUNT = 28;
+        private static final int LAYOUT_ELEMENT_COUNT = 5 + LAYOUT_DECORATION_COUNT;
+        private static final int LAYOUT_VALUE_COUNT = 83;
+        private static final int LAYOUT_PATH_COUNT = 30;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
         private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
@@ -584,11 +584,21 @@ final class PipeCleanCompanionPresentation extends Presentation {
                                           float centerX, float centerY) {
             int g = activeLayoutGame();
             if (g < 0 || element < 0 || element >= LAYOUT_ELEMENT_COUNT) return;
-            int base = element < 5 ? element * 3 : 16 + (element - 5) * 3;
+            /* Keep legacy indices intact: status is appended at 79..82, while decoration
+               1 remains at 12..14 and decorations 2..8 remain at 16..36. */
+            int base;
+            if (element < 4) base = element * 3;
+            else if (element == 4) base = 79;
+            else if (element == 5) base = 12;
+            else base = 16 + (element - 6) * 3;
             float dx = layoutValues[g][base] * (w / 800f);
             float dy = layoutValues[g][base + 1] * (h / 450f);
             float scaleX = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
-            int scaleYIndex = element < 5 ? 37 + element : 42 + (element - 5);
+            int scaleYIndex;
+            if (element < 4) scaleYIndex = 37 + element;
+            else if (element == 4) scaleYIndex = 82;
+            else if (element == 5) scaleYIndex = 41;
+            else scaleYIndex = 42 + (element - 6);
             float scaleY = Math.max(0.25f, Math.min(2.5f, layoutValues[g][scaleYIndex] / 100f));
             canvas.translate(centerX + dx, centerY + dy);
             canvas.scale(scaleX, scaleY);
@@ -703,7 +713,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     slot == 3 ? w * 0.21f : (slot == 4 || slot == 5) ? w * 0.175f : w * 0.1525f;
                 float bh = slot == 0 ? h * 0.32f : (slot == 1 || slot == 2) ? h * 0.27f :
                     slot == 3 ? h * 0.27f : (slot == 4 || slot == 5) ? h * 0.204f : h * 0.191f;
-                int element = 4 + slot;
+                int element = 5 + slot;
                 canvas.save();
                 applyLayoutTransform(canvas, element, w, h, bx + bw * 0.5f, by + bh * 0.5f);
                 drawLayoutImageAsset(canvas, g, imageIndex, bx, by, bw, bh);
@@ -751,7 +761,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             int g = activeLayoutGame();
             if (g < 0) return;
             int actionIndex = action == SAVE ? 17 : action == LOAD ? 18 :
-                action == PAUSE ? 19 : action == REWIND ? 20 : 1;
+                action == PAUSE ? 19 : action == REWIND ? 20 :
+                action == BACKGROUND ? 28 : action == CLOSE_GAME ? 29 : 1;
             if (!hasLayoutImage(g, actionIndex) && !hasLayoutImage(g, 1)) return;
             if (!hasLayoutImage(g, actionIndex)) actionIndex = 1;
             Path clip = new Path();
@@ -1197,6 +1208,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 textFit(c, "LAUNCH A GAME", 634, 171, 126, 10, accent());
                 text(c, "QUICK ACTIONS IN GAME", 634, 191, 6.2f, muted());
             } else {
+                c.save();
+                applyLayoutTransform(c, 4, 800f, 450f, 698f, 140f);
                 card(c, 620, 76, 156, 128, "ADVENTURE STATUS");
                 drawMiniStar(c, 637, 112, 8);
                 text(c, "LIVES", 652, 110, 7, muted());
@@ -1204,6 +1217,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 text(c, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", 634, 151, 7.3f, muted());
                 textFit(c, stageText(), 634, 171, 126, 11, accent());
                 text(c, paused ? "PAUSED" : "IN PLAY", 634, 191, 8, muted());
+                c.restore();
             }
 
             // Pin the timeline to the bottom edge; controls remain above it.
