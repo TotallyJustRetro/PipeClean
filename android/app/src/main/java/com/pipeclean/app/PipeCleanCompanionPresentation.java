@@ -207,12 +207,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private static final int LAYOUT_GAME_COUNT = 7;
         private static final int LAYOUT_VALUE_COUNT = 16;
-        private static final int LAYOUT_PATH_COUNT = 12;
+        private static final int LAYOUT_PATH_COUNT = 15;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
-        private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][4];
-        private final Movie[][] layoutMovies = new Movie[LAYOUT_GAME_COUNT][4];
-        private final String[][] loadedLayoutImagePaths = new String[LAYOUT_GAME_COUNT][4];
+        private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
+        private final Movie[][] layoutMovies = new Movie[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
+        private final String[][] loadedLayoutImagePaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
         private int layoutPreviewGame = -1;
         private boolean layoutEditorPreview;
         private MediaPlayer deckSoundPlayer;
@@ -537,7 +537,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                         String next = at < paths.length && paths[at] != null ? paths[at] : "";
                         if (!next.equals(layoutPaths[g][i])) {
                             layoutPaths[g][i] = next;
-                            if (i < 4) loadLayoutImage(g, i, next);
+                            if (i < 4 || i >= 12) loadLayoutImage(g, i, next);
                         }
                     }
                 }
@@ -587,7 +587,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private boolean hasLayoutImage(int g, int imageIndex) {
-            return g >= 0 && g < LAYOUT_GAME_COUNT && imageIndex >= 0 && imageIndex < 4 &&
+            boolean supportedImage = imageIndex >= 0 && imageIndex < 4 ||
+                                     imageIndex >= 12 && imageIndex < LAYOUT_PATH_COUNT;
+            return g >= 0 && g < LAYOUT_GAME_COUNT && supportedImage &&
                 ((layoutBitmaps[g][imageIndex] != null && !layoutBitmaps[g][imageIndex].isRecycled()) ||
                  layoutMovies[g][imageIndex] != null);
         }
@@ -835,7 +837,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             boolean animatedLayout = false;
             int activeGame = preview ? layoutPreviewGame : activeLayoutGame();
             if (activeGame >= 0) {
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < LAYOUT_PATH_COUNT; i++)
                     if (layoutMovies[activeGame][i] != null) animatedLayout = true;
             }
             if (wallpaperMovie != null || animatedLayout) postInvalidateOnAnimation();
@@ -1278,7 +1280,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
             if(itemId>0) {
                 int layoutGame = activeLayoutGame();
-                if (layoutGame >= 0 && hasLayoutImage(layoutGame, 2))
+                int textureIndex = 11 + itemId;
+                if (layoutGame >= 0 && itemId > 0 && hasLayoutImage(layoutGame, textureIndex))
+                    drawLayoutImage(c, layoutGame, textureIndex, cx-radius*0.46f, cy-radius*0.46f,
+                        radius*0.92f, radius*0.92f);
+                else if (layoutGame >= 0 && hasLayoutImage(layoutGame, 2))
                     drawLayoutImage(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else
