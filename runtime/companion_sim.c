@@ -953,27 +953,29 @@ static void image_contain(SDL_Texture *texture, int x, int y, int w, int h)
 static void transform_box(const CompanionLayoutCfg *d, int element,
                           float cx, float cy, float *x, float *y, float *w, float *h)
 {
-    int dx = 0, dy = 0, size = 100;
+    int dx = 0, dy = 0, size_x = 100, size_y = 100;
     switch (element) {
-    case 0: dx = d->header_dx; dy = d->header_dy; size = d->header_scale; break;
-    case 1: dx = d->item_dx; dy = d->item_dy; size = d->item_scale; break;
-    case 2: dx = d->controls_dx; dy = d->controls_dy; size = d->controls_scale; break;
-    case 3: dx = d->timeline_dx; dy = d->timeline_dy; size = d->timeline_scale; break;
-    case 4: dx = d->decoration_dx; dy = d->decoration_dy; size = d->decoration_scale; break;
+    case 0: dx = d->header_dx; dy = d->header_dy; size_x = d->header_scale; size_y = d->header_scale_y; break;
+    case 1: dx = d->item_dx; dy = d->item_dy; size_x = d->item_scale; size_y = d->item_scale_y; break;
+    case 2: dx = d->controls_dx; dy = d->controls_dy; size_x = d->controls_scale; size_y = d->controls_scale_y; break;
+    case 3: dx = d->timeline_dx; dy = d->timeline_dy; size_x = d->timeline_scale; size_y = d->timeline_scale_y; break;
+    case 4: dx = d->decoration_dx; dy = d->decoration_dy; size_x = d->decoration_scale; size_y = d->decoration_scale_y; break;
     default:
         if (element >= 5 && element <= 7) {
             int slot = element - 5;
             dx = d->decoration_extra_dx[slot];
             dy = d->decoration_extra_dy[slot];
-            size = d->decoration_extra_scale[slot];
+            size_x = d->decoration_extra_scale[slot];
+            size_y = d->decoration_extra_scale_y[slot];
         }
         break;
     }
-    float scale = (float)(size > 0 ? size : 100) / 100.f;
-    *x = cx + (*x - cx) * scale + dx;
-    *y = cy + (*y - cy) * scale + dy;
-    *w *= scale;
-    *h *= scale;
+    float scale_x = (float)(size_x > 0 ? size_x : 100) / 100.f;
+    float scale_y = (float)(size_y > 0 ? size_y : 100) / 100.f;
+    *x = cx + (*x - cx) * scale_x + dx;
+    *y = cy + (*y - cy) * scale_y + dy;
+    *w *= scale_x;
+    *h *= scale_y;
 }
 
 static void draw_companion(const Settings *s)
