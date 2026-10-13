@@ -198,6 +198,10 @@ void settings_defaults(Settings *s)
     for (int i = 0; i < N_GAMES; i++) {
         s->game_play_seconds[i] = 0;
         game_cfg_defaults(&s->g[i], i);
+        CompanionLayoutCfg *d = &s->deck_layout[i];
+        d->header_scale = d->item_scale = d->controls_scale =
+            d->timeline_scale = d->decoration_scale = 100;
+        d->sounds_enabled = 1;
     }
 }
 
@@ -275,7 +279,7 @@ static int field_table(Field *t, int cap)
     I("f_mask", f->mask, 0, 100); I("f_curve", f->curve, 0, 100); I("f_bloom", f->bloom, 0, 100);
     I("f_hdr", f->hdr, 0, 100); I("f_vignette", f->vignette, 0, 100); I("f_blur", f->blur, 0, 100);
     I("f_preset", f->preset, 0, n_filter_presets - 1);
-    static char gn[N_GAMES][80][40];
+    static char gn[N_GAMES][120][40];
     static int gi = 0; (void)gi;
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &s->g[g];
@@ -314,6 +318,25 @@ static int field_table(Field *t, int cap)
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
         GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
+
+        CompanionLayoutCfg *d = &s->deck_layout[g];
+        GI("deck_header_dx", d->header_dx, -400, 400); GI("deck_header_dy", d->header_dy, -400, 400); GI("deck_header_scale", d->header_scale, 25, 250);
+        GI("deck_item_dx", d->item_dx, -400, 400); GI("deck_item_dy", d->item_dy, -400, 400); GI("deck_item_scale", d->item_scale, 25, 250);
+        GI("deck_controls_dx", d->controls_dx, -400, 400); GI("deck_controls_dy", d->controls_dy, -400, 400); GI("deck_controls_scale", d->controls_scale, 25, 250);
+        GI("deck_timeline_dx", d->timeline_dx, -400, 400); GI("deck_timeline_dy", d->timeline_dy, -400, 400); GI("deck_timeline_scale", d->timeline_scale, 25, 250);
+        GI("deck_decoration_dx", d->decoration_dx, -400, 400); GI("deck_decoration_dy", d->decoration_dy, -400, 400); GI("deck_decoration_scale", d->decoration_scale, 25, 250);
+        GI("deck_sounds_enabled", d->sounds_enabled, 0, 1);
+        GS("deck_background", d->background_path); GS("deck_button_texture", d->button_texture_path);
+        GS("deck_item_texture", d->item_texture_path); GS("deck_decoration", d->decoration_path);
+        static const char *deck_sound_names[N_DECK_BUTTON_SOUNDS] = {
+            "deck_sound_save", "deck_sound_load", "deck_sound_pause", "deck_sound_rewind",
+            "deck_sound_background", "deck_sound_close"
+        };
+        for (int b = 0; b < N_DECK_BUTTON_SOUNDS; b++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, deck_sound_names[b]);
+            S(gn[g][k], d->button_sound_path[b]); k++;
+        }
+        GS("deck_item_sound", d->item_sound_path); GS("deck_empty_item_sound", d->empty_item_sound_path);
 #undef GI
 #undef GS
     }
@@ -330,8 +353,8 @@ void settings_load(void)
     FILE *f = fopen(path, "r");
     if (!f) { legacy_ini_path(path, sizeof path); f = fopen(path, "r"); }
     if (!f) return;
-    Field tab[800];
-    int nf = field_table(tab, 800);
+    Field tab[1100];
+    int nf = field_table(tab, 1100);
     int saw_launcher_dual_screen = 0;
     int saw_launcher_pipe_screen_swap = 0;
     char line[1100];
@@ -434,8 +457,8 @@ void settings_save(void)
     ini_path(path, sizeof path);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    Field tab[800];
-    int nf = field_table(tab, 800);
+    Field tab[1100];
+    int nf = field_table(tab, 1100);
     for (int i = 0; i < nf; i++) {
         if (tab[i].ip) fprintf(f, "%s=%d\n", tab[i].name, *tab[i].ip);
         else fprintf(f, "%s=%s\n", tab[i].name, tab[i].sp);
