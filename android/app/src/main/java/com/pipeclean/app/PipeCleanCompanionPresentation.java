@@ -160,6 +160,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private final String[] slotStatePaths = new String[10];
         private final String[] slotThumbnailPaths = new String[10];
         private final String[] slotTimeLabels = new String[10];
+        private float animatedSlot = -1f;
+        private boolean timelineTouchActive, timelineMoved;
+        private float timelineDownX, timelineDownY, timelineStartFocus, timelineDragFocus;
         private static final int SLOT_SELECT_BASE = 20;
         private Bitmap wallpaperBitmap;
         private Movie wallpaperMovie;
@@ -189,6 +192,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             this.world = world;
             this.paused = paused;
             this.slot = Math.max(0, Math.min(9, slot));
+            if (animatedSlot < 0f) animatedSlot = this.slot;
             this.palette = Math.max(0, Math.min(PALETTES.length - 1, palette));
             this.filter = Math.max(0, Math.min(FILTERS.length - 1, filter));
             this.item = item;
@@ -246,61 +250,146 @@ final class PipeCleanCompanionPresentation extends Presentation {
             postInvalidate();
         }
 
-        private void drawSaveTimeline(Canvas c, float x, float y, float w, float h, boolean portrait) {
-            text(c, "SAVE-STATE TIMELINE", x + 2, y + 9, 8, accent());
-            float gap = portrait ? 3f : 4f;
-            float tileW = (w - gap * 9f) / 10f;
-            float tileY = y + 15f;
-            float tileH = h - 16f;
-            for (int i = 0; i < 10; i++) {
-                float tx = x + i * (tileW + gap);
-                p.setStyle(Paint.Style.FILL);
-                p.setColor(slotOccupied[i] ? panel() : 0x55304050);
-                c.drawRoundRect(tx, tileY, tx + tileW, tileY + tileH, 5, 5, p);
-                if (slotThumbnails[i] != null && !slotThumbnails[i].isRecycled()) {
-                    float imageW = tileW - 6f;
-                    float imageH = Math.min(portrait ? 24f : 49f, tileH - (portrait ? 20f : 27f));
-                    float imageX = tx + 3f;
-                    float imageY = tileY + 3f;
-                    p.setColor(0xFFFFFFFF);
-                    c.drawBitmap(slotThumbnails[i], null,
-                        new RectF(imageX, imageY, imageX + imageW, imageY + imageH), p);
-                } else {
-                    float cx = tx + tileW * 0.5f;
-                    float cy = tileY + (portrait ? 19f : 25f);
-                    if (slotOccupied[i]) {
-                        rect(c, cx - 7, cy - 5, 14, 10, 0x5538D69B);
-                        text(c, "SAVED", cx, cy + 14, portrait ? 3.8f : 5.5f, muted(), true);
-                    } else {
-                        rect(c, cx - 5, cy - 1, 10, 2, 0x667C8CA5);
-                    }
-                }
-                p.setColor(i == slot ? gold() : edge());
-                p.setStyle(Paint.Style.STROKE);
-                p.setStrokeWidth(i == slot ? 2f : 1f);
-                c.drawRoundRect(tx + 0.5f, tileY + 0.5f, tx + tileW - 0.5f,
-                    tileY + tileH - 0.5f, 5, 5, p);
-                p.setStyle(Paint.Style.FILL);
-                String slotName = String.format(Locale.US, "S%02d", i + 1);
-                textFit(c, slotName, tx + tileW * 0.5f, tileY + tileH - (portrait ? 5f : 17f),
-                    tileW - 3f, portrait ? 5.4f : 7f, i == slot ? gold() : ink(), true);
-                if (!portrait && slotOccupied[i])
-                    textFit(c, slotTimeLabels[i] == null ? "" : slotTimeLabels[i],
-                        tx + tileW * 0.5f, tileY + tileH - 5f, tileW - 3f, 5.5f, muted(), true);
-            }
+        private float clampFocus(float focus) {
+            return Math.max(0f, Math.min(9f, focus));
         }
 
-        private int timelineHit(float x, float y, float tx, float ty, float tw, float th, boolean portrait) {
-            if (!inside(x, y, tx, ty + 15f, tw, th - 15f)) return 0;
-            float gap = portrait ? 3f : 4f;
-            float tileW = (tw - gap * 9f) / 10f;
-            float rel = x - tx;
-            if (rel < 0) return 0;
-            int index = (int)(rel / (tileW + gap));
-            if (index < 0 || index >= 10) return 0;
-            float localX = rel - index * (tileW + gap);
-            if (localX >= tileW) return 0;
-            return SLOT_SELECT_BASE + index;
+        private float timelineVisualFocus() {
+            if (timelineTouchActive && timelineMoved) return clampFocus(timelineDragFocus);
+            return animatedSlot < 0f ? slot : clampFocus(animatedSlot);
+        }
+
+        private float[] timelineWidths(float focus, boolean portrait) {
+            float baseWidth = portrait ? 42f : 72f;
+            float activeWidth = portrait ? 108f : 162f;
+            float extra = activeWidth - baseWidth;
+            float[] widths = new float[10];
+            focus = clampFocus(focus);
+            for (int i = 0; i < widths.length; i++) {
+                float weight = Math.max(0f, 1f - Math.abs(i - focus));
+                widths[i] = baseWidth + extra * weight;
+            }
+            return widths;
+        }
+
+        private float timelineScrollOffset(float[] widths, float focus, float viewportWidth, float gap) {
+            float[] centers = new float[10];
+            float cursor = 0f;
+            for (int i = 0; i < widths.length; i++) {
+                centers[i] = cursor + widths[i] * 0.5f;
+                cursor += widths[i] + gap;
+            }
+            float totalWidth = cursor - gap;
+            focus = clampFocus(focus);
+            int left = (int)Math.floor(focus);
+            int right = Math.min(9, left + 1);
+            float blend = focus - left;
+            float focusCenter = centers[left] + (centers[right] - centers[left]) * blend;
+            return Math.max(0f, Math.min(Math.max(0f, totalWidth - viewportWidth),
+                                        focusCenter - viewportWidth * 0.5f));
+        }
+
+        private boolean isTimelinePoint(float x, float y, boolean portrait) {
+            return portrait
+                ? inside(x, y, 14, 704 + 14, 422, 96 - 14)
+                : inside(x, y, 24, 365 + 14, 752, 83 - 14);
+        }
+
+        private void drawSaveTimeline(Canvas c, float x, float y, float w, float h, boolean portrait) {
+            text(c, "SAVE-STATE TIMELINE", x + 2, y + 9, 8, accent());
+            textRight(c, "SWIPE TO BROWSE", x + w - 2, y + 9, 6.5f, muted());
+
+            float focus = timelineVisualFocus();
+            float gap = portrait ? 3f : 5f;
+            float[] widths = timelineWidths(focus, portrait);
+            float scroll = timelineScrollOffset(widths, focus, w, gap);
+            float baseHeight = portrait ? 43f : 36f;
+            float activeHeight = portrait ? h - 18f : h - 20f;
+            float cursor = 0f;
+
+            c.save();
+            c.clipRect(x, y + 14f, x + w, y + h);
+            for (int i = 0; i < 10; i++) {
+                float weight = Math.max(0f, 1f - Math.abs(i - focus));
+                float tileW = widths[i];
+                float tileH = baseHeight + (activeHeight - baseHeight) * weight;
+                float tileX = x + cursor - scroll;
+                float tileY = y + h - tileH - 1f;
+                float tileBottom = y + h - 1f;
+                boolean selected = weight > 0.55f;
+
+                p.setStyle(Paint.Style.FILL);
+                p.setColor(0x60000000);
+                c.drawRoundRect(tileX + 1f, tileY + 2f, tileX + tileW + 1f, tileBottom,
+                                selected ? 9f : 5f, selected ? 9f : 5f, p);
+                p.setColor(slotOccupied[i] ? panel() : 0xCC172337);
+                c.drawRoundRect(tileX, tileY, tileX + tileW, tileBottom,
+                                selected ? 9f : 5f, selected ? 9f : 5f, p);
+
+                float imageMargin = selected ? 4f : 3f;
+                float labelArea = selected ? (portrait ? 22f : 19f) : 9f;
+                float imageTop = tileY + imageMargin;
+                float imageBottom = Math.max(imageTop + 3f, tileBottom - labelArea - 2f);
+                if (slotThumbnails[i] != null && !slotThumbnails[i].isRecycled()) {
+                    p.setColor(0xFFFFFFFF);
+                    c.drawBitmap(slotThumbnails[i], null,
+                        new RectF(tileX + imageMargin, imageTop,
+                                  tileX + tileW - imageMargin, imageBottom), p);
+                } else {
+                    p.setColor(slotOccupied[i] ? 0x4438D69B : 0x55304050);
+                    c.drawRoundRect(tileX + imageMargin, imageTop,
+                        tileX + tileW - imageMargin, imageBottom, 4f, 4f, p);
+                    if (selected) {
+                        String placeholder = slotOccupied[i] ? "SAVED" : "EMPTY";
+                        textFit(c, placeholder, tileX + tileW * 0.5f,
+                            imageTop + (imageBottom - imageTop) * 0.58f,
+                            tileW - imageMargin * 2f, portrait ? 7f : 8f,
+                            slotOccupied[i] ? accent() : muted(), true);
+                    } else if (!slotOccupied[i]) {
+                        rect(c, tileX + tileW * 0.5f - 4f, imageTop + (imageBottom-imageTop)*0.5f,
+                             8f, 2f, 0x887C8CA5);
+                    }
+                }
+
+                if (selected) {
+                    textFit(c, String.format(Locale.US, "SLOT %02d", i + 1),
+                        tileX + tileW * 0.5f, tileBottom - (portrait ? 13f : 12f),
+                        tileW - 8f, portrait ? 8f : 9f, gold(), true);
+                    textFit(c, slotOccupied[i] && slotTimeLabels[i] != null ? slotTimeLabels[i] : "READY TO SAVE",
+                        tileX + tileW * 0.5f, tileBottom - 3f,
+                        tileW - 8f, portrait ? 6.5f : 7f, muted(), true);
+                } else {
+                    textFit(c, String.format(Locale.US, "%02d", i + 1),
+                        tileX + tileW * 0.5f, tileBottom - 3f, tileW - 4f, 7f,
+                        slotOccupied[i] ? ink() : muted(), true);
+                }
+
+                p.setColor(weight > 0.55f ? gold() : edge());
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(weight > 0.55f ? 2f : 1f);
+                c.drawRoundRect(tileX + 0.5f, tileY + 0.5f,
+                    tileX + tileW - 0.5f, tileBottom - 0.5f,
+                    selected ? 9f : 5f, selected ? 9f : 5f, p);
+                p.setStyle(Paint.Style.FILL);
+                cursor += tileW + gap;
+            }
+            c.restore();
+        }
+
+        private int timelineHit(float x, float y, float tx, float ty,
+                                float tw, float th, boolean portrait) {
+            if (!inside(x, y, tx, ty + 14f, tw, th - 14f)) return 0;
+            float focus = timelineVisualFocus();
+            float gap = portrait ? 3f : 5f;
+            float[] widths = timelineWidths(focus, portrait);
+            float scroll = timelineScrollOffset(widths, focus, tw, gap);
+            float cursor = 0f;
+            for (int i = 0; i < widths.length; i++) {
+                float tileX = tx + cursor - scroll;
+                if (x >= tileX && x < tileX + widths[i]) return SLOT_SELECT_BASE + i;
+                cursor += widths[i] + gap;
+            }
+            return 0;
         }
 
         void setBackgroundFile(String path) {
@@ -408,8 +497,18 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (portrait) drawPortrait(c); else drawLandscape(c);
             drawCornerGems(c, w, h);
             c.restore();
-            // The gold ring and power-up breathe; GIF wallpapers advance at about 30 fps.
-            postInvalidateDelayed(33);
+            // The hero button, GIF wallpaper, and slot carousel animate smoothly.
+            if (animatedSlot < 0f) animatedSlot = slot;
+            if (!timelineTouchActive) {
+                float delta = slot - animatedSlot;
+                if (Math.abs(delta) > 0.02f) {
+                    animatedSlot = clampFocus(animatedSlot + delta * 0.24f);
+                    postInvalidateOnAnimation();
+                } else {
+                    animatedSlot = slot;
+                }
+            }
+            postInvalidateDelayed(16);
         }
 
         private void drawWallpaper(Canvas c, float w, float h) {
@@ -505,9 +604,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                                        : "READY TO SAVE", 38, 193, 7.5f, accent());
 
             // Keep the reserve-item control as the visual centerpiece of the deck.
-            drawHeroItem(c, 400, 150, 94, item);
-            textFit(c, itemName(), 400, 279, 250, 10, ink(), true);
-            textFit(c, actionHint(), 400, 292, 280, 7.5f, muted(), true);
+            drawHeroItem(c, 400, 164, 128, item);
 
             card(c, 620, 76, 156, 128, "ADVENTURE STATUS");
             drawMiniStar(c, 637, 112, 8);
@@ -518,12 +615,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, paused ? "PAUSED" : "IN PLAY", 634, 191, 8, muted());
 
             // Pin the timeline to the bottom edge; controls remain above it.
-            drawSaveTimeline(c, 24, 348, 752, 95, false);
+            drawSaveTimeline(c, 24, 365, 752, 83, false);
             drawDockLandscape(c);
         }
 
         private void drawDockLandscape(Canvas c) {
-            float y=300, h=44;
+            float y=320, h=42;
             button(c,94,y,145,h,"SAVE","SNAPSHOT",SAVE,false);
             button(c,247,y,145,h,"LOAD","RESTORE",LOAD,false);
             button(c,400,y,145,h,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
@@ -541,29 +638,27 @@ final class PipeCleanCompanionPresentation extends Presentation {
             badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", lives));
             badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
 
-            drawHeroItem(c, 225, 233, 92, item);
-            textFit(c, itemName(), 225, 360, 380, 15, ink(), true);
-            textFit(c, actionHint(), 225, 373, 400, 8, muted(), true);
+            drawHeroItem(c, 225, 280, 146, item);
 
-            card(c, 35, 390, 380, 70, "ACTIVE SAVE SLOT");
+            card(c, 35, 466, 380, 58, "ACTIVE SAVE SLOT");
             Bitmap currentThumb = slotThumbnails[slot];
             if (currentThumb != null && !currentThumb.isRecycled()) {
                 p.setColor(0xFFFFFFFF);
-                c.drawBitmap(currentThumb, null, new RectF(48, 411, 120, 448), p);
+                c.drawBitmap(currentThumb, null, new RectF(48, 477, 120, 513), p);
             } else {
-                rect(c, 48, 411, 72, 37, 0x55304050);
-                text(c, slotOccupied[slot] ? "WAIT" : "EMPTY", 84, 433, 6, muted(), true);
+                rect(c, 48, 477, 72, 36, 0x55304050);
+                text(c, slotOccupied[slot] ? "WAIT" : "EMPTY", 84, 498, 6, muted(), true);
             }
-            text(c, String.format(Locale.US, "SLOT %02d", slot + 1), 145, 425, 14, ink());
+            text(c, String.format(Locale.US, "SLOT %02d", slot + 1), 145, 494, 13, ink());
             text(c, slotOccupied[slot] ? "SAVED  " + (slotTimeLabels[slot] == null ? "" : slotTimeLabels[slot])
-                                       : "READY TO SAVE", 145, 443, 8, accent());
+                                       : "READY TO SAVE", 145, 512, 8, accent());
 
-            button(c,20,480,198,58,"SAVE","SNAPSHOT",SAVE,false);
-            button(c,232,480,198,58,"LOAD","RESTORE",LOAD,false);
-            button(c,20,548,198,58,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,232,548,198,58,"REWIND","HOLD TO REWIND",REWIND,true);
+            button(c,20,526,198,52,"SAVE","SNAPSHOT",SAVE,false);
+            button(c,232,526,198,52,"LOAD","RESTORE",LOAD,false);
+            button(c,20,584,198,52,paused?"RESUME":"PAUSE",paused?"CONTINUE":"HOLD GAME",PAUSE,false);
+            button(c,232,584,198,52,"REWIND","HOLD TO REWIND",REWIND,true);
 
-            drawSaveTimeline(c, 14, 692, 422, 92, true);
+            drawSaveTimeline(c, 14, 704, 422, 92, true);
         }
 
         private void drawHeroItem(Canvas c, float cx, float cy, float radius, int itemId) {
@@ -621,9 +716,14 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
             } else {
                 // Empty pocket: softly glowing 8-bit star prompt.
-                drawPixelStar(c,cx,cy,17,0xFFB4A1CB);
-                text(c,"READY",cx,cy+radius*.45f,8,muted(),true);
+                drawPixelStar(c,cx,cy-radius*0.08f,17,0xFFB4A1CB);
+                text(c,"READY",cx,cy+radius*.30f,8,muted(),true);
             }
+            // Keep the label and hint inside the oversized reserve-item button.
+            textFit(c, itemName(), cx, cy + radius * 0.66f, radius * 1.55f,
+                Math.max(8f, radius * 0.11f), ink(), true);
+            textFit(c, actionHint(), cx, cy + radius * 0.81f, radius * 1.68f,
+                Math.max(6.5f, radius * 0.065f), muted(), true);
             c.restore();
         }
 
@@ -809,24 +909,24 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(inside(x,y,238,16,20,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(x,y,262,12,87,37)) return BACKGROUND;
                 if(inside(x,y,355,12,75,37)) return CLOSE_GAME;
-                int selected = timelineHit(x, y, 14, 692, 422, 92, true);
+                int selected = timelineHit(x, y, 14, 704, 422, 92, true);
                 if (selected != 0) return selected;
-                if(inside(x,y,20,480,198,58)) return SAVE;
-                if(inside(x,y,232,480,198,58)) return LOAD;
-                if(inside(x,y,20,548,198,58)) return PAUSE;
-                if(inside(x,y,232,548,198,58)) return REWIND;
-                if(inside(x,y,105,108,240,280)) return ITEM_USE;
+                if(inside(x,y,20,526,198,52)) return SAVE;
+                if(inside(x,y,232,526,198,52)) return LOAD;
+                if(inside(x,y,20,584,198,52)) return PAUSE;
+                if(inside(x,y,232,584,198,52)) return REWIND;
+                if(inside(x,y,52,101,346,360)) return ITEM_USE;
             } else {
                 if(inside(x,y,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(x,y,593,13,105,42)) return BACKGROUND;
                 if(inside(x,y,704,13,72,42)) return CLOSE_GAME;
-                int selected = timelineHit(x, y, 24, 348, 752, 95, false);
+                int selected = timelineHit(x, y, 24, 365, 752, 83, false);
                 if (selected != 0) return selected;
-                if(inside(x,y,94,300,145,44)) return SAVE;
-                if(inside(x,y,247,300,145,44)) return LOAD;
-                if(inside(x,y,400,300,145,44)) return PAUSE;
-                if(inside(x,y,553,300,153,44)) return REWIND;
-                if(inside(x,y,278,26,244,270)) return ITEM_USE;
+                if(inside(x,y,94,320,145,42)) return SAVE;
+                if(inside(x,y,247,320,145,42)) return LOAD;
+                if(inside(x,y,400,320,145,42)) return PAUSE;
+                if(inside(x,y,553,320,153,42)) return REWIND;
+                if(inside(x,y,236,8,328,310)) return ITEM_USE;
             }
             return 0;
         }
@@ -855,14 +955,62 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float scale=Math.min(getWidth()/dw,getHeight()/dh);
             float ox=(getWidth()-dw*scale)*0.5f, oy=(getHeight()-dh*scale)*0.5f;
             float x=(e.getX()-ox)/scale, y=(e.getY()-oy)/scale;
-            if(e.getActionMasked()==MotionEvent.ACTION_DOWN) {
+            int action = e.getActionMasked();
+
+            if(action==MotionEvent.ACTION_DOWN) {
                 downAction=hitTest(x,y);
+                timelineTouchActive=isTimelinePoint(x,y,portrait);
+                timelineMoved=false;
+                if(timelineTouchActive) {
+                    timelineDownX=x;
+                    timelineDownY=y;
+                    timelineStartFocus=slot;
+                    timelineDragFocus=timelineVisualFocus();
+                }
                 if(downAction==ITEM_USE) { itemPressed=true; itemPressStart=SystemClock.uptimeMillis(); }
                 if(downAction==REWIND) send(REWIND,1);
                 invalidate();
                 return true;
             }
-            if(e.getActionMasked()==MotionEvent.ACTION_UP) {
+
+            if(action==MotionEvent.ACTION_MOVE && timelineTouchActive) {
+                float dx=x-timelineDownX;
+                if(Math.abs(dx)>=14f && Math.abs(dx)>=Math.abs(y-timelineDownY)*1.10f)
+                    timelineMoved=true;
+                if(timelineMoved) {
+                    float step=portrait?45f:78f;
+                    timelineDragFocus=clampFocus(timelineStartFocus-dx/step);
+                    downAction=0;
+                    invalidate();
+                }
+                return true;
+            }
+
+            if(action==MotionEvent.ACTION_UP) {
+                if(timelineTouchActive) {
+                    float dx=x-timelineDownX;
+                    if(timelineMoved) {
+                        float dragFocus=timelineDragFocus;
+                        int selected=Math.max(0,Math.min(9,(int)Math.floor(dragFocus+0.5f)));
+                        if(Math.abs(dx)>=18f && selected==(int)timelineStartFocus) {
+                            selected=Math.max(0,Math.min(9,(int)timelineStartFocus+(dx<0?1:-1)));
+                        }
+                        animatedSlot=dragFocus;
+                        slot=selected;
+                        send(SLOT_SELECT_BASE+selected,1);
+                    } else if(downAction>=SLOT_SELECT_BASE && downAction<SLOT_SELECT_BASE+10) {
+                        int selected=downAction-SLOT_SELECT_BASE;
+                        slot=selected;
+                        send(downAction,1);
+                    }
+                    timelineTouchActive=false;
+                    timelineMoved=false;
+                    downAction=0;
+                    invalidate();
+                    performClick();
+                    return true;
+                }
+
                 int up=hitTest(x,y);
                 if(downAction==REWIND) send(REWIND,0);
                 else if(up!=0 && up==downAction) send(up,1);
@@ -872,10 +1020,15 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 performClick();
                 return true;
             }
-            if(e.getActionMasked()==MotionEvent.ACTION_CANCEL) {
+
+            if(action==MotionEvent.ACTION_CANCEL) {
                 if(downAction==REWIND) send(REWIND,0);
                 if(downAction==ITEM_USE) { itemPressed=false; itemReleaseStart=SystemClock.uptimeMillis(); }
-                downAction=0; invalidate(); return true;
+                timelineTouchActive=false;
+                timelineMoved=false;
+                downAction=0;
+                invalidate();
+                return true;
             }
             return true;
         }
