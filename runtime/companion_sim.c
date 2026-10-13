@@ -30,7 +30,6 @@ static char asset_paths[N_GAMES][4][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item;
 static int pressed_action, mouse_down_action;
-static int cached_dual_setting;
 static const uint8_t font5x7[36][7] = {
     {14,17,17,31,17,17,17}, /* A */
     {30,17,17,30,17,17,30}, /* B */
@@ -354,10 +353,8 @@ void companion_sim_sync(const Settings *s, SDL_Window *main_window)
             SDL_DestroyWindow(deck_window);
             deck_window = NULL;
         }
-        cached_dual_setting = 0;
         return;
     }
-    cached_dual_setting = 1;
     if (deck_window) return;
 
     int mx, my, mw, mh;
@@ -460,7 +457,7 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
         e->window.event == SDL_WINDOWEVENT_CLOSE) {
         s->launcher_dual_screen = 0;
         settings_save();
-        companion_sim_sync(s, SDL_GetWindowFromID(SDL_GetWindowID(deck_window)));
+        companion_sim_shutdown();
         return 1;
     }
     if (e->type != SDL_MOUSEBUTTONDOWN && e->type != SDL_MOUSEBUTTONUP &&
@@ -471,13 +468,13 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
     else event_window = e->window.windowID;
     if (event_window != id) return 0;
     if (e->type == SDL_WINDOWEVENT) return 1;
-    int px = 0, py = 0;
-    if (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_MOUSEBUTTONUP) {
-        SDL_RenderWindowToLogical(deck_renderer, e->button.x, e->button.y, (float *)&px, (float *)&py);
-    } else {
-        SDL_RenderWindowToLogical(deck_renderer, e->motion.x, e->motion.y, (float *)&px, (float *)&py);
-    }
-    float x = (float)px, y = (float)py;
+        float logical_x = 0.f, logical_y = 0.f;
+        if (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_MOUSEBUTTONUP)
+            SDL_RenderWindowToLogical(deck_renderer, e->button.x, e->button.y, &logical_x, &logical_y);
+        else
+            SDL_RenderWindowToLogical(deck_renderer, e->motion.x, e->motion.y, &logical_x, &logical_y);
+        float x = logical_x, y = logical_y;
+        int game = current_game >= 0 && current_game < N_GAMES ? current_game : GAME_SML;
     int game = current_game >= 0 && current_game < N_GAMES ? current_game : GAME_SML;
     const CompanionLayoutCfg *d = &s->deck_layout[game];
 
