@@ -37,6 +37,7 @@ static int mp_bank_game = GAME_SML;
 static long music_pos;
 static float music_gain, music_target;
 static int music_want_on;
+static int music_auto_advance, music_loop_pending;
 typedef struct { int clip; long pos; float vol; } Voice;
 static Voice voices[8];
 static float sfx_vol = 0.7f;
@@ -385,7 +386,11 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
             music_gain += (music_target - music_gain) * 0.0004f;
             l += music.d[music_pos * 2] * music_gain;
             r += music.d[music_pos * 2 + 1] * music_gain;
-            if (++music_pos >= music.n) music_pos = 0;
+            if (++music_pos >= music.n) {
+                music_pos = 0;
+                if (music_auto_advance && settings.menu_music && !g_active)
+                    music_loop_pending = 1;
+            }
         }
         for (int v = 0; v < 8; v++) {
             if (voices[v].clip < 0) continue;
@@ -612,6 +617,19 @@ void audio_menu_apply(void)
             }
         }
     }
+    SDL_LockMutex(mx);
+    music_auto_advance = 0;
+    if (settings.menu_music_path[0] && settings.menu_playlist_count > 1) {
+        for (int i = 0; i < settings.menu_playlist_count && i < MAX_MENU_TRACKS; i++) {
+            if (settings.menu_playlist[i][0] &&
+                strcmp(settings.menu_playlist[i], settings.menu_music_path) == 0) {
+                music_auto_advance = 1;
+                break;
+            }
+        }
+    }
+    if (!music_auto_advance) music_loop_pending = 0;
+    SDL_UnlockMutex(mx);
     audio_menu_music(music_want_on);
 }
 
@@ -681,8 +699,19 @@ void audio_music_preview(void)
     if (!dev) return;
     SDL_LockMutex(mx);
     music_pos = 0;
+    music_loop_pending = 0;
     music_target = settings.menu_music_vol / 100.0f * 0.6f;
     SDL_UnlockMutex(mx);
+}
+
+int audio_music_take_finished(void)
+{
+    if (!dev) return 0;
+    SDL_LockMutex(mx);
+    int pending = music_loop_pending;
+    music_loop_pending = 0;
+    SDL_UnlockMutex(mx);
+    return pending;
 }
 
 /* ------------------------------------------------------------ controller speaker */
