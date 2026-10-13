@@ -45,6 +45,48 @@ static int companion_pipe_swap_exit_pending;
 static SDL_atomic_t companion_display_available;
 static Uint32 companion_last_frame_tick;
 static int companion_slots_dirty = 1;
+static int game_session_active = -1;
+static Uint64 game_session_started;
+
+static void game_session_begin(int game)
+{
+    int next[N_RECENT_PLAYED];
+    int count = 0;
+    if (game < 0 || game >= N_GAMES) return;
+    if (game_session_active >= 0) return;
+    for (int i = 0; i < N_RECENT_PLAYED; i++) next[i] = -1;
+    next[count++] = game;
+    for (int i = 0; i < settings.recent_played_count && i < N_RECENT_PLAYED; i++) {
+        int old = settings.recent_played[i];
+        if (old < 0 || old >= N_GAMES || old == game) continue;
+        int duplicate = 0;
+        for (int j = 0; j < count; j++) if (next[j] == old) duplicate = 1;
+        if (!duplicate && count < N_RECENT_PLAYED) next[count++] = old;
+    }
+    for (int i = 0; i < N_RECENT_PLAYED; i++) settings.recent_played[i] = next[i];
+    settings.recent_played_count = count;
+    game_session_active = game;
+    game_session_started = SDL_GetPerformanceCounter();
+}
+
+static void game_session_end(void)
+{
+    if (game_session_active < 0 || game_session_active >= N_GAMES) return;
+    Uint64 now = SDL_GetPerformanceCounter();
+    Uint64 freq = SDL_GetPerformanceFrequency();
+    if (freq && now >= game_session_started) {
+        Uint64 elapsed = (now - game_session_started) / freq;
+        int current = settings.game_play_seconds[game_session_active];
+        if (elapsed > (Uint64)(2147483647 - current))
+            settings.game_play_seconds[game_session_active] = 2147483647;
+        else
+            settings.game_play_seconds[game_session_active] = current + (int)elapsed;
+    }
+    game_session_active = -1;
+    game_session_started = 0;
+    settings_save();
+}
+
 #define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
 #define PIPECLEAN_COMPANION_SAVE 1
 #define PIPECLEAN_COMPANION_LOAD 2
@@ -1688,6 +1730,7 @@ static int play_external_game(int g)
         return 0;
     }
     fclose(test);
+    game_session_begin(g);
     settings_save();
     audio_menu_music(0);
     int ok = 1;
@@ -1728,6 +1771,7 @@ static int play_external_game(int g)
     }
 #endif
     audio_menu_music(1);
+    game_session_end();
     if (ok) settings_save();
     return 0;
 }
@@ -1783,7 +1827,12 @@ static int play(int g)
         }
     }
     audio_menu_music(0);
-    if ((g == GAME_SML || g == GAME_SML2) && (c->multiplayer || online)) return play_multiplayer(g);
+    if ((g == GAME_SML || g == GAME_SML2) && (c->multiplayer || online)) {
+        game_session_begin(g);
+        int multiplayer_result = play_multiplayer(g);
+        game_session_end();
+        return multiplayer_result;
+    }
     char sp[1200], save_id[128];
     launcher_game_file_id(g, save_id, sizeof save_id);
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
@@ -1801,6 +1850,7 @@ static int play(int g)
     suspend_path(g, suspended, sizeof suspended);
     int has_suspend = state_file_exists(suspended);
     if (emu_start(0)) { launcher_toast("Couldn't start the game."); return 0; }
+    game_session_begin(g);
     if (requested_load >= 0) {
         c->state_slot = requested_load;
         (void)game_state_load(g, 0);
@@ -1926,6 +1976,7 @@ static int play(int g)
     SDL_free(f);
     tex_collect_save();
     pad_set_context(g, 0);
+    game_session_end();
     SDL_SetWindowFullscreen(win, 0);
     SDL_SetWindowSize(win, win_w, win_h);
     SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
