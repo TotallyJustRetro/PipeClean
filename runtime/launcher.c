@@ -3115,17 +3115,24 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
                                    float preview_w, float preview_h)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-    int order[] = {DECK_ELEM_DECORATION_4, DECK_ELEM_DECORATION_3,
-                   DECK_ELEM_DECORATION_2, DECK_ELEM_DECORATION,
-                   DECK_ELEM_ITEM, DECK_ELEM_CONTROLS, DECK_ELEM_TIMELINE, DECK_ELEM_HEADER};
-    for (int i = 0; i < N_DECK_ELEM; i++) {
+    int order[N_DECK_ELEM];
+    int n = 0;
+    for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION; e--) order[n++] = e;
+    order[n++] = DECK_ELEM_ITEM;
+    order[n++] = DECK_ELEM_CONTROLS;
+    order[n++] = DECK_ELEM_TIMELINE;
+    order[n++] = DECK_ELEM_HEADER;
+    for (int i = 0; i < n; i++) {
         int e = order[i];
         float rx, ry, rw, rh;
         deck_editor_element_rect(d, e, preview_x, preview_y, preview_w, preview_h,
                                  &rx, &ry, &rw, &rh);
         if (x < rx || y < ry || x >= rx + rw || y >= ry + rh) continue;
         companion_editor_element = e;
-        companion_editor_resizing = x >= rx + rw - 14 && y >= ry + rh - 14;
+        int right_handle = x >= rx + rw - 22 && fabsf(y - (ry + rh * .5f)) <= 23;
+        int bottom_handle = y >= ry + rh - 22 && fabsf(x - (rx + rw * .5f)) <= 23;
+        int corner_handle = x >= rx + rw - 22 && y >= ry + rh - 22;
+        companion_editor_resizing = corner_handle ? 1 : right_handle ? 2 : bottom_handle ? 3 : 0;
         companion_editor_dragging = 1;
         companion_editor_last_x = x;
         companion_editor_last_y = y;
@@ -3143,8 +3150,10 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
     if (companion_editor_resizing) {
         int *scale_x = deck_element_scale(d, companion_editor_element);
         int *scale_y = deck_element_scale_y(d, companion_editor_element);
-        *scale_x += (int)((dx / (preview_w / 800.0f)) * 0.35f);
-        *scale_y += (int)((dy / (preview_h / 450.0f)) * 0.35f);
+        if (companion_editor_resizing == 1 || companion_editor_resizing == 2)
+            *scale_x += (int)((dx / (preview_w / 800.0f)) * 0.35f);
+        if (companion_editor_resizing == 1 || companion_editor_resizing == 3)
+            *scale_y += (int)((dy / (preview_h / 450.0f)) * 0.35f);
         if (*scale_x < 25) *scale_x = 25;
         if (*scale_x > 250) *scale_x = 250;
         if (*scale_y < 25) *scale_y = 25;
@@ -3244,30 +3253,44 @@ static void deck_editor_list(float x, float y)
 static void deck_editor_layout(float x, float y)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-    ui_text(F_BOLD, 14, x + 36, y + 84, C_TEXT, games[companion_editor_game].name);
-    if (ui_button(x + 36, y + 105, 57, 27, "Back", B_GHOST, 1)) {
+    ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, games[companion_editor_game].name);
+    ui_text_fit(F_REG, 9, x + 310, y + 87, 440, C_MUTED,
+                "LIVE LAYOUT STUDIO  /  TOUCH TO MOVE");
+    if (ui_button(x + 36, y + 105, 58, 34, "Back", B_GHOST, 1)) {
         companion_editor_page = 0;
         companion_editor_dragging = 0;
         deck_editor_history_clear();
         return;
     }
-    if (ui_button(x + 103, y + 105, 58, 27, "Save", B_PRIMARY, 1)) {
+    if (ui_button(x + 100, y + 105, 68, 34, "Save", B_PRIMARY, 1)) {
         settings_save();
         launcher_toast("Companion Deck layout saved.");
     }
-    if (ui_button(x + 168, y + 105, 54, 27, "Undo", B_GHOST, companion_undo_count > 0)) deck_editor_undo();
-    if (ui_button(x + 229, y + 105, 54, 27, "Redo", B_GHOST, companion_redo_count > 0)) deck_editor_redo();
-    if (ui_button(x + 290, y + 105, 58, 27, "Reset", B_GHOST, 1)) {
+    if (ui_button(x + 174, y + 105, 58, 34, "Undo", B_GHOST, companion_undo_count > 0)) deck_editor_undo();
+    if (ui_button(x + 238, y + 105, 58, 34, "Redo", B_GHOST, companion_redo_count > 0)) deck_editor_redo();
+    if (ui_button(x + 302, y + 105, 66, 34, "Reset", B_GHOST, 1)) {
         deck_editor_snapshot();
         deck_layout_defaults(d);
     }
 
-    if (ui_button(x + 361, y + 105, 76, 27, "Assets...", B_GHOST, 1)) companion_editor_page = 4;
-    if (ui_button(x + 443, y + 105, 67, 27, "Items...", B_GHOST, 1)) companion_editor_page = 3;
-    if (ui_button(x + 516, y + 105, 58, 27, "Sounds", B_GHOST, 1)) companion_editor_page = 2;
-    if (ui_button(x + 580, y + 105, 82, 27, "Add image", B_GHOST, 1)) deck_editor_open_picker(DECK_PICK_DECORATION);
+    const char *tab_labels[] = {"Layout", "Assets", "Items", "Sounds", "Layers"};
+    const int tab_pages[] = {1, 4, 3, 2, 5};
+    for (int t = 0; t < 5; t++) {
+        float tx = x + 36 + t * 83;
+        if (ui_button(tx, y + 146, 78, 32, tab_labels[t],
+                      t == 0 ? B_PRIMARY : B_GHOST, 1)) {
+            companion_editor_page = tab_pages[t];
+            companion_editor_dragging = 0;
+            return;
+        }
+    }
+    if (ui_button(x + 580, y + 146, 176, 32, "+ Add image layer", B_NORMAL, 1)) {
+        deck_editor_open_picker(DECK_PICK_DECORATION);
+        return;
+    }
 
-    float px = x + 36, py = y + 145, pw = 360, ph = 202.5f;
+    float px = x + 36, py = y + 194, pw = 280, ph = 157.5f;
+    ui_rrect(px - 6, py - 6, pw + 12, ph + 12, 10, RGBA(9, 14, 24, 255));
     deck_editor_preview(d, px, py, pw, ph);
     companion_editor_preview_hover = ui_hover(px, py, pw, ph);
     if (ui_mouse.pressed && companion_editor_preview_hover)
@@ -3275,41 +3298,47 @@ static void deck_editor_layout(float x, float y)
     if (ui_mouse.down && companion_editor_dragging)
         deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
     if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
+    ui_text_fit(F_REG, 8, px, py + ph + 10, pw, C_MUTED,
+                "Drag the outline to move • side handle = width • bottom = height");
 
-    float rx = x + 414;
-    ui_text(F_BOLD, 11, rx, y + 147, C_TEXT, "SELECT ELEMENT");
+    float rx = x + 338;
+    ui_text(F_BOLD, 10, rx, y + 189, C_MUTED, "SELECT ELEMENT");
     for (int e = 0; e < N_DECK_ELEM; e++) {
         int col = e % 2, row = e / 2;
-        if (ui_button(rx + col * 166, y + 160 + row * 25, 158, 22,
+        float by = y + 203 + row * 28.5f;
+        if (ui_button(rx + col * 207, by, 198, 26,
                       deck_element_names[e], e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
             companion_editor_element = e;
     }
+
     int *scale_x = deck_element_scale(d, companion_editor_element);
     int *scale_y = deck_element_scale_y(d, companion_editor_element);
-    char scale_text[64];
-    snprintf(scale_text, sizeof scale_text, "Width: %d%%", *scale_x);
-    ui_text(F_BOLD, 10, rx, y + 278, C_TEXT, scale_text);
-    if (ui_button(rx + 102, y + 261, 44, 24, "−", B_GHOST, *scale_x > 25)) {
-        deck_editor_snapshot(); *scale_x -= 10; if (*scale_x < 25) *scale_x = 25;
+    char scale_text[80];
+    snprintf(scale_text, sizeof scale_text, "W %d%%", *scale_x);
+    ui_text(F_BOLD, 10, rx, y + 379, C_TEXT, scale_text);
+    if (ui_button(rx + 76, y + 371, 38, 30, "−", B_GHOST, *scale_x > 25)) {
+        deck_editor_snapshot(); *scale_x -= 5; if (*scale_x < 25) *scale_x = 25;
     }
-    if (ui_button(rx + 152, y + 261, 44, 24, "+", B_GHOST, *scale_x < 250)) {
-        deck_editor_snapshot(); *scale_x += 10; if (*scale_x > 250) *scale_x = 250;
+    if (ui_button(rx + 118, y + 371, 38, 30, "+", B_GHOST, *scale_x < 250)) {
+        deck_editor_snapshot(); *scale_x += 5; if (*scale_x > 250) *scale_x = 250;
     }
-    snprintf(scale_text, sizeof scale_text, "Height: %d%%", *scale_y);
-    ui_text(F_BOLD, 10, rx, y + 307, C_TEXT, scale_text);
-    if (ui_button(rx + 102, y + 290, 44, 24, "−", B_GHOST, *scale_y > 25)) {
-        deck_editor_snapshot(); *scale_y -= 10; if (*scale_y < 25) *scale_y = 25;
+    snprintf(scale_text, sizeof scale_text, "H %d%%", *scale_y);
+    ui_text(F_BOLD, 10, rx + 170, y + 379, C_TEXT, scale_text);
+    if (ui_button(rx + 238, y + 371, 38, 30, "−", B_GHOST, *scale_y > 25)) {
+        deck_editor_snapshot(); *scale_y -= 5; if (*scale_y < 25) *scale_y = 25;
     }
-    if (ui_button(rx + 152, y + 290, 44, 24, "+", B_GHOST, *scale_y < 250)) {
-        deck_editor_snapshot(); *scale_y += 10; if (*scale_y > 250) *scale_y = 250;
+    if (ui_button(rx + 280, y + 371, 38, 30, "+", B_GHOST, *scale_y < 250)) {
+        deck_editor_snapshot(); *scale_y += 5; if (*scale_y > 250) *scale_y = 250;
     }
-    if (ui_button(rx + 205, y + 290, 132, 24, "Center element", B_GHOST, 1)) {
+    if (ui_button(rx + 324, y + 371, 100, 30, "Center", B_GHOST, 1)) {
         deck_editor_snapshot();
         *deck_element_x(d, companion_editor_element) = 0;
         *deck_element_y(d, companion_editor_element) = 0;
     }
-    ui_text_wrap(F_REG, 9, rx, y + 327, 342, C_DIM,
-                 "Drag to move. Use the corner handle or Width / Height controls to stretch independently. Preview updates live; Save commits the layout.", 4);
+    ui_text_fit(F_REG, 8, rx, y + 412, 420, C_DIM,
+                "Width and height are independent. Use the cyan handles for direct touch resizing.");
+    ui_text_fit(F_REG, 8, rx, y + 431, 420, C_DIM,
+                "Select an image layer in Layers to hide/remove it or assign another file.");
 }
 
 static void deck_editor_sounds(float x, float y)
@@ -3440,31 +3469,37 @@ static void deck_editor_assets(float x, float y)
 static void deck_editor_decorations(float x, float y)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "DECORATION LAYERS");
-    if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1)) {
-        companion_editor_page = 4;
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "IMAGE LAYERS");
+    if (ui_button(x + 36, y + 107, 65, 30, "Back", B_GHOST, 1)) {
+        companion_editor_page = 1;
         return;
     }
-    ui_text_wrap(F_REG, 10, x + 114, y + 108, 620, C_MUTED,
-        "Add up to four independent images. Select a layer on the preview to move and resize it; Clear removes only that layer.", 2);
-    for (int slot = 0; slot < 4; slot++) {
-        char *path = deck_decoration_path(d, slot);
-        float ry = y + 153 + slot * 62;
-        ui_rrect(x + 36, ry, 728, 53, 8, C_PANEL);
+    ui_text_wrap(F_REG, 9, x + 114, y + 110, 620, C_MUTED,
+        "Eight independent layers. Choose replaces that layer; Remove deletes only that layer. Use Preview on the layout page to see the real composition.", 2);
+    for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
+        char *asset_path = deck_decoration_path(d, slot);
+        float ry = y + 151 + slot * 35.5f;
+        ui_rrect(x + 36, ry, 728, 32, 6,
+                 slot == companion_editor_element - DECK_ELEM_DECORATION
+                    ? RGBA(65, 130, 190, 46) : C_PANEL);
         char label[32];
-        snprintf(label, sizeof label, "Decoration %d", slot + 1);
-        ui_text_fit(F_BOLD, 10, x + 50, ry + 13, 140, C_TEXT, label);
-        ui_text_fit(F_REG, 8, x + 50, ry + 32, 410, path[0] ? C_MUTED : C_DIM,
-                    path[0] ? path : "Empty slot");
-        if (ui_button(x + 570, ry + 11, 82, 31, "Choose…", B_GHOST, 1))
+        snprintf(label, sizeof label, "LAYER %02d", slot + 1);
+        ui_text(F_BOLD, 8.5f, x + 48, ry + 6, C_TEXT, label);
+        ui_text_fit(F_REG, 7.5f, x + 48, ry + 18, 440,
+                    asset_path[0] ? C_MUTED : C_DIM,
+                    asset_path[0] ? path_base(asset_path) : "EMPTY — READY FOR AN IMAGE");
+        if (ui_button(x + 566, ry + 2, 82, 28, "Choose…", B_GHOST, 1))
             deck_editor_open_decoration_picker(slot);
-        if (ui_button(x + 659, ry + 11, 91, 31, "Remove", B_GHOST, path[0] != 0)) {
+        if (ui_button(x + 654, ry + 2, 96, 28, "Remove", B_DANGER, asset_path[0] != 0)) {
             deck_editor_snapshot();
-            path[0] = 0;
+            asset_path[0] = 0;
             if (companion_editor_element == DECK_ELEM_DECORATION + slot)
                 companion_editor_element = DECK_ELEM_DECORATION;
             settings_save();
-            launcher_toast("Decoration removed.");
+            launcher_toast("Image layer removed.");
+        }
+        if (ui_mouse.pressed && ui_hover(x + 36, ry, 520, 32) && asset_path[0]) {
+            companion_editor_element = DECK_ELEM_DECORATION + slot;
         }
     }
 }
