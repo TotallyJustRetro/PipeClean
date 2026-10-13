@@ -3225,7 +3225,7 @@ static int deck_manifest_apply(int game, const char *path)
         if (!eq) continue;
         *eq++ = 0;
         size_t n = strlen(eq);
-        while (n && (eq[n - 1] == '\\n' || eq[n - 1] == '\\r')) eq[--n] = 0;
+        while (n && (eq[n - 1] == '\n' || eq[n - 1] == '\r')) eq[--n] = 0;
         int v = atoi(eq);
         if (!strcmp(line, "header_dx")) fresh.header_dx = v;
         else if (!strcmp(line, "header_dy")) fresh.header_dy = v;
