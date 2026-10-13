@@ -20,13 +20,16 @@ static SDL_mutex *fmx;
 static Frame pub;                         /* latest published frame */
 
 typedef struct {
-    uint8_t kind;          /* 0 = empty; 1 = mushroom, 2 = second power-up, 3 = carrot. */
+    uint8_t kind;          /* 0 = empty; 1 = mushroom, 2 = flower, 3 = carrot. */
     uint8_t spawn_pending; /* SML1 defers respawn until the object slot is free. */
     uint8_t object[16];    /* Original SML1 power-up record at D190-D19F. */
 } ReserveItemState;
 
 static ReserveItemState reserve_item_state;
 static volatile int reserve_item_use_request;
+/* Internal A216 writes caused by using the pocket must not be recaptured as
+ * newly collected SML2 power-ups. This flag is only touched by the emulation thread. */
+static int reserve_item_apply_active;
 static volatile int abort_flag, paused, turbo, thread_mode, preview_target, previewing;
 static volatile uint32_t input_word;     /* buttons | dpad << 8 */
 static SDL_mutex *rewind_sync_mx;
@@ -421,12 +424,14 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     if (mp_ready || mp_active) return;
 
     /* SML2 power-up values in $A216 are 1 (mushroom), 2 (fire flower),
-     * and 3 (carrot). Preserve the current form when a newly collected
-     * power-up goes into the empty reserve. Damage no longer consumes the
-     * reserve automatically; the player chooses when to use it. */
+     * and 3 (carrot). When Mario already has a power-up, every new eligible
+     * pickup replaces the pocket item and the write is rolled back so his
+     * current form remains unchanged. A small Mario (old value 0) collects a
+     * mushroom normally. Stars are not represented by these item IDs and are
+     * deliberately never stored. */
     if (game == GAME_SML2 && addr == 0xA216) {
-        if (old_v >= 1 && old_v <= 3 && new_v >= 1 && new_v <= 3 &&
-            reserve_item_state.kind == 0) {
+        if (reserve_item_apply_active) return;
+        if (old_v >= 1 && old_v <= 3 && new_v >= 1 && new_v <= 3) {
             reserve_item_state.kind = new_v;
             reserve_item_state.spawn_pending = 0;
             gb_watch_override(addr, old_v);
@@ -435,7 +440,11 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     }
 
     if (game != GAME_SML) return;
-    if (addr == 0xD190 && new_v == 0xFF && reserve_item_state.kind == 0 &&
+    /* SML1 pocket has last-item-wins behavior, but only recognized mushroom
+     * and Superball Flower objects picked up while powered up are eligible.
+     * A small Mario's mushroom remains a normal growth pickup; stars are not
+     * one of the recognized object types below. */
+    if (addr == 0xD190 && new_v == 0xFF &&
         reserve_item_gameplay_active() && (rd8(0xFF99) == 1 || rd8(0xFF99) == 2)) {
         uint8_t kind = old_v == 0x29 ? 1 : (old_v == 0x2E ? 2 : 0);
         if (kind) {
@@ -470,9 +479,10 @@ static void reserve_item_process_use_request(void)
     if (game == GAME_SML2 && reserve_item_state.kind >= 1 &&
         reserve_item_state.kind <= 3) {
         uint8_t stored = reserve_item_state.kind;
-        /* Keep the reserve occupied during this write so the watcher cannot
-         * mistake an intentional use for a newly collected pickup. */
+        /* Bypass the pickup watcher for this intentional pocket use. */
+        reserve_item_apply_active = 1;
         wr8(0xA216, stored);
+        reserve_item_apply_active = 0;
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
     } else if (game == GAME_SML && reserve_item_state.kind <= 2 &&
                reserve_item_gameplay_active()) {
