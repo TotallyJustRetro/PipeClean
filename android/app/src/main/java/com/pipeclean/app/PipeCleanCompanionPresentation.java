@@ -207,8 +207,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String wallpaperPath = "";
 
         private static final int LAYOUT_GAME_COUNT = 7;
-        private static final int LAYOUT_VALUE_COUNT = 16;
-        private static final int LAYOUT_PATH_COUNT = 21;
+        private static final int LAYOUT_VALUE_COUNT = 25;
+        private static final int LAYOUT_PATH_COUNT = 24;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
         private final String[][] layoutPaths = new String[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
         private final Bitmap[][] layoutBitmaps = new Bitmap[LAYOUT_GAME_COUNT][LAYOUT_PATH_COUNT];
@@ -581,8 +581,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void applyLayoutTransform(Canvas canvas, int element, float w, float h,
                                           float centerX, float centerY) {
             int g = activeLayoutGame();
-            if (g < 0 || element < 0 || element >= 5) return;
-            int base = element * 3;
+            if (g < 0 || element < 0 || element >= 8) return;
+            int base = element < 5 ? element * 3 : 16 + (element - 5) * 3;
             float dx = layoutValues[g][base] * (w / 800f);
             float dy = layoutValues[g][base + 1] * (h / 450f);
             float scale = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
@@ -668,12 +668,21 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
-            if (g < 0 || !hasLayoutImage(g, 3)) return;
-            canvas.save();
-            applyLayoutTransform(canvas, 4, w, h, w * 0.5f, h * 0.5f);
-            float dw = w * 0.30f, dh = h * 0.32f;
-            drawLayoutImageContain(canvas, g, 3, (w - dw) * 0.5f, (h - dh) * 0.5f, dw, dh);
-            canvas.restore();
+            if (g < 0) return;
+            for (int slot = 0; slot < 4; slot++) {
+                int imageIndex = slot == 0 ? 3 : 20 + slot;
+                if (!hasLayoutImage(g, imageIndex)) continue;
+                float bx = slot == 0 ? w * 0.35f : slot == 1 ? w * 0.025f :
+                    slot == 2 ? w * 0.76f : w * 0.40f;
+                float by = slot == 0 ? h * 0.34f : slot == 3 ? h * 0.58f : h * 0.17f;
+                float bw = slot == 0 ? w * 0.30f : w * 0.21f;
+                float bh = slot == 0 ? h * 0.32f : h * 0.27f;
+                int element = 4 + slot;
+                canvas.save();
+                applyLayoutTransform(canvas, element, w, h, bx + bw * 0.5f, by + bh * 0.5f);
+                drawLayoutImageContain(canvas, g, imageIndex, bx, by, bw, bh);
+                canvas.restore();
+            }
         }
 
         private void playLayoutSound(int soundIndex) {
