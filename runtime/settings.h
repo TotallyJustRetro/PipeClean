@@ -100,6 +100,26 @@ typedef struct {
     int preset;
 } FilterCfg;
 
+/* Custom Companion Deck layout controls and assets. Offsets use the deck's
+ * 800x480 reference coordinates and scales are percentages. */
+enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
+       DECK_SOUND_BACKGROUND, DECK_SOUND_CLOSE, N_DECK_BUTTON_SOUNDS };
+typedef struct {
+    int header_dx, header_dy, header_scale;
+    int item_dx, item_dy, item_scale;
+    int controls_dx, controls_dy, controls_scale;
+    int timeline_dx, timeline_dy, timeline_scale;
+    int decoration_dx, decoration_dy, decoration_scale;
+    int sounds_enabled;
+    char background_path[512];
+    char button_texture_path[512];
+    char item_texture_path[512];
+    char decoration_path[512];
+    char button_sound_path[N_DECK_BUTTON_SOUNDS][512];
+    char item_sound_path[512];
+    char empty_item_sound_path[512];
+} CompanionLayoutCfg;
+
 typedef struct {
     int volume;                         /* game volume 0..200 percent */
     int latency;                        /* LAT_* */
@@ -123,6 +143,7 @@ typedef struct {
     int online_connection_mode;          /* 0 = direct connection, 1 = traversal server */
     int online_color;                /* default profile colour, 0xRRGGBB */
     int touch_controls;                   /* on-screen controls are enabled */
+    CompanionLayoutCfg deck_layout[N_GAMES];
     FilterCfg flt;
     GameCfg g[N_GAMES];
 } Settings;
