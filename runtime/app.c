@@ -175,6 +175,7 @@ static const char *companion_layout_asset_paths(const CompanionLayoutCfg *d, int
     if (i >= 21 && i < 28) return d->decoration_extra_path[i - 21];
     if (i == 28) return d->button_texture_by_action[4];
     if (i == 29) return d->button_texture_by_action[5];
+    if (i >= 30 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 23];
     return "";
 }
 
@@ -190,7 +191,7 @@ void launcher_open_companion_layout_picker(int kind, int game)
     if (!cls) return;
 
     CompanionLayoutCfg *d = &settings.deck_layout[game];
-    char manifest[2048];
+    char manifest[4096];
     snprintf(manifest, sizeof manifest,
         "layout_version=1\n"
         "header_dx=%d\nheader_dy=%d\nheader_scale=%d\nheader_scale_y=%d\n"
@@ -222,6 +223,18 @@ void launcher_open_companion_layout_picker(int kind, int game)
         d->decoration_extra_dx[6], d->decoration_extra_dy[6], d->decoration_extra_scale[6], d->decoration_extra_scale_y[6],
         d->sounds_enabled);
     size_t manifest_used = strlen(manifest);
+    for (int slot = 7; slot < N_DECK_DECORATIONS - 1; slot++) {
+        int layer = slot + 2;
+        int wrote = snprintf(manifest + manifest_used, sizeof manifest - manifest_used,
+            "decoration_%d_dx=%d\ndecoration_%d_dy=%d\ndecoration_%d_scale=%d\ndecoration_%d_scale_y=%d\n",
+            layer, d->decoration_extra_dx[slot], layer, d->decoration_extra_dy[slot],
+            layer, d->decoration_extra_scale[slot], layer, d->decoration_extra_scale_y[slot]);
+        if (wrote < 0 || (size_t)wrote >= sizeof manifest - manifest_used) {
+            manifest[0] = 0;
+            break;
+        }
+        manifest_used += (size_t)wrote;
+    }
     for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++) {
         int wrote = snprintf(manifest + manifest_used, sizeof manifest - manifest_used,
             "asset_stretch_%d=%d\n", asset, d->asset_stretch[asset] ? 1 : 0);
@@ -420,12 +433,19 @@ static void companion_publish_launcher_dashboard(int selected_game)
             values[base + 14] = layout->decoration_scale;
             values[base + 15] = layout->sounds_enabled;
             for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
-                values[base + 16 + slot * 3] = layout->decoration_extra_dx[slot];
-                values[base + 17 + slot * 3] = layout->decoration_extra_dy[slot];
-                values[base + 18 + slot * 3] = layout->decoration_extra_scale[slot];
+                if (slot < 7) {
+                    values[base + 16 + slot * 3] = layout->decoration_extra_dx[slot];
+                    values[base + 17 + slot * 3] = layout->decoration_extra_dy[slot];
+                    values[base + 18 + slot * 3] = layout->decoration_extra_scale[slot];
+                } else {
+                    int at = N_DECK_EXTENDED_DECORATION_VALUE_BASE + (slot - 7) * 3;
+                    values[base + at] = layout->decoration_extra_dx[slot];
+                    values[base + at + 1] = layout->decoration_extra_dy[slot];
+                    values[base + at + 2] = layout->decoration_extra_scale[slot];
+                }
             }
             for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++)
-                values[base + 49 + asset] = layout->asset_stretch[asset] ? 1 : 0;
+                values[base + N_DECK_LAYOUT_ASSET_MODE_BASE + asset] = layout->asset_stretch[asset] ? 1 : 0;
             /* Vertical scales occupy 37..48, matching applyLayoutTransform().
                Keep indices 16..36 reserved for the seven extra layer transforms. */
             values[base + 37] = layout->header_scale_y;
@@ -433,13 +453,18 @@ static void companion_publish_launcher_dashboard(int selected_game)
             values[base + 39] = layout->controls_scale_y;
             values[base + 40] = layout->timeline_scale_y;
             values[base + 41] = layout->decoration_scale_y;
-            for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
-                values[base + 42 + slot] = layout->decoration_extra_scale_y[slot];
-            /* Append the status transform after the original asset-mode range to preserve indices 0..78. */
-            values[base + 79] = layout->status_dx;
-            values[base + 80] = layout->status_dy;
-            values[base + 81] = layout->status_scale;
-            values[base + 82] = layout->status_scale_y;
+            for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+                if (slot < 7)
+                    values[base + 42 + slot] = layout->decoration_extra_scale_y[slot];
+                else
+                    values[base + N_DECK_EXTENDED_DECORATION_SCALE_Y_BASE + (slot - 7)] =
+                        layout->decoration_extra_scale_y[slot];
+            }
+            /* Status and extended decorations follow the existing asset-mode range. */
+            values[base + N_DECK_STATUS_VALUE_BASE] = layout->status_dx;
+            values[base + N_DECK_STATUS_VALUE_BASE + 1] = layout->status_dy;
+            values[base + N_DECK_STATUS_VALUE_BASE + 2] = layout->status_scale;
+            values[base + N_DECK_STATUS_VALUE_BASE + 3] = layout->status_scale_y;
         }
         (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * N_DECK_LAYOUT_VALUES, values);
     }
@@ -579,6 +604,7 @@ static const char *desktop_deck_asset_path(const CompanionLayoutCfg *d, int i)
     if (i >= 21 && i < 28) return d->decoration_extra_path[i - 21];
     if (i == 28) return d->button_texture_by_action[4];
     if (i == 29) return d->button_texture_by_action[5];
+    if (i >= 30 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 23];
     return "";
 }
 
@@ -724,7 +750,9 @@ static const char *desktop_deck_manifest_field(int i)
         "button_texture_load_path", "button_texture_pause_path", "button_texture_rewind_path",
         "decoration_path_1", "decoration_path_2", "decoration_path_3",
         "decoration_path_4", "decoration_path_5", "decoration_path_6", "decoration_path_7",
-        "button_texture_background_path", "button_texture_close_path"
+        "button_texture_background_path", "button_texture_close_path",
+        "decoration_path_8", "decoration_path_9", "decoration_path_10", "decoration_path_11",
+        "decoration_path_12", "decoration_path_13", "decoration_path_14", "decoration_path_15"
     };
     return i >= 0 && i < N_DECK_ASSET_PATHS ? fields[i] : "";
 }
@@ -740,7 +768,9 @@ static const char *desktop_deck_entry_stem(int i)
         "load-button-texture", "pause-button-texture", "rewind-button-texture",
         "decoration-2", "decoration-3", "decoration-4", "decoration-5",
         "decoration-6", "decoration-7", "decoration-8",
-        "background-button-texture", "close-button-texture"
+        "background-button-texture", "close-button-texture",
+        "decoration-9", "decoration-10", "decoration-11", "decoration-12",
+        "decoration-13", "decoration-14", "decoration-15", "decoration-16"
     };
     return i >= 0 && i < N_DECK_ASSET_PATHS ? stems[i] : "asset";
 }
@@ -800,6 +830,15 @@ static int desktop_bundle_export(int game, const char *zip_path)
         d->decoration_extra_dx[6], d->decoration_extra_dy[6], d->decoration_extra_scale[6], d->decoration_extra_scale_y[6],
         d->sounds_enabled);
     if (len < 0 || (size_t)len >= sizeof manifest) return 0;
+    for (int slot = 7; slot < N_DECK_DECORATIONS - 1; slot++) {
+        int layer = slot + 2;
+        int extra = snprintf(manifest + len, sizeof manifest - (size_t)len,
+            "decoration_%d_dx=%d\ndecoration_%d_dy=%d\ndecoration_%d_scale=%d\ndecoration_%d_scale_y=%d\n",
+            layer, d->decoration_extra_dx[slot], layer, d->decoration_extra_dy[slot],
+            layer, d->decoration_extra_scale[slot], layer, d->decoration_extra_scale_y[slot]);
+        if (extra < 0 || (size_t)extra >= sizeof manifest - (size_t)len) return 0;
+        len += extra;
+    }
 
     mz_zip_archive zip;
     memset(&zip, 0, sizeof zip);
@@ -857,7 +896,7 @@ void launcher_open_companion_layout_picker(int kind, int game)
         return;
     }
     if (kind == 13) {
-        char manifest[2048];
+        char manifest[4096];
         if (desktop_bundle_import(game, selected, manifest, sizeof manifest))
             launcher_companion_layout_picker_result(kind, game, manifest);
         else launcher_toast("That ZIP has no valid layout manifest or contains unsafe/oversized entries.");
