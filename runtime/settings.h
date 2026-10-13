@@ -115,10 +115,13 @@ typedef struct {
     int decoration_dx, decoration_dy, decoration_scale;
     int sounds_enabled;
     char background_path[512];
-    char button_texture_path[512];
+    char header_texture_path[512];
+    char status_texture_path[512];
+    char button_texture_path[512]; /* Legacy fallback for all action buttons. */
+    char button_texture_by_action[4][512]; /* Save, Load, Pause/Resume, Rewind. */
     char item_texture_path[512]; /* Legacy generic item image, used as fallback. */
     char item_texture_by_id[N_DECK_ITEM_TEXTURE_IDS][512];
-    char decoration_path[512];
+    char decoration_path[512]; /* Legacy first decoration slot. */
     char button_sound_path[N_DECK_BUTTON_SOUNDS][512];
     char item_sound_path[512];
     char empty_item_sound_path[512];
