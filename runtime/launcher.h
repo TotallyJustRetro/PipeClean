@@ -15,6 +15,7 @@ void launcher_drop(const char *path);
 void launcher_open_companion_layout_picker(int kind, int game);
 int launcher_companion_layout_target_game(int selected_game);
 int launcher_companion_layout_preview_enabled(void);
+int launcher_companion_layout_preview_item(void);
 void launcher_companion_layout_picker_result(int kind, int game, const char *path);
 int  launcher_current_game(void);
 int  launcher_take_load_state(int game);
