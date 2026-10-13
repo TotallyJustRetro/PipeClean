@@ -28,7 +28,7 @@ static SDL_Renderer *deck_renderer;
 static SDL_Texture *assets[N_GAMES][4];
 static char asset_paths[N_GAMES][4][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
-static int current_paused, current_slot, current_item;
+static int current_paused, current_slot, current_item, current_playing;
 static int pressed_action, mouse_down_action;
 static const uint8_t font5x7[36][7] = {
     {14,17,17,31,17,17,17}, /* A */
@@ -224,8 +224,8 @@ static void draw_button(const Settings *s, int game, int action, int x, int y, i
 static void draw_slot_timeline(const Settings *s, int game)
 {
     const CompanionLayoutCfg *d = &s->deck_layout[game];
-    float x = 24, y = 365, w = 752, h = 70;
-    transform_box(d, 3, 400, 400, &x, &y, &w, &h);
+    float x = 24, y = 365, w = 752, h = 83;
+    transform_box(d, 3, 400, 406.5f, &x, &y, &w, &h);
     draw_panel((int)x, (int)y, (int)w, (int)h, game, 0);
     draw_text((int)x + 12, (int)y + 7, 2, 174, 197, 223, "SAVE STATE TIMELINE");
     for (int i = 0; i < 10; i++) {
@@ -250,7 +250,8 @@ static void draw_companion(const Settings *s)
     color(7, 12, 24, 255);
     SDL_RenderClear(deck_renderer);
     fill(0, 0, 800, 450, 8, 13, 25, 255);
-    if (g >= 0 && assets[g][0]) image_cover(assets[g][0], 0, 0, 800, 450);
+    int asset_game = g >= 0 ? g : GAME_SML;
+    if (assets[asset_game][0]) image_cover(assets[asset_game][0], 0, 0, 800, 450);
     else {
         fill(0, 0, 800, 290, 13, 24, 40, 255);
         fill(0, 290, 800, 160, 15, 26, 31, 255);
@@ -264,14 +265,14 @@ static void draw_companion(const Settings *s)
     const char *name = g >= 0 && games[g].name ? games[g].name : "DESKTOP SIMULATOR";
     draw_text_fit((int)hx + 12, (int)hy + 29, (int)hw - 24, 2, 242, 245, 250, name);
     if (g >= 0) {
-        draw_text_fit(655, 22, 125, 2, 211, 224, 240, current_paused ? "PAUSED" : "IN GAME");
+        draw_text_fit(655, 22, 125, 2, 211, 224, 240, current_playing ? (current_paused ? "PAUSED" : "IN GAME") : "READY");
     } else {
         draw_text_fit(655, 22, 125, 2, 211, 224, 240, "READY");
     }
 
     /* Adventure status badge mirrors the Android Deck. */
     draw_panel(620, 76, 156, 128, theme_game, 0);
-    if (g >= 0) {
+    if (g >= 0 && current_playing) {
         draw_text(634, 88, 2, 150, 190, 217, "LIVES");
         char lives[20];
         snprintf(lives, sizeof lives, "X %02d", current_lives);
@@ -291,7 +292,7 @@ static void draw_companion(const Settings *s)
     }
 
     /* Reserve item is the largest interactive element. */
-    float ix = 327, iy = 94, iw = 146, ih = 146;
+    float ix = 272, iy = 36, iw = 256, ih = 256;
     transform_box(d, 1, 400, 164, &ix, &iy, &iw, &ih);
     int cx = (int)(ix + iw / 2), cy = (int)(iy + ih / 2);
     int radius = (int)(iw * .36f);
@@ -398,6 +399,7 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
     current_game = game;
     current_paused = paused;
     current_slot = selected_slot < 0 ? 0 : selected_slot > 9 ? 9 : selected_slot;
+    current_playing = frame != NULL;
     current_item = frame ? frame->reserve_item : 0;
     current_stage = -1;
     current_world = -1;
