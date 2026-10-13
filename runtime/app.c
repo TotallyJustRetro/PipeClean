@@ -750,6 +750,10 @@ static int desktop_bundle_export(int game, const char *zip_path)
         "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\ndecoration_2_scale_y=%d\n"
         "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\ndecoration_3_scale_y=%d\n"
         "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\ndecoration_4_scale_y=%d\n"
+        "decoration_5_dx=%d\ndecoration_5_dy=%d\ndecoration_5_scale=%d\ndecoration_5_scale_y=%d\n"
+        "decoration_6_dx=%d\ndecoration_6_dy=%d\ndecoration_6_scale=%d\ndecoration_6_scale_y=%d\n"
+        "decoration_7_dx=%d\ndecoration_7_dy=%d\ndecoration_7_scale=%d\ndecoration_7_scale_y=%d\n"
+        "decoration_8_dx=%d\ndecoration_8_dy=%d\ndecoration_8_scale=%d\ndecoration_8_scale_y=%d\n"
         "sounds_enabled=%d\n",
         d->header_dx, d->header_dy, d->header_scale, d->header_scale_y,
         d->item_dx, d->item_dy, d->item_scale, d->item_scale_y,
@@ -759,6 +763,10 @@ static int desktop_bundle_export(int game, const char *zip_path)
         d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0], d->decoration_extra_scale_y[0],
         d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1], d->decoration_extra_scale_y[1],
         d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2], d->decoration_extra_scale_y[2],
+        d->decoration_extra_dx[3], d->decoration_extra_dy[3], d->decoration_extra_scale[3], d->decoration_extra_scale_y[3],
+        d->decoration_extra_dx[4], d->decoration_extra_dy[4], d->decoration_extra_scale[4], d->decoration_extra_scale_y[4],
+        d->decoration_extra_dx[5], d->decoration_extra_dy[5], d->decoration_extra_scale[5], d->decoration_extra_scale_y[5],
+        d->decoration_extra_dx[6], d->decoration_extra_dy[6], d->decoration_extra_scale[6], d->decoration_extra_scale_y[6],
         d->sounds_enabled);
     if (len < 0 || (size_t)len >= sizeof manifest) return 0;
 
