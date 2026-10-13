@@ -241,6 +241,15 @@ static void outline_circle(int cx, int cy, int radius, Uint8 r, Uint8 g, Uint8 b
     }
 }
 
+static int simulator_layout_preview_enabled(void)
+{
+#if defined(PIPECLEAN_DEV_BUILD)
+    return launcher_companion_layout_preview_enabled();
+#else
+    return 0;
+#endif
+}
+
 static Uint8 theme_bg_r(int g) { return g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : 23; }
 static Uint8 theme_bg_g(int g) { return g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : 35; }
 static Uint8 theme_bg_b(int g) { return g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : 55; }
@@ -861,7 +870,7 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
 static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
-    int editor_preview = launcher_companion_layout_preview_enabled();
+    int editor_preview = simulator_layout_preview_enabled();
     int is_deck_game = g == GAME_SML || g == GAME_SML2;
     int show_game_deck = editor_preview || (current_playing && is_deck_game);
 
@@ -1160,7 +1169,7 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
     if (e->type == SDL_MOUSEBUTTONDOWN) {
         /* Android's DeckView is deliberately read-only while the layout editor
            previews it; controls become live again once an SML game is running. */
-        if (!current_playing || launcher_companion_layout_preview_enabled()) {
+        if (!current_playing || simulator_layout_preview_enabled()) {
             mouse_down_action = 0;
             pressed_action = 0;
             return 1;
