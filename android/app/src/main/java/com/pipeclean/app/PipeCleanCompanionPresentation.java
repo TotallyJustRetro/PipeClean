@@ -624,7 +624,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawLayoutBackground(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g >= 0 && hasLayoutImage(g, 0))
-                drawLayoutImageCover(canvas, g, 0, 0, 0, w, h);
+                drawLayoutImageContain(canvas, g, 0, 0, 0, w, h);
         }
 
         private void drawLayoutImageCover(Canvas canvas, int g, int imageIndex,
@@ -723,7 +723,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             clip.addRoundRect(new RectF(x, y, x + w, y + h), 13, 13, Path.Direction.CW);
             canvas.save();
             canvas.clipPath(clip);
-            drawLayoutImage(canvas, g, actionIndex, x, y, w, h);
+            drawLayoutImageContain(canvas, g, actionIndex, x, y, w, h);
             p.setStyle(Paint.Style.FILL);
             p.setColor(action == downAction ? 0x26000000 : 0x16000000);
             canvas.drawRoundRect(x, y, x + w, y + h, 13, 13, p);
