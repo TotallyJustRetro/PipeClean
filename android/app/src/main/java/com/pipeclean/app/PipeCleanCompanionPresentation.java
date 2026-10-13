@@ -272,14 +272,19 @@ final class PipeCleanCompanionPresentation extends Presentation {
             return widths;
         }
 
-        private float timelineScrollOffset(float[] widths, float focus, float viewportWidth, float gap) {
+        private float timelineScrollOffset(float[] widths, float focus, float viewportWidth,
+                                           float gap, boolean portrait) {
+            float activeWidth = portrait ? 108f : 162f;
+            // Symmetric end padding lets slots 1 and 10 center too, instead of getting
+            // stuck against an edge while the carousel is still scrolling.
+            float sidePadding = Math.max(0f, (viewportWidth - activeWidth) * 0.5f);
             float[] centers = new float[10];
             float cursor = 0f;
             for (int i = 0; i < widths.length; i++) {
-                centers[i] = cursor + widths[i] * 0.5f;
+                centers[i] = sidePadding + cursor + widths[i] * 0.5f;
                 cursor += widths[i] + gap;
             }
-            float totalWidth = cursor - gap;
+            float totalWidth = sidePadding * 2f + cursor - gap;
             focus = clampFocus(focus);
             int left = (int)Math.floor(focus);
             int right = Math.min(9, left + 1);
@@ -302,7 +307,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float focus = timelineVisualFocus();
             float gap = portrait ? 3f : 5f;
             float[] widths = timelineWidths(focus, portrait);
-            float scroll = timelineScrollOffset(widths, focus, w, gap);
+            float scroll = timelineScrollOffset(widths, focus, w, gap, portrait);
+            float sidePadding = Math.max(0f, (w - (portrait ? 108f : 162f)) * 0.5f);
             float baseHeight = portrait ? 43f : 36f;
             float activeHeight = portrait ? h - 18f : h - 20f;
             float cursor = 0f;
@@ -313,7 +319,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 float weight = Math.max(0f, 1f - Math.abs(i - focus));
                 float tileW = widths[i];
                 float tileH = baseHeight + (activeHeight - baseHeight) * weight;
-                float tileX = x + cursor - scroll;
+                float tileX = x + sidePadding + cursor - scroll;
                 float tileY = y + h - tileH - 1f;
                 float tileBottom = y + h - 1f;
                 boolean selected = weight > 0.55f;
@@ -382,10 +388,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float focus = timelineVisualFocus();
             float gap = portrait ? 3f : 5f;
             float[] widths = timelineWidths(focus, portrait);
-            float scroll = timelineScrollOffset(widths, focus, tw, gap);
+            float scroll = timelineScrollOffset(widths, focus, tw, gap, portrait);
+            float sidePadding = Math.max(0f, (tw - (portrait ? 108f : 162f)) * 0.5f);
             float cursor = 0f;
             for (int i = 0; i < widths.length; i++) {
-                float tileX = tx + cursor - scroll;
+                float tileX = tx + sidePadding + cursor - scroll;
                 if (x >= tileX && x < tileX + widths[i]) return SLOT_SELECT_BASE + i;
                 cursor += widths[i] + gap;
             }
@@ -964,8 +971,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(timelineTouchActive) {
                     timelineDownX=x;
                     timelineDownY=y;
-                    timelineStartFocus=slot;
-                    timelineDragFocus=timelineVisualFocus();
+                    timelineStartFocus=timelineVisualFocus();
+                    timelineDragFocus=timelineStartFocus;
                 }
                 if(downAction==ITEM_USE) { itemPressed=true; itemPressStart=SystemClock.uptimeMillis(); }
                 if(downAction==REWIND) send(REWIND,1);
