@@ -3422,22 +3422,31 @@ static void deck_editor_items(float x, float y)
         ui_rrect(x + 36, ry, 728, 70, 8, C_PANEL);
         ui_text_fit(F_BOLD, 11, x + 50, ry + 12, 195, ready ? C_TEXT : C_DIM, labels[row]);
         const char *asset_path = d->item_texture_by_id[item];
-        ui_text_fit(F_REG, 8, x + 50, ry + 34, 455, asset_path[0] ? C_MUTED : C_DIM,
-                    asset_path[0] ? asset_path : "No custom texture assigned");
+        int asset_index = 11 + item;
+        ui_text_fit(F_REG, 8, x + 50, ry + 34, 334, asset_path[0] ? C_MUTED : C_DIM,
+                    asset_path[0] ? path_base(asset_path) : "No custom texture assigned");
         if (!ready) {
-            ui_text_fit(F_REG, 8, x + 514, ry + 39, 110, C_DIM, "SML2 ONLY");
+            ui_text_fit(F_REG, 8, x + 394, ry + 39, 110, C_DIM, "SML2 ONLY");
             continue;
         }
-        if (ui_button(x + 514, ry + 18, 72, 32,
+        if (ui_button(x + 394, ry + 18, 70, 32,
                       companion_editor_preview_item == item ? "Preview*" : "Preview",
-                      companion_editor_preview_item == item ? B_PRIMARY : B_GHOST, ready)) {
+                      companion_editor_preview_item == item ? B_PRIMARY : B_GHOST, 1)) {
             companion_editor_preview_item = item;
         }
-        if (ui_button(x + 592, ry + 18, 82, 32, "Choose...", B_GHOST, ready))
+        if (ui_button(x + 470, ry + 18, 72, 32,
+                      d->asset_stretch[asset_index] ? "Fit / no crop" : "Stretch",
+                      d->asset_stretch[asset_index] ? B_PRIMARY : B_GHOST, 1)) {
+            deck_editor_snapshot();
+            d->asset_stretch[asset_index] = !d->asset_stretch[asset_index];
+            settings_save();
+        }
+        if (ui_button(x + 548, ry + 18, 82, 32, "Choose…", B_GHOST, 1))
             deck_editor_open_picker(pick_kinds[row]);
-        if (ui_button(x + 680, ry + 18, 68, 32, "Clear", B_GHOST, ready && asset_path[0] != 0)) {
+        if (ui_button(x + 636, ry + 18, 112, 32, "Clear texture", B_DANGER, asset_path[0] != 0)) {
             deck_editor_snapshot();
             d->item_texture_by_id[item][0] = 0;
+            d->asset_stretch[asset_index] = 0;
             settings_save();
             launcher_toast("Item texture cleared.");
         }
@@ -3453,32 +3462,42 @@ static void deck_editor_assets(float x, float y)
         return;
     }
     ui_text_wrap(F_REG, 10, x + 114, y + 108, 490, C_MUTED,
-        "Each region and action button can use its own image. PNG keeps transparency; GIF is animated on the companion display.", 2);
+        "Each region and action button has its own artwork. Fit shows the whole image; Stretch fills its box without cropping.", 2);
     if (ui_button(x + 638, y + 107, 126, 28, "Decorations…", B_GHOST, 1)) {
         companion_editor_page = 5;
         return;
     }
 
-    struct AssetRow { const char *label; char *path; int kind; } rows[] = {
-        {"Background", d->background_path, DECK_PICK_BACKGROUND},
-        {"Header", d->header_texture_path, DECK_PICK_HEADER_TEXTURE},
-        {"Adventure Status", d->status_texture_path, DECK_PICK_STATUS_TEXTURE},
-        {"Save button", d->button_texture_by_action[0], DECK_PICK_BUTTON_SAVE_TEXTURE},
-        {"Load button", d->button_texture_by_action[1], DECK_PICK_BUTTON_LOAD_TEXTURE},
-        {"Pause / Resume", d->button_texture_by_action[2], DECK_PICK_BUTTON_PAUSE_TEXTURE},
-        {"Rewind button", d->button_texture_by_action[3], DECK_PICK_BUTTON_REWIND_TEXTURE}
+    struct AssetRow { const char *label; char *path; int kind; int asset_index; } rows[] = {
+        {"Background", d->background_path, DECK_PICK_BACKGROUND, 0},
+        {"Header plate", d->header_texture_path, DECK_PICK_HEADER_TEXTURE, 15},
+        {"Adventure status", d->status_texture_path, DECK_PICK_STATUS_TEXTURE, 16},
+        {"Save button", d->button_texture_by_action[0], DECK_PICK_BUTTON_SAVE_TEXTURE, 17},
+        {"Load button", d->button_texture_by_action[1], DECK_PICK_BUTTON_LOAD_TEXTURE, 18},
+        {"Pause / Resume", d->button_texture_by_action[2], DECK_PICK_BUTTON_PAUSE_TEXTURE, 19},
+        {"Rewind button", d->button_texture_by_action[3], DECK_PICK_BUTTON_REWIND_TEXTURE, 20}
     };
     for (int i = 0; i < (int)(sizeof rows / sizeof rows[0]); i++) {
         float ry = y + 151 + i * 43;
-        ui_rrect(x + 36, ry, 728, 37, 7, C_PANEL);
-        ui_text_fit(F_BOLD, 10, x + 49, ry + 13, 180, C_TEXT, rows[i].label);
-        const char *name = rows[i].path[0] ? rows[i].path : "Use built-in appearance";
-        ui_text_fit(F_REG, 8, x + 235, ry + 13, 315, rows[i].path[0] ? C_MUTED : C_DIM, name);
-        if (ui_button(x + 570, ry + 4, 82, 29, "Choose…", B_GHOST, 1))
+        ui_rrect(x + 36, ry, 728, 37, 7,
+                 i == 0 ? RGBA(44, 85, 117, 180) : C_PANEL);
+        ui_text_fit(F_BOLD, 10, x + 49, ry + 13, 164, C_TEXT, rows[i].label);
+        const char *name = rows[i].path[0] ? path_base(rows[i].path) : "Built-in appearance";
+        ui_text_fit(F_REG, 8, x + 218, ry + 13, 224,
+                    rows[i].path[0] ? C_MUTED : C_DIM, name);
+        int stretch = d->asset_stretch[rows[i].asset_index];
+        if (ui_button(x + 450, ry + 4, 78, 29, stretch ? "Fit / no crop" : "Stretch",
+                      stretch ? B_PRIMARY : B_GHOST, 1)) {
+            deck_editor_snapshot();
+            d->asset_stretch[rows[i].asset_index] = !stretch;
+            settings_save();
+        }
+        if (ui_button(x + 536, ry + 4, 82, 29, "Choose…", B_GHOST, 1))
             deck_editor_open_picker(rows[i].kind);
-        if (ui_button(x + 659, ry + 4, 91, 29, "Clear", B_GHOST, rows[i].path[0] != 0)) {
+        if (ui_button(x + 626, ry + 4, 124, 29, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
             deck_editor_snapshot();
             rows[i].path[0] = 0;
+            d->asset_stretch[rows[i].asset_index] = 0;
             settings_save();
             launcher_toast("Asset cleared.");
         }
@@ -3494,7 +3513,7 @@ static void deck_editor_decorations(float x, float y)
         return;
     }
     ui_text_wrap(F_REG, 9, x + 114, y + 110, 620, C_MUTED,
-        "Eight independent layers. Choose replaces that layer; Remove deletes only that layer. Use Preview on the layout page to see the real composition.", 2);
+        "Eight independent layers. Fit / no crop preserves every pixel; Stretch fills the box. Remove clears only that layer.", 2);
     for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
         char *asset_path = deck_decoration_path(d, slot);
         float ry = y + 151 + slot * 35.5f;
@@ -3504,14 +3523,23 @@ static void deck_editor_decorations(float x, float y)
         char label[32];
         snprintf(label, sizeof label, "LAYER %02d", slot + 1);
         ui_text(F_BOLD, 8.5f, x + 48, ry + 6, C_TEXT, label);
-        ui_text_fit(F_REG, 7.5f, x + 48, ry + 18, 440,
+        ui_text_fit(F_REG, 7.5f, x + 48, ry + 18, 382,
                     asset_path[0] ? C_MUTED : C_DIM,
                     asset_path[0] ? path_base(asset_path) : "EMPTY — READY FOR AN IMAGE");
-        if (ui_button(x + 566, ry + 2, 82, 28, "Choose…", B_GHOST, 1))
+        int asset_index = slot == 0 ? 3 : 20 + slot;
+        int stretch = d->asset_stretch[asset_index];
+        if (ui_button(x + 438, ry + 2, 82, 28, stretch ? "Fit / no crop" : "Stretch",
+                      stretch ? B_PRIMARY : B_GHOST, 1)) {
+            deck_editor_snapshot();
+            d->asset_stretch[asset_index] = !stretch;
+            settings_save();
+        }
+        if (ui_button(x + 526, ry + 2, 82, 28, "Choose…", B_GHOST, 1))
             deck_editor_open_decoration_picker(slot);
-        if (ui_button(x + 654, ry + 2, 96, 28, "Remove", B_DANGER, asset_path[0] != 0)) {
+        if (ui_button(x + 614, ry + 2, 136, 28, "Remove layer", B_DANGER, asset_path[0] != 0)) {
             deck_editor_snapshot();
             asset_path[0] = 0;
+            d->asset_stretch[asset_index] = 0;
             if (companion_editor_element == DECK_ELEM_DECORATION + slot)
                 companion_editor_element = DECK_ELEM_DECORATION;
             settings_save();
