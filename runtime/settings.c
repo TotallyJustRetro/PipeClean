@@ -190,6 +190,7 @@ void settings_defaults(Settings *s)
     s->launcher_window_size = 1;
     s->launcher_fullscreen = 0;
     s->launcher_dual_screen = 0;
+    s->launcher_pipe_screen_swap = 0;
     s->recent_played_count = 0;
     s->menu_playlist_count = 0;
     s->menu_playlist_selected = 0;
@@ -248,6 +249,7 @@ static int field_table(Field *t, int cap)
     I("launcher_window_size", s->launcher_window_size, 0, 2);
     I("launcher_fullscreen", s->launcher_fullscreen, 0, 1);
     I("launcher_dual_screen", s->launcher_dual_screen, 0, 1);
+    I("launcher_pipe_screen_swap", s->launcher_pipe_screen_swap, 0, 1);
     I("recent_played_count", s->recent_played_count, 0, N_RECENT_PLAYED);
     static char recent_names[N_RECENT_PLAYED][32];
     for (int i = 0; i < N_RECENT_PLAYED; i++) {
@@ -331,12 +333,14 @@ void settings_load(void)
     Field tab[800];
     int nf = field_table(tab, 800);
     int saw_launcher_dual_screen = 0;
+    int saw_launcher_pipe_screen_swap = 0;
     char line[1100];
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
         if (!eq) continue;
         *eq = 0;
         if (!strcmp(line, "launcher_dual_screen")) saw_launcher_dual_screen = 1;
+        if (!strcmp(line, "launcher_pipe_screen_swap")) saw_launcher_pipe_screen_swap = 1;
         char *v = eq + 1;
         size_t l = strlen(v);
         while (l && (v[l - 1] == '\n' || v[l - 1] == '\r')) v[--l] = 0;
@@ -379,6 +383,8 @@ void settings_load(void)
             }
         }
     }
+    if (!saw_launcher_pipe_screen_swap)
+        settings.launcher_pipe_screen_swap = settings.g[GAME_SML].pipe_screen_swap;
     int highest_playlist = 0;
     for (int i = 0; i < MAX_MENU_TRACKS; i++)
         if (settings.menu_playlist[i][0]) highest_playlist = i + 1;
