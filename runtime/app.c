@@ -439,14 +439,15 @@ static void companion_publish_launcher_dashboard(int selected_game)
     }
     jmethodID dashboard_method = (*env)->GetMethodID(
         env, cls, "updateLauncherDashboard",
-        "(I[Ljava/lang/String;[I[III[II[I[Ljava/lang/String;ZZ)V");
+        "(I[Ljava/lang/String;[I[III[II[I[Ljava/lang/String;ZZI)V");
     if (dashboard_method && game_names && recent && seconds && layout_values && layout_paths) {
         (void)(*env)->CallVoidMethod(env, activity, dashboard_method,
             (jint)selected_game, game_names, recent, seconds,
             (jint)preview_w, (jint)preview_h, preview,
             (jint)layout_game, layout_values, layout_paths,
             settings.launcher_dual_screen ? JNI_TRUE : JNI_FALSE,
-            editor_preview ? JNI_TRUE : JNI_FALSE);
+            editor_preview ? JNI_TRUE : JNI_FALSE,
+            (jint)launcher_companion_layout_preview_item());
     }
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
