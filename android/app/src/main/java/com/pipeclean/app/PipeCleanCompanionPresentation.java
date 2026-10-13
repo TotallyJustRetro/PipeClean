@@ -1102,6 +1102,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawLandscape(Canvas c) {
+            c.save();
+            applyLayoutTransform(c, 0, 800f, 450f, 400f, 31.5f);
             headerPlate(c, 18, 7, 265, 49);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 26, 23, 10, accent());
             text(c, title(), 25, 43, 16, ink());
@@ -1109,6 +1111,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             button(c, 593, 13, 105, 42, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
             if (game >= 0) button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
             else button(c, 704, 13, 72, 42, "DECK", "LINKED", 0, false);
+            c.restore();
 
             card(c, 24, 72, 160, 132, game < 0 ? "SAVE SLOT PREVIEW" : "ACTIVE SAVE");
             Bitmap currentThumb = slotThumbnails[slot];
@@ -1124,7 +1127,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                                        : "READY TO SAVE", 38, 193, 7.5f, accent());
 
             // Keep the reserve-item control as the visual centerpiece of the deck.
+            c.save();
+            applyLayoutTransform(c, 1, 800f, 450f, 400f, 164f);
             drawHeroItem(c, 400, 164, 128, item);
+            c.restore();
 
             if (game < 0) {
                 card(c, 620, 76, 156, 128, "DECK STATUS");
@@ -1145,8 +1151,14 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
 
             // Pin the timeline to the bottom edge; controls remain above it.
+            c.save();
+            applyLayoutTransform(c, 3, 800f, 450f, 400f, 406.5f);
             drawSaveTimeline(c, 24, 365, 752, 83, false);
+            c.restore();
+            c.save();
+            applyLayoutTransform(c, 2, 800f, 450f, 400f, 343f);
             drawDockLandscape(c);
+            c.restore();
         }
 
         private void drawDockLandscape(Canvas c) {
@@ -1160,6 +1172,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawPortrait(Canvas c) {
+            c.save();
+            applyLayoutTransform(c, 0, 450f, 800f, 225f, 30f);
             headerPlate(c, 14, 7, 220, 43);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 20, 25, 10, accent());
             text(c, title(), 20, 43, 13, ink());
@@ -1167,6 +1181,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
             if (game >= 0) button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
             else button(c, 355, 12, 75, 37, "DECK", "LINKED", 0, false);
+            c.restore();
 
             if (game < 0) {
                 badge(c, 20, 55, 128, 47, "DECK STATUS", "LINKED");
@@ -1176,7 +1191,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
             }
 
+            c.save();
+            applyLayoutTransform(c, 1, 450f, 800f, 225f, 280f);
             drawHeroItem(c, 225, 280, 146, item);
+            c.restore();
 
             card(c, 35, 466, 380, 58, game < 0 ? "SAVE SLOT PREVIEW" : "ACTIVE SAVE SLOT");
             Bitmap currentThumb = slotThumbnails[slot];
@@ -1192,13 +1210,19 @@ final class PipeCleanCompanionPresentation extends Presentation {
                                        : "READY TO SAVE", 145, 512, 8, accent());
 
             boolean idle = game < 0;
+            c.save();
+            applyLayoutTransform(c, 2, 450f, 800f, 225f, 552f);
             button(c,20,526,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
             button(c,232,526,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
             button(c,20,584,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",
                 idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
             button(c,232,584,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
+            c.restore();
 
+            c.save();
+            applyLayoutTransform(c, 3, 450f, 800f, 225f, 750f);
             drawSaveTimeline(c, 14, 704, 422, 92, true);
+            c.restore();
         }
 
         private void drawHeroItem(Canvas c, float cx, float cy, float radius, int itemId) {
