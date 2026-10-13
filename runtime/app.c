@@ -2432,7 +2432,11 @@ int app_run(const char *autorun, const char *hack)
         }
         SDL_RenderPresent(ren);
 #if !defined(__ANDROID__)
-        companion_sim_set_state(-1, NULL, 0, 0);
+        int simulator_game = launcher_current_game();
+#if defined(PIPECLEAN_DEV_BUILD)
+        simulator_game = launcher_companion_layout_target_game(simulator_game);
+#endif
+        companion_sim_set_state(simulator_game, NULL, 0, 0);
         companion_sim_render(&settings, win);
 #endif
         companion_publish_launcher_dashboard(launcher_current_game());
