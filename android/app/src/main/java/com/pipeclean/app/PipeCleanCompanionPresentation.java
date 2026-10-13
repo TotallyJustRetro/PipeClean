@@ -686,6 +686,201 @@ final class PipeCleanCompanionPresentation extends Presentation {
             rect(c, w-21, h-12, 12, 3, col); rect(c, w-12, h-21, 3, 12, col);
         }
 
+        private String dashboardGameName(int index) {
+            return index >= 0 && index < dashboardGameNames.length &&
+                   dashboardGameNames[index] != null && !dashboardGameNames[index].isEmpty()
+                ? dashboardGameNames[index] : "Choose a game";
+        }
+
+        private String playTimeText(int seconds) {
+            if (seconds < 0) seconds = 0;
+            int hours = seconds / 3600;
+            int minutes = (seconds % 3600) / 60;
+            if (hours > 0) return String.format(Locale.US, "%dh %02dm played", hours, minutes);
+            return String.format(Locale.US, "%dm played", minutes);
+        }
+
+        private void drawDashboardPreview(Canvas c, RectF target) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFF07111F);
+            c.drawRoundRect(target, 8, 8, p);
+            if (dashboardPreview == null || dashboardPreview.isRecycled()) {
+                drawPixelStar(c, target.centerX(), target.centerY() - 5, 18, accent());
+                text(c, "GAME PREVIEW", target.centerX(), target.centerY() + 22, 9, muted(), true);
+                return;
+            }
+            float scale = Math.min(target.width() / dashboardPreview.getWidth(),
+                                   target.height() / dashboardPreview.getHeight());
+            float dw = dashboardPreview.getWidth() * scale;
+            float dh = dashboardPreview.getHeight() * scale;
+            float left = target.centerX() - dw * 0.5f;
+            float top = target.centerY() - dh * 0.5f;
+            p.setColor(0xFFFFFFFF);
+            p.setFilterBitmap(false);
+            c.drawBitmap(dashboardPreview, null, new RectF(left, top, left + dw, top + dh), p);
+            p.setFilterBitmap(true);
+        }
+
+        private void drawLauncherDashboardLandscape(Canvas c) {
+            headerPlate(c, 18, 7, 282, 48);
+            text(c, "PIPE CLEAN  •  GAME LIBRARY", 27, 22, 9, accent());
+            text(c, "READY TO PLAY", 27, 42, 15, ink());
+
+            float previewH = dashboardDualScreen ? 238f : 362f;
+            card(c, 20, 65, 460, previewH, "SELECTED GAME");
+            float imageBottom = dashboardDualScreen ? 229f : 293f;
+            drawDashboardPreview(c, new RectF(34, 94, 466, imageBottom));
+            float titleY = imageBottom + 21f;
+            textFit(c, dashboardGameName(dashboardGame), 36, titleY, 420, 16, ink());
+            int played = dashboardGame >= 0 && dashboardGame < dashboardPlaySeconds.length
+                ? dashboardPlaySeconds[dashboardGame] : 0;
+            text(c, "TOTAL PLAY TIME", 36, titleY + 25, 7.5f, muted());
+            textFit(c, playTimeText(played), 36, titleY + 39, 420, 12, accent());
+
+            card(c, 492, 65, 288, previewH, "RECENTLY PLAYED");
+            int rows = Math.min(5, dashboardRecentGames.length);
+            if (rows == 0) {
+                drawMiniStar(c, 523, 132, 9);
+                text(c, "YOUR ADVENTURE", 545, 126, 8, muted());
+                textFit(c, "Games you launch will appear here.", 510, 153, 246, 11, ink());
+                textFit(c, "Play time is saved automatically.", 510, 173, 246, 9, muted());
+            } else {
+                for (int i = 0; i < rows; i++) {
+                    int id = dashboardRecentGames[i];
+                    if (id < 0) continue;
+                    float ry = 99 + i * (dashboardDualScreen ? 27f : 48f);
+                    p.setColor(i == 0 ? 0x4038D69B : 0x30172237);
+                    c.drawRoundRect(504, ry, 768, ry + (dashboardDualScreen ? 24f : 43f), 7, 7, p);
+                    drawMiniStar(c, 518, ry + 12, 5);
+                    textFit(c, dashboardGameName(id), 531, ry + 3, 226, 9, i == 0 ? accent() : ink());
+                    int secs = id < dashboardPlaySeconds.length ? dashboardPlaySeconds[id] : 0;
+                    textFit(c, playTimeText(secs), 531, ry + 14, 226, 7.5f, muted());
+                }
+            }
+
+            if (dashboardDualScreen) {
+                drawMusicPanel(c, 20, 315, 760, 123, false);
+            } else {
+                card(c, 20, 435 - 1, 760, 1, "");
+            }
+        }
+
+        private void drawLauncherDashboardPortrait(Canvas c) {
+            headerPlate(c, 14, 7, 250, 45);
+            text(c, "PIPE CLEAN  •  LIBRARY", 20, 23, 9, accent());
+            text(c, "READY TO PLAY", 20, 42, 13, ink());
+
+            float previewH = dashboardDualScreen ? 258f : 310f;
+            card(c, 16, 60, 418, previewH, "SELECTED GAME");
+            float imageBottom = 60 + previewH - 87f;
+            drawDashboardPreview(c, new RectF(28, 91, 422, imageBottom));
+            float titleY = imageBottom + 17f;
+            textFit(c, dashboardGameName(dashboardGame), 29, titleY, 392, 13, ink());
+            int played = dashboardGame >= 0 && dashboardGame < dashboardPlaySeconds.length
+                ? dashboardPlaySeconds[dashboardGame] : 0;
+            text(c, "TOTAL PLAY TIME", 29, titleY + 20, 7.5f, muted());
+            textFit(c, playTimeText(played), 29, titleY + 32, 392, 11, accent());
+
+            float recentY = 60 + previewH + 9f;
+            float recentH = dashboardDualScreen ? 182f : 800f - recentY - 14f;
+            card(c, 16, recentY, 418, recentH, "RECENTLY PLAYED");
+            int rows = Math.min(5, dashboardRecentGames.length);
+            if (rows == 0) {
+                textFit(c, "Your recent games and play time will appear here.", 30,
+                    recentY + 50, 384, 11, muted());
+            } else {
+                float rowH = dashboardDualScreen ? 26f : 49f;
+                for (int i = 0; i < rows; i++) {
+                    int id = dashboardRecentGames[i];
+                    if (id < 0) continue;
+                    float ry = recentY + 35 + i * rowH;
+                    p.setColor(i == 0 ? 0x4038D69B : 0x30172237);
+                    c.drawRoundRect(27, ry, 423, ry + rowH - 3, 7, 7, p);
+                    drawMiniStar(c, 40, ry + rowH * 0.5f, 5);
+                    textFit(c, dashboardGameName(id), 54, ry + 3, 355, 9, i == 0 ? accent() : ink());
+                    int secs = id < dashboardPlaySeconds.length ? dashboardPlaySeconds[id] : 0;
+                    textFit(c, playTimeText(secs), 54, ry + 15, 355, 7.5f, muted());
+                }
+            }
+            if (dashboardDualScreen) drawMusicPanel(c, 16, 535, 418, 250, true);
+        }
+
+        private void drawVinylRecord(Canvas c, float cx, float cy, float radius, boolean playing) {
+            long now = SystemClock.uptimeMillis();
+            float angle = playing ? (now % 6000L) * (float)(Math.PI * 2.0 / 6000.0) : -0.45f;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFF07090F);
+            c.drawCircle(cx, cy, radius, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1.3f);
+            p.setColor(0xFF3B4357);
+            c.drawCircle(cx, cy, radius - 3, p);
+            c.drawCircle(cx, cy, radius * 0.74f, p);
+            c.drawCircle(cx, cy, radius * 0.61f, p);
+            c.drawCircle(cx, cy, radius * 0.46f, p);
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFF242D43);
+            c.drawCircle(cx, cy, radius * 0.30f, p);
+            p.setColor(0xFF80D9E3);
+            c.drawLine(cx, cy, cx + (float)Math.cos(angle) * radius * 0.83f,
+                       cy + (float)Math.sin(angle) * radius * 0.83f, p);
+            p.setColor(playing ? accent() : 0xFF858DA2);
+            c.drawCircle(cx, cy, radius * 0.23f, p);
+            p.setColor(0xFF07090F);
+            c.drawCircle(cx, cy, radius * 0.045f, p);
+            p.setStyle(Paint.Style.FILL);
+        }
+
+        private void drawMusicPanel(Canvas c, float x, float y, float w, float h, boolean portrait) {
+            card(c, x, y, w, h, "MENU MUSIC");
+            float cx = x + (portrait ? 57f : 53f);
+            float cy = y + (portrait ? 76f : 69f);
+            float radius = portrait ? 34f : 37f;
+            drawVinylRecord(c, cx, cy, radius, musicPlaying);
+
+            long elapsed = Math.max(0L, SystemClock.uptimeMillis() - musicTitleChangedAt);
+            float progress = Math.min(1f, elapsed / 300f);
+            float eased = 1f - (1f - progress) * (1f - progress) * (1f - progress);
+            float slide = (1f - eased) * (portrait ? 30f : 24f);
+            float titleX = x + (portrait ? 105f : 98f) + slide;
+            float titleW = w - (titleX - x) - (portrait ? 12f : 340f);
+            text(c, musicPlaying ? "NOW PLAYING" : "MUSIC PAUSED",
+                 titleX, y + 36, 7.5f, musicPlaying ? 0xFF71D7A3 : muted());
+            textFit(c, musicTitle, titleX, y + 49, Math.max(80f, titleW), 11.5f, ink());
+
+            if (portrait) {
+                smallButton(c, x + 105, y + 78, 42, 29, "‹", 14);
+                smallButton(c, x + 154, y + 78, 42, 29, musicPlaying ? "Ⅱ" : "▶", 13);
+                smallButton(c, x + 203, y + 78, 42, 29, "›", 15);
+                text(c, "PLAYLIST  •  TAP A TRACK", x + 13, y + 121, 7, muted());
+                drawMusicPlaylistRows(c, x + 12, y + 134, w - 24, 27, 4);
+            } else {
+                smallButton(c, x + 268, y + 63, 44, 32, "‹", 14);
+                smallButton(c, x + 319, y + 63, 44, 32, musicPlaying ? "Ⅱ" : "▶", 13);
+                smallButton(c, x + 370, y + 63, 44, 32, "›", 15);
+                text(c, "PLAYLIST", x + 438, y + 24, 7, muted());
+                drawMusicPlaylistRows(c, x + 435, y + 33, w - 447, 25, 3);
+            }
+            if (musicPlaying) postInvalidateOnAnimation();
+        }
+
+        private void drawMusicPlaylistRows(Canvas c, float x, float y, float w, float rowH, int maxRows) {
+            int count = musicPlaylist.length;
+            if (count <= 0) {
+                textFit(c, "Add tracks in Audio & Menu", x + 4, y + 4, w - 8, 8, muted());
+                return;
+            }
+            for (int row = 0; row < maxRows; row++) {
+                int index = (musicSelectedTrack + row) % count;
+                float ry = y + row * rowH;
+                boolean selected = row == 0;
+                p.setColor(selected ? 0xFF354D62 : 0xB5162031);
+                c.drawRoundRect(x, ry, x + w, ry + rowH - 3, 5, 5, p);
+                textFit(c, musicPlaylist[index], x + 6, ry + (rowH - 10) * 0.5f, w - 12, 8.3f,
+                    selected ? 0xFFFFD66B : ink());
+            }
+        }
+
         private void drawLandscape(Canvas c) {
             headerPlate(c, 18, 7, 265, 49);
             text(c, "PIPE CLEAN  •  POCKET QUEST", 26, 23, 10, accent());
