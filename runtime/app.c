@@ -547,6 +547,12 @@ static const char *desktop_deck_picker_title(int kind)
     case 15: return "Choose Mushroom texture (PNG/GIF)";
     case 16: return "Choose Fire Flower / Superball Flower texture (PNG/GIF)";
     case 17: return "Choose Carrot texture (PNG/GIF)";
+    case 18: return "Choose header texture (PNG/GIF)";
+    case 19: return "Choose Adventure Status texture (PNG/GIF)";
+    case 20: return "Choose Save button texture (PNG/GIF)";
+    case 21: return "Choose Load button texture (PNG/GIF)";
+    case 22: return "Choose Pause/Resume button texture (PNG/GIF)";
+    case 23: return "Choose Rewind button texture (PNG/GIF)";
     case 13: return "Import Companion Deck ZIP bundle";
     case 14: return "Export Companion Deck ZIP bundle";
     default: return "Choose Companion Deck asset";
@@ -753,7 +759,7 @@ void launcher_open_companion_layout_picker(int kind, int game)
     int dialog_kind;
     if (kind == 14) dialog_kind = DLG_ZIP_SAVE;
     else if (kind == 13) dialog_kind = DLG_ZIP_OPEN;
-    else if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 17)) dialog_kind = DLG_IMAGE;
+    else if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 23)) dialog_kind = DLG_IMAGE;
     else dialog_kind = DLG_AUDIO;
     if (!dlg_pick(dialog_kind, desktop_deck_picker_title(kind), selected, sizeof selected)) return;
 
