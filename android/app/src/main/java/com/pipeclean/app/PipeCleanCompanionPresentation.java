@@ -689,7 +689,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0) return;
-            for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
+            for (int slot = 0; slot < LAYOUT_DECORATION_COUNT; slot++) {
                 int imageIndex = slot == 0 ? 3 : 20 + slot;
                 if (!hasLayoutImage(g, imageIndex)) continue;
                 float bx = slot == 0 ? w * 0.35f : slot == 1 ? w * 0.025f :
