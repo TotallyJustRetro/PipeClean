@@ -572,17 +572,19 @@ static int desktop_bundle_entry_safe(const char *name)
     return 1;
 }
 
-static int desktop_bundle_make_parents(const char *path)
+static int desktop_bundle_make_parents(const char *path, const char *root)
 {
-    char parent[2048];
-    size_t n = strlen(path);
-    if (!n || n >= sizeof parent) return 0;
+    char parent[2400];
+    size_t n = strlen(path), root_len = strlen(root);
+    if (!n || n >= sizeof parent || n <= root_len ||
+        strncmp(path, root, root_len) != 0 ||
+        (path[root_len] != '/' && path[root_len] != '\\')) return 0;
     memcpy(parent, path, n + 1);
-    for (char *p = parent + 1; *p; ++p) {
+    for (char *p = parent + root_len + 1; *p; ++p) {
         if (*p == '/' || *p == '\\') {
             char save = *p;
             *p = 0;
-            if (parent[0] && mkdir_u(parent) != 0 && !file_exists(parent)) return 0;
+            if (mkdir_u(parent) != 0 && !file_exists(parent)) return 0;
             *p = save;
         }
     }
@@ -616,9 +618,11 @@ static int desktop_bundle_import(int game, const char *zip_path, char *manifest_
     int ok = 1;
     for (mz_uint i = 0; i < entries && ok; i++) {
         char name[768], dst[2400];
-        if (!mz_zip_reader_get_filename(&zip, i, name, sizeof name) ||
-            !desktop_bundle_entry_safe(name)) { ok = 0; break; }
+        if (!mz_zip_reader_get_filename(&zip, i, name, sizeof name)) { ok = 0; break; }
+        /* Directory entries are never extracted. Ignore their trailing slash
+           here; all file names are strictly validated before joining to root. */
         if (mz_zip_reader_is_file_a_directory(&zip, i)) continue;
+        if (!desktop_bundle_entry_safe(name)) { ok = 0; break; }
         mz_zip_archive_file_stat st;
         if (!mz_zip_reader_file_stat(&zip, i, &st) || st.m_uncomp_size > 40u * 1024u * 1024u) {
             ok = 0; break;
@@ -628,7 +632,7 @@ static int desktop_bundle_import(int game, const char *zip_path, char *manifest_
         int written = snprintf(dst, sizeof dst, "%s/%s", root, name);
         if (written < 0 || (size_t)written >= sizeof dst ||
             strncmp(dst, root, root_len) != 0 || dst[root_len] != '/') { ok = 0; break; }
-        if (!desktop_bundle_make_parents(dst) ||
+        if (!desktop_bundle_make_parents(dst, root) ||
             !mz_zip_reader_extract_to_file(&zip, i, dst, 0)) { ok = 0; break; }
     }
     mz_zip_reader_end(&zip);
