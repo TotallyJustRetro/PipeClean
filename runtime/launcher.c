@@ -50,8 +50,10 @@ static char bg_loaded[512], bg_msg[256];
 static int bg_for_game = -1;
 static float anim_clock;
 static int menu_playlist_page;
-static char menu_title_seen[512];
-static float menu_title_anim = 1.0f;
+static unsigned music_notice_serial;
+static float music_notice_age = -1.0f;
+static char music_notice_path[512];
+static void menu_music_notice_start(void);
 static int wide_dirty, wide_note[N_GAMES];
 static SDL_Texture *state_thumb_tex[N_GAMES][10];
 static char state_thumb_path_cache[N_GAMES][10][1200];
@@ -619,6 +621,7 @@ void launcher_enter(void)
     bg_for_game = -1;
     audio_menu_apply();
     audio_menu_music(1);
+    if (settings.menu_music) menu_music_notice_start();
 }
 
 void launcher_shutdown(void) { netplay_shutdown(); clear_state_thumbs(); clear_romhack_thumbs(); tex_collect_save(); }
@@ -2015,6 +2018,25 @@ static void menu_music_title_from_path(const char *path, char *out, size_t n)
     if (!w) snprintf(out, n, "Untitled track");
 }
 
+static void menu_music_notice_start(void)
+{
+    if (!settings.menu_music) return;
+    music_notice_serial++;
+    if (!music_notice_serial) music_notice_serial = 1;
+    music_notice_age = 0.0f;
+    snprintf(music_notice_path, sizeof music_notice_path, "%s", settings.menu_music_path);
+}
+
+int launcher_music_notification_serial(void)
+{
+    return (int)music_notice_serial;
+}
+
+int launcher_music_notification_allowed(void)
+{
+    return tab != TAB_AUDIO;
+}
+
 static void menu_music_set_builtin(void)
 {
     settings.menu_music_path[0] = 0;
@@ -2022,8 +2044,7 @@ static void menu_music_set_builtin(void)
     audio_menu_apply();
     audio_menu_music(1);
     audio_music_preview();
-    menu_title_seen[0] = 0;
-    menu_title_anim = 0.0f;
+    menu_music_notice_start();
     settings_save();
 }
 
@@ -2038,8 +2059,7 @@ void launcher_menu_music_select(int index)
     audio_menu_apply();
     audio_menu_music(1);
     audio_music_preview();
-    snprintf(menu_title_seen, sizeof menu_title_seen, "%s", settings.menu_music_path);
-    menu_title_anim = 0.0f;
+    menu_music_notice_start();
     settings_save();
 }
 
@@ -2061,6 +2081,10 @@ void launcher_menu_music_toggle(void)
     settings.menu_music = !settings.menu_music;
     audio_menu_apply();
     audio_menu_music(1);
+    if (settings.menu_music) {
+        audio_music_preview();
+        menu_music_notice_start();
+    }
     settings_save();
 }
 
@@ -2115,70 +2139,50 @@ static void menu_playlist_remove_selected(void)
     launcher_toast("Track removed from the menu playlist.");
 }
 
-static void menu_music_preview(float x, float y, float w, float h)
+static void menu_music_notice_draw(float vx, float vy)
 {
-    char title[512];
-    float size = h - 10.0f;
-    if (size > 48.0f) size = 48.0f;
-    if (size < 30.0f) size = 30.0f;
-    float cx = x + 12.0f + size * 0.5f;
-    float cy = y + h * 0.5f;
-    menu_music_title_from_path(settings.menu_music_path, title, sizeof title);
-    if (strcmp(menu_title_seen, settings.menu_music_path)) {
-        snprintf(menu_title_seen, sizeof menu_title_seen, "%s", settings.menu_music_path);
-        menu_title_anim = 0.0f;
-    }
-    if (menu_title_anim < 1.0f) {
-        menu_title_anim += ui_dt * 3.6f;
-        if (menu_title_anim > 1.0f) menu_title_anim = 1.0f;
-    }
-    float ease = 1.0f - (1.0f - menu_title_anim) * (1.0f - menu_title_anim) *
-                         (1.0f - menu_title_anim);
-    float slide = (1.0f - ease) * 28.0f;
-
-    ui_rrect(x, y, w, h, 12, HEX(0x111722));
-    ui_stroke(x, y, w, h, 12, 1, C_LINE);
-    /* Original vinyl art: rotating groove highlight and center label. */
-    ui_rrect(cx - size * .5f, cy - size * .5f, size, size, size * .5f, HEX(0x080A10));
-    ui_stroke(cx - size * .5f + 2, cy - size * .5f + 2, size - 4, size - 4,
-              size * .5f - 2, 1, HEX(0x495166));
-    ui_stroke(cx - size * .5f + size * .20f, cy - size * .5f + size * .20f,
-              size * .60f, size * .60f, size * .30f, 1, HEX(0x30394C));
-    ui_stroke(cx - size * .5f + size * .32f, cy - size * .5f + size * .32f,
-              size * .36f, size * .36f, size * .18f, 1, HEX(0x30394C));
-    float angle = settings.menu_music ? anim_clock * 4.8f : -0.45f;
-    ui_line(cx, cy, cx + cosf(angle) * size * .35f, cy + sinf(angle) * size * .35f,
-            2, HEX(0xE9C66D));
-    ui_rrect(cx - size * .115f, cy - size * .115f, size * .23f, size * .23f,
-             size * .12f, settings.menu_music ? HEX(ui_accent) : HEX(0x9298AA));
-    ui_rrect(cx - 2, cy - 2, 4, 4, 2, HEX(0x0A0D14));
-
-#if defined(__ANDROID__)
-    if (settings.launcher_dual_screen) {
-        ui_text(F_BOLD, 11, x + size + 30, y + 9, C_ACCENT,
-                "NOW PLAYING ON COMPANION DECK");
-        ui_text_fit(F_REG, 11, x + size + 30, y + 29, w - size - 44, C_DIM,
-                    "Music controls moved to the lower display.");
+    if (music_notice_age < 0.0f || music_notice_age > 2.75f || tab == TAB_AUDIO)
         return;
-    }
+#if defined(__ANDROID__)
+    if (settings.launcher_dual_screen) return;
 #endif
-    float tx = x + size + 24.0f + slide;
-    float controlX = x + w - 91.0f;
-    float tw = controlX - tx - 8.0f;
-    ui_text(F_BOLD, 8, tx, y + 7, settings.menu_music ? C_OK : C_DIM,
-            settings.menu_music ? "NOW PLAYING" : "MUSIC PAUSED");
-    ui_text_fit(F_BOLD, 13, tx, y + 20, tw, C_TEXT, title);
-    ui_text_fit(F_REG, 9, tx, y + h - 17, tw, C_DIM,
-                settings.menu_music_path[0] ? "Playlist track"
-                                            : "Built-in PipeClean menu theme");
-    if (ui_button(x + w - 91, y + 17, 27, 26, "‹", B_GHOST, 1))
-        launcher_menu_music_step(-1);
-    if (ui_button(x + w - 59, y + 17, 27, 26,
-                  settings.menu_music ? "Ⅱ" : "▶", B_GHOST, 1))
-        launcher_menu_music_toggle();
-    if (ui_button(x + w - 27, y + 17, 27, 26, "›", B_GHOST, 1))
-        launcher_menu_music_step(1);
+    const float w = 330.0f, h = 66.0f;
+    const float in_time = 0.30f, out_start = 2.34f, out_time = 0.36f;
+    float offset = 0.0f;
+    if (music_notice_age < in_time) {
+        float p = music_notice_age / in_time;
+        float e = 1.0f - (1.0f - p) * (1.0f - p) * (1.0f - p);
+        offset = -w * (1.0f - e);
+    } else if (music_notice_age > out_start) {
+        float p = (music_notice_age - out_start) / out_time;
+        if (p > 1.0f) p = 1.0f;
+        float e = p * p * (3.0f - 2.0f * p);
+        offset = -w * e;
+    }
+    float x = vx + 16.0f + offset;
+    float y = vy + 98.0f;
+    char title[512];
+    menu_music_title_from_path(music_notice_path, title, sizeof title);
+    float cx = x + 36.0f, cy = y + h * 0.5f;
+    ui_shadow(x, y, w, h, 13.0f, 9.0f, RGBA(0, 0, 0, 115));
+    ui_rrect(x, y, w, h, 13.0f, RGBA(17, 23, 34, 245));
+    ui_stroke(x, y, w, h, 13.0f, 1.0f, RGBA(92, 111, 147, 230));
+    ui_rrect(cx - 24, cy - 24, 48, 48, 24, HEX(0x080A10));
+    ui_stroke(cx - 22, cy - 22, 44, 44, 22, 1, HEX(0x495166));
+    ui_stroke(cx - 16, cy - 16, 32, 32, 16, 1, HEX(0x30394C));
+    ui_stroke(cx - 10, cy - 10, 20, 20, 10, 1, HEX(0x30394C));
+    float angle = anim_clock * 5.2f;
+    ui_line(cx, cy, cx + cosf(angle) * 17.0f, cy + sinf(angle) * 17.0f,
+            2, HEX(0xE9C66D));
+    ui_rrect(cx - 6, cy - 6, 12, 12, 6, HEX(ui_accent));
+    ui_rrect(cx - 1.5f, cy - 1.5f, 3, 3, 1.5f, HEX(0x0A0D14));
+    ui_text(F_BOLD, 8, x + 68, y + 10, C_OK, "NOW PLAYING");
+    ui_text_fit(F_BOLD, 13, x + 68, y + 24, w - 82, C_TEXT, title);
+    ui_text_fit(F_REG, 9, x + 68, y + 45, w - 82, C_MUTED,
+                music_notice_path[0] ? "PipeClean menu playlist" : "PipeClean built-in menu music");
 }
+
+
 
 static void menu_playlist_import_dialog(void)
 {
