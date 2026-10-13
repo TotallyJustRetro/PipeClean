@@ -104,6 +104,9 @@ typedef struct {
  * 800x480 reference coordinates and scales are percentages. */
 enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
        DECK_SOUND_BACKGROUND, DECK_SOUND_CLOSE, N_DECK_BUTTON_SOUNDS };
+/* Reserve item IDs: 1 = mushroom, 2 = SML1 superball / SML2 fire flower,
+ * 3 = SML2 carrot. Index 0 is unused; item_texture_path is the legacy fallback. */
+#define N_DECK_ITEM_TEXTURE_IDS 4
 typedef struct {
     int header_dx, header_dy, header_scale;
     int item_dx, item_dy, item_scale;
@@ -113,7 +116,8 @@ typedef struct {
     int sounds_enabled;
     char background_path[512];
     char button_texture_path[512];
-    char item_texture_path[512];
+    char item_texture_path[512]; /* Legacy generic item image, used as fallback. */
+    char item_texture_by_id[N_DECK_ITEM_TEXTURE_IDS][512];
     char decoration_path[512];
     char button_sound_path[N_DECK_BUTTON_SOUNDS][512];
     char item_sound_path[512];
