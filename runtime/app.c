@@ -196,18 +196,18 @@ void launcher_open_companion_layout_picker(int kind, int game)
         "controls_dx=%d\ncontrols_dy=%d\ncontrols_scale=%d\ncontrols_scale_y=%d\n"
         "timeline_dx=%d\ntimeline_dy=%d\ntimeline_scale=%d\ntimeline_scale_y=%d\n"
         "decoration_dx=%d\ndecoration_dy=%d\ndecoration_scale=%d\ndecoration_scale_y=%d\n"
-        "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\n"
-        "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\n"
-        "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\n"
+        "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\ndecoration_2_scale_y=%d\n"
+        "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\ndecoration_3_scale_y=%d\n"
+        "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\ndecoration_4_scale_y=%d\n"
         "sounds_enabled=%d\n",
         d->header_dx, d->header_dy, d->header_scale, d->header_scale_y,
         d->item_dx, d->item_dy, d->item_scale, d->item_scale_y,
         d->controls_dx, d->controls_dy, d->controls_scale, d->controls_scale_y,
         d->timeline_dx, d->timeline_dy, d->timeline_scale, d->timeline_scale_y,
         d->decoration_dx, d->decoration_dy, d->decoration_scale, d->decoration_scale_y,
-        d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0],
-        d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1],
-        d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2],
+        d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0], d->decoration_extra_scale_y[0],
+        d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1], d->decoration_extra_scale_y[1],
+        d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2], d->decoration_extra_scale_y[2],
         d->sounds_enabled);
     jstring text = (*env)->NewStringUTF(env, manifest);
     jclass string_class = (*env)->FindClass(env, "java/lang/String");
@@ -738,18 +738,18 @@ static int desktop_bundle_export(int game, const char *zip_path)
         "controls_dx=%d\ncontrols_dy=%d\ncontrols_scale=%d\ncontrols_scale_y=%d\n"
         "timeline_dx=%d\ntimeline_dy=%d\ntimeline_scale=%d\ntimeline_scale_y=%d\n"
         "decoration_dx=%d\ndecoration_dy=%d\ndecoration_scale=%d\ndecoration_scale_y=%d\n"
-        "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\n"
-        "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\n"
-        "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\n"
+        "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\ndecoration_2_scale_y=%d\n"
+        "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\ndecoration_3_scale_y=%d\n"
+        "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\ndecoration_4_scale_y=%d\n"
         "sounds_enabled=%d\n",
         d->header_dx, d->header_dy, d->header_scale, d->header_scale_y,
         d->item_dx, d->item_dy, d->item_scale, d->item_scale_y,
         d->controls_dx, d->controls_dy, d->controls_scale, d->controls_scale_y,
         d->timeline_dx, d->timeline_dy, d->timeline_scale, d->timeline_scale_y,
         d->decoration_dx, d->decoration_dy, d->decoration_scale, d->decoration_scale_y,
-        d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0],
-        d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1],
-        d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2],
+        d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0], d->decoration_extra_scale_y[0],
+        d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1], d->decoration_extra_scale_y[1],
+        d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2], d->decoration_extra_scale_y[2],
         d->sounds_enabled);
     if (len < 0 || (size_t)len >= sizeof manifest) return 0;
 
