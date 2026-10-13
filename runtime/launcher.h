@@ -22,3 +22,8 @@ void launcher_shared_slot_name_get(int game, int slot, char *out, size_t out_siz
 int launcher_shared_slot_name_set(int game, int slot, const char *name);
 void launcher_shutdown(void);
 void launcher_set_renderer(SDL_Renderer *r);
+/* Companion dashboard and menu-music actions shared with the Android host. */
+int launcher_preview_pixels(int game, const uint32_t **pixels, int *w, int *h);
+void launcher_menu_music_toggle(void);
+void launcher_menu_music_step(int delta);
+void launcher_menu_music_select(int index);
