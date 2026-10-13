@@ -3391,6 +3391,15 @@ static void tab_display(float x, float y)
         settings_save();
     ui_text_fit(F_REG, 11, x + 36, y + 330, 700, C_DIM,
                 "Window size is restored when fullscreen is turned off. The game's own Display settings can still change game window size.");
+    ui_text(F_REG, 13, x + 36, y + 369, C_TEXT, "Companion Deck simulator");
+    if (ui_toggle(x + 310, y + 365, &settings.launcher_dual_screen)) {
+        settings_save();
+        launcher_toast(settings.launcher_dual_screen
+            ? "Companion Deck simulator enabled. A second window will open."
+            : "Companion Deck simulator disabled.");
+    }
+    ui_text_fit(F_REG, 10, x + 36, y + 396, 710, C_DIM,
+                "Opens a resizable second window for testing deck layouts and game state without a physical second display.");
 #endif
     if (ui_button(x + 36, y + 434, 180, 30, "Reset display options", B_NORMAL, 1)) {
         settings.launcher_ui_scale = 100;
