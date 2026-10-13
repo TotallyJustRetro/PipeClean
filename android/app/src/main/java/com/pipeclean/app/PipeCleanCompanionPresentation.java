@@ -207,6 +207,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String wallpaperPath = "";
 
         private static final int LAYOUT_GAME_COUNT = 7;
+        private static final int LAYOUT_DECORATION_COUNT = 8;
+        private static final int LAYOUT_ELEMENT_COUNT = 4 + LAYOUT_DECORATION_COUNT;
         private static final int LAYOUT_VALUE_COUNT = 49;
         private static final int LAYOUT_PATH_COUNT = 28;
         private final int[][] layoutValues = new int[LAYOUT_GAME_COUNT][LAYOUT_VALUE_COUNT];
@@ -581,7 +583,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void applyLayoutTransform(Canvas canvas, int element, float w, float h,
                                           float centerX, float centerY) {
             int g = activeLayoutGame();
-            if (g < 0 || element < 0 || element >= 4 + N_DECK_DECORATIONS) return;
+            if (g < 0 || element < 0 || element >= LAYOUT_ELEMENT_COUNT) return;
             int base = element < 5 ? element * 3 : 16 + (element - 5) * 3;
             float dx = layoutValues[g][base] * (w / 800f);
             float dy = layoutValues[g][base + 1] * (h / 450f);
