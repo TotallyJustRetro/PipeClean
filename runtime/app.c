@@ -422,11 +422,13 @@ static void companion_publish_launcher_dashboard(int selected_game)
             }
             for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++)
                 values[base + 49 + asset] = layout->asset_stretch[asset] ? 1 : 0;
-            values[base + 25] = layout->header_scale_y;
-            values[base + 26] = layout->item_scale_y;
-            values[base + 27] = layout->controls_scale_y;
-            values[base + 28] = layout->timeline_scale_y;
-            values[base + 29] = layout->decoration_scale_y;
+            /* Vertical scales occupy 37..48, matching applyLayoutTransform().
+               Keep indices 16..36 reserved for the seven extra layer transforms. */
+            values[base + 37] = layout->header_scale_y;
+            values[base + 38] = layout->item_scale_y;
+            values[base + 39] = layout->controls_scale_y;
+            values[base + 40] = layout->timeline_scale_y;
+            values[base + 41] = layout->decoration_scale_y;
             for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
                 values[base + 42 + slot] = layout->decoration_extra_scale_y[slot];
         }
