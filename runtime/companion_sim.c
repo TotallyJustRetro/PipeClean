@@ -1501,6 +1501,7 @@ static void draw_companion(const Settings *s)
     if (g < 0 || g >= N_GAMES) g = GAME_SML;
     const CompanionLayoutCfg *d = &s->deck_layout[g];
     if (g == GAME_DRMARIO) { draw_dr_mario_companion(s, d); return; }
+    if (g == GAME_WARIO_SML3) { draw_wario_companion(s); return; }
     draw_android_scenery(g);
     draw_asset_image(s, g, 0, 0, 0, 800, 450);
 
