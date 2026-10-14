@@ -295,6 +295,11 @@ int launcher_prepare(int g, char *err, size_t n)
      * width setup. Unsupported Wario ROM revisions safely return to 160px. */
     int wide_ready = wide_install_profile(g, wl, wr, wario_dx);
     if (wl + wr > 0 && !wide_ready) { wl = wr = 0; wide_note[g] = 1; } else wide_note[g] = 0;
+    /* Keep diagnostics beside PipeClean instead of an unknown process working
+       directory (which can be System32 when launched from a shell). */
+    char trace_path[1200];
+    snprintf(trace_path, sizeof trace_path, "%spipeclean-wl2-wide-trace.txt", settings_dir());
+    wide_wl2_trace_set_path(trace_path);
     ppu_set_wario_sml3(g == GAME_WARIO_SML3 && wl + wr > 0 && wide_ready);
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
