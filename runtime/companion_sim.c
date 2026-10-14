@@ -1522,6 +1522,7 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
         if (frame->level_id != 0xff) current_stage = frame->level_id;
         if (game == GAME_SML && frame->level_bank != 0xff) current_world = frame->level_bank;
     }
+    companion_sim_update_wario(game, frame);
 }
 
 void companion_sim_render(Settings *s, SDL_Window *main_window)
