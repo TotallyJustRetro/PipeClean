@@ -1,5 +1,12 @@
 #include "gb.h"
+#include "cart.h"
 #include <assert.h>
+
+/* This renderer-only test links ppu.c without the cartridge module. */
+uint8_t *rom;
+uint8_t *cart_ram;
+static CartInfo renderer_test_cart;
+const CartInfo *cart_info(void) { return &renderer_test_cart; }
 
 uint8_t io_if, io_ie;
 void frame_hook(void) {}
