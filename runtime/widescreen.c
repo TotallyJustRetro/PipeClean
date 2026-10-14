@@ -3,7 +3,6 @@
 #include <ctype.h>
 #include "widescreen.h"
 #include "gb.h"
-#include "cart.h"
 
 /* ---- Super Mario Land ----
  * Level columns are streamed 7 columns ahead of the screen and 4 behind, so the background is already
@@ -33,11 +32,12 @@ static int text_has_dx(const char *s)
 
 int wide_is_wario_dx_profile(const char *title, const char *path)
 {
-    /* A pre-patched DX ROM often has no "DX" in its header or filename.
-     * Detect the known CGB-only MBC5 expansion after the hack is loaded. */
-    const CartInfo *ci = cart_info();
-    if (rom && ci && ci->size >= 0x85000u &&
-        rom[0x143] == 0xC0 && rom[0x147] == 0x1B)
+    /* This DX IPS expands the clean 512 KiB cart to 1 MiB and changes
+     * the header to CGB-only MBC5. Header-based recognition also works when
+     * the patch is loaded under an arbitrary filename and keeps this module
+     * independent of cartridge metadata for isolated tests. */
+    if (rom && rom[0x143] == 0xC0 &&
+        rom[0x147] == 0x1B && rom[0x148] == 0x05)
         return 1;
     return text_has_dx(title) || text_has_dx(path);
 }
@@ -688,15 +688,15 @@ static int wide_install_wario_sml3(int wario_dx)
     static const uint8_t original_fov[] = {0xC6, 0x10, 0xFE, 0xD0};
     static const uint8_t clean_fov[]    = {0xC6, 0x21, 0xFE, 0xE2};
     static const uint8_t dx_fov[]       = {0xC6, 0x1E, 0xFE, 0xED};
-    const CartInfo *ci = cart_info();
-    if (!rom || !ci) return 0;
+    if (!rom) return 0;
 
-    /* The DX patch expands the World ROM and changes it to a CGB-only MBC5
-     * cartridge. Do not reject it using the clean-ROM size code. */
+    /* The provided IPS expands the clean 512 KiB ROM to 1 MiB and changes
+     * its header to CGB-only MBC5 (type 1B, ROM-size code 05). Validate the
+     * full header before modifying code so unrelated ROMs fail closed. */
     if (wario_dx) {
-        if (ci->size < 0x85000u || rom[0x143] != 0xC0 || rom[0x147] != 0x1B)
+        if (rom[0x143] != 0xC0 || rom[0x147] != 0x1B || rom[0x148] != 0x05)
             return 0;
-    } else if (ci->size != 0x80000u || rom[0x148] != 0x04) {
+    } else if (rom[0x148] != 0x04) {
         return 0;
     }
 
