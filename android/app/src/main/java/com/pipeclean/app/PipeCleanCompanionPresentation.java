@@ -179,6 +179,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
         private boolean paused, itemPressed, dashboardMode = true, dashboardDualScreen;
         private long itemPressStart, itemReleaseStart;
+        private static final int ITEM_ANIM_IDLE = 0, ITEM_ANIM_ARRIVE = 1, ITEM_ANIM_SEND_OFF = 2;
+        private static final long ITEM_ARRIVE_MS = 460L, ITEM_SEND_OFF_MS = 360L;
+        private int displayedItem, lastObservedItem, itemAnimationKind;
+        private long itemAnimationStart;
         private int dashboardGame = -1;
         private String[] dashboardGameNames = new String[0];
         private int[] dashboardRecentGames = new int[0], dashboardPlaySeconds = new int[0];
@@ -256,8 +260,37 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (animatedSlot < 0f) animatedSlot = this.slot;
             this.palette = Math.max(0, Math.min(PALETTES.length - 1, palette));
             this.filter = Math.max(0, Math.min(FILTERS.length - 1, filter));
+            observeReserveItem(item);
             this.item = item;
             postInvalidate();
+        }
+
+        private void observeReserveItem(int nextItem) {
+            nextItem = Math.max(0, Math.min(3, nextItem));
+            if (nextItem == lastObservedItem) return;
+            long now = SystemClock.uptimeMillis();
+            if (nextItem > 0) {
+                displayedItem = nextItem;
+                itemAnimationKind = ITEM_ANIM_ARRIVE;
+                itemAnimationStart = now;
+            } else if (lastObservedItem > 0) {
+                if (itemAnimationKind != ITEM_ANIM_SEND_OFF || displayedItem != lastObservedItem) {
+                    displayedItem = lastObservedItem;
+                    itemAnimationKind = ITEM_ANIM_SEND_OFF;
+                    itemAnimationStart = now;
+                }
+            } else {
+                displayedItem = 0;
+                itemAnimationKind = ITEM_ANIM_IDLE;
+            }
+            lastObservedItem = nextItem;
+        }
+
+        private void startReserveItemSendOff(int itemId) {
+            if (itemId <= 0) return;
+            displayedItem = itemId;
+            itemAnimationKind = ITEM_ANIM_SEND_OFF;
+            itemAnimationStart = SystemClock.uptimeMillis();
         }
 
         void showIdleState() {
@@ -269,6 +302,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             world = -1;
             paused = false;
             item = 0;
+            displayedItem = 0;
+            lastObservedItem = 0;
+            itemAnimationKind = ITEM_ANIM_IDLE;
+            itemAnimationStart = 0;
             downAction = 0;
             itemPressed = false;
             postInvalidate();
@@ -853,22 +890,26 @@ final class PipeCleanCompanionPresentation extends Presentation {
             return "—";
         }
 
-        private String itemName() {
-            if (item == 0) return "";
+        private String itemName() { return itemName(item); }
+
+        private String itemName(int itemId) {
+            if (itemId == 0) return "";
             if (sml1()) {
-                if (item == 1) return "MUSHROOM";
-                if (item == 2) return "SUPERBALL FLOWER";
+                if (itemId == 1) return "MUSHROOM";
+                if (itemId == 2) return "SUPERBALL FLOWER";
             }
             if (sml2()) {
-                if (item == 1) return "MUSHROOM";
-                if (item == 2) return "FIRE FLOWER";
-                if (item == 3) return "CARROT";
+                if (itemId == 1) return "MUSHROOM";
+                if (itemId == 2) return "FIRE FLOWER";
+                if (itemId == 3) return "CARROT";
             }
             return "POWER-UP";
         }
 
-        private String actionHint() {
-            if (item == 0) return "";
+        private String actionHint() { return actionHint(item); }
+
+        private String actionHint(int itemId) {
+            if (itemId == 0) return "";
             return sml1() ? "Tap to release into the level" : "Tap when you're ready";
         }
 
@@ -1290,9 +1331,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawHeroItem(Canvas c, float cx, float cy, float radius, int itemId) {
-            float t = SystemClock.uptimeMillis() / 1000f;
-            float pulse = 1.0f + (float)Math.sin(t*3.1f)*0.025f;
             long now = SystemClock.uptimeMillis();
+            float t = now / 1000f;
+            float pulse = 1.0f + (float)Math.sin(t * 3.1f) * 0.025f;
             if (itemPressed) {
                 float held = Math.min(1f, (now - itemPressStart) / 75f);
                 pulse *= 1f - 0.13f * held;
@@ -1300,11 +1341,52 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 float u = (now - itemReleaseStart) / 220f;
                 pulse *= 0.87f + 0.13f * (1f - (1f-u)*(1f-u));
             }
+
+            int animatedItem = itemId;
+            float itemDy = 0f, itemScale = 1f, phase = 1f;
+            int itemAlpha = 255;
+            int animation = layoutEditorPreview ? ITEM_ANIM_IDLE : itemAnimationKind;
+            if (animation == ITEM_ANIM_ARRIVE && displayedItem > 0) {
+                phase = Math.min(1f, Math.max(0f,
+                    (now - itemAnimationStart) / (float)ITEM_ARRIVE_MS));
+                float eased = 1f - (float)Math.pow(1f - phase, 3);
+                itemDy = -radius * 0.48f * (1f - eased);
+                itemScale = 0.25f + 0.75f * eased + (float)Math.sin(phase * Math.PI) * 0.16f;
+                itemAlpha = Math.min(255, (int)(phase * 510f));
+                animatedItem = displayedItem;
+                if (phase >= 1f) {
+                    itemAnimationKind = ITEM_ANIM_IDLE;
+                    displayedItem = this.item;
+                    animatedItem = itemId;
+                    itemDy = 0f; itemScale = 1f; itemAlpha = 255;
+                } else {
+                    postInvalidateOnAnimation();
+                }
+            } else if (animation == ITEM_ANIM_SEND_OFF && displayedItem > 0) {
+                phase = Math.min(1f, Math.max(0f,
+                    (now - itemAnimationStart) / (float)ITEM_SEND_OFF_MS));
+                itemDy = radius * 1.12f * phase;
+                itemScale = 1f - 0.48f * phase;
+                itemAlpha = Math.max(0, (int)((1f - phase) * 255f));
+                animatedItem = displayedItem;
+                if (phase >= 1f) {
+                    itemAnimationKind = ITEM_ANIM_IDLE;
+                    displayedItem = this.item;
+                    animatedItem = itemId;
+                    itemDy = 0f; itemScale = 1f; itemAlpha = 255;
+                } else {
+                    postInvalidateOnAnimation();
+                }
+            } else if (!layoutEditorPreview) {
+                itemDy = (float)Math.sin(t * 2.25f) * radius * 0.025f;
+                itemScale = 1f + (float)Math.sin(t * 3.1f) * 0.018f;
+            }
+
             c.save();
             c.translate(cx, cy);
             c.scale(pulse, pulse);
             c.translate(-cx, -cy);
-            // Soft gold aura, layered discs and a pixelated gold orbit.
+            // The reserve socket and orbit stay stable while the item itself animates.
             p.setStyle(Paint.Style.FILL);
             p.setColor(0x28FFD86A);
             c.drawCircle(cx,cy,radius+22,p);
@@ -1332,34 +1414,47 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(i%7==0) rect(c,bx-1,by-1,2,2,0xFFFFFFFF);
             }
 
-            // Little floating sparkles rotate more slowly than the ring.
             for(int i=0;i<6;i++) {
                 double a=(Math.PI*2.0*i/6.0)-rotation*0.55;
                 float sr=radius+28+(float)Math.sin(t*2+i)*3;
                 float sx=cx+(float)Math.cos(a)*sr, sy=cy+(float)Math.sin(a)*sr;
                 drawSparkle(c,sx,sy,(i%2==0)?5:3,(i%3==0)?0xFFFFF3C8:gold());
             }
+            if (animation == ITEM_ANIM_ARRIVE && phase < 1f && !layoutEditorPreview) {
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeWidth(3f);
+                int alpha = Math.max(0, Math.min(170, (int)((1f - phase) * 170f)));
+                p.setColor((alpha << 24) | (gold() & 0x00FFFFFF));
+                c.drawCircle(cx, cy + itemDy, radius * (0.16f + phase * 0.72f), p);
+                p.setStyle(Paint.Style.FILL);
+            }
 
-            if(itemId>0) {
+            int itemLayer = itemAlpha < 255 ? c.saveLayerAlpha(
+                cx-radius, cy-radius, cx+radius, cy+radius, itemAlpha) : -1;
+            c.save();
+            c.translate(cx, cy + itemDy);
+            c.scale(itemScale, itemScale);
+            c.translate(-cx, -cy);
+            if(animatedItem>0) {
                 int layoutGame = activeLayoutGame();
-                int textureIndex = 11 + itemId;
-                if (layoutGame >= 0 && itemId > 0 && hasLayoutImage(layoutGame, textureIndex))
+                int textureIndex = 11 + animatedItem;
+                if (layoutGame >= 0 && hasLayoutImage(layoutGame, textureIndex))
                     drawLayoutImageAsset(c, layoutGame, textureIndex, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else if (layoutGame >= 0 && hasLayoutImage(layoutGame, 2))
                     drawLayoutImageAsset(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else
-                    drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,itemId);
-                // Only occupied pockets need a label or usage hint.
-                textFit(c, itemName(), cx, cy + radius * 0.66f, radius * 1.55f,
+                    drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,animatedItem);
+                textFit(c, itemName(animatedItem), cx, cy + radius * 0.66f, radius * 1.55f,
                     Math.max(8f, radius * 0.11f), ink(), true);
-                textFit(c, actionHint(), cx, cy + radius * 0.81f, radius * 1.68f,
+                textFit(c, actionHint(animatedItem), cx, cy + radius * 0.81f, radius * 1.68f,
                     Math.max(6.5f, radius * 0.065f), muted(), true);
             } else {
-                // Empty pockets are represented by the icon alone—no text.
                 drawPixelStar(c,cx,cy-radius*0.08f,17,0xFFB4A1CB);
             }
+            c.restore();
+            if (itemLayer >= 0) c.restoreToCount(itemLayer);
             c.restore();
         }
 
@@ -1706,6 +1801,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     else if (up == PAUSE) playLayoutSound(6);
                     else if (up == BACKGROUND) playLayoutSound(8);
                     else if (up == CLOSE_GAME) playLayoutSound(9);
+                    else if (up == ITEM_USE && item > 0) startReserveItemSendOff(item);
                     send(up,1);
                 }
                 if(downAction==ITEM_USE) {
