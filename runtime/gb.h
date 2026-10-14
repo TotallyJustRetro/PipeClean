@@ -31,6 +31,8 @@ extern int cart_ram_on;
 /* ---- memory ---- */
 uint8_t rd8(uint16_t a);
 void wr8(uint16_t a, uint8_t v);
+/* Read the linear WRAM backing store without the currently selected CGB bank. */
+uint8_t gb_wram_peek(size_t offset);
 void gb_watch_range(uint16_t lo, uint16_t hi, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
 void gb_watch_set(const uint16_t *addrs, int n, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
 void gb_watch_override(uint16_t addr, uint8_t value); /* Replace the value for the active watched write. */
