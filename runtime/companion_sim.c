@@ -815,7 +815,7 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
         }
     } else if (animation == SIM_ITEM_ANIM_SEND_OFF && item_animation_item > 0) {
         phase = fminf(1.0f, (float)(now - item_animation_started) / 360.0f);
-        icon_cy += (int)(r * 1.12f * phase);
+        icon_cy -= (int)(r * 1.12f * phase);
         icon_r = (int)(r * (1.0f - 0.48f * phase));
         render_item = item_animation_item;
         if (phase >= 1.0f) {
@@ -846,17 +846,25 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
             i % 4 == 0 ? 174 : i % 3 == 0 ? 34 : 107, 255);
     }
     if (icon_r < 1) icon_r = 1;
-    if (render_item > 0) {
-        int item_asset = render_item >= 1 && render_item <= 3 ? render_item + 11 : 2;
+    /* SML2's live RAM uses 2 = Carrot and 3 = Fire Flower, while the Deck's
+     * editable texture slots use semantic IDs 2 = Fire Flower and 3 = Carrot.
+     * Never swap editor-preview selections; only normalize live RAM values. */
+    int shown_item = render_item;
+    if (!simulator_layout_preview_enabled() && game == GAME_SML2) {
+        if (shown_item == 2) shown_item = 3;
+        else if (shown_item == 3) shown_item = 2;
+    }
+    if (shown_item > 0) {
+        int item_asset = shown_item >= 1 && shown_item <= 3 ? shown_item + 11 : 2;
         if (!assets[game][item_asset]) item_asset = 2;
         if (assets[game][item_asset]) {
             draw_asset_image(s, game, item_asset,
                 icon_cx - icon_r * 46 / 100, icon_cy - icon_r * 46 / 100,
                 icon_r * 92 / 100, icon_r * 92 / 100);
         } else {
-            const char *label = render_item == 1 ? "MUSHROOM" :
+            const char *label = shown_item == 1 ? "MUSHROOM" :
                 game == GAME_SML ? "SUPERBALL FLOWER" :
-                render_item == 3 ? "CARROT" : "FIRE FLOWER";
+                shown_item == 3 ? "CARROT" : "FIRE FLOWER";
             fill_circle(icon_cx, icon_cy - 8, icon_r / 3, 230, 53, 65, 255);
             fill(icon_cx - icon_r / 3, icon_cy - 1, icon_r * 2 / 3, icon_r / 4, 238, 238, 220, 255);
             fill(icon_cx - icon_r / 4, icon_cy + icon_r / 5, icon_r / 2, icon_r / 2, 238, 238, 220, 255);
@@ -870,10 +878,10 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
         fill(cx - 14, cy - 14, 28, 28, 180, 161, 203, 255);
         fill(cx - 8, cy - 8, 16, 16, 36, 53, 76, 255);
     }
-    if (render_item > 0) {
-        const char *label = render_item == 1 ? "MUSHROOM" :
+    if (shown_item > 0) {
+        const char *label = shown_item == 1 ? "MUSHROOM" :
             game == GAME_SML ? "SUPERBALL FLOWER" :
-            render_item == 3 ? "CARROT" : "FIRE FLOWER";
+            shown_item == 3 ? "CARROT" : "FIRE FLOWER";
         draw_text_fit(icon_cx - icon_r, icon_cy + (int)(icon_r * .66f) - 10, icon_r * 2, 1,
             theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
         draw_text_fit(icon_cx - icon_r, icon_cy + (int)(icon_r * .81f) - 7, icon_r * 2, 1,
