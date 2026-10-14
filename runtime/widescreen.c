@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "widescreen.h"
 #include "gb.h"
 #include "cart.h"
@@ -21,16 +22,43 @@ static int sml_lmax(int k)
     return 19;              /* k == 2: T = ED leaves 256 - ED - gap = 11 px of negative X */
 }
 
-void wide_dims(int game, int pct, int *l, int *r)
+static int text_has_dx(const char *s)
+{
+    if (!s) return 0;
+    for (const unsigned char *p = (const unsigned char *)s; *p; ++p) {
+        if (tolower(p[0]) == 'd' && p[1] && tolower(p[1]) == 'x') return 1;
+    }
+    return 0;
+}
+
+int wide_is_wario_dx_profile(const char *title, const char *path)
+{
+    return text_has_dx(title) || text_has_dx(path);
+}
+
+void wide_dims_profile(int game, int pct, int wario_dx, int *l, int *r)
 {
     *l = *r = 0;
     if (pct <= 0) return;
+    if (game == GAME_WARIO_SML3) {
+        /* Wario Land's culling code is tuned to the original viewport. Keep the
+         * clean ROM and the DX patch on their respective, verified margins. */
+        int margin = (wario_dx ? 30 : 33) * pct;
+        margin = (margin + 50) / 100;
+        *l = *r = margin;
+        return;
+    }
     if (game == GAME_SML2) { *l = (49 * pct + 50) / 100; *r = (33 * pct + 50) / 100; return; }
     if (game == GAME_SML) {
         int rr = (56 * pct + 50) / 100, ll = (32 * pct + 50) / 100;
         int k = sml_k(rr), lm = sml_lmax(k);
         *l = ll < lm ? ll : lm; *r = rr;
     }
+}
+
+void wide_dims(int game, int pct, int *l, int *r)
+{
+    wide_dims_profile(game, pct, 0, l, r);
 }
 
 static int expect(int addr, const uint8_t *b, int n) { return memcmp(&rom[addr], b, (size_t)n) == 0; }
@@ -630,7 +658,64 @@ void wide_state_reset(void)
     sml2_actor_build_count = sml2_actor_frame_count = 0;
 }
 
-int wide_install(int game, int l, int r)
+static int wario_dx_source_sites_ok(int already_patched)
+{
+    /* Check the instruction at each operand before changing it. These sites
+     * widen the DX build's object/camera margins without copying its renderer. */
+    const uint8_t ret = already_patched ? 0x00 : 0xD0;
+    const uint8_t bc_low = already_patched ? 0xD1 : 0xD0;
+    const uint8_t sub_seven = already_patched ? 0x08 : 0x07;
+    const uint8_t load_e = already_patched ? 0x10 : 0x0E;
+    const uint8_t add_six = already_patched ? 0x08 : 0x06;
+
+    if (rom[0x321C] != ret) return 0;
+    if (rom[0x31FC] != 0x01 || rom[0x31FD] != bc_low || rom[0x31FE] != 0x00) return 0;
+    if (rom[0x8476] != 0xD6 || rom[0x8477] != sub_seven) return 0;
+    if (rom[0x8485] != 0x1E || rom[0x8486] != load_e) return 0;
+    if (rom[0x849F] != 0xC6 || rom[0x84A0] != add_six) return 0;
+    if (rom[0x84BF] != 0xD6 || rom[0x84C0] != sub_seven) return 0;
+    return 1;
+}
+
+static int wide_install_wario_sml3(int wario_dx)
+{
+    static const uint8_t original_fov[] = {0xC6, 0x10, 0xFE, 0xD0};
+    static const uint8_t clean_fov[] =    {0xC6, 0x21, 0xFE, 0xE2};
+    static const uint8_t dx_fov[] =       {0xC6, 0x1E, 0xFE, 0xED};
+    const CartInfo *ci = cart_info();
+
+    /* These offsets are tied to the 512 KiB World ROM family. A different
+     * revision or unsupported hack falls back to the original-width display. */
+    if (!rom || !ci || ci->size != 0x80000u) return 0;
+
+    if (!wario_dx) {
+        if (expect(0x3218, clean_fov, (int)sizeof clean_fov)) return 1;
+        if (!expect(0x3218, original_fov, (int)sizeof original_fov)) return 0;
+        rom[0x3219] = 0x21; /* expand the left/object visibility margin */
+        rom[0x321B] = 0xE2; /* permit objects beyond the original right edge */
+        return 1;
+    }
+
+    if (expect(0x3218, dx_fov, (int)sizeof dx_fov) &&
+        wario_dx_source_sites_ok(1)) return 1;
+    if (!expect(0x3218, original_fov, (int)sizeof original_fov) ||
+        !wario_dx_source_sites_ok(0)) return 0;
+
+    /* All sites were validated above, so the loaded cartridge is either
+     * changed completely or left untouched on a mismatch. The source ROM file
+     * on disk is never written. */
+    rom[0x3219] = 0x1E;
+    rom[0x321B] = 0xED;
+    rom[0x321C] = 0x00;
+    rom[0x31FD] = 0xD1;
+    rom[0x8477] = 0x08;
+    rom[0x8486] = 0x10;
+    rom[0x84A0] = 0x08;
+    rom[0x84C0] = 0x08;
+    return 1;
+}
+
+int wide_install_profile(int game, int l, int r, int wario_dx)
 {
     sml2_right_extra = 0;
     sml2_left_extra = 0;
@@ -643,6 +728,7 @@ int wide_install(int game, int l, int r)
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
     if (l + r == 0) return 1;
+    if (game == GAME_WARIO_SML3) return wide_install_wario_sml3(wario_dx);
     if (game == GAME_SML2) {
         /* SML2's entity activation code lives in bank 2.  Its horizontal
          * look-ahead bounds are formed by a small sequence of ADD HL,DE
@@ -684,4 +770,9 @@ int wide_install(int game, int l, int r)
         return 1;
     }
     return 0;
+}
+
+int wide_install(int game, int l, int r)
+{
+    return wide_install_profile(game, l, r, 0);
 }
