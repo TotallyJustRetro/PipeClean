@@ -1554,7 +1554,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawWarioVault(Canvas c, float x, float y, float w, float h) {
             card(c, x, y, w, h, "TREASURE VAULT");
             int count = warioTreasureCount();
-            textFit(c, count + " / 15 TREASURES", x + 14, y + 49, w - 28, 12, ink());
+            textFit(c, (warioTreasureMask >= 0 ? count + " / 15 TREASURES" : "-- / 15 TREASURES"),
+                    x + 14, y + 49, w - 28, 12, ink());
             float bx = x + 14, by = y + 58, bw = w - 28;
             p.setColor(0x553A2B1B);
             c.drawRoundRect(bx, by, bx + bw, by + 7, 4, 4, p);
@@ -1641,7 +1642,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             badge(c, 158, 55, 272, 47, "CURRENT COURSE", stageText());
             card(c, 20, 111, 410, 105, "TREASURE VAULT");
             int count = warioTreasureCount();
-            text(c, count + " / 15 FOUND", 34, 151, 11, accent());
+            text(c, (warioTreasureMask >= 0 ? count + " / 15 FOUND" : "-- / 15 FOUND"), 34, 151, 11, accent());
             textFit(c, "TOTAL COINS  " + warioCoinsText(), 190, 151, 220, 9, ink());
             float step = 23.2f, first = 34f, markY = 187f;
             for (int i = 0; i < 15; i++) {
