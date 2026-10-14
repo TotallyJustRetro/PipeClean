@@ -4033,6 +4033,9 @@ static int emu_state_load_blob(const void *src, size_t n)
     } else {
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
     }
+    /* Transient button pulses and transition guards aren't part of save states. */
+    reserve_item_select_pulse = 0;
+    reserve_item_ignore_transition_frames = 0;
     return 0;
 }
 
