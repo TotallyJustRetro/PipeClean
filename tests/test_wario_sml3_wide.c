@@ -27,6 +27,7 @@ static int fail(int code, const char *msg)
 
 static void seed_wario_fov(void)
 {
+    rom[0x148] = 0x04; /* header marks the supported 512 KiB ROM family */
     rom[0x3218] = 0xC6; rom[0x3219] = 0x10;
     rom[0x321A] = 0xFE; rom[0x321B] = 0xD0;
 }
