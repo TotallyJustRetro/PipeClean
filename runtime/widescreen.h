@@ -17,6 +17,10 @@ int  wide_install_profile(int game, int left, int right, int wario_dx);
 int  wide_is_wario_dx_profile(const char *title, const char *path);
 /* patch the loaded ROM for these dimensions. 1 = ok / nothing needed, 0 = this ROM doesn't match (use the normal screen) */
 int  wide_install(int game, int left, int right);
+/* Wario Land II activation-bound diagnostics (active only with its widescreen profile). */
+extern int wide_wl2_trace_active;
+void wide_wl2_trace_instruction(uint16_t pc);
+void wide_wl2_trace_finish(void);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
 int wide_intercept_sml2(uint8_t op);
 /* Override SML2 enemy-spawn scan bounds at their verified bank-2 read sites. */
