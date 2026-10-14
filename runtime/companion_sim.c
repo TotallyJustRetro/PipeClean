@@ -429,21 +429,21 @@ static int simulator_layout_preview_item(void)
 #endif
 }
 
-static Uint8 theme_bg_r(int g) { return g == GAME_DRMARIO ? 240 : g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : 23; }
-static Uint8 theme_bg_g(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : 35; }
-static Uint8 theme_bg_b(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : 55; }
-static Uint8 theme_accent_r(int g) { return g == GAME_DRMARIO ? 21 : g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : 110; }
-static Uint8 theme_accent_g(int g) { return g == GAME_DRMARIO ? 157 : g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : 229; }
-static Uint8 theme_accent_b(int g) { return g == GAME_DRMARIO ? 173 : g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : 239; }
-static Uint8 theme_ink_r(int g) { return g == GAME_DRMARIO ? 23 : g == GAME_SML ? 37 : g == GAME_SML2 ? 255 : 234; }
-static Uint8 theme_ink_g(int g) { return g == GAME_DRMARIO ? 56 : g == GAME_SML ? 60 : g == GAME_SML2 ? 240 : 245; }
-static Uint8 theme_ink_b(int g) { return g == GAME_DRMARIO ? 73 : g == GAME_SML ? 32 : g == GAME_SML2 ? 210 : 255; }
-static Uint8 theme_muted_r(int g) { return g == GAME_DRMARIO ? 98 : g == GAME_SML ? 87 : g == GAME_SML2 ? 209 : 175; }
-static Uint8 theme_muted_g(int g) { return g == GAME_DRMARIO ? 127 : g == GAME_SML ? 118 : g == GAME_SML2 ? 183 : 195; }
-static Uint8 theme_muted_b(int g) { return g == GAME_DRMARIO ? 139 : g == GAME_SML ? 77 : g == GAME_SML2 ? 213 : 221; }
-static Uint8 theme_edge_r(int g) { return g == GAME_DRMARIO ? 139 : g == GAME_SML ? 128 : g == GAME_SML2 ? 173 : 87; }
-static Uint8 theme_edge_g(int g) { return g == GAME_DRMARIO ? 202 : g == GAME_SML ? 169 : g == GAME_SML2 ? 123 : 125; }
-static Uint8 theme_edge_b(int g) { return g == GAME_DRMARIO ? 204 : g == GAME_SML ? 81 : g == GAME_SML2 ? 65 : 157; }
+static Uint8 theme_bg_r(int g) { return g == GAME_DRMARIO ? 240 : g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : g == GAME_WARIO_SML3 ? 33 : 23; }
+static Uint8 theme_bg_g(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : g == GAME_WARIO_SML3 ? 26 : 35; }
+static Uint8 theme_bg_b(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : g == GAME_WARIO_SML3 ? 19 : 55; }
+static Uint8 theme_accent_r(int g) { return g == GAME_DRMARIO ? 21 : g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : g == GAME_WARIO_SML3 ? 255 : 110; }
+static Uint8 theme_accent_g(int g) { return g == GAME_DRMARIO ? 157 : g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : g == GAME_WARIO_SML3 ? 200 : 229; }
+static Uint8 theme_accent_b(int g) { return g == GAME_DRMARIO ? 173 : g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : g == GAME_WARIO_SML3 ? 87 : 239; }
+static Uint8 theme_ink_r(int g) { return g == GAME_DRMARIO ? 23 : g == GAME_SML ? 37 : g == GAME_SML2 ? 255 : g == GAME_WARIO_SML3 ? 255 : 234; }
+static Uint8 theme_ink_g(int g) { return g == GAME_DRMARIO ? 56 : g == GAME_SML ? 60 : g == GAME_SML2 ? 240 : g == GAME_WARIO_SML3 ? 241 : 245; }
+static Uint8 theme_ink_b(int g) { return g == GAME_DRMARIO ? 73 : g == GAME_SML ? 32 : g == GAME_SML2 ? 210 : g == GAME_WARIO_SML3 ? 212 : 255; }
+static Uint8 theme_muted_r(int g) { return g == GAME_DRMARIO ? 98 : g == GAME_SML ? 87 : g == GAME_SML2 ? 209 : g == GAME_WARIO_SML3 ? 184 : 175; }
+static Uint8 theme_muted_g(int g) { return g == GAME_DRMARIO ? 127 : g == GAME_SML ? 118 : g == GAME_SML2 ? 183 : g == GAME_WARIO_SML3 ? 170 : 195; }
+static Uint8 theme_muted_b(int g) { return g == GAME_DRMARIO ? 139 : g == GAME_SML ? 77 : g == GAME_SML2 ? 213 : g == GAME_WARIO_SML3 ? 149 : 221; }
+static Uint8 theme_edge_r(int g) { return g == GAME_DRMARIO ? 139 : g == GAME_SML ? 128 : g == GAME_SML2 ? 173 : g == GAME_WARIO_SML3 ? 189 : 87; }
+static Uint8 theme_edge_g(int g) { return g == GAME_DRMARIO ? 202 : g == GAME_SML ? 169 : g == GAME_SML2 ? 123 : g == GAME_WARIO_SML3 ? 133 : 125; }
+static Uint8 theme_edge_b(int g) { return g == GAME_DRMARIO ? 204 : g == GAME_SML ? 81 : g == GAME_SML2 ? 65 : g == GAME_WARIO_SML3 ? 55 : 157; }
 
 static void image_contain(SDL_Texture *texture, int x, int y, int w, int h);
 
@@ -498,6 +498,7 @@ static const char *android_game_title(int game)
     if (game == GAME_SML) return "SUPER MARIO LAND";
     if (game == GAME_SML2) return "6 GOLDEN COINS";
     if (game == 0) return "DR MARIO";
+    if (game == GAME_WARIO_SML3) return "WARIO LAND EXPEDITION";
     return game >= 0 && game < N_GAMES && games[game].name ? games[game].name : "PIPECLEAN READY";
 }
 
@@ -1308,7 +1309,8 @@ static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
     int editor_preview = simulator_layout_preview_enabled();
-    int is_deck_game = g == GAME_DRMARIO || g == GAME_SML || g == GAME_SML2;
+    int is_deck_game = g == GAME_DRMARIO || g == GAME_SML || g == GAME_SML2 ||
+                       g == GAME_WARIO_SML3;
     int show_game_deck = editor_preview || (current_playing && is_deck_game);
 
     if (!show_game_deck) {
