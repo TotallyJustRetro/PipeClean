@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "games.h"
 #include "emu.h"
+#include "cart.h"
 #include "launcher.h"
 #include "audio.h"
 #include "util.h"
@@ -40,6 +41,15 @@ static int current_game = -1, current_lives, current_stage = -1, current_world =
 static int current_paused, current_slot, current_item, current_playing;
 static int current_dr_mario_score = -1, current_dr_mario_level = -1;
 static int current_dr_mario_speed = -1, current_dr_mario_capsule = 0xFF;
+static int current_wario_coins = -1, current_wario_hearts = -1, current_wario_power = -1;
+static int current_wario_treasure_mask = -1, current_wario_time = -1;
+static char wario_expedition_log[5][64];
+static int wario_expedition_log_count, wario_expedition_baseline;
+static int wario_previous_coins = -1, wario_previous_hearts = -1, wario_previous_power = -1;
+static int wario_previous_treasure_mask = -1, wario_previous_stage = -1, wario_previous_lives = -1;
+static int wario_treasure_animation_id = -1;
+static Uint32 wario_treasure_animation_started;
+static int wario_treasure_animation_active;
 enum { SIM_ITEM_ANIM_IDLE, SIM_ITEM_ANIM_ARRIVE, SIM_ITEM_ANIM_SEND_OFF };
 static int item_animation_kind, item_animation_item;
 static Uint32 item_animation_started;
@@ -92,6 +102,156 @@ static const uint8_t font5x7[36][7] = {
     {14,17,17,14,17,17,14}, /* 8 */
     {14,17,17,15,1,1,14},   /* 9 */
 };
+
+static int wario_bcd_pair(uint8_t value)
+{
+    int tens = (value >> 4) & 0x0F, ones = value & 0x0F;
+    return tens <= 9 && ones <= 9 ? tens * 10 + ones : -1;
+}
+
+static int wario_bcd_coins(void)
+{
+    uint8_t high = cart_ram_read(0xA805), mid = cart_ram_read(0xA806), low = cart_ram_read(0xA807);
+    int d0 = high & 0x0F, d1 = (mid >> 4) & 0x0F;
+    int d2 = mid & 0x0F, d3 = (low >> 4) & 0x0F, d4 = low & 0x0F;
+    if (d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 || d4 > 9) return -1;
+    return d0 * 10000 + d1 * 1000 + d2 * 100 + d3 * 10 + d4;
+}
+
+static int wario_bcd_time(void)
+{
+    uint8_t high = cart_ram_read(0xA964), low = cart_ram_read(0xA965);
+    int hundreds = high & 0x0F, tens = (low >> 4) & 0x0F, ones = low & 0x0F;
+    if (high == 0xFF || low == 0xFF || hundreds > 9 || tens > 9 || ones > 9) return -1;
+    return hundreds * 100 + tens * 10 + ones;
+}
+
+static const char *wario_power_name(int power)
+{
+    switch (power) {
+    case 0: return "SMALL";
+    case 1: return "GARLIC";
+    case 2: return "BULL";
+    case 3: return "JET";
+    case 4: return "DRAGON";
+    default: return "UNKNOWN";
+    }
+}
+
+static void wario_log_push(const char *entry)
+{
+    for (int i = 4; i > 0; i--)
+        memcpy(wario_expedition_log[i], wario_expedition_log[i - 1],
+               sizeof wario_expedition_log[i]);
+    snprintf(wario_expedition_log[0], sizeof wario_expedition_log[0], "%s",
+             entry ? entry : "");
+    if (wario_expedition_log_count < 5) wario_expedition_log_count++;
+}
+
+static void companion_sim_update_wario(int game, const Frame *frame)
+{
+    if (game != GAME_WARIO_SML3 || !frame) {
+        wario_expedition_baseline = 0;
+        wario_treasure_animation_active = 0;
+        current_wario_coins = current_wario_hearts = current_wario_power = -1;
+        current_wario_treasure_mask = current_wario_time = -1;
+        return;
+    }
+
+    int course = cart_ram_read(0xA804);
+    uint8_t hearts_raw = cart_ram_read(0xA808), lives_raw = cart_ram_read(0xA809);
+    uint8_t power_raw = cart_ram_read(0xA80A);
+    uint8_t treasure_low = cart_ram_read(0xA80E), treasure_high = cart_ram_read(0xA80F);
+    int lives = wario_bcd_pair(lives_raw);
+    current_lives = lives >= 0 ? lives : 0;
+    current_stage = course == 0xFF ? -1 : course;
+    current_wario_hearts = wario_bcd_pair(hearts_raw);
+    current_wario_power = power_raw <= 4 ? power_raw : -1;
+    current_wario_coins = wario_bcd_coins();
+    current_wario_time = wario_bcd_time();
+    current_wario_treasure_mask =
+        treasure_low != 0xFF && treasure_high != 0xFF
+            ? ((int)treasure_low | ((int)treasure_high << 8)) : -1;
+
+    if (!wario_expedition_baseline) {
+        memset(wario_expedition_log, 0, sizeof wario_expedition_log);
+        wario_expedition_log_count = 0;
+        wario_log_push("EXPEDITION LINKED");
+        if (current_stage >= 0) {
+            char entry[64];
+            snprintf(entry, sizeof entry, "COURSE %02X ENTERED", current_stage & 0xFF);
+            wario_log_push(entry);
+        }
+        wario_previous_coins = current_wario_coins;
+        wario_previous_hearts = current_wario_hearts;
+        wario_previous_power = current_wario_power;
+        wario_previous_treasure_mask = current_wario_treasure_mask;
+        wario_previous_stage = current_stage;
+        wario_previous_lives = current_lives;
+        wario_expedition_baseline = 1;
+        return;
+    }
+
+    if (current_stage >= 0 && wario_previous_stage >= 0 &&
+        current_stage != wario_previous_stage) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "COURSE %02X ENTERED", current_stage & 0xFF);
+        wario_log_push(entry);
+    }
+
+    if (current_wario_treasure_mask >= 0 && wario_previous_treasure_mask >= 0) {
+        int next_mask = current_wario_treasure_mask & 0xFFFF;
+        int old_mask = wario_previous_treasure_mask & 0xFFFF;
+        if ((next_mask & old_mask) != old_mask) {
+            /* A load/rewind rolled back the bitfield; don't label it as a find. */
+            wario_treasure_animation_active = 0;
+        } else {
+            int gained = next_mask & ~old_mask;
+            for (int bit = 0; bit < 16; bit++) {
+                if (gained & (1 << bit)) {
+                    char entry[64];
+                    snprintf(entry, sizeof entry, "TREASURE %02d FOUND", bit + 1);
+                    wario_log_push(entry);
+                }
+            }
+            if (gained) {
+                int bit = 31;
+                while (bit >= 0 && !(gained & (1u << bit))) bit--;
+                wario_treasure_animation_id = bit + 1;
+                wario_treasure_animation_started = SDL_GetTicks();
+                wario_treasure_animation_active = 1;
+            }
+        }
+    }
+    if (current_wario_power >= 0 && wario_previous_power >= 0 &&
+        current_wario_power != wario_previous_power) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "POWER: %s", wario_power_name(current_wario_power));
+        wario_log_push(entry);
+    }
+    if (current_lives > wario_previous_lives && wario_previous_lives >= 0) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "EXTRA LIFE + %d", current_lives - wario_previous_lives);
+        wario_log_push(entry);
+    }
+    if (current_wario_hearts >= 0 && wario_previous_hearts >= 0 &&
+        current_wario_hearts > wario_previous_hearts)
+        wario_log_push("HEARTS RESTORED");
+    if (current_wario_coins >= 0 && wario_previous_coins >= 0 &&
+        current_wario_coins > wario_previous_coins &&
+        current_wario_coins / 100 > wario_previous_coins / 100) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "COIN BANK %05d", current_wario_coins / 100 * 100);
+        wario_log_push(entry);
+    }
+
+    if (current_wario_coins >= 0) wario_previous_coins = current_wario_coins;
+    if (current_wario_hearts >= 0) wario_previous_hearts = current_wario_hearts;
+    if (current_wario_power >= 0) wario_previous_power = current_wario_power;
+    if (current_wario_treasure_mask >= 0) wario_previous_treasure_mask = current_wario_treasure_mask;
+    if (current_stage >= 0) wario_previous_stage = current_stage;
+    if (current_lives >= 0) wario_previous_lives = current_lives;
+}
 
 static void color(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 {
