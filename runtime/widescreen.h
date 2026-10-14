@@ -11,6 +11,10 @@ typedef struct {
 
 /* pixels to add left and right for a slider value (0..100) */
 void wide_dims(int game, int pct, int *left, int *right);
+/* Variant-aware sizing/install hooks: the Wario DX profile needs its own tested bounds. */
+void wide_dims_profile(int game, int pct, int wario_dx, int *left, int *right);
+int  wide_install_profile(int game, int left, int right, int wario_dx);
+int  wide_is_wario_dx_profile(const char *title, const char *path);
 /* patch the loaded ROM for these dimensions. 1 = ok / nothing needed, 0 = this ROM doesn't match (use the normal screen) */
 int  wide_install(int game, int left, int right);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
