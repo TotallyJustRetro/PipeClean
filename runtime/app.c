@@ -280,11 +280,11 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
     if (!env || !activity) return;
     jclass cls = (*env)->GetObjectClass(env, activity);
     if (!cls) return;
-    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIII)V");
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIIIIIII)V");
     if (method) {
         int lives = 0, stage = -1, world = -1;
         int dual_screen = settings.launcher_dual_screen &&
-            (game == GAME_SML || game == GAME_SML2);
+            (game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2);
         if (frame && (game == GAME_SML || game == GAME_SML2)) {
             uint8_t bcd = frame->p1_lives;
             int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
@@ -296,7 +296,11 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             (jint)game, (jint)lives, (jint)stage, (jint)world,
             (jint)paused, (jint)settings.g[game].state_slot,
             (jint)settings.g[game].palette, (jint)settings.flt.preset,
-            (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen);
+            (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen,
+            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_score : -1),
+            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_level : -1),
+            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_speed : -1),
+            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_capsule : 0xFF));
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
         /* Send save-state paths, not pixel buffers. Java caches thumbnails and

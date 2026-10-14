@@ -53,6 +53,9 @@ typedef struct {
     uint32_t cgb_obj_palette[32]; /* Eight CGB OBJ palettes, four RGB24 colors each. */
     uint64_t seq;
     int lcd_on;
+    /* Live Dr. Mario telemetry from the original Game Boy RAM. */
+    uint32_t dr_mario_score;
+    uint8_t dr_mario_level, dr_mario_speed, dr_mario_capsule;
 } Frame;
 
 int  emu_start(int force_interp);

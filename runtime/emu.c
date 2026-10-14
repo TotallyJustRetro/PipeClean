@@ -111,6 +111,10 @@ static void publish(void)
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
     pub.level_id = 0xFF; pub.level_bank = 0xFF; pub.p1_lives = 0;
     pub.reserve_item = reserve_item_state.kind;
+    pub.dr_mario_score = 0;
+    pub.dr_mario_level = 0xFF;
+    pub.dr_mario_speed = 0xFF;
+    pub.dr_mario_capsule = 0xFF;
     int active_game = rom_loaded_game();
     if (active_game == GAME_SML) {
         uint8_t world_level = rd8(0xFFB4); /* Packed BCD: high nibble world, low nibble level. */
@@ -120,6 +124,28 @@ static void publish(void)
     } else if (active_game == GAME_SML2) {
         pub.p1_lives = rd8(0xA22C);
         pub.level_id = rd8(0xA269);
+    } else if (active_game == GAME_DRMARIO) {
+        /* Dr. Mario GB: $C0A0-$C0A3 is an eight-digit packed-BCD score,
+         * $FFC3 is the virus level, $FFAD is speed (2=LOW, 3=MED, 4=HI),
+         * and $C213 describes the capsule shown as the next pill. */
+        uint32_t score = 0;
+        int valid_score = 1;
+        for (int address = 0xC0A3; address >= 0xC0A0; --address) {
+            uint8_t bcd = rd8((uint16_t)address);
+            unsigned tens = (unsigned)((bcd >> 4) & 0x0F);
+            unsigned ones = (unsigned)(bcd & 0x0F);
+            if (tens > 9 || ones > 9) { valid_score = 0; break; }
+            score = score * 100u + tens * 10u + ones;
+        }
+        if (valid_score) pub.dr_mario_score = score;
+        uint8_t level_bcd = rd8(0xFFC3);
+        unsigned level_tens = (unsigned)((level_bcd >> 4) & 0x0F);
+        unsigned level_ones = (unsigned)(level_bcd & 0x0F);
+        if (level_tens <= 9 && level_ones <= 9)
+            pub.dr_mario_level = (uint8_t)(level_tens * 10u + level_ones);
+        pub.dr_mario_speed = rd8(0xFFAD);
+        uint8_t capsule = rd8(0xC213);
+        if (capsule <= 0x17) pub.dr_mario_capsule = capsule;
     }
     pub.obp0 = ppu_read(0x48); pub.obp1 = ppu_read(0x49); pub.sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     memcpy(pub.mario_oam, &oam[0x0C], sizeof pub.mario_oam);

@@ -58,8 +58,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
     }
 
     void updateState(int game, int lives, int stage, int world, boolean paused,
-                     int slot, int palette, int filter, int item) {
-        deck.setState(game, lives, stage, world, paused, slot, palette, filter, item);
+                     int slot, int palette, int filter, int item, int drMarioScore,
+                     int drMarioLevel, int drMarioSpeed, int drMarioCapsule) {
+        deck.setState(game, lives, stage, world, paused, slot, palette, filter, item,
+            drMarioScore, drMarioLevel, drMarioSpeed, drMarioCapsule);
     }
 
     void showIdleState() { deck.showIdleState(); }
@@ -177,6 +179,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int game = -1, lives, stage = -1, world = -1, slot, palette, filter, item, downAction;
+        private int drMarioScore = -1, drMarioLevel = -1, drMarioSpeed = -1, drMarioCapsule = 0xFF;
         private boolean paused, itemPressed, dashboardMode = true, dashboardDualScreen;
         private long itemPressStart, itemReleaseStart;
         private static final int ITEM_ANIM_IDLE = 0, ITEM_ANIM_ARRIVE = 1, ITEM_ANIM_SEND_OFF = 2;
@@ -248,7 +251,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         void setState(int game, int lives, int stage, int world, boolean paused,
-                      int slot, int palette, int filter, int item) {
+                      int slot, int palette, int filter, int item, int drMarioScore,
+                      int drMarioLevel, int drMarioSpeed, int drMarioCapsule) {
             layoutEditorPreview = false;
             dashboardMode = false;
             this.game = game;
@@ -256,6 +260,11 @@ final class PipeCleanCompanionPresentation extends Presentation {
             this.stage = stage;
             this.world = world;
             this.paused = paused;
+            this.drMarioScore = drMarioScore >= 0 ? Math.min(99999999, drMarioScore) : -1;
+            this.drMarioLevel = drMarioLevel >= 0 && drMarioLevel <= 99 ? drMarioLevel : -1;
+            this.drMarioSpeed = drMarioSpeed;
+            this.drMarioCapsule = drMarioCapsule >= 0 && drMarioCapsule <= 0x17
+                ? drMarioCapsule : 0xFF;
             this.slot = Math.max(0, Math.min(9, slot));
             if (animatedSlot < 0f) animatedSlot = this.slot;
             this.palette = Math.max(0, Math.min(PALETTES.length - 1, palette));
@@ -301,6 +310,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             stage = -1;
             world = -1;
             paused = false;
+            drMarioScore = -1;
+            drMarioLevel = -1;
+            drMarioSpeed = -1;
+            drMarioCapsule = 0xFF;
             item = 0;
             displayedItem = 0;
             lastObservedItem = 0;
@@ -864,18 +877,20 @@ final class PipeCleanCompanionPresentation extends Presentation {
             return BitmapFactory.decodeFile(path, options);
         }
 
+        private boolean drMario() { return game == 0; }
         private boolean sml1() { return game == 1; }
         private boolean sml2() { return game == 2; }
-        private int bg() { return sml1() ? 0xFFB8D991 : sml2() ? 0xFF25152F : 0xFF172337; }
-        private int panel() { return sml1() ? 0xF0F0F5D5 : sml2() ? 0xEE352342 : 0xEE24354C; }
-        private int accent() { return sml1() ? 0xFF397C30 : sml2() ? 0xFFFFCA5B : 0xFF6EE5EF; }
-        private int ink() { return sml1() ? 0xFF253C20 : sml2() ? 0xFFFFF0D2 : 0xFFEAF5FF; }
-        private int muted() { return sml1() ? 0xFF57764D : sml2() ? 0xFFD1B7D5 : 0xFFAFC3DD; }
-        private int edge() { return sml1() ? 0xFF80A951 : sml2() ? 0xFFAD7B41 : 0xFF577D9D; }
+        private int bg() { return drMario() ? 0xFFF0F7F7 : sml1() ? 0xFFB8D991 : sml2() ? 0xFF25152F : 0xFF172337; }
+        private int panel() { return drMario() ? 0xF8FFFFFF : sml1() ? 0xF0F0F5D5 : sml2() ? 0xEE352342 : 0xEE24354C; }
+        private int accent() { return drMario() ? 0xFF159DAD : sml1() ? 0xFF397C30 : sml2() ? 0xFFFFCA5B : 0xFF6EE5EF; }
+        private int ink() { return drMario() ? 0xFF173849 : sml1() ? 0xFF253C20 : sml2() ? 0xFFFFF0D2 : 0xFFEAF5FF; }
+        private int muted() { return drMario() ? 0xFF627F8B : sml1() ? 0xFF57764D : sml2() ? 0xFFD1B7D5 : 0xFFAFC3DD; }
+        private int edge() { return drMario() ? 0xFF8BCACC : sml1() ? 0xFF80A951 : sml2() ? 0xFFAD7B41 : 0xFF577D9D; }
         private int gold() { return 0xFFFFD66B; }
         private int goldDark() { return 0xFFAC6B22; }
 
         private String title() {
+            if (drMario()) return "DR. MARIO";
             if (sml1()) return "SUPER MARIO LAND";
             if (sml2()) return "6 GOLDEN COINS";
             if (game == 0) return "DR. MARIO";
@@ -1021,6 +1036,14 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     rect(c,sx,sy,(i%5==0)?4:2,(i%5==0)?4:2,(i%3==0)?0xFFFFD66B:0xFFCBB5E8);
                 }
                 pixelCloud(c, 40, 140, 3, 0xFF5A416A);
+            } else if (drMario()) {
+                for (int i = 0; i < 24; i++) {
+                    float sx = (i * 71 + 23) % w;
+                    float sy = (i * 43 + 17) % h;
+                    drawMedicalCross(c, sx, sy, 8f + (i % 3) * 2f,
+                        i % 2 == 0 ? 0x1C159DAD : 0x18E65B69);
+                }
+                for (int y = 0; y < h; y += 24) rect(c, 0, y, w, 1, 0x0D159DAD);
             } else {
                 for (int i=0;i<32;i++) rect(c,(i*53+9)%w,(i*31+17)%h,3,3,edge());
             }
@@ -1226,7 +1249,128 @@ final class PipeCleanCompanionPresentation extends Presentation {
             p.setStyle(Paint.Style.FILL);
         }
 
+
+        private String drMarioScoreText() {
+            return drMarioScore < 0 ? "--------" : String.format(Locale.US, "%08d", drMarioScore);
+        }
+        private String drMarioLevelText() {
+            return drMarioLevel < 0 ? "--" : String.format(Locale.US, "%02d", drMarioLevel);
+        }
+        private String drMarioSpeedText() {
+            if (drMarioSpeed == 2) return "LOW";
+            if (drMarioSpeed == 3) return "MED";
+            if (drMarioSpeed == 4) return "HI";
+            return "--";
+        }
+        private int drMarioPillColor(int colorId) {
+            if (colorId == 0) return 0xFF35B8D1;
+            if (colorId == 1) return 0xFFEF6470;
+            return 0xFFF2C94C;
+        }
+        private void drawMedicalCross(Canvas c, float cx, float cy, float size, int color) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(color);
+            float arm = size * 0.30f;
+            c.drawRoundRect(cx-arm, cy-size*0.5f, cx+arm, cy+size*0.5f, arm*0.35f, arm*0.35f, p);
+            c.drawRoundRect(cx-size*0.5f, cy-arm, cx+size*0.5f, cy+arm, arm*0.35f, arm*0.35f, p);
+        }
+        private void drawDrMarioCapsule(Canvas c, float cx, float cy, float width, float height, int rawCapsule) {
+            boolean valid = rawCapsule >= 0 && rawCapsule <= 0x17;
+            int first=0, second=0, rotation=0;
+            if (valid) {
+                switch (rawCapsule & 0xFC) {
+                    case 0x00: first=0; second=0; break;
+                    case 0x04: first=0; second=1; break;
+                    case 0x08: first=0; second=2; break;
+                    case 0x0C: first=1; second=1; break;
+                    case 0x10: first=1; second=2; break;
+                    case 0x14: first=2; second=2; break;
+                    default: valid=false; break;
+                }
+                rotation=(rawCapsule & 0x03)*90;
+            }
+            if (!valid) { first=0; second=2; rotation=0; }
+            c.save();
+            c.rotate(rotation,cx,cy);
+            RectF body = new RectF(cx-width*0.5f, cy-height*0.5f, cx+width*0.5f, cy+height*0.5f);
+            p.setStyle(Paint.Style.FILL); p.setColor(0x1C153849);
+            c.drawRoundRect(body.left+3f,body.top+5f,body.right+3f,body.bottom+5f,height*0.5f,height*0.5f,p);
+            Path shell = new Path();
+            shell.addRoundRect(body,height*0.5f,height*0.5f,Path.Direction.CW);
+            c.save(); c.clipPath(shell);
+            p.setColor(valid?drMarioPillColor(first):0xFFCFDDE0);
+            c.drawRect(body.left,body.top,body.centerX(),body.bottom,p);
+            p.setColor(valid?drMarioPillColor(second):0xFFE2E9EB);
+            c.drawRect(body.centerX(),body.top,body.right,body.bottom,p);
+            c.restore();
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(Math.max(2f,height*0.035f)); p.setColor(0xFF314B5B);
+            c.drawRoundRect(body,height*0.5f,height*0.5f,p);
+            p.setStrokeWidth(Math.max(1.5f,height*0.025f)); p.setColor(0xCCFFFFFF);
+            c.drawLine(body.left+height*0.55f,body.top+height*0.23f,body.centerX()-height*0.12f,body.top+height*0.23f,p);
+            p.setStrokeWidth(1.5f); p.setColor(0xAA314B5B);
+            c.drawLine(body.centerX(),body.top+height*0.08f,body.centerX(),body.bottom-height*0.08f,p);
+            p.setStyle(Paint.Style.FILL); c.restore();
+        }
+        private void drawDrMarioMetric(Canvas c,float x,float y,float w,float h,String label,String value,float valueSize) {
+            card(c,x,y,w,h,label);
+            textFit(c,value,x+8f,y+h-17f,w-16f,valueSize,ink(),true);
+        }
+        private void drawDrMarioLandscape(Canvas c) {
+            c.save(); applyLayoutTransform(c,0,800f,450f,400f,31.5f);
+            headerPlate(c,18,7,265,49);
+            text(c,"PIPE CLEAN  •  MEDICAL DECK",26,22,8.5f,accent());
+            text(c,"DR. MARIO",25,43,16,ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c,552,17,34,34,"×",RESET_BACKGROUND);
+            button(c,593,13,105,42,"BACKGROUND","PNG / GIF",BACKGROUND,false);
+            button(c,704,13,72,42,"CLOSE","GAME",CLOSE_GAME,false);
+            c.restore();
+            c.save(); applyLayoutTransform(c,1,800f,450f,400f,164f);
+            card(c,20,70,270,235,"NEXT CAPSULE");
+            drawMedicalCross(c,258,94,13f,0xFF159DAD);
+            drawDrMarioCapsule(c,155,184,160,66,drMarioCapsule);
+            text(c,drMarioCapsule>=0&&drMarioCapsule<=0x17?"READY TO DROP":"WAITING FOR PILL",155,265,8f,muted(),true);
+            c.restore();
+            c.save(); applyLayoutTransform(c,4,800f,450f,541f,187.5f);
+            drawDrMarioMetric(c,306,70,470,105,"SCORE",drMarioScoreText(),25f);
+            drawDrMarioMetric(c,306,188,224,117,"VIRUS LEVEL",drMarioLevelText(),27f);
+            drawDrMarioMetric(c,542,188,234,117,"SPEED",drMarioSpeedText(),24f);
+            text(c,paused?"PAUSED":"IN SESSION",760,60,6.5f,muted(),true);
+            c.restore();
+            c.save(); applyLayoutTransform(c,2,800f,450f,400f,343f); drawDockLandscape(c); c.restore();
+            c.save(); applyLayoutTransform(c,3,800f,450f,400f,406.5f); drawSaveTimeline(c,24,365,752,83,false); c.restore();
+        }
+        private void drawDrMarioPortrait(Canvas c) {
+            c.save(); applyLayoutTransform(c,0,450f,800f,225f,30f);
+            headerPlate(c,14,7,220,43);
+            text(c,"PIPE CLEAN  •  MEDICAL DECK",20,23,7.2f,accent());
+            text(c,"DR. MARIO",20,41,13,ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c,238,16,20,27,"×",RESET_BACKGROUND);
+            button(c,262,12,87,37,"BACKGROUND","PNG / GIF",BACKGROUND,false);
+            button(c,355,12,75,37,"CLOSE","GAME",CLOSE_GAME,false);
+            c.restore();
+            c.save(); applyLayoutTransform(c,1,450f,800f,225f,280f);
+            card(c,18,103,414,218,"NEXT CAPSULE");
+            drawMedicalCross(c,400,127,14f,0xFF159DAD);
+            drawDrMarioCapsule(c,225,207,188,76,drMarioCapsule);
+            text(c,drMarioCapsule>=0&&drMarioCapsule<=0x17?"READY TO DROP":"WAITING FOR PILL",225,308,8f,muted(),true);
+            c.restore();
+            c.save(); applyLayoutTransform(c,4,450f,800f,225f,379f);
+            drawDrMarioMetric(c,16,331,132,105,"SCORE",drMarioScoreText(),14f);
+            drawDrMarioMetric(c,159,331,132,105,"VIRUS LEVEL",drMarioLevelText(),18f);
+            drawDrMarioMetric(c,302,331,132,105,"SPEED",drMarioSpeedText(),17f);
+            c.restore();
+            c.save(); applyLayoutTransform(c,2,450f,800f,225f,552f);
+            boolean idle=game<0;
+            button(c,20,466,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
+            button(c,232,466,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
+            button(c,20,524,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
+            button(c,232,524,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
+            c.restore();
+            c.save(); applyLayoutTransform(c,3,450f,800f,225f,750f); drawSaveTimeline(c,14,704,422,92,true); c.restore();
+        }
+
         private void drawLandscape(Canvas c) {
+            if (drMario()) { drawDrMarioLandscape(c); return; }
             c.save();
             applyLayoutTransform(c, 0, 800f, 450f, 400f, 31.5f);
             headerPlate(c, 18, 7, 265, 49);
@@ -1289,6 +1433,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawPortrait(Canvas c) {
+            if (drMario()) { drawDrMarioPortrait(c); return; }
             c.save();
             applyLayoutTransform(c, 0, 450f, 800f, 225f, 30f);
             headerPlate(c, 14, 7, 220, 43);

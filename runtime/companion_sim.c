@@ -38,6 +38,8 @@ static Uint32 asset_animation_started[N_GAMES][N_DECK_ASSET_PATHS];
 static char asset_paths[N_GAMES][N_DECK_ASSET_PATHS][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
+static int current_dr_mario_score = -1, current_dr_mario_level = -1;
+static int current_dr_mario_speed = -1, current_dr_mario_capsule = 0xFF;
 enum { SIM_ITEM_ANIM_IDLE, SIM_ITEM_ANIM_ARRIVE, SIM_ITEM_ANIM_SEND_OFF };
 static int item_animation_kind, item_animation_item;
 static Uint32 item_animation_started;
@@ -267,21 +269,21 @@ static int simulator_layout_preview_item(void)
 #endif
 }
 
-static Uint8 theme_bg_r(int g) { return g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : 23; }
-static Uint8 theme_bg_g(int g) { return g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : 35; }
-static Uint8 theme_bg_b(int g) { return g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : 55; }
-static Uint8 theme_accent_r(int g) { return g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : 110; }
-static Uint8 theme_accent_g(int g) { return g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : 229; }
-static Uint8 theme_accent_b(int g) { return g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : 239; }
-static Uint8 theme_ink_r(int g) { return g == GAME_SML ? 37 : g == GAME_SML2 ? 255 : 234; }
-static Uint8 theme_ink_g(int g) { return g == GAME_SML ? 60 : g == GAME_SML2 ? 240 : 245; }
-static Uint8 theme_ink_b(int g) { return g == GAME_SML ? 32 : g == GAME_SML2 ? 210 : 255; }
-static Uint8 theme_muted_r(int g) { return g == GAME_SML ? 87 : g == GAME_SML2 ? 209 : 175; }
-static Uint8 theme_muted_g(int g) { return g == GAME_SML ? 118 : g == GAME_SML2 ? 183 : 195; }
-static Uint8 theme_muted_b(int g) { return g == GAME_SML ? 77 : g == GAME_SML2 ? 213 : 221; }
-static Uint8 theme_edge_r(int g) { return g == GAME_SML ? 128 : g == GAME_SML2 ? 173 : 87; }
-static Uint8 theme_edge_g(int g) { return g == GAME_SML ? 169 : g == GAME_SML2 ? 123 : 125; }
-static Uint8 theme_edge_b(int g) { return g == GAME_SML ? 81 : g == GAME_SML2 ? 65 : 157; }
+static Uint8 theme_bg_r(int g) { return g == GAME_DRMARIO ? 240 : g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : 23; }
+static Uint8 theme_bg_g(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : 35; }
+static Uint8 theme_bg_b(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : 55; }
+static Uint8 theme_accent_r(int g) { return g == GAME_DRMARIO ? 21 : g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : 110; }
+static Uint8 theme_accent_g(int g) { return g == GAME_DRMARIO ? 157 : g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : 229; }
+static Uint8 theme_accent_b(int g) { return g == GAME_DRMARIO ? 173 : g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : 239; }
+static Uint8 theme_ink_r(int g) { return g == GAME_DRMARIO ? 23 : g == GAME_SML ? 37 : g == GAME_SML2 ? 255 : 234; }
+static Uint8 theme_ink_g(int g) { return g == GAME_DRMARIO ? 56 : g == GAME_SML ? 60 : g == GAME_SML2 ? 240 : 245; }
+static Uint8 theme_ink_b(int g) { return g == GAME_DRMARIO ? 73 : g == GAME_SML ? 32 : g == GAME_SML2 ? 210 : 255; }
+static Uint8 theme_muted_r(int g) { return g == GAME_DRMARIO ? 98 : g == GAME_SML ? 87 : g == GAME_SML2 ? 209 : 175; }
+static Uint8 theme_muted_g(int g) { return g == GAME_DRMARIO ? 127 : g == GAME_SML ? 118 : g == GAME_SML2 ? 183 : 195; }
+static Uint8 theme_muted_b(int g) { return g == GAME_DRMARIO ? 139 : g == GAME_SML ? 77 : g == GAME_SML2 ? 213 : 221; }
+static Uint8 theme_edge_r(int g) { return g == GAME_DRMARIO ? 139 : g == GAME_SML ? 128 : g == GAME_SML2 ? 173 : 87; }
+static Uint8 theme_edge_g(int g) { return g == GAME_DRMARIO ? 202 : g == GAME_SML ? 169 : g == GAME_SML2 ? 123 : 125; }
+static Uint8 theme_edge_b(int g) { return g == GAME_DRMARIO ? 204 : g == GAME_SML ? 81 : g == GAME_SML2 ? 65 : 157; }
 
 static void image_contain(SDL_Texture *texture, int x, int y, int w, int h);
 
@@ -303,9 +305,9 @@ static void draw_android_card(const Settings *s, int x, int y, int w, int h, int
 {
     fill_round_rect(x + 2, y + 4, w, h, 16, 0, 0, 0, 96);
     fill_round_rect(x, y, w, h, 15,
-        game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
-        game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
-        game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
+        game == GAME_DRMARIO ? 248 : game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
+        game == GAME_DRMARIO ? 255 : game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
+        game == GAME_DRMARIO ? 255 : game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
     if (game >= 0 && game < N_GAMES && !strcmp(label, "ADVENTURE STATUS"))
         draw_asset_image(s, game, 16, x + 2, y + 2, w - 4, h - 4);
     outline_round_rect(x + 1, y + 1, w - 2, h - 2, 14,
@@ -320,9 +322,9 @@ static void draw_android_header(const Settings *s, int x, int y, int w, int h, i
 {
     fill_round_rect(x + 2, y + 3, w, h, 12, 0, 0, 0, 106);
     fill_round_rect(x, y, w, h, 12,
-        game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
-        game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
-        game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
+        game == GAME_DRMARIO ? 248 : game == GAME_SML ? 240 : game == GAME_SML2 ? 53 : 36,
+        game == GAME_DRMARIO ? 255 : game == GAME_SML ? 245 : game == GAME_SML2 ? 35 : 53,
+        game == GAME_DRMARIO ? 255 : game == GAME_SML ? 213 : game == GAME_SML2 ? 66 : 76, 242);
     if (game >= 0 && game < N_GAMES)
         draw_asset_image(s, game, 15, x + 2, y + 2, w - 4, h - 4);
     outline_round_rect(x, y, w, h, 12,
@@ -1041,11 +1043,109 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
     *h *= scale_y;
 }
 
+
+static void draw_centered_text_fit(int x, int y, int w, int px, Uint8 r, Uint8 g, Uint8 b, const char *text)
+{
+    int len = (int)strlen(text ? text : "");
+    while (px > 1 && len * 6 * px > w) px--;
+    int text_width = len * 6 * px;
+    draw_text(x + (w - text_width) / 2, y, px, r, g, b, text);
+}
+static void draw_dr_mario_medical_cross(int cx, int cy, int size, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    int arm = size / 4; if (arm < 2) arm = 2;
+    fill_round_rect(cx-arm,cy-size/2,arm*2,size,arm/2,r,g,b,a);
+    fill_round_rect(cx-size/2,cy-arm,size,arm*2,arm/2,r,g,b,a);
+}
+static void draw_dr_mario_capsule(int cx, int cy, int width, int height, int raw)
+{
+    int valid=raw>=0&&raw<=0x17, first=0, second=2, orientation=0;
+    if(valid){
+        switch(raw&0xFC){
+        case 0x00:first=0;second=0;break; case 0x04:first=0;second=1;break;
+        case 0x08:first=0;second=2;break; case 0x0C:first=1;second=1;break;
+        case 0x10:first=1;second=2;break; case 0x14:first=2;second=2;break;
+        default:valid=0;break;
+        }
+        orientation=raw&3;
+    }
+    Uint8 pr[3]={53,239,242},pg[3]={184,100,201},pb[3]={209,112,76};
+    int vertical=orientation&1, sw=vertical?height:width, sh=vertical?width:height;
+    int left=cx-sw/2, top=cy-sh/2;
+    if(!valid){first=0;second=2;orientation=0;vertical=0;sw=width;sh=height;left=cx-sw/2;top=cy-sh/2;}
+    if(orientation==2||orientation==3){int tmp=first;first=second;second=tmp;}
+    fill_round_rect(left+3,top+5,sw,sh,sh/2,21,56,73,48);
+    SDL_Rect shell={left,top,sw,sh}, half=shell;
+    if(!vertical)half.w=sw/2;else half.h=sh/2;
+    SDL_RenderSetClipRect(deck_renderer,&half);
+    fill_round_rect(left,top,sw,sh,sh/2,valid?pr[first]:193,valid?pg[first]:216,valid?pb[first]:221,255);
+    half=shell;
+    if(!vertical){half.x+=sw/2;half.w-=sw/2;}else{half.y+=sh/2;half.h-=sh/2;}
+    SDL_RenderSetClipRect(deck_renderer,&half);
+    fill_round_rect(left,top,sw,sh,sh/2,valid?pr[second]:227,valid?pg[second]:236,valid?pb[second]:238,255);
+    SDL_RenderSetClipRect(deck_renderer,NULL);
+    outline_round_rect(left,top,sw,sh,sh/2,49,75,88,255);
+    if(!vertical)fill(left+sw/2-1,top+sh/5,2,sh*3/5,49,75,88,210);
+    else fill(left+sw/5,top+sh/2-1,sw*3/5,2,49,75,88,210);
+    fill_round_rect(left+sh/5,top+sh/5,vertical?sw*3/5:sw/3,sh/12>1?sh/12:2,2,255,255,255,120);
+}
+static const char *dr_mario_speed_label(int speed)
+{
+    if(speed==2)return "LOW";if(speed==3)return "MED";if(speed==4)return "HI";return "--";
+}
+static void draw_dr_mario_metric(const Settings *s,const CompanionLayoutCfg *d,int x,int y,int w,int h,
+                                  const char *label,const char *value,int value_px)
+{
+    draw_android_card(s,x,y,w,h,GAME_DRMARIO,label);
+    draw_centered_text_fit(x+8,y+h-(value_px*7)-13,w-16,value_px,
+        theme_ink_r(GAME_DRMARIO),theme_ink_g(GAME_DRMARIO),theme_ink_b(GAME_DRMARIO),value);
+    (void)d;
+}
+static void draw_dr_mario_companion(const Settings *s,const CompanionLayoutCfg *d)
+{
+    fill(0,0,800,450,theme_bg_r(GAME_DRMARIO),theme_bg_g(GAME_DRMARIO),theme_bg_b(GAME_DRMARIO),255);
+    for(int y=64;y<450;y+=24)fill(0,y,800,1,21,157,173,16);
+    for(int i=0;i<16;i++)draw_dr_mario_medical_cross((i*61+35)%800,(i*43+80)%440,9+(i%3)*3,21,157,173,20);
+    draw_asset_image(s,GAME_DRMARIO,0,0,0,800,450);
+    float hx=18,hy=7,hw=265,hh=49;transform_box(d,0,400,31.5f,&hx,&hy,&hw,&hh);
+    draw_android_header(s,(int)hx,(int)hy,(int)hw,(int)hh,GAME_DRMARIO);
+    draw_text_fit((int)hx+8,(int)hy+10,(int)hw-16,1,theme_accent_r(GAME_DRMARIO),theme_accent_g(GAME_DRMARIO),theme_accent_b(GAME_DRMARIO),"PIPE CLEAN MEDICAL DECK");
+    draw_text_fit((int)hx+8,(int)hy+25,(int)hw-16,2,theme_ink_r(GAME_DRMARIO),theme_ink_g(GAME_DRMARIO),theme_ink_b(GAME_DRMARIO),"DR MARIO");
+    float bgx=593,bgy=13,bgw=105,bgh=42;transform_box(d,0,400,31.5f,&bgx,&bgy,&bgw,&bgh);
+    draw_tiny_button(s,(int)bgx,(int)bgy,(int)bgw,(int)bgh,GAME_DRMARIO,"BACKGROUND","PNG / GIF",SIM_BACKGROUND);
+    float closex=704,closey=13,closew=72,closeh=42;transform_box(d,0,400,31.5f,&closex,&closey,&closew,&closeh);
+    draw_tiny_button(s,(int)closex,(int)closey,(int)closew,(int)closeh,GAME_DRMARIO,"CLOSE","GAME",SIM_CLOSE_GAME);
+    float px=20,py=70,pw=270,ph=235;transform_box(d,1,400,164,&px,&py,&pw,&ph);
+    draw_android_card(s,(int)px,(int)py,(int)pw,(int)ph,GAME_DRMARIO,"NEXT CAPSULE");
+    draw_dr_mario_medical_cross((int)(px+pw-25),(int)(py+26),13,21,157,173,255);
+    draw_dr_mario_capsule((int)(px+pw*.5f),(int)(py+ph*.49f),160,66,current_dr_mario_capsule);
+    draw_centered_text_fit((int)px+10,(int)(py+ph-32),(int)pw-20,1,theme_muted_r(GAME_DRMARIO),theme_muted_g(GAME_DRMARIO),theme_muted_b(GAME_DRMARIO),
+        current_dr_mario_capsule>=0&&current_dr_mario_capsule<=0x17?"READY TO DROP":"WAITING FOR PILL");
+    float sx=306,sy=70,sw=470,sh=235;transform_box(d,4,541,187.5f,&sx,&sy,&sw,&sh);
+    char score_text[16],level_text[16];
+    if(current_dr_mario_score>=0)snprintf(score_text,sizeof score_text,"%08u",(unsigned)current_dr_mario_score);else snprintf(score_text,sizeof score_text,"--------");
+    if(current_dr_mario_level>=0)snprintf(level_text,sizeof level_text,"%02d",current_dr_mario_level);else snprintf(level_text,sizeof level_text,"--");
+    draw_dr_mario_metric(s,d,(int)sx,(int)sy,(int)sw,(int)(sh*.45f),"SCORE",score_text,3);
+    draw_dr_mario_metric(s,d,(int)sx,(int)(sy+sh*.50f),(int)(sw*.48f),(int)(sh*.50f),"VIRUS LEVEL",level_text,3);
+    draw_dr_mario_metric(s,d,(int)(sx+sw*.50f),(int)(sy+sh*.50f),(int)(sw*.50f),(int)(sh*.50f),"SPEED",dr_mario_speed_label(current_dr_mario_speed),3);
+    draw_centered_text_fit(690,54,86,1,theme_muted_r(GAME_DRMARIO),theme_muted_g(GAME_DRMARIO),theme_muted_b(GAME_DRMARIO),current_paused?"PAUSED":"IN SESSION");
+    const int action_ids[4]={SIM_SAVE,SIM_LOAD,SIM_PAUSE,SIM_REWIND};
+    const char *action_labels[4]={"SAVE","LOAD",current_paused?"RESUME":"PAUSE","REWIND"};
+    const char *action_subs[4]={"SNAPSHOT","RESTORE",current_paused?"CONTINUE":"HOLD GAME","HOLD TO REWIND"};
+    for(int i=0;i<4;i++){
+        float ax=94.0f+i*153.0f,ay=320.0f,aw=i==3?153.0f:145.0f,ah=42.0f;
+        transform_box(d,2,400,343,&ax,&ay,&aw,&ah);
+        draw_action_button(s,GAME_DRMARIO,action_ids[i],(int)ax,(int)ay,(int)aw,(int)ah,action_labels[i],action_subs[i],i==3);
+    }
+    draw_slot_timeline(s,GAME_DRMARIO);
+    SDL_RenderPresent(deck_renderer);
+}
+
 static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
     int editor_preview = simulator_layout_preview_enabled();
-    int is_deck_game = g == GAME_SML || g == GAME_SML2;
+    int is_deck_game = g == GAME_DRMARIO || g == GAME_SML || g == GAME_SML2;
     int show_game_deck = editor_preview || (current_playing && is_deck_game);
 
     if (!show_game_deck) {
@@ -1058,6 +1158,7 @@ static void draw_companion(const Settings *s)
 
     if (g < 0 || g >= N_GAMES) g = GAME_SML;
     const CompanionLayoutCfg *d = &s->deck_layout[g];
+    if (g == GAME_DRMARIO) { draw_dr_mario_companion(s, d); return; }
     draw_android_scenery(g);
     draw_asset_image(s, g, 0, 0, 0, 800, 450);
 
@@ -1239,6 +1340,16 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
     current_stage = -1;
     current_world = -1;
     current_lives = 0;
+    current_dr_mario_score = -1;
+    current_dr_mario_level = -1;
+    current_dr_mario_speed = -1;
+    current_dr_mario_capsule = 0xFF;
+    if (frame && game == GAME_DRMARIO) {
+        current_dr_mario_score = frame->dr_mario_score <= 99999999u ? (int)frame->dr_mario_score : -1;
+        current_dr_mario_level = frame->dr_mario_level <= 99 ? frame->dr_mario_level : -1;
+        current_dr_mario_speed = frame->dr_mario_speed;
+        current_dr_mario_capsule = frame->dr_mario_capsule <= 0x17 ? frame->dr_mario_capsule : 0xFF;
+    }
     if (frame && (game == GAME_SML || game == GAME_SML2)) {
         Uint8 bcd = frame->p1_lives;
         int tens = (bcd >> 4) & 0xf, ones = bcd & 0xf;

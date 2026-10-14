@@ -248,9 +248,10 @@ public final class PipeCleanActivity extends SDLActivity {
     /** Native game-loop status bridge; UI work is moved onto Android's main thread. */
     public void updateCompanionState(int game, int lives, int stage, int world,
                                      int paused, int slot, int palette, int filter,
-                                     int item, int dualScreenEnabled) {
+                                     int item, int dualScreenEnabled, int drMarioScore,
+                                     int drMarioLevel, int drMarioSpeed, int drMarioCapsule) {
         runOnUiThread(() -> {
-            companionEnabled = dualScreenEnabled != 0 && (game == 1 || game == 2);
+            companionEnabled = dualScreenEnabled != 0 && (game == 0 || game == 1 || game == 2);
             // Always retain the second-screen deck. Game-specific widgets are live only
             // when the selected game has Companion support enabled; otherwise show a
             // useful READY screen rather than dismissing the entire lower display.
@@ -258,7 +259,8 @@ public final class PipeCleanActivity extends SDLActivity {
             if (companionPresentation != null) {
                 if (companionEnabled) {
                     companionPresentation.updateState(game, lives, stage, world,
-                        paused != 0, slot, palette, filter, item);
+                        paused != 0, slot, palette, filter, item, drMarioScore,
+                        drMarioLevel, drMarioSpeed, drMarioCapsule);
                     companionPresentation.setPipeSwapMode(companionPipeSwapMode);
                 } else {
                     companionPipeSwapMode = false;
