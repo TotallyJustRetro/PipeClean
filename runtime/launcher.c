@@ -852,7 +852,9 @@ static void sub_external_game(int g, float x, float y)
 
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
-                 "These four Wario Land entries run in the separate gbrecomp player. When Companion Deck is enabled in Display settings, the player opens a live Treasure Expedition deck with course status, treasure collection, event log and treasure-found animations. PipeClean's filters and save-state slots still do not apply to this player.", 5);
+                 g == GAME_WARIO_SML3
+                   ? "Wario Land: Super Mario Land 3 opens a live Treasure Expedition Companion Deck when enabled in Display settings. It tracks treasures, course changes, power changes, extra lives and coin milestones."
+                   : "This title runs in the separate gbrecomp player. The Treasure Expedition Companion Deck is currently available for Wario Land: Super Mario Land 3 only. PipeClean's filters and save-state slots do not apply to this player.", 5);
 
     ui_text(F_BOLD, 12, x + 18, y + 276, C_MUTED, "CONTROLS");
     ui_text_wrap(F_REG, 12, x + 18, y + 300, 772, C_TEXT,
