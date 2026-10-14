@@ -291,9 +291,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
             this.warioPower = warioPower >= 0 && warioPower <= 4 ? warioPower : -1;
             this.warioTreasureMask = game == 3 && warioTreasureMask >= 0 ? (warioTreasureMask & 0xFFFF) : -1;
             this.warioTime = warioTime >= 0 && warioTime <= 999 ? warioTime : -1;
-            this.wario2TreasureMask = wl2
+            this.wario2TreasureMask = wl2 && drMarioLevel >= 0
                 ? (((long)drMarioLevel & 0x3FFFFL) << 32) | ((long)drMarioScore & 0xFFFFFFFFL) : -1L;
-            this.wario2PictureMask = wl2
+            this.wario2PictureMask = wl2 && drMarioCapsule >= 0
                 ? (((long)drMarioCapsule & 0x3FFFFL) << 32) | ((long)drMarioSpeed & 0xFFFFFFFFL) : -1L;
             observeWarioState();
             this.slot = Math.max(0, Math.min(9, slot));
@@ -1654,7 +1654,6 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawWarioEmblem(c, 400, 139, 44);
             drawWario2Grid(c, 550, 70, 230, 133, "PICTURE PANEL", wario2PictureMask, true);
 
-            card(c, 20, 213, 230, 94, "EXPEDITION LOG");
             drawExpeditionLog(c, 20, 213, 230, 94, 4);
             card(c, 260, 213, 260, 94, "ADVENTURE TRACKER");
             textFit(c, stageText(), 276, 258, 226, 12, accent());

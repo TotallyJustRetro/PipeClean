@@ -1675,9 +1675,8 @@ static void draw_wario2_collection(const Settings *s, int x, int y, int w, int h
     }
 }
 
-static void draw_wario2_expedition_log(const Settings *s, int x, int y, int w, int h)
+static void draw_wario2_expedition_log(const Settings *s, int x, int y, int w, int h, int g)
 {
-    int g = GAME_WARIO_LAND2_GB;
     draw_android_card(s, x, y, w, h, g, "EXPEDITION LOG");
     if (!wario2_expedition_log_count) {
         draw_text_fit(x + 12, y + 49, w - 24, 1, 184, 170, 149, "NO EVENTS RECORDED YET");
@@ -1766,7 +1765,7 @@ static void draw_wario2_companion(const Settings *s, int game)
     draw_text_fit(276, 257, 228, 1, 184, 170, 149, "CURRENT FORM");
     draw_text_fit(276, 277, 228, 2, 255, 214, 107, "FORM MEMORY NOT MAPPED");
     draw_text_fit(276, 294, 228, 1, 184, 170, 149, "COLLECTION TRACKING ACTIVE");
-    draw_wario2_expedition_log(s, 530, 213, 250, 94);
+    draw_wario2_expedition_log(s, 530, 213, 250, 94, game);
 
     const int action_ids[4] = {SIM_SAVE, SIM_LOAD, SIM_PAUSE, SIM_REWIND};
     const char *labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};

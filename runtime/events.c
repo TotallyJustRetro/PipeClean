@@ -52,7 +52,6 @@ static const EventDef wario2_defs[] = {
 };
 typedef struct { const EventDef *defs; int n; } GameEvents;
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
-static const GameEvents no_defs = {NULL, 0};
 static const GameEvents ge[N_GAMES] = {
     {dr_defs, N(dr_defs)}, {sml_defs, N(sml_defs)}, {sml2_defs, N(sml2_defs)},
     {wario_sml3_defs, N(wario_sml3_defs)}, {wario2_defs, N(wario2_defs)},
