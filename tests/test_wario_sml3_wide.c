@@ -73,6 +73,16 @@ int main(void)
     if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
         return fail(9, "clean-game patch should be safe to recheck");
 
+    /* Alternate valid World dumps must remain wide when optional activation
+     * sites don't match the exact revision used to generate the patch map. */
+    memset(rom, 0, 0x80000u);
+    seed_wario_fov();
+    rom[0x8476] = 0x00;
+    if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
+        return fail(16, "clean game was rejected due to an optional culling site");
+    if (rom[0x3219] != 0x21 || rom[0x321B] != 0xE2)
+        return fail(17, "core clean-game FOV change did not apply without optional sites");
+
     memset(rom, 0, 0x100000u);
     test_info.size = 0x100000u;
     seed_wario_fov();
@@ -99,10 +109,10 @@ int main(void)
     rom[0x143] = 0xC0;
     rom[0x147] = 0x1B;
     seed_dx_sites();
-    rom[0x8486] = 0x22;
+    rom[0x3219] = 0x11;
     if (wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
-        return fail(13, "an incompatible DX build was accepted");
-    if (rom[0x3219] != 0x10 || rom[0x321B] != 0xD0 ||
+        return fail(13, "an incompatible DX FOV signature was accepted");
+    if (rom[0x3219] != 0x11 || rom[0x321B] != 0xD0 ||
         rom[0x321C] != 0xD0 || rom[0x8477] != 0x07)
         return fail(14, "an incompatible ROM was partially changed");
 
