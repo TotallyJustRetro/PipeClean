@@ -62,11 +62,14 @@ int main(void)
 
     memset(rom, 0, 0x80000u);
     seed_wario_fov();
+    seed_dx_sites();
     if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
         return fail(7, "clean Wario Land signature was rejected");
     if (rom[0x3218] != 0xC6 || rom[0x3219] != 0x21 ||
-        rom[0x321A] != 0xFE || rom[0x321B] != 0xE2 || rom[0x321C] != 0x00)
-        return fail(8, "clean-game view bounds and early off-screen return were not patched");
+        rom[0x321A] != 0xFE || rom[0x321B] != 0xE2 || rom[0x321C] != 0x00 ||
+        rom[0x31FD] != 0xD1 || rom[0x8477] != 0x08 ||
+        rom[0x8486] != 0x10 || rom[0x84A0] != 0x08 || rom[0x84C0] != 0x08)
+        return fail(8, "clean-game visibility and activation bounds were not widened");
     if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
         return fail(9, "clean-game patch should be safe to recheck");
 
