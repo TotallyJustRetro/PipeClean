@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "games.h"
 #include "companion_deck_state.h"
+#include "wario_land2_state.h"
 #include "emu.h"
 #include "cart.h"
 #include "launcher.h"
@@ -51,6 +52,14 @@ static int wario_previous_treasure_mask = -1, wario_previous_stage = -1, wario_p
 static int wario_treasure_animation_id = -1;
 static Uint32 wario_treasure_animation_started;
 static int wario_treasure_animation_active;
+static WarioLand2Snapshot current_wario2_state;
+static WarioLand2Snapshot wario2_previous_state;
+static int wario2_have_baseline, wario2_animation_active, wario2_animation_kind;
+static int wario2_animation_id = -1;
+static Uint32 wario2_animation_started;
+static char wario2_expedition_log[5][64];
+static int wario2_expedition_log_count;
+enum { WARIO2_ANIM_TREASURE = 1, WARIO2_ANIM_PICTURE = 2 };
 enum { SIM_ITEM_ANIM_IDLE, SIM_ITEM_ANIM_ARRIVE, SIM_ITEM_ANIM_SEND_OFF };
 static int item_animation_kind, item_animation_item;
 static Uint32 item_animation_started;
@@ -275,6 +284,119 @@ static void companion_sim_update_wario(int game, const Frame *frame)
     if (current_lives >= 0) wario_previous_lives = current_lives;
 }
 
+
+static void wario2_log_push(const char *entry)
+{
+    for (int i = 4; i > 0; i--)
+        memcpy(wario2_expedition_log[i], wario2_expedition_log[i - 1],
+               sizeof wario2_expedition_log[i]);
+    snprintf(wario2_expedition_log[0], sizeof wario2_expedition_log[0], "%s",
+             entry ? entry : "");
+    if (wario2_expedition_log_count < 5) wario2_expedition_log_count++;
+}
+
+static void companion_sim_reset_wario2_tracking(void)
+{
+    memset(&current_wario2_state, 0, sizeof current_wario2_state);
+    memset(&wario2_previous_state, 0, sizeof wario2_previous_state);
+    current_wario2_state.stage = -1;
+    current_wario2_state.bank_coins = -1;
+    current_wario2_state.overworld_coins = -1;
+    wario2_previous_state.stage = -1;
+    wario2_previous_state.bank_coins = -1;
+    wario2_previous_state.overworld_coins = -1;
+    wario2_have_baseline = 0;
+    wario2_animation_active = 0;
+    wario2_animation_kind = 0;
+    wario2_animation_id = -1;
+    wario2_expedition_log_count = 0;
+    memset(wario2_expedition_log, 0, sizeof wario2_expedition_log);
+}
+
+static void companion_sim_update_wario2(int game, const Frame *frame)
+{
+    if (!wario_land2_supported_game(game)) {
+        companion_sim_reset_wario2_tracking();
+        return;
+    }
+    if (!frame) return;
+    current_wario2_state = wario_land2_read_snapshot(game, gb_wram_peek);
+    current_stage = current_wario2_state.stage;
+    current_lives = -1;
+
+    if (!wario2_have_baseline) {
+        wario2_log_push("EXPEDITION LINKED");
+        if (current_wario2_state.stage >= 0) {
+            char entry[64];
+            snprintf(entry, sizeof entry, "STAGE %02X ENTERED",
+                     current_wario2_state.stage & 0xFF);
+            wario2_log_push(entry);
+        }
+        wario2_previous_state = current_wario2_state;
+        wario2_have_baseline = 1;
+        return;
+    }
+
+    if (current_wario2_state.stage >= 0 && wario2_previous_state.stage >= 0 &&
+        current_wario2_state.stage != wario2_previous_state.stage) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "STAGE %02X ENTERED",
+                 current_wario2_state.stage & 0xFF);
+        wario2_log_push(entry);
+    }
+
+    uint64_t old_t = wario2_previous_state.treasures;
+    uint64_t new_t = current_wario2_state.treasures;
+    uint64_t old_p = wario2_previous_state.picture_panels;
+    uint64_t new_p = current_wario2_state.picture_panels;
+    if ((new_t & old_t) != old_t || (new_p & old_p) != old_p) {
+        /* Save-state loads and rewind roll collection flags backward. */
+        wario2_animation_active = 0;
+    } else {
+        uint64_t gained_t = new_t & ~old_t;
+        uint64_t gained_p = new_p & ~old_p;
+        for (int bit = 0; bit < WARIO_LAND2_COLLECTION_COUNT; bit++) {
+            if (gained_t & (UINT64_C(1) << bit)) {
+                char entry[64];
+                snprintf(entry, sizeof entry, "TREASURE %02d FOUND", bit + 1);
+                wario2_log_push(entry);
+            }
+            if (gained_p & (UINT64_C(1) << bit)) {
+                char entry[64];
+                snprintf(entry, sizeof entry, "PICTURE PIECE %02d", bit + 1);
+                wario2_log_push(entry);
+            }
+        }
+        if (gained_t) {
+            int bit = 0;
+            while (bit < 50 && !(gained_t & (UINT64_C(1) << bit))) bit++;
+            wario2_animation_id = bit + 1;
+            wario2_animation_kind = WARIO2_ANIM_TREASURE;
+            wario2_animation_started = SDL_GetTicks();
+            wario2_animation_active = 1;
+        } else if (gained_p) {
+            int bit = 0;
+            while (bit < 50 && !(gained_p & (UINT64_C(1) << bit))) bit++;
+            wario2_animation_id = bit + 1;
+            wario2_animation_kind = WARIO2_ANIM_PICTURE;
+            wario2_animation_started = SDL_GetTicks();
+            wario2_animation_active = 1;
+        }
+    }
+
+    if (current_wario2_state.bank_coins > wario2_previous_state.bank_coins &&
+        wario2_previous_state.bank_coins >= 0) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "COIN BANK %06d", current_wario2_state.bank_coins);
+        wario2_log_push(entry);
+    }
+    if (current_wario2_state.overworld_coins > wario2_previous_state.overworld_coins &&
+        wario2_previous_state.overworld_coins >= 0)
+        wario2_log_push("OVERWORLD COINS +");
+
+    wario2_previous_state = current_wario2_state;
+}
+
 static void color(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 {
     SDL_SetRenderDrawColor(deck_renderer, r, g, b, a);
@@ -451,12 +573,12 @@ static int simulator_layout_preview_item(void)
 #endif
 }
 
-static Uint8 theme_bg_r(int g) { return g == GAME_DRMARIO ? 240 : g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : g == GAME_WARIO_SML3 ? 33 : 23; }
-static Uint8 theme_bg_g(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : g == GAME_WARIO_SML3 ? 26 : 35; }
-static Uint8 theme_bg_b(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : g == GAME_WARIO_SML3 ? 19 : 55; }
-static Uint8 theme_accent_r(int g) { return g == GAME_DRMARIO ? 21 : g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : g == GAME_WARIO_SML3 ? 255 : 110; }
-static Uint8 theme_accent_g(int g) { return g == GAME_DRMARIO ? 157 : g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : g == GAME_WARIO_SML3 ? 200 : 229; }
-static Uint8 theme_accent_b(int g) { return g == GAME_DRMARIO ? 173 : g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : g == GAME_WARIO_SML3 ? 87 : 239; }
+static Uint8 theme_bg_r(int g) { return g == GAME_DRMARIO ? 240 : g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 33 : 23; }
+static Uint8 theme_bg_g(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 26 : 35; }
+static Uint8 theme_bg_b(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 19 : 55; }
+static Uint8 theme_accent_r(int g) { return g == GAME_DRMARIO ? 21 : g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 255 : 110; }
+static Uint8 theme_accent_g(int g) { return g == GAME_DRMARIO ? 157 : g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 200 : 229; }
+static Uint8 theme_accent_b(int g) { return g == GAME_DRMARIO ? 173 : g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 87 : 239; }
 static Uint8 theme_ink_r(int g) { return g == GAME_DRMARIO ? 23 : g == GAME_SML ? 37 : g == GAME_SML2 ? 255 : g == GAME_WARIO_SML3 ? 255 : 234; }
 static Uint8 theme_ink_g(int g) { return g == GAME_DRMARIO ? 56 : g == GAME_SML ? 60 : g == GAME_SML2 ? 240 : g == GAME_WARIO_SML3 ? 241 : 245; }
 static Uint8 theme_ink_b(int g) { return g == GAME_DRMARIO ? 73 : g == GAME_SML ? 32 : g == GAME_SML2 ? 210 : g == GAME_WARIO_SML3 ? 212 : 255; }
@@ -1521,6 +1643,142 @@ static void draw_wario_companion(const Settings *s)
     SDL_RenderPresent(deck_renderer);
 }
 
+
+static void draw_wario2_collection(const Settings *s, int x, int y, int w, int h,
+                                   int game, const char *heading, uint64_t flags, int pieces)
+{
+    draw_android_card(s, x, y, w, h, game, heading);
+    int count = wario_land2_popcount(flags);
+    char label[48];
+    snprintf(label, sizeof label, "%02d / 50 %s", count, pieces ? "PICTURE PIECES" : "TREASURES");
+    draw_text_fit(x + 12, y + 43, w - 24, 1, 255, 241, 212, label);
+    fill_round_rect(x + 12, y + 49, w - 24, 5, 2, 57, 43, 28, 255);
+    if (count)
+        fill_round_rect(x + 12, y + 49, (w - 24) * count / 50, 5, 2,
+                        255, 200, 87, 255);
+    float step_x = (w - 30) / 10.0f;
+    float step_y = (h - 67) / 5.0f;
+    for (int i = 0; i < 50; i++) {
+        int found = (flags & (UINT64_C(1) << i)) != 0;
+        int cx = x + 15 + (int)(step_x * (i % 10) + step_x * 0.5f);
+        int cy = y + 61 + (int)(step_y * (i / 10) + step_y * 0.5f);
+        if (pieces) {
+            fill_round_rect(cx - 3, cy - 3, 6, 6, 1,
+                            found ? 255 : 73, found ? 214 : 64, found ? 107 : 52, 255);
+            if (found) fill(cx - 1, cy - 1, 2, 2, 255, 248, 219, 255);
+            else outline_round_rect(cx - 3, cy - 3, 6, 6, 1, 129, 107, 77, 255);
+        } else {
+            fill_circle(cx, cy, 3, found ? 255 : 74, found ? 210 : 65,
+                        found ? 107 : 53, 255);
+            if (found) fill_circle(cx - 1, cy - 1, 1, 255, 247, 212, 255);
+        }
+    }
+}
+
+static void draw_wario2_expedition_log(const Settings *s, int x, int y, int w, int h)
+{
+    int g = GAME_WARIO_LAND2_GB;
+    draw_android_card(s, x, y, w, h, g, "EXPEDITION LOG");
+    if (!wario2_expedition_log_count) {
+        draw_text_fit(x + 12, y + 49, w - 24, 1, 184, 170, 149, "NO EVENTS RECORDED YET");
+        return;
+    }
+    int rows = wario2_expedition_log_count < 4 ? wario2_expedition_log_count : 4;
+    for (int i = 0; i < rows; i++) {
+        int row_y = y + 47 + i * 12;
+        int treasure = strncmp(wario2_expedition_log[i], "TREASURE", 8) == 0;
+        int picture = strncmp(wario2_expedition_log[i], "PICTURE", 7) == 0;
+        fill_circle(x + 15, row_y - 3, 2,
+                    treasure || picture ? 255 : 189,
+                    treasure ? 200 : picture ? 214 : 133,
+                    treasure || picture ? 87 : 55, 255);
+        draw_text_fit(x + 23, row_y, w - 34, 1,
+            (treasure || picture) ? 255 : (i == 0 ? 255 : 184),
+            treasure ? 200 : picture ? 214 : (i == 0 ? 241 : 170),
+            (treasure || picture) ? 87 : (i == 0 ? 212 : 149),
+            wario2_expedition_log[i]);
+    }
+}
+
+static void draw_wario2_celebration(void)
+{
+    if (!wario2_animation_active) return;
+    Uint32 elapsed = SDL_GetTicks() - wario2_animation_started;
+    if (elapsed >= 1850) {
+        wario2_animation_active = 0;
+        return;
+    }
+    float phase = elapsed / 1850.f;
+    int alpha = (int)((1.f - phase) * 170.f);
+    for (int i = 0; i < 3; i++)
+        outline_circle(400, 141, (int)(22 + phase * (95 + i * 20)),
+                       255, 214 - i * 15, 107, (Uint8)(alpha > 255 ? 255 : alpha));
+    fill_round_rect(230, 207, 340, 42, 9, 43, 31, 17, 238);
+    outline_round_rect(230, 207, 340, 42, 9, 255, 214, 107, 255);
+    draw_text_fit(246, 223, 308, 1, 255, 235, 165,
+        wario2_animation_kind == WARIO2_ANIM_PICTURE ? "PICTURE PANEL FOUND!" : "TREASURE FOUND!");
+    char label[48];
+    snprintf(label, sizeof label, "%s %02d / 50",
+        wario2_animation_kind == WARIO2_ANIM_PICTURE ? "PICTURE PIECE" : "TREASURE",
+        wario2_animation_id > 0 ? wario2_animation_id : 1);
+    draw_text_fit(246, 239, 308, 1, 247, 233, 208, label);
+    for (int i = 0; i < 12; i++) {
+        float a = 6.2831853f * i / 12.f + phase * 1.3f;
+        int distance = (int)(32 + phase * 70 + (i % 3) * 7);
+        int sx = 400 + (int)(cosf(a) * distance), sy = 141 + (int)(sinf(a) * distance);
+        int sz = (int)(4.5f * (1.f - phase));
+        if (sz < 1) sz = 1;
+        fill(sx - sz / 2, sy - sz / 2, sz, sz, 255,
+             (i % 3) ? 200 : 243, 107, 255);
+    }
+}
+
+static void draw_wario2_companion(const Settings *s, int game)
+{
+    draw_android_scenery(game);
+    draw_asset_image(s, game, 0, 0, 0, 800, 450);
+    draw_android_header(s, 18, 7, 265, 49, game);
+    draw_text_fit(26, 23, 250, 1, 255, 200, 87, "PIPE CLEAN  •  STOLEN TREASURE");
+    draw_text_fit(25, 43, 260, 2, 255, 241, 212,
+                  game == GAME_WARIO_LAND2_GBC ? "WARIO LAND II  //  COLOR QUEST" : "WARIO LAND II  //  CLASSIC QUEST");
+    draw_tiny_button(s, 593, 13, 105, 42, game, "BACKGROUND", "PNG / GIF", SIM_BACKGROUND);
+    draw_tiny_button(s, 704, 13, 72, 42, game, "CLOSE", "GAME", SIM_CLOSE_GAME);
+
+    draw_wario2_collection(s, 20, 70, 230, 133, game, "TREASURE VAULT",
+                           current_wario2_state.treasures, 0);
+    draw_wario_emblem();
+    draw_wario2_collection(s, 550, 70, 230, 133, game, "PICTURE PANEL",
+                           current_wario2_state.picture_panels, 1);
+
+    draw_android_card(s, 20, 213, 230, 94, game, "ADVENTURE TRACKER");
+    char stage[48], coins[48], pocket[48];
+    if (current_wario2_state.stage < 0) snprintf(stage, sizeof stage, "STAGE  --");
+    else snprintf(stage, sizeof stage, "STAGE  %02X", current_wario2_state.stage & 0xFF);
+    if (current_wario2_state.bank_coins < 0) snprintf(coins, sizeof coins, "BANK  ------");
+    else snprintf(coins, sizeof coins, "BANK  %06d", current_wario2_state.bank_coins);
+    if (current_wario2_state.overworld_coins < 0) snprintf(pocket, sizeof pocket, "POCKET  ----");
+    else snprintf(pocket, sizeof pocket, "POCKET  %04d", current_wario2_state.overworld_coins);
+    draw_text_fit(34, 258, 202, 2, 255, 214, 107, stage);
+    draw_text_fit(34, 279, 202, 1, 255, 241, 212, coins);
+    draw_text_fit(34, 295, 202, 1, 184, 170, 149, pocket);
+
+    draw_android_card(s, 260, 213, 260, 94, game, "TRANSFORMATION MONITOR");
+    draw_text_fit(276, 257, 228, 1, 184, 170, 149, "CURRENT FORM");
+    draw_text_fit(276, 277, 228, 2, 255, 214, 107, "FORM MEMORY NOT MAPPED");
+    draw_text_fit(276, 294, 228, 1, 184, 170, 149, "COLLECTION TRACKING ACTIVE");
+    draw_wario2_expedition_log(s, 530, 213, 250, 94);
+
+    const int action_ids[4] = {SIM_SAVE, SIM_LOAD, SIM_PAUSE, SIM_REWIND};
+    const char *labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
+    const char *subs[4] = {"SNAPSHOT", "RESTORE", current_paused ? "CONTINUE" : "HOLD GAME", "HOLD TO REWIND"};
+    for (int i = 0; i < 4; i++)
+        draw_action_button(s, game, action_ids[i], 94 + i * 153, 320,
+            i == 3 ? 153 : 145, 42, labels[i], subs[i], i == 3);
+    draw_slot_timeline(s, game);
+    draw_wario2_celebration();
+    SDL_RenderPresent(deck_renderer);
+}
+
 static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
@@ -1540,6 +1798,7 @@ static void draw_companion(const Settings *s)
     const CompanionLayoutCfg *d = &s->deck_layout[g];
     if (g == GAME_DRMARIO) { draw_dr_mario_companion(s, d); return; }
     if (g == GAME_WARIO_SML3) { draw_wario_companion(s); return; }
+    if (wario_land2_supported_game(g)) { draw_wario2_companion(s, g); return; }
     draw_android_scenery(g);
     draw_asset_image(s, g, 0, 0, 0, 800, 450);
 
@@ -1705,6 +1964,9 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
     if (game == GAME_WARIO_SML3 && next_playing &&
         (!was_playing || previous_game != GAME_WARIO_SML3))
         companion_sim_reset_wario_tracking();
+    if (wario_land2_supported_game(game) && next_playing &&
+        (!was_playing || previous_game != game))
+        companion_sim_reset_wario2_tracking();
 
     current_game = game;
     current_paused = paused;
@@ -1748,12 +2010,16 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
         if (frame->level_id != 0xff) current_stage = frame->level_id;
         if (game == GAME_SML && frame->level_bank != 0xff) current_world = frame->level_bank;
     }
-    if (game != GAME_WARIO_SML3) {
+    if (game == GAME_WARIO_SML3 && next_playing && frame) {
         companion_sim_update_wario(game, frame);
-    } else if (next_playing && frame) {
-        companion_sim_update_wario(game, frame);
-    } else if (!next_playing) {
+    } else if (!next_playing || game != GAME_WARIO_SML3) {
         companion_sim_reset_wario_tracking();
+    }
+
+    if (wario_land2_supported_game(game) && next_playing && frame) {
+        companion_sim_update_wario2(game, frame);
+    } else if (!next_playing || !wario_land2_supported_game(game)) {
+        companion_sim_reset_wario2_tracking();
     }
 }
 

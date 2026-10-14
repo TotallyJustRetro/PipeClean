@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include "events.h"
 #include "wario_event_state.h"
+#include "wario_land2_state.h"
 #include "gb.h"
 #include "rom.h"
 #include "audio.h"
@@ -43,9 +44,20 @@ static const EventDef wario_sml3_defs[] = {
     {"extra",    "Extra life",          "Gain an extra life",              0, 0, 0, 0x6CFF8C, 450, 90},
     {"lost",     "Life lost",           "Lose a life",                     0, 0, 0, 0xFF3030, 650, 100},
 };
+static const EventDef wario2_defs[] = {
+    {"treasure", "Treasure found", "Recover one of the 50 treasures", 0, 0, 0, 0xFFD34A, 500, 100},
+    {"picture",  "Picture piece", "Find a piece for the picture panel", 0, 0, 0, 0xB58AFF, 380, 85},
+    {"coin",     "Coins collected", "Increase the coin bank", 0, 0, 0, 0xFFD23C, 90, 40},
+    {"stage",    "Stage changed", "Enter another stage", 0, 0, 0, 0x6CFF8C, 180, 55},
+};
 typedef struct { const EventDef *defs; int n; } GameEvents;
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
-static const GameEvents ge[N_GAMES] = {{dr_defs, N(dr_defs)}, {sml_defs, N(sml_defs)}, {sml2_defs, N(sml2_defs)}, {wario_sml3_defs, N(wario_sml3_defs)}};
+static const GameEvents no_defs = {NULL, 0};
+static const GameEvents ge[N_GAMES] = {
+    {dr_defs, N(dr_defs)}, {sml_defs, N(sml_defs)}, {sml2_defs, N(sml2_defs)},
+    {wario_sml3_defs, N(wario_sml3_defs)}, {wario2_defs, N(wario2_defs)},
+    {NULL, 0}, {wario2_defs, N(wario2_defs)}
+};
 
 int events_count(int g) { return g >= 0 && g < N_GAMES ? ge[g].n : 0; }
 const EventDef *events_def(int g, int i) { return (g >= 0 && g < N_GAMES && i >= 0 && i < ge[g].n) ? &ge[g].defs[i] : NULL; }
@@ -146,6 +158,34 @@ static void hud_frame(void)
 
 /* Wario Land SML3 stores its expedition counters in cartridge RAM. */
 static WarioEventTracker wario_event_tracker;
+static WarioLand2Snapshot wario2_event_previous;
+static int wario2_event_have_previous;
+
+static void wario2_event_frame(void)
+{
+    WarioLand2Snapshot snapshot = wario_land2_read_snapshot(cur_game, gb_wram_peek);
+    if (snapshot.stage < 0) {
+        wario2_event_have_previous = 0;
+        return;
+    }
+    if (!wario2_event_have_previous) {
+        wario2_event_previous = snapshot;
+        wario2_event_have_previous = 1;
+        return;
+    }
+    const WarioLand2Snapshot old = wario2_event_previous;
+    int rollback = ((snapshot.treasures & old.treasures) != old.treasures) ||
+                   ((snapshot.picture_panels & old.picture_panels) != old.picture_panels);
+    if (!rollback) {
+        if (snapshot.treasures != old.treasures) fire(0);
+        else if (snapshot.picture_panels != old.picture_panels) fire(1);
+        else if ((snapshot.bank_coins > old.bank_coins && old.bank_coins >= 0) ||
+                 (snapshot.overworld_coins > old.overworld_coins && old.overworld_coins >= 0))
+            fire(2);
+        else if (snapshot.stage != old.stage) fire(3);
+    }
+    wario2_event_previous = snapshot;
+}
 
 static uint8_t wario_ram_read(uint16_t address)
 {
@@ -205,6 +245,7 @@ void events_begin(void)
     cur_game = rom_loaded_game();
     qr = qw = 0; tap_frames = 0; hud_have = 0; hud_cnt = 0;
     wario_event_tracker.have_previous = 0;
+    wario2_event_have_previous = 0;
     apu_set_tap_mask(0);
     apu_set_trigger_hook(on_trigger);
     rules = NULL; n_rules = 0;
@@ -220,6 +261,7 @@ void events_end(void)
     apu_set_tap_mask(0);
     gb_watch_set(NULL, 0, NULL);
     wario_event_tracker.have_previous = 0;
+    wario2_event_have_previous = 0;
 }
 
 void events_state_reset(void)
@@ -230,6 +272,7 @@ void events_state_reset(void)
     hud_cnt = 0;
     tap_frames = 0;
     wario_event_tracker.have_previous = 0;
+    wario2_event_have_previous = 0;
     apu_set_tap_mask(0);
 }
 
@@ -238,6 +281,7 @@ void events_frame(void)
     static int16_t tb[2048 * 2];
     if (cur_game == GAME_SML2) hud_frame();
     else if (cur_game == GAME_WARIO_SML3) wario_event_frame();
+    else if (wario_land2_supported_game(cur_game)) wario2_event_frame();
     if (tap_frames > 0) {
         int n = apu_drain_tap(tb, 2048);
         if (n > 0) audio_pad_push(tb, n);

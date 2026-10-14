@@ -159,6 +159,10 @@ add_executable(test_wario_event_state tests/test_wario_event_state.c)
 target_include_directories(test_wario_event_state PRIVATE runtime)
 add_test(NAME wario_event_state COMMAND test_wario_event_state)
 
+add_executable(test_wario_land2_state tests/test_wario_land2_state.c)
+target_include_directories(test_wario_land2_state PRIVATE runtime)
+add_test(NAME wario_land2_state COMMAND test_wario_land2_state)
+
 add_executable(test_cart_mbc1 tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c)
 target_include_directories(test_cart_mbc1 PRIVATE runtime)
 add_test(NAME cart_mbc1 COMMAND test_cart_mbc1)

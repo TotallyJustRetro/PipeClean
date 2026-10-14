@@ -254,7 +254,8 @@ public final class PipeCleanActivity extends SDLActivity {
                                      int warioTreasures, int warioTime) {
         runOnUiThread(() -> {
             companionEnabled = dualScreenEnabled != 0 &&
-                (game == 0 || game == 1 || game == 2 || game == 3);
+                (game == 0 || game == 1 || game == 2 || game == 3 ||
+                 game == 4 || game == 6);
             // Always retain the second-screen deck. Game-specific widgets are live only
             // when the selected game has Companion support enabled; otherwise show a
             // useful READY screen rather than dismissing the entire lower display.

@@ -20,6 +20,7 @@
 #include "rom.h"
 #include "cart.h"
 #include "emu.h"
+#include "wario_land2_state.h"
 #include "netplay.h"
 #include "render.h"
 #include "bgimg.h"
@@ -322,9 +323,11 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
         int lives = 0, stage = -1, world = -1;
         int wario_coins = -1, wario_hearts = -1, wario_power = -1;
         int wario_treasures = -1, wario_time = -1;
+        int wl2_treasure_lo = -1, wl2_treasure_hi = -1;
+        int wl2_picture_lo = -1, wl2_picture_hi = -1;
         int dual_screen = settings.launcher_dual_screen &&
             (game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
-             game == GAME_WARIO_SML3);
+             game == GAME_WARIO_SML3 || wario_land2_supported_game(game));
         if (frame && (game == GAME_SML || game == GAME_SML2)) {
             uint8_t bcd = frame->p1_lives;
             int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
@@ -348,15 +351,33 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             wario_coins = wario_read_companion_coins();
             wario_time = wario_read_companion_time();
         }
+        if (frame && wario_land2_supported_game(game)) {
+            WarioLand2Snapshot w2 = wario_land2_read_snapshot(game, gb_wram_peek);
+            lives = -1;
+            stage = w2.stage;
+            wario_coins = w2.bank_coins;
+            wario_hearts = w2.overworld_coins;
+            wario_power = -1; /* No verified transformation-state byte in the current RAM map. */
+            wario_treasures = -1;
+            wario_time = -1;
+            wl2_treasure_lo = (int)(uint32_t)(w2.treasures & UINT64_C(0xFFFFFFFF));
+            wl2_treasure_hi = (int)((w2.treasures >> 32) & UINT64_C(0x3FFFF));
+            wl2_picture_lo = (int)(uint32_t)(w2.picture_panels & UINT64_C(0xFFFFFFFF));
+            wl2_picture_hi = (int)((w2.picture_panels >> 32) & UINT64_C(0x3FFFF));
+        }
         (void)(*env)->CallVoidMethod(env, activity, method,
             (jint)game, (jint)lives, (jint)stage, (jint)world,
             (jint)paused, (jint)settings.g[game].state_slot,
             (jint)settings.g[game].palette, (jint)settings.flt.preset,
             (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen,
-            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_score : -1),
-            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_level : -1),
-            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_speed : -1),
-            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_capsule : 0xFF),
+            (jint)(wario_land2_supported_game(game) ? wl2_treasure_lo :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_score : -1)),
+            (jint)(wario_land2_supported_game(game) ? wl2_treasure_hi :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_level : -1)),
+            (jint)(wario_land2_supported_game(game) ? wl2_picture_lo :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_speed : -1)),
+            (jint)(wario_land2_supported_game(game) ? wl2_picture_hi :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_capsule : 0xFF)),
             (jint)wario_coins, (jint)wario_hearts, (jint)wario_power,
             (jint)wario_treasures, (jint)wario_time);
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);

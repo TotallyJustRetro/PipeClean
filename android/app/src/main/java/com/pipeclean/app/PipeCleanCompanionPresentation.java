@@ -185,6 +185,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private int drMarioScore = -1, drMarioLevel = -1, drMarioSpeed = -1, drMarioCapsule = 0xFF;
         private int warioCoins = -1, warioHearts = -1, warioPower = -1;
         private int warioTreasureMask = -1, warioTime = -1;
+        private long wario2TreasureMask = -1L, wario2PictureMask = -1L;
+        private long previousWario2TreasureMask = -1L, previousWario2PictureMask = -1L;
+        private boolean wario2BaselineSet, wario2AnimationActive;
+        private int wario2AnimationId = -1, wario2AnimationKind;
+        private long wario2AnimationStart;
+        private int previousWario2Stage = -1;
         private final String[] expeditionLog = new String[5];
         private boolean warioBaselineSet, treasureAnimationActive;
         private int previousWarioCoins = -1, previousWarioHearts = -1, previousWarioPower = -1;
@@ -270,20 +276,25 @@ final class PipeCleanCompanionPresentation extends Presentation {
             layoutEditorPreview = false;
             dashboardMode = false;
             this.game = game;
-            this.lives = game == 3 && lives < 0 ? -1 : Math.max(0, Math.min(99, lives));
+            boolean wl2 = game == 4 || game == 6;
+            this.lives = (game == 3 || wl2) && lives < 0 ? -1 : Math.max(0, Math.min(99, lives));
             this.stage = stage;
             this.world = world;
             this.paused = paused;
-            this.drMarioScore = drMarioScore >= 0 ? Math.min(99999999, drMarioScore) : -1;
-            this.drMarioLevel = drMarioLevel >= 0 && drMarioLevel <= 99 ? drMarioLevel : -1;
+            this.drMarioScore = wl2 ? drMarioScore : (drMarioScore >= 0 ? Math.min(99999999, drMarioScore) : -1);
+            this.drMarioLevel = wl2 ? drMarioLevel : (drMarioLevel >= 0 && drMarioLevel <= 99 ? drMarioLevel : -1);
             this.drMarioSpeed = drMarioSpeed;
-            this.drMarioCapsule = drMarioCapsule >= 0 && drMarioCapsule <= 0x17
-                ? drMarioCapsule : 0xFF;
-            this.warioCoins = warioCoins >= 0 && warioCoins <= 99999 ? warioCoins : -1;
-            this.warioHearts = warioHearts >= 0 && warioHearts <= 99 ? warioHearts : -1;
+            this.drMarioCapsule = wl2 ? drMarioCapsule :
+                (drMarioCapsule >= 0 && drMarioCapsule <= 0x17 ? drMarioCapsule : 0xFF);
+            this.warioCoins = warioCoins >= 0 && warioCoins <= 999999 ? warioCoins : -1;
+            this.warioHearts = warioHearts >= 0 && warioHearts <= 999999 ? warioHearts : -1;
             this.warioPower = warioPower >= 0 && warioPower <= 4 ? warioPower : -1;
-            this.warioTreasureMask = warioTreasureMask >= 0 ? (warioTreasureMask & 0xFFFF) : -1;
+            this.warioTreasureMask = game == 3 && warioTreasureMask >= 0 ? (warioTreasureMask & 0xFFFF) : -1;
             this.warioTime = warioTime >= 0 && warioTime <= 999 ? warioTime : -1;
+            this.wario2TreasureMask = wl2
+                ? (((long)drMarioLevel & 0x3FFFFL) << 32) | ((long)drMarioScore & 0xFFFFFFFFL) : -1L;
+            this.wario2PictureMask = wl2
+                ? (((long)drMarioCapsule & 0x3FFFFL) << 32) | ((long)drMarioSpeed & 0xFFFFFFFFL) : -1L;
             observeWarioState();
             this.slot = Math.max(0, Math.min(9, slot));
             if (animatedSlot < 0f) animatedSlot = this.slot;
@@ -337,9 +348,17 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void observeWarioState() {
-            if (game != 3) {
+            if (wario2()) {
+                observeWario2State();
                 warioBaselineSet = false;
                 treasureAnimationActive = false;
+                return;
+            }
+            if (game != 3) {
+                warioBaselineSet = false;
+                wario2BaselineSet = false;
+                treasureAnimationActive = false;
+                wario2AnimationActive = false;
                 return;
             }
             if (!warioBaselineSet) {
@@ -398,6 +417,72 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (lives >= 0) previousWarioLives = lives;
         }
 
+
+        private int wario2TreasureCount() {
+            return wario2TreasureMask < 0 ? 0 : Long.bitCount(wario2TreasureMask & 0x3FFFFFFFFFFFFL);
+        }
+
+        private int wario2PictureCount() {
+            return wario2PictureMask < 0 ? 0 : Long.bitCount(wario2PictureMask & 0x3FFFFFFFFFFFFL);
+        }
+
+        private void observeWario2State() {
+            if (wario2TreasureMask < 0 || wario2PictureMask < 0) {
+                wario2BaselineSet = false;
+                wario2AnimationActive = false;
+                return;
+            }
+            if (!wario2BaselineSet) {
+                for (int i = 0; i < expeditionLog.length; i++) expeditionLog[i] = null;
+                pushExpeditionLog("EXPEDITION LINKED");
+                if (stage >= 0)
+                    pushExpeditionLog(String.format(Locale.US, "STAGE %02X ENTERED", stage & 0xFF));
+                previousWario2Stage = stage;
+                previousWario2TreasureMask = wario2TreasureMask;
+                previousWario2PictureMask = wario2PictureMask;
+                previousWarioCoins = warioCoins;
+                previousWarioHearts = warioHearts;
+                wario2BaselineSet = true;
+                return;
+            }
+            if (stage >= 0 && previousWario2Stage >= 0 && stage != previousWario2Stage)
+                pushExpeditionLog(String.format(Locale.US, "STAGE %02X ENTERED", stage & 0xFF));
+
+            long oldT = previousWario2TreasureMask, nextT = wario2TreasureMask;
+            long oldP = previousWario2PictureMask, nextP = wario2PictureMask;
+            if ((nextT & oldT) != oldT || (nextP & oldP) != oldP) {
+                // A state load or rewind can legitimately roll these flags backward.
+                wario2AnimationActive = false;
+            } else {
+                long gainedT = nextT & ~oldT, gainedP = nextP & ~oldP;
+                for (int bit = 0; bit < 50; bit++) {
+                    if ((gainedT & (1L << bit)) != 0)
+                        pushExpeditionLog(String.format(Locale.US, "TREASURE %02d FOUND", bit + 1));
+                    if ((gainedP & (1L << bit)) != 0)
+                        pushExpeditionLog(String.format(Locale.US, "PICTURE PIECE %02d", bit + 1));
+                }
+                if (gainedT != 0 || gainedP != 0) {
+                    boolean picture = gainedT == 0;
+                    long gained = picture ? gainedP : gainedT;
+                    wario2AnimationKind = picture ? 2 : 1;
+                    wario2AnimationId = Long.numberOfTrailingZeros(gained) + 1;
+                    wario2AnimationStart = SystemClock.uptimeMillis();
+                    wario2AnimationActive = true;
+                    postInvalidateOnAnimation();
+                }
+            }
+            if (warioCoins >= 0 && previousWarioCoins >= 0 && warioCoins > previousWarioCoins)
+                pushExpeditionLog(String.format(Locale.US, "COIN BANK %06d", warioCoins));
+            if (warioHearts >= 0 && previousWarioHearts >= 0 && warioHearts > previousWarioHearts)
+                pushExpeditionLog("OVERWORLD COINS +");
+
+            previousWario2Stage = stage;
+            previousWario2TreasureMask = wario2TreasureMask;
+            previousWario2PictureMask = wario2PictureMask;
+            previousWarioCoins = warioCoins;
+            previousWarioHearts = warioHearts;
+        }
+
         private void startReserveItemSendOff(int itemId) {
             if (itemId <= 0) return;
             displayedItem = itemId;
@@ -419,6 +504,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drMarioCapsule = 0xFF;
             warioCoins = warioHearts = warioPower = warioTime = -1;
             warioTreasureMask = -1;
+            wario2TreasureMask = wario2PictureMask = -1L;
+            wario2BaselineSet = false;
+            wario2AnimationActive = false;
+            previousWario2TreasureMask = previousWario2PictureMask = -1L;
             warioBaselineSet = false;
             treasureAnimationActive = false;
             for (int i = 0; i < expeditionLog.length; i++) expeditionLog[i] = null;
@@ -989,12 +1078,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private boolean sml1() { return game == 1; }
         private boolean sml2() { return game == 2; }
         private boolean wario() { return game == 3; }
-        private int bg() { return drMario() ? 0xFFF0F7F7 : sml1() ? 0xFFB8D991 : sml2() ? 0xFF25152F : wario() ? 0xFF211A13 : 0xFF172337; }
-        private int panel() { return drMario() ? 0xF8FFFFFF : sml1() ? 0xF0F0F5D5 : sml2() ? 0xEE352342 : wario() ? 0xEE36302A : 0xEE24354C; }
-        private int accent() { return drMario() ? 0xFF159DAD : sml1() ? 0xFF397C30 : sml2() ? 0xFFFFCA5B : wario() ? 0xFFFFC857 : 0xFF6EE5EF; }
-        private int ink() { return drMario() ? 0xFF173849 : sml1() ? 0xFF253C20 : sml2() ? 0xFFFFF0D2 : wario() ? 0xFFFFF1D4 : 0xFFEAF5FF; }
-        private int muted() { return drMario() ? 0xFF627F8B : sml1() ? 0xFF57764D : sml2() ? 0xFFD1B7D5 : wario() ? 0xFFB8AA95 : 0xFFAFC3DD; }
-        private int edge() { return drMario() ? 0xFF8BCACC : sml1() ? 0xFF80A951 : sml2() ? 0xFFAD7B41 : wario() ? 0xFFBD8537 : 0xFF577D9D; }
+        private boolean wario2() { return game == 4 || game == 6; }
+        private int bg() { return drMario() ? 0xFFF0F7F7 : sml1() ? 0xFFB8D991 : sml2() ? 0xFF25152F : (wario() || wario2()) ? 0xFF211A13 : 0xFF172337; }
+        private int panel() { return drMario() ? 0xF8FFFFFF : sml1() ? 0xF0F0F5D5 : sml2() ? 0xEE352342 : (wario() || wario2()) ? 0xEE36302A : 0xEE24354C; }
+        private int accent() { return drMario() ? 0xFF159DAD : sml1() ? 0xFF397C30 : sml2() ? 0xFFFFCA5B : (wario() || wario2()) ? 0xFFFFC857 : 0xFF6EE5EF; }
+        private int ink() { return drMario() ? 0xFF173849 : sml1() ? 0xFF253C20 : sml2() ? 0xFFFFF0D2 : (wario() || wario2()) ? 0xFFFFF1D4 : 0xFFEAF5FF; }
+        private int muted() { return drMario() ? 0xFF627F8B : sml1() ? 0xFF57764D : sml2() ? 0xFFD1B7D5 : (wario() || wario2()) ? 0xFFB8AA95 : 0xFFAFC3DD; }
+        private int edge() { return drMario() ? 0xFF8BCACC : sml1() ? 0xFF80A951 : sml2() ? 0xFFAD7B41 : (wario() || wario2()) ? 0xFFBD8537 : 0xFF577D9D; }
         private int gold() { return 0xFFFFD66B; }
         private int goldDark() { return 0xFFAC6B22; }
 
@@ -1003,6 +1093,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (sml1()) return "SUPER MARIO LAND";
             if (sml2()) return "6 GOLDEN COINS";
             if (wario()) return "WARIO LAND: SUPER MARIO LAND 3";
+            if (wario2()) return "WARIO LAND II // STOLEN TREASURE";
             return "PIPECLEAN // READY";
         }
 
@@ -1012,6 +1103,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 return String.format(Locale.US, "%d - %d", world, stage);
             if (sml2()) return String.format(Locale.US, "STAGE %02d", stage);
             if (wario()) return String.format(Locale.US, "COURSE %02X", stage & 0xFF);
+            if (wario2()) return String.format(Locale.US, "STAGE %02X", stage & 0xFF);
             return "—";
         }
 
@@ -1064,10 +1156,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if (portrait) drawLauncherDashboardPortrait(c); else drawLauncherDashboardLandscape(c);
             } else if (wario()) {
                 if (portrait) drawWarioPortrait(c); else drawWarioLandscape(c);
+            } else if (wario2()) {
+                if (portrait) drawWario2Portrait(c); else drawWario2Landscape(c);
             } else {
                 if (portrait) drawPortrait(c); else drawLandscape(c);
             }
             if (!dashboardMode && wario()) drawTreasureCelebration(c, w, h);
+            if (!dashboardMode && wario2()) drawWario2Celebration(c, w, h);
             drawLayoutDecoration(c, w, h);
             drawMusicNotification(c, portrait, w, h);
             drawCornerGems(c, w, h);
@@ -1508,6 +1603,152 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 p.setColor(0xFFFFF9E6);
                 c.drawCircle(cx - size * 0.18f, cy - size * 0.28f, Math.max(1f, size * 0.10f), p);
             }
+        }
+
+
+        private void drawWario2Grid(Canvas c, float x, float y, float w, float h,
+                                    String heading, long flags, boolean pictures) {
+            card(c, x, y, w, h, heading);
+            int count = pictures ? wario2PictureCount() : wario2TreasureCount();
+            text(c, (flags < 0 ? "-- / 50" : count + " / 50") + (pictures ? " PIECES" : " TREASURES"),
+                 x + 12, y + 42, 8.2f, accent());
+            float bx = x + 12, by = y + 49, bw = w - 24;
+            p.setColor(0x553A2B1B);
+            c.drawRoundRect(bx, by, bx + bw, by + 5, 3, 3, p);
+            if (count > 0) {
+                p.setColor(accent());
+                c.drawRoundRect(bx, by, bx + bw * count / 50f, by + 5, 3, 3, p);
+            }
+            float stepX = (w - 28f) / 10f, stepY = (h - 64f) / 5f;
+            for (int i = 0; i < 50; i++) {
+                boolean found = flags >= 0 && (flags & (1L << i)) != 0;
+                float cx = x + 14f + stepX * (i % 10) + stepX * 0.5f;
+                float cy = y + 57f + stepY * (i / 10) + stepY * 0.5f;
+                if (pictures) {
+                    p.setStyle(Paint.Style.FILL);
+                    p.setColor(found ? 0xFFFFD66B : 0xFF4A3927);
+                    c.drawRoundRect(cx - 3.2f, cy - 3.2f, cx + 3.2f, cy + 3.2f, 1.2f, 1.2f, p);
+                    p.setStyle(Paint.Style.STROKE);
+                    p.setStrokeWidth(0.8f);
+                    p.setColor(found ? 0xFFFFF4C2 : 0xFF8A7251);
+                    c.drawRoundRect(cx - 3.2f, cy - 3.2f, cx + 3.2f, cy + 3.2f, 1.2f, 1.2f, p);
+                    p.setStyle(Paint.Style.FILL);
+                    if (found) rect(c, cx - 1.0f, cy - 1.0f, 2.0f, 2.0f, 0xFFFFF8E2);
+                } else {
+                    drawTreasureMark(c, cx, cy, 3.2f, found);
+                }
+            }
+        }
+
+        private void drawWario2Landscape(Canvas c) {
+            c.save();
+            headerPlate(c, 18, 7, 265, 49);
+            text(c, "PIPE CLEAN  •  STOLEN TREASURE", 26, 23, 8.4f, accent());
+            textFit(c, title(), 25, 43, 260, 15, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 552, 17, 34, 34, "×", RESET_BACKGROUND);
+            button(c, 593, 13, 105, 42, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.restore();
+
+            drawWario2Grid(c, 20, 70, 230, 133, "TREASURE VAULT", wario2TreasureMask, false);
+            drawWarioEmblem(c, 400, 139, 44);
+            drawWario2Grid(c, 550, 70, 230, 133, "PICTURE PANEL", wario2PictureMask, true);
+
+            card(c, 20, 213, 230, 94, "EXPEDITION LOG");
+            drawExpeditionLog(c, 20, 213, 230, 94, 4);
+            card(c, 260, 213, 260, 94, "ADVENTURE TRACKER");
+            textFit(c, stageText(), 276, 258, 226, 12, accent());
+            text(c, "COIN BANK  " + (warioCoins < 0 ? "------" : String.format(Locale.US, "%06d", warioCoins)),
+                 276, 278, 8, ink());
+            text(c, "POCKET COINS  " + (warioHearts < 0 ? "----" : String.format(Locale.US, "%04d", warioHearts)),
+                 276, 294, 8, muted());
+
+            card(c, 530, 213, 250, 94, "TRANSFORMATION MONITOR");
+            text(c, "CURRENT FORM", 544, 258, 7, muted());
+            textFit(c, "FORM MEMORY NOT MAPPED", 544, 276, 222, 9, accent());
+            text(c, "TRACKING READY", 544, 294, 7, muted());
+
+            c.save(); applyLayoutTransform(c, 2, 800f, 450f, 400f, 343f); drawDockLandscape(c); c.restore();
+            c.save(); applyLayoutTransform(c, 3, 800f, 450f, 400f, 406.5f); drawSaveTimeline(c, 24, 365, 752, 83, false); c.restore();
+        }
+
+        private void drawWario2Portrait(Canvas c) {
+            c.save();
+            headerPlate(c, 14, 7, 220, 43);
+            text(c, "PIPE CLEAN  •  STOLEN TREASURE", 20, 23, 7.5f, accent());
+            textFit(c, title(), 20, 41, 210, 12.5f, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 238, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.restore();
+
+            badge(c, 20, 55, 128, 47, "CURRENT STAGE", stageText());
+            badge(c, 158, 55, 272, 47, "TREASURES", wario2TreasureCount() + " / 50");
+            drawWario2Grid(c, 20, 111, 410, 132, "TREASURE VAULT", wario2TreasureMask, false);
+            drawWario2Grid(c, 20, 250, 410, 132, "PICTURE PANEL", wario2PictureMask, true);
+
+            card(c, 20, 391, 195, 63, "COINS");
+            text(c, "BANK  " + (warioCoins < 0 ? "------" : String.format(Locale.US, "%06d", warioCoins)),
+                 32, 425, 8, ink());
+            text(c, "POCKET  " + (warioHearts < 0 ? "----" : String.format(Locale.US, "%04d", warioHearts)),
+                 32, 442, 8, muted());
+            card(c, 225, 391, 205, 63, "TRANSFORMATION");
+            text(c, "FORM NOT MAPPED", 238, 425, 8, accent());
+            text(c, "LIVE TRACKING READY", 238, 442, 7, muted());
+            drawExpeditionLog(c, 20, 462, 410, 78, 3);
+
+            c.save(); applyLayoutTransform(c, 2, 450f, 800f, 225f, 625f);
+            button(c, 20, 556, 198, 47, "SAVE", "SNAPSHOT", SAVE, false);
+            button(c, 232, 556, 198, 47, "LOAD", "RESTORE", LOAD, false);
+            button(c, 20, 608, 198, 47, paused ? "RESUME" : "PAUSE",
+                paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
+            button(c, 232, 608, 198, 47, "REWIND", "HOLD TO REWIND", REWIND, true);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 3, 450f, 800f, 225f, 750f); drawSaveTimeline(c, 14, 704, 422, 92, true); c.restore();
+        }
+
+        private void drawWario2Celebration(Canvas c, float w, float h) {
+            if (!wario2AnimationActive) return;
+            long elapsed = SystemClock.uptimeMillis() - wario2AnimationStart;
+            if (elapsed >= TREASURE_ANIMATION_MS) {
+                wario2AnimationActive = false;
+                return;
+            }
+            float phase = Math.max(0f, Math.min(1f, elapsed / (float)TREASURE_ANIMATION_MS));
+            float cx = w * 0.5f, cy = h * (h > w ? 0.39f : 0.37f);
+            int alpha = Math.max(0, Math.min(170, (int)((1f - phase) * 170f)));
+            p.setStyle(Paint.Style.STROKE);
+            for (int i = 0; i < 3; i++) {
+                p.setStrokeWidth(2.5f - i * 0.45f);
+                p.setColor((Math.max(0, alpha - i * 28) << 24) | 0x00FFD66B);
+                c.drawCircle(cx, cy, 22f + phase * (95f + i * 20f), p);
+            }
+            p.setStyle(Paint.Style.FILL);
+            float bannerW = Math.min(w - 28f, h > w ? 330f : 360f);
+            float bannerY = cy + (h > w ? 58f : 72f);
+            p.setColor(0xE82B2115);
+            c.drawRoundRect(cx - bannerW * 0.5f, bannerY, cx + bannerW * 0.5f,
+                            bannerY + 43f, 12, 12, p);
+            p.setColor(0xFFFFD66B);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.8f);
+            c.drawRoundRect(cx - bannerW * 0.5f, bannerY, cx + bannerW * 0.5f,
+                            bannerY + 43f, 12, 12, p);
+            p.setStyle(Paint.Style.FILL);
+            text(c, wario2AnimationKind == 2 ? "PICTURE PANEL FOUND!" : "TREASURE FOUND!",
+                 cx, bannerY + 18f, 10, 0xFFFFEBA5, true);
+            text(c, String.format(Locale.US, "%s %02d / 50",
+                 wario2AnimationKind == 2 ? "PICTURE PIECE" : "TREASURE",
+                 Math.max(1, wario2AnimationId)), cx, bannerY + 33f, 7, 0xFFF7E9D0, true);
+            for (int i = 0; i < 12; i++) {
+                double a = (Math.PI * 2.0 * i / 12.0) + phase * 1.3;
+                float distance = 32f + phase * 70f + (i % 3) * 7f;
+                float sx = cx + (float)Math.cos(a) * distance;
+                float sy = cy + (float)Math.sin(a) * distance;
+                float size = Math.max(1.5f, 4.5f * (1f - phase));
+                rect(c, sx - size * 0.5f, sy - size * 0.5f, size, size,
+                     (i % 3 == 0) ? 0xFFFFF3C5 : 0xFFFFC857);
+            }
+            postInvalidateOnAnimation();
         }
 
         private void drawWarioEmblem(Canvas c, float cx, float cy, float radius) {
