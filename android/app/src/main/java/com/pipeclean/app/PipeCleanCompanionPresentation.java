@@ -1430,7 +1430,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
 
             int itemLayer = itemAlpha < 255 ? c.saveLayerAlpha(
-                cx-radius, cy-radius, cx+radius, cy+radius, itemAlpha) : -1;
+                cx-radius*0.9f, cy-radius*1.05f, cx+radius*0.9f, cy+radius*2.05f, itemAlpha) : -1;
             c.save();
             c.translate(cx, cy + itemDy);
             c.scale(itemScale, itemScale);
