@@ -1074,20 +1074,22 @@ static void draw_dr_mario_capsule(int cx, int cy, int width, int height, int raw
     int left=cx-sw/2, top=cy-sh/2;
     if(!valid){first=0;second=2;orientation=0;vertical=0;sw=width;sh=height;left=cx-sw/2;top=cy-sh/2;}
     if(orientation==2||orientation==3){int tmp=first;first=second;second=tmp;}
-    fill_round_rect(left+3,top+5,sw,sh,sh/2,21,56,73,48);
+    int radius=(sw<sh?sw:sh)/2;
+    fill_round_rect(left+3,top+5,sw,sh,radius,21,56,73,48);
     SDL_Rect shell={left,top,sw,sh}, half=shell;
     if(!vertical)half.w=sw/2;else half.h=sh/2;
     SDL_RenderSetClipRect(deck_renderer,&half);
-    fill_round_rect(left,top,sw,sh,sh/2,valid?pr[first]:193,valid?pg[first]:216,valid?pb[first]:221,255);
+    fill_round_rect(left,top,sw,sh,radius,valid?pr[first]:193,valid?pg[first]:216,valid?pb[first]:221,255);
     half=shell;
     if(!vertical){half.x+=sw/2;half.w-=sw/2;}else{half.y+=sh/2;half.h-=sh/2;}
     SDL_RenderSetClipRect(deck_renderer,&half);
-    fill_round_rect(left,top,sw,sh,sh/2,valid?pr[second]:227,valid?pg[second]:236,valid?pb[second]:238,255);
+    fill_round_rect(left,top,sw,sh,radius,valid?pr[second]:227,valid?pg[second]:236,valid?pb[second]:238,255);
     SDL_RenderSetClipRect(deck_renderer,NULL);
-    outline_round_rect(left,top,sw,sh,sh/2,49,75,88,255);
+    outline_round_rect(left,top,sw,sh,radius,49,75,88,255);
     if(!vertical)fill(left+sw/2-1,top+sh/5,2,sh*3/5,49,75,88,210);
     else fill(left+sw/5,top+sh/2-1,sw*3/5,2,49,75,88,210);
-    fill_round_rect(left+sh/5,top+sh/5,vertical?sw*3/5:sw/3,sh/12>1?sh/12:2,2,255,255,255,120);
+    if(!vertical)fill_round_rect(left+sh/5,top+sh/5,sw/3,sh/12>1?sh/12:2,2,255,255,255,120);
+    else fill_round_rect(left+sw/5,top+sh/5,sw/12>1?sw/12:2,sh/3,2,255,255,255,120);
 }
 static const char *dr_mario_speed_label(int speed)
 {
