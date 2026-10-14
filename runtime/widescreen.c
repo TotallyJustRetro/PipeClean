@@ -25,6 +25,7 @@ static size_t wl2_trace_count;
 static int wl2_trace_atexit_registered;
 static int wl2_trace_game, wl2_trace_left, wl2_trace_right;
 static uint32_t wl2_trace_crc;
+static char wl2_trace_path[1200] = "pipeclean-wl2-wide-trace.txt";
 static size_t wl2_trace_rom_size;
 static uint8_t wl2_trace_cgb_flag;
 static char wl2_trace_title[17];
@@ -132,6 +133,12 @@ static int wl2_trace_hit_order(const void *a, const void *b)
     return 0;
 }
 
+void wide_wl2_trace_set_path(const char *path)
+{
+    if (!path || !path[0]) return;
+    snprintf(wl2_trace_path, sizeof wl2_trace_path, "%s", path);
+}
+
 void wide_wl2_trace_finish(void)
 {
     wide_wl2_trace_active = 0;
@@ -143,9 +150,9 @@ void wide_wl2_trace_finish(void)
         if (wl2_trace_entries[i].used) ordered[used++] = &wl2_trace_entries[i];
     qsort(ordered, used, sizeof ordered[0], wl2_trace_hit_order);
 
-    FILE *f = fopen("pipeclean-wl2-wide-trace.txt", "w");
+    FILE *f = fopen(wl2_trace_path, "w");
     if (!f) {
-        fprintf(stderr, "PipeClean: couldn't write pipeclean-wl2-wide-trace.txt\n");
+        fprintf(stderr, "PipeClean: couldn't write Wario Land II widescreen trace at %s\n", wl2_trace_path);
         return;
     }
     fprintf(f, "PipeClean Wario Land II widescreen instruction trace\n");
@@ -168,7 +175,7 @@ void wide_wl2_trace_finish(void)
     }
     fclose(f);
     fprintf(stderr, "PipeClean: wrote Wario Land II widescreen trace (%zu sites) to "
-                    "pipeclean-wl2-wide-trace.txt\n", used);
+                    "%s\n", used, wl2_trace_path);
     wl2_trace_count = 0;
     memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
 }
