@@ -102,6 +102,19 @@ int main(void)
     if (!wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
         return fail(12, "DX patch should be safe to recheck");
 
+    /* DX also remains usable when an optional activation instruction differs. */
+    memset(rom, 0, 0x100000u);
+    test_info.size = 0x100000u;
+    seed_wario_fov();
+    rom[0x148] = 0x05;
+    rom[0x143] = 0xC0;
+    rom[0x147] = 0x1B;
+    rom[0x8476] = 0x00;
+    if (!wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
+        return fail(18, "DX was rejected due to an optional activation site");
+    if (rom[0x3219] != 0x1E || rom[0x321B] != 0xED)
+        return fail(19, "DX FOV adjustment did not apply without optional sites");
+
     memset(rom, 0, 0x100000u);
     test_info.size = 0x100000u;
     seed_wario_fov();
