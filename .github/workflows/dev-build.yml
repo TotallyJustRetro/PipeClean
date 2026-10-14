@@ -29,6 +29,7 @@ jobs:
       - name: Build bundled Wario player
         run: |
           git clone --depth 1 --branch feature/wario-companion-deck https://github.com/TotallyJustRetro/warko.git ci/warko
+          echo "Wario player source commit: $(git -C ci/warko rev-parse HEAD)"
           python3 ci/warko/gbrecomp.py --player -o ci/warko/build/player
           make -C ci/warko/build/player OPT=-O2 -j2
           test -x ci/warko/build/player/gbplayer
@@ -152,6 +153,7 @@ jobs:
         shell: msys2 {0}
         run: |
           git clone --depth 1 --branch feature/wario-companion-deck https://github.com/TotallyJustRetro/warko.git ci/warko
+          echo "Wario player source commit: $(git -C ci/warko rev-parse HEAD)"
           python ci/warko/gbrecomp.py --player -o ci/warko/build/player
           make -C ci/warko/build/player OPT=-O2 -j2
           test -f ci/warko/build/player/gbplayer.exe
