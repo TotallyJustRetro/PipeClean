@@ -6,6 +6,11 @@
 #include "widescreen.h"
 #include "cart.h"
 
+#if defined(__GNUC__) || defined(__clang__)
+/* Optional for renderer-only unit tests that compile ppu.c without gb.c. */
+extern uint8_t gb_wram_peek(size_t offset) __attribute__((weak));
+#endif
+
 /* ppu.c is also compiled alone by the CGB renderer unit test. Keep the
  * compositor an optional link-time feature for that target. */
 #if defined(__GNUC__) || defined(__clang__)
@@ -199,7 +204,7 @@ static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *til
 static int wario_ram_ready(void)
 {
     const CartInfo *ci = cart_info();
-    return wario_wide_enabled && rom && cart_ram && ci &&
+    return wario_wide_enabled && gb_wram_peek && rom && cart_ram && ci &&
            ci->ram_bytes > 0x0F00u && ci->size >= 0x80000u;
 }
 
@@ -213,7 +218,8 @@ static int wario_unwrap_tile_coordinate(int map_tile, int reference)
 
 static int wario_block_at(int world_x, int world_y, uint8_t *block, int *tile_in_block)
 {
-    if (world_x < 0 || world_y < 0 || world_x >= 0x1000 || world_y >= 0x0200)
+    if (!gb_wram_peek || world_x < 0 || world_y < 0 ||
+        world_x >= 0x1000 || world_y >= 0x0200)
         return 0;
     unsigned layout_offset = (unsigned)(world_y >> 4) * 0x100u + (unsigned)(world_x >> 4);
     *block = (uint8_t)(gb_wram_peek(layout_offset) & 0x7Fu);
