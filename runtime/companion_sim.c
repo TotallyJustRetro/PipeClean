@@ -103,6 +103,14 @@ static const uint8_t font5x7[36][7] = {
     {14,17,17,15,1,1,14},   /* 9 */
 };
 
+/* Wario Land's two supported cartridge profiles use one 8 KiB RAM bank.
+ * Sample the backing bytes directly; the game disables SRAM between accesses. */
+extern uint8_t *cart_ram;
+static uint8_t wario_ram_read(uint16_t address)
+{
+    return cart_ram ? cart_ram[address & 0x1FFFu] : 0xFF;
+}
+
 static int wario_bcd_pair(uint8_t value)
 {
     int tens = (value >> 4) & 0x0F, ones = value & 0x0F;
@@ -111,7 +119,7 @@ static int wario_bcd_pair(uint8_t value)
 
 static int wario_bcd_coins(void)
 {
-    uint8_t high = cart_ram_read(0xA805), mid = cart_ram_read(0xA806), low = cart_ram_read(0xA807);
+    uint8_t high = wario_ram_read(0xA805), mid = wario_ram_read(0xA806), low = wario_ram_read(0xA807);
     int d0 = high & 0x0F, d1 = (mid >> 4) & 0x0F;
     int d2 = mid & 0x0F, d3 = (low >> 4) & 0x0F, d4 = low & 0x0F;
     if (d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 || d4 > 9) return -1;
@@ -120,7 +128,7 @@ static int wario_bcd_coins(void)
 
 static int wario_bcd_time(void)
 {
-    uint8_t high = cart_ram_read(0xA964), low = cart_ram_read(0xA965);
+    uint8_t high = wario_ram_read(0xA964), low = wario_ram_read(0xA965);
     int hundreds = high & 0x0F, tens = (low >> 4) & 0x0F, ones = low & 0x0F;
     if (high == 0xFF || low == 0xFF || hundreds > 9 || tens > 9 || ones > 9) return -1;
     return hundreds * 100 + tens * 10 + ones;
@@ -158,10 +166,10 @@ static void companion_sim_update_wario(int game, const Frame *frame)
         return;
     }
 
-    int course = cart_ram_read(0xA804);
-    uint8_t hearts_raw = cart_ram_read(0xA808), lives_raw = cart_ram_read(0xA809);
-    uint8_t power_raw = cart_ram_read(0xA80A);
-    uint8_t treasure_low = cart_ram_read(0xA80E), treasure_high = cart_ram_read(0xA80F);
+    int course = wario_ram_read(0xA804);
+    uint8_t hearts_raw = wario_ram_read(0xA808), lives_raw = wario_ram_read(0xA809);
+    uint8_t power_raw = wario_ram_read(0xA80A);
+    uint8_t treasure_low = wario_ram_read(0xA80E), treasure_high = wario_ram_read(0xA80F);
     int lives = wario_bcd_pair(lives_raw);
     current_lives = lives >= 0 ? lives : 0;
     current_stage = course == 0xFF ? -1 : course;
