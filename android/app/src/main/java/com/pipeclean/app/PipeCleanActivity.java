@@ -249,9 +249,12 @@ public final class PipeCleanActivity extends SDLActivity {
     public void updateCompanionState(int game, int lives, int stage, int world,
                                      int paused, int slot, int palette, int filter,
                                      int item, int dualScreenEnabled, int drMarioScore,
-                                     int drMarioLevel, int drMarioSpeed, int drMarioCapsule) {
+                                     int drMarioLevel, int drMarioSpeed, int drMarioCapsule,
+                                     int warioCoins, int warioHearts, int warioPower,
+                                     int warioTreasures, int warioTime) {
         runOnUiThread(() -> {
-            companionEnabled = dualScreenEnabled != 0 && (game == 0 || game == 1 || game == 2);
+            companionEnabled = dualScreenEnabled != 0 &&
+                (game == 0 || game == 1 || game == 2 || game == 3);
             // Always retain the second-screen deck. Game-specific widgets are live only
             // when the selected game has Companion support enabled; otherwise show a
             // useful READY screen rather than dismissing the entire lower display.
@@ -260,7 +263,8 @@ public final class PipeCleanActivity extends SDLActivity {
                 if (companionEnabled) {
                     companionPresentation.updateState(game, lives, stage, world,
                         paused != 0, slot, palette, filter, item, drMarioScore,
-                        drMarioLevel, drMarioSpeed, drMarioCapsule);
+                        drMarioLevel, drMarioSpeed, drMarioCapsule, warioCoins,
+                        warioHearts, warioPower, warioTreasures, warioTime);
                     companionPresentation.setPipeSwapMode(companionPipeSwapMode);
                 } else {
                     companionPipeSwapMode = false;
