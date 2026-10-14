@@ -2860,7 +2860,8 @@ static int companion_undo_count, companion_redo_count;
 
 static int deck_game_ready(int game)
 {
-    return game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2;
+    return game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
+           game == GAME_WARIO_SML3;
 }
 
 static void deck_layout_defaults(CompanionLayoutCfg *d)
@@ -3434,7 +3435,10 @@ static void deck_editor_layout(float x, float y)
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
     ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, "COMPANION DECK STUDIO");
     ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, RGBA(116, 222, 255, 255),
-                companion_editor_game == GAME_DRMARIO ? "DR. MARIO  /  CLINIC CANVAS" : companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" : "SUPER MARIO LAND 2  /  LIVE CANVAS");
+                companion_editor_game == GAME_DRMARIO ? "DR. MARIO  /  CLINIC CANVAS" :
+                companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" :
+                companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2  /  LIVE CANVAS" :
+                "WARIO LAND  /  TREASURE EXPEDITION");
 
     if (ui_button(x + 36, y + 105, 58, 34, "Back", B_GHOST, 1)) {
         companion_editor_page = 0;
