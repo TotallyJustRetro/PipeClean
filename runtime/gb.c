@@ -348,6 +348,7 @@ void cpu_step_checked(void)
     /* The callback may emulate a helper routine, but must return with the
      * same PC so the interrupted guest instruction still executes normally. */
     if (cpu_instruction_hook) cpu_instruction_hook(cpu.pc);
+    if (wide_wl2_trace_active) wide_wl2_trace_instruction(cpu.pc);
     uint16_t pc_before = cpu.pc;
     uint8_t opcode = rd8(cpu.pc);
     cpu_step();
