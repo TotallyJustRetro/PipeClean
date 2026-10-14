@@ -665,26 +665,15 @@ void wide_state_reset(void)
     sml2_actor_build_count = sml2_actor_frame_count = 0;
 }
 
-static void wario_patch_optional_activation_sites(void)
+/* The DX reference patch widens one additional active-range operand.
+ * This is LD BC,$00D0 at ROM offset $31FD; its little-endian low operand is
+ * at $31FE. Check the whole instruction before touching it. */
+static void wario_patch_dx_activation_operand(void)
 {
-    /* These object/camera activation sites are a useful optimisation, but
-     * not every valid World/DX dump has every byte sequence in the same form.
-     * Patch each operand only when its local opcode signature matches. Never
-     * reject the whole widescreen profile because an optional site differs. */
-    if (rom[0x31FC] == 0x01 && rom[0x31FE] == 0x00) {
-        if (rom[0x31FD] == 0xD0) rom[0x31FD] = 0xD1;
-    }
-    if (rom[0x8476] == 0xD6) {
-        if (rom[0x8477] == 0x07) rom[0x8477] = 0x08;
-    }
-    if (rom[0x8485] == 0x1E) {
-        if (rom[0x8486] == 0x0E) rom[0x8486] = 0x10;
-    }
-    if (rom[0x849F] == 0xC6) {
-        if (rom[0x84A0] == 0x06) rom[0x84A0] = 0x08;
-    }
-    if (rom[0x84BF] == 0xD6) {
-        if (rom[0x84C0] == 0x07) rom[0x84C0] = 0x08;
+    if (rom[0x31FD] == 0x01 &&
+        rom[0x31FE] == 0xD0 &&
+        rom[0x31FF] == 0x00) {
+        rom[0x31FE] = 0xD1;
     }
 }
 
@@ -715,12 +704,12 @@ static int wide_install_wario_sml3(int wario_dx)
         rom[0x321B] = wario_dx ? 0xED : 0xE2;
     }
 
-    /* This RET NC is a separate clipping guard in the supported original
-     * code. Skip it on variants where the byte differs rather than refusing
-     * widescreen outright. */
-    if (rom[0x321C] == 0xD0) rom[0x321C] = 0x00;
-
-    wario_patch_optional_activation_sites();
+    /* Keep the game's actor lifecycle and screen-boundary return intact.
+     * The PPU extends the picture, but broadening all actor activation checks
+     * was causing gameplay regressions in this slot-limited actor engine.
+     * The DX-only one-byte adjustment below is kept because its instruction
+     * signature is known and independently validated. */
+    if (wario_dx) wario_patch_dx_activation_operand();
     return 1;
 }
 int wide_install_profile(int game, int l, int r, int wario_dx)
