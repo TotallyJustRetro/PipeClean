@@ -27,12 +27,8 @@ typedef struct {
 
 static ReserveItemState reserve_item_state;
 static volatile int reserve_item_use_request;
-/* A single-frame native SELECT pulse lets the ROM perform its own reserve-item
- * drop/pickup path instead of forcing the power-up byte and skipping animation. */
-static int reserve_item_select_pulse;
-/* After a reserve item is sent off, the next A216 change belongs to that item
- * being picked up; don't mistake the old power-up for a newly reserved item. */
-static int reserve_item_ignore_transition_frames;
+/* Prevent an intentional restore of A216 from being captured as a new swap. */
+static int reserve_item_apply_active;
 static volatile int abort_flag, paused, turbo, thread_mode, preview_target, previewing;
 static volatile uint32_t input_word;     /* buttons | dpad << 8 */
 static SDL_mutex *rewind_sync_mx;
@@ -426,20 +422,14 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     int game = rom_loaded_game();
     if (mp_ready || mp_active) return;
 
-    /* SML2 $A216 tracks the selected power-up: 1 = big/mushroom,
-     * 2 = fire flower, 3 = carrot. The reserve holds the form Mario is
-     * switching away from, not the newly collected form. Mushroom/big Mario
-     * is not a reserve item, so 1 -> flower/carrot leaves the pocket empty.
-     * Flower/carrot transitions save the previous special form and allow the
-     * new value through. In particular, never roll back the game's write:
-     * doing so can undo damage downgrades and make Mario appear invincible.
-     * Stars use a separate path and are never captured. */
+    /* SML2 $A216 tracks the active power-up: 1 = Mushroom/big, 2 = Carrot,
+     * 3 = Fire Flower. The reserve holds the form Mario is switching away from,
+     * not the newly collected form. Mushroom/big Mario is not reserved.
+     * Flower/Carrot transitions save the previous special form and allow the
+     * game's active value through; stars use a separate path. */
     if (game == GAME_SML2 && addr == 0xA216) {
+        if (reserve_item_apply_active) return;
         if (old_v >= 2 && old_v <= 3 && new_v >= 2 && new_v <= 3) {
-            if (reserve_item_ignore_transition_frames > 0) {
-                reserve_item_ignore_transition_frames = 0;
-                return;
-            }
             reserve_item_state.kind = old_v;
             reserve_item_state.spawn_pending = 0;
         }
@@ -472,10 +462,10 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     }
 }
 
-/* Consume a requested reserve item on the emulation thread, not the Android
- * UI thread. SML1 releases its captured native object; SML2 receives a real
- * SELECT press so the cartridge handles the reserve item and Mario's pickup
- * animation through its original gameplay code. */
+/* Consume a requested reserve item on the emulation thread. SML1 releases its
+ * captured native object. SML2 has no native reserve slot, so restore the saved
+ * form through its active-power-up state and restart the game's native
+ * character-flash timer rather than sending an unhandled SELECT press. */
 static void reserve_item_process_use_request(void)
 {
     if (!reserve_item_use_request) return;
@@ -484,12 +474,15 @@ static void reserve_item_process_use_request(void)
     int game = rom_loaded_game();
     if (mp_ready || mp_active || !reserve_item_state.kind) return;
 
-    if (game == GAME_SML2 && reserve_item_state.kind >= 1 &&
+    if (game == GAME_SML2 && reserve_item_state.kind >= 2 &&
         reserve_item_state.kind <= 3) {
-        /* Let the ROM drop the reserved item; direct A216 writes make Mario
-         * switch forms instantly and skip the game's transform frames. */
-        reserve_item_select_pulse = 1;
-        reserve_item_ignore_transition_frames = 180;
+        uint8_t stored = reserve_item_state.kind;
+        reserve_item_apply_active = 1;
+        wr8(0xA216, stored);
+        reserve_item_apply_active = 0;
+        /* A217 drives the ROM's alternating character-sprite flash. Reuse
+         * that native animation after the restored power-up becomes active. */
+        wr8(0xA217, 0x20);
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
     } else if (game == GAME_SML && reserve_item_state.kind <= 2 &&
                reserve_item_gameplay_active()) {
@@ -1020,8 +1013,7 @@ int emu_mp_begin(void)
     if (!fmx) fmx = SDL_CreateMutex();
     memset(&reserve_item_state, 0, sizeof reserve_item_state);
     reserve_item_use_request = 0;
-    reserve_item_select_pulse = 0;
-    reserve_item_ignore_transition_frames = 0;
+    reserve_item_apply_active = 0;
     gb_watch_set(NULL, 0, NULL);
     gb_reset();
     if (save_path[0]) cart_load_save(save_path);
@@ -3715,8 +3707,7 @@ void emu_mp_end(void)
     gb_watch_set(NULL, 0, NULL);
     memset(&reserve_item_state, 0, sizeof reserve_item_state);
     reserve_item_use_request = 0;
-    reserve_item_select_pulse = 0;
-    reserve_item_ignore_transition_frames = 0;
+    reserve_item_apply_active = 0;
     gb_set_instruction_hook(NULL);
     gb_set_timing_suppressed(0);
     mp_active = 0;
@@ -4033,9 +4024,8 @@ static int emu_state_load_blob(const void *src, size_t n)
     } else {
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
     }
-    /* Transient button pulses and transition guards aren't part of save states. */
-    reserve_item_select_pulse = 0;
-    reserve_item_ignore_transition_frames = 0;
+    /* The watcher guard is transient and isn't part of save states. */
+    reserve_item_apply_active = 0;
     return 0;
 }
 
@@ -4300,17 +4290,11 @@ void frame_hook(void)
         reserve_item_process_use_request();
         reserve_item_try_spawn();
     }
-    if (reserve_item_ignore_transition_frames > 0)
-        reserve_item_ignore_transition_frames--;
     rewind_capture_if_due();
     publish();
     events_frame();
     int n = apu_drain(abuf, 4096);
     if (!turbo) audio_game_push(abuf, n);
-    if (reserve_item_select_pulse) {
-        b |= 0x04u; /* Game Boy SELECT */
-        reserve_item_select_pulse = 0;
-    }
     gb_set_input(b, d);
     while (paused && !abort_flag) SDL_Delay(8);
     if (abort_flag) longjmp(stop_jmp, 1);
@@ -4339,8 +4323,7 @@ static int emu_start_internal(int force_interp, int reset)
     core_faulted = 0; core_fault_opcode = 0; core_fault_pc = 0;
     abort_flag = 0; paused = 0; turbo = 0; save_tick = 0; pace_next = 0;
     reserve_item_use_request = 0;
-    reserve_item_select_pulse = 0;
-    reserve_item_ignore_transition_frames = 0;
+    reserve_item_apply_active = 0;
     if (reset) {
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
         gb_watch_set(NULL, 0, NULL);
