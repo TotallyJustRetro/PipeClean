@@ -852,7 +852,7 @@ static void sub_external_game(int g, float x, float y)
 
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
-                 "These four Wario Land entries currently run in the separate gbrecomp compatibility player while we work through game-specific issues. PipeClean's rendering filters, save-state slots and per-game controller bindings do not apply to that separate player window yet.", 4);
+                 "These four Wario Land entries run in the separate gbrecomp player. When Companion Deck is enabled in Display settings, the player opens a live Treasure Expedition deck with course status, treasure collection, event log and treasure-found animations. PipeClean's filters and save-state slots still do not apply to this player.", 5);
 
     ui_text(F_BOLD, 12, x + 18, y + 276, C_MUTED, "CONTROLS");
     ui_text_wrap(F_REG, 12, x + 18, y + 300, 772, C_TEXT,

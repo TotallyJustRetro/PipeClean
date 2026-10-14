@@ -2510,6 +2510,14 @@ static int play_external_game(int g)
     game_session_begin(g);
     settings_save();
     audio_menu_music(0);
+#if !defined(__ANDROID__)
+    int launch_companion = settings.launcher_dual_screen != 0;
+    /* The Wario player owns the live deck while it runs as a separate process.
+     * Close PipeClean's idle simulator first so it won't remain frozen underneath. */
+    if (launch_companion) companion_sim_shutdown();
+#else
+    int launch_companion = 0;
+#endif
     int ok = 1;
 #ifdef _WIN32
     char command[4096];
@@ -2519,7 +2527,8 @@ static int play_external_game(int g)
     memset(&pi, 0, sizeof pi);
     si.cb = sizeof si;
     /* ROM paths are ordinary Windows paths and are quoted to preserve spaces. */
-    snprintf(command, sizeof command, "\"%s\" \"%s\"", player, launch_rom);
+    snprintf(command, sizeof command, "\"%s\" \"%s\"%s",
+             player, launch_rom, launch_companion ? " --companion" : "");
     if (CreateProcessA(player, command, NULL, NULL, FALSE, 0, NULL, base[0] ? base : NULL, &si, &pi)) {
         WaitForSingleObject(pi.hProcess, INFINITE);
         CloseHandle(pi.hThread);
@@ -2531,7 +2540,8 @@ static int play_external_game(int g)
 #else
     pid_t pid = fork();
     if (pid == 0) {
-        execl(player, player, launch_rom, (char *)NULL);
+        if (launch_companion) execl(player, player, launch_rom, "--companion", (char *)NULL);
+        else execl(player, player, launch_rom, (char *)NULL);
         _exit(127);
     }
     if (pid < 0) {
