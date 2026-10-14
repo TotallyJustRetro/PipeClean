@@ -14,11 +14,11 @@ static int check(const char *name, int game, int playing, int preview, int expec
 int main(void)
 {
     int failures = 0;
-    failures += check("selected Wario displays its own deck before the first frame",
-                      GAME_WARIO_SML3, 0, 0, 1);
+    failures += check("idle Wario selection keeps Recently Played dashboard",
+                      GAME_WARIO_SML3, 0, 0, 0);
     failures += check("active Wario uses Treasure Expedition deck",
                       GAME_WARIO_SML3, 1, 0, 1);
-    failures += check("Wario deck remains selected even without a fresh frame",
+    failures += check("active Wario deck stays selected without a fresh frame",
                       GAME_WARIO_SML3, 1, 0, 1);
     failures += check("Wario layout preview works while idle",
                       GAME_WARIO_SML3, 0, 1, 1);

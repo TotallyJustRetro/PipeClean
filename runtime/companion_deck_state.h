@@ -14,9 +14,9 @@ static inline int companion_deck_supports_game_view(int game)
 static inline int companion_deck_should_show_game_view(int game, int playing,
                                                         int editor_preview)
 {
-    /* Wario's live deck also serves as its selected-game deck. This avoids
-       leaving the generic Recently Played dashboard visible when the Wario
-       game is selected but the play loop has not published an active frame. */
-    if (editor_preview || game == GAME_WARIO_SML3) return 1;
+    /* Layout preview is an explicit request to show the game's companion.
+       Otherwise switch only for an active game session, so the dashboard
+       returns automatically when gameplay closes. */
+    if (editor_preview) return 1;
     return playing && companion_deck_supports_game_view(game);
 }
