@@ -21,14 +21,14 @@ PipeClean now has seven game profiles across the Dr. Mario, Super Mario Land, an
 | **Dr. Mario** | Core runtime support, game profile, controller settings, and save-state features. The native recompilation path is used when the verified base ROM matches the build; modified game code can require the interpreter/compatibility path. |
 | **Super Mario Land** | Widescreen rendering and expanded view, configurable controls, save states, rewind, and suspend. Local co-op is experimental. |
 | **Super Mario Land 2: 6 Golden Coins** | MBC1-aware execution for the larger banked ROM, widescreen rendering, and gameplay-aware side-margin composition. The Homeworld has been adjusted to preserve native pixel scale instead of shrinking the full map into a tiny overview. Local and online co-op are experimental. |
-| **Wario Land: Super Mario Land 3** | Added as a separate game profile; runs in the external `gbrecomp` compatibility player. |
+| **Wario Land: Super Mario Land 3** | Native-scale widescreen for the clean World ROM and the Wario Land DX v1.2 hack, using guarded, version-specific visibility adjustments. |
 | **Wario Land II (Game Boy)** | Added as a separate monochrome Game Boy profile. |
 | **Wario Land II (Game Boy Color)** | Separate GBC profile; cartridge identification distinguishes it from the original Game Boy release. |
 | **Wario Land 3 (Game Boy Color)** | Added as a separate GBC profile. |
 
 ### A note about the Wario Land games
 
-The four Wario Land profiles currently launch through a separate `gbrecomp` compatibility player while game-specific compatibility is being worked on. PipeClean's own rendering filters, save-state slots, and per-game controller-binding UI do **not** apply to that separate player window yet. The player currently uses standard keyboard/controller mappings and writes battery saves beside the selected ROM.
+The Wario entries remain developmental. This widescreen pass focuses on **Wario Land: Super Mario Land 3** and its Wario Land DX v1.2 ROM-hack profile; the other Wario titles are unchanged. The viewport stays at native pixel scale, and changes are applied to the in-memory cartridge image only after expected instruction bytes match. Unsupported revisions fall back to the original view.
 
 ## Highlights
 
