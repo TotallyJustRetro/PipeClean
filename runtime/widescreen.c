@@ -5,6 +5,192 @@
 #include "gb.h"
 #include "cart.h"
 
+/* Wario Land II's new viewport can reveal positions its original actor loader
+ * never considered visible. Until the per-ROM bounds are mapped, collect a
+ * compact runtime trace of executed comparison/arithmetic sites rather than
+ * applying unverified ROM patches. It records instruction locations and CPU
+ * context only; it never stores or changes ROM bytes. */
+#define WL2_TRACE_SLOTS 4096u
+typedef struct {
+    uint32_t rom_offset, hits, first_frame, last_frame;
+    uint16_t pc;
+    uint8_t opcode, byte1, byte2, operand;
+    uint8_t a, f, b, c, d, e, h, l, scx, scy, camx, camy;
+    int used;
+} Wl2TraceEntry;
+
+int wide_wl2_trace_active;
+static Wl2TraceEntry wl2_trace_entries[WL2_TRACE_SLOTS];
+static size_t wl2_trace_count;
+static int wl2_trace_atexit_registered;
+static int wl2_trace_game, wl2_trace_left, wl2_trace_right;
+static uint32_t wl2_trace_crc;
+static size_t wl2_trace_rom_size;
+static uint8_t wl2_trace_cgb_flag;
+static char wl2_trace_title[17];
+
+static int wl2_trace_candidate_opcode(uint8_t op)
+{
+    return op == 0x19 || op == 0xC6 || op == 0xD6 || op == 0xFE ||
+           (op >= 0x80 && op <= 0x87) ||
+           (op >= 0x90 && op <= 0x97) ||
+           (op >= 0xB8 && op <= 0xBF);
+}
+
+static int wl2_trace_rom_offset(uint16_t pc, size_t *offset)
+{
+    if (!rom || !offset || pc >= 0x8000u) return 0;
+    const uint8_t *mapped = pc < 0x4000u ? cart_lo : cart_hi;
+    if (!mapped || (uintptr_t)mapped < (uintptr_t)rom) return 0;
+    size_t base = (size_t)((uintptr_t)mapped - (uintptr_t)rom);
+    size_t physical = base + (size_t)(pc & 0x3FFFu);
+    if (physical >= wl2_trace_rom_size) return 0;
+    *offset = physical;
+    return 1;
+}
+
+static uint8_t wl2_trace_register_operand(uint8_t op)
+{
+    switch (op & 7u) {
+    case 0: return cpu.b;
+    case 1: return cpu.c;
+    case 2: return cpu.d;
+    case 3: return cpu.e;
+    case 4: return cpu.h;
+    case 5: return cpu.l;
+    case 6: return rd8((uint16_t)(((uint16_t)cpu.h << 8) | cpu.l));
+    default: return cpu.a;
+    }
+}
+
+void wide_wl2_trace_instruction(uint16_t pc)
+{
+    if (!wide_wl2_trace_active || !rom) return;
+    size_t off;
+    if (!wl2_trace_rom_offset(pc, &off)) return;
+
+    uint8_t op = rom[off];
+    if (!wl2_trace_candidate_opcode(op)) return;
+
+    uint32_t hash = (uint32_t)(off ^ (off >> 11) ^ ((uint32_t)op * 2654435761u));
+    size_t slot = (size_t)hash & (WL2_TRACE_SLOTS - 1u);
+    Wl2TraceEntry *entry = NULL;
+    for (size_t probe = 0; probe < WL2_TRACE_SLOTS; probe++) {
+        Wl2TraceEntry *candidate = &wl2_trace_entries[(slot + probe) & (WL2_TRACE_SLOTS - 1u)];
+        if (!candidate->used) {
+            if (wl2_trace_count >= WL2_TRACE_SLOTS) return;
+            memset(candidate, 0, sizeof *candidate);
+            candidate->used = 1;
+            candidate->rom_offset = (uint32_t)off;
+            candidate->pc = pc;
+            candidate->opcode = op;
+            candidate->first_frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
+            wl2_trace_count++;
+            entry = candidate;
+            break;
+        }
+        if (candidate->rom_offset == off && candidate->opcode == op) {
+            entry = candidate;
+            break;
+        }
+    }
+    if (!entry) return;
+
+    uint32_t frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
+    entry->hits++;
+    entry->last_frame = frame;
+    entry->byte1 = off + 1u < wl2_trace_rom_size ? rom[off + 1u] : 0xFFu;
+    entry->byte2 = off + 2u < wl2_trace_rom_size ? rom[off + 2u] : 0xFFu;
+    if (op == 0xFE || op == 0xC6 || op == 0xD6) entry->operand = entry->byte1;
+    else if ((op >= 0x80 && op <= 0x87) ||
+             (op >= 0x90 && op <= 0x97) ||
+             (op >= 0xB8 && op <= 0xBF))
+        entry->operand = wl2_trace_register_operand(op);
+    else
+        entry->operand = (uint8_t)(((uint16_t)cpu.d << 8) | cpu.e);
+
+    entry->a = cpu.a; entry->f = cpu.f;
+    entry->b = cpu.b; entry->c = cpu.c;
+    entry->d = cpu.d; entry->e = cpu.e;
+    entry->h = cpu.h; entry->l = cpu.l;
+    entry->scx = rd8(0xFF43u);
+    entry->scy = rd8(0xFF42u);
+    /* TAS/navigation research lists these as WL2's camera-X/Y bytes. Keep
+       them as raw context values so the trace can confirm them per ROM. */
+    entry->camx = rd8(0xC660u);
+    entry->camy = rd8(0xC65Fu);
+}
+
+static int wl2_trace_hit_order(const void *a, const void *b)
+{
+    const Wl2TraceEntry *const *ea = (const Wl2TraceEntry *const *)a;
+    const Wl2TraceEntry *const *eb = (const Wl2TraceEntry *const *)b;
+    if ((*ea)->hits < (*eb)->hits) return 1;
+    if ((*ea)->hits > (*eb)->hits) return -1;
+    if ((*ea)->rom_offset < (*eb)->rom_offset) return -1;
+    if ((*ea)->rom_offset > (*eb)->rom_offset) return 1;
+    return 0;
+}
+
+void wide_wl2_trace_finish(void)
+{
+    wide_wl2_trace_active = 0;
+    if (!wl2_trace_count) return;
+
+    Wl2TraceEntry *ordered[WL2_TRACE_SLOTS];
+    size_t used = 0;
+    for (size_t i = 0; i < WL2_TRACE_SLOTS; i++)
+        if (wl2_trace_entries[i].used) ordered[used++] = &wl2_trace_entries[i];
+    qsort(ordered, used, sizeof ordered[0], wl2_trace_hit_order);
+
+    FILE *f = fopen("pipeclean-wl2-wide-trace.txt", "w");
+    if (!f) {
+        fprintf(stderr, "PipeClean: couldn't write pipeclean-wl2-wide-trace.txt\n");
+        return;
+    }
+    fprintf(f, "PipeClean Wario Land II widescreen instruction trace\n");
+    fprintf(f, "Title: %s\nROM CRC32: %08X\nROM size: %zu bytes\nCGB flag: %02X\n",
+            wl2_trace_title, wl2_trace_crc, wl2_trace_rom_size, wl2_trace_cgb_flag);
+    fprintf(f, "Game slot: %d  margins: left=%d right=%d  unique sites: %zu\n",
+            wl2_trace_game, wl2_trace_left, wl2_trace_right, used);
+    fprintf(f, "Rows are executed CP/SUB/ADD candidates grouped by physical ROM offset and opcode.\n");
+    fprintf(f, "hits first_frame last_frame bank pc rom_offset op next1 next2 operand "
+                "A F BC DE HL SCX SCY camX camY\n");
+    for (size_t i = 0; i < used; i++) {
+        const Wl2TraceEntry *e = ordered[i];
+        fprintf(f, "%u %u %u %u %04X %06X %02X %02X %02X %02X "
+                    "%02X %02X %02X%02X %02X%02X %02X%02X %02X %02X %02X %02X\n",
+                e->hits, e->first_frame, e->last_frame,
+                e->rom_offset >> 14, e->pc, e->rom_offset,
+                e->opcode, e->byte1, e->byte2, e->operand,
+                e->a, e->f, e->b, e->c, e->d, e->e, e->h, e->l,
+                e->scx, e->scy, e->camx, e->camy);
+    }
+    fclose(f);
+    fprintf(stderr, "PipeClean: wrote Wario Land II widescreen trace (%zu sites) to "
+                    "pipeclean-wl2-wide-trace.txt\n", used);
+    wl2_trace_count = 0;
+    memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
+}
+
+static void wl2_trace_begin(int game, int left, int right)
+{
+    memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
+    wl2_trace_count = 0;
+    wl2_trace_game = game;
+    wl2_trace_left = left;
+    wl2_trace_right = right;
+    const CartInfo *ci = cart_info();
+    wl2_trace_crc = ci ? ci->crc : 0;
+    wl2_trace_rom_size = ci ? ci->size : 0;
+    wl2_trace_cgb_flag = ci ? ci->cgb_flag : (rom ? rom[0x143] : 0);
+    snprintf(wl2_trace_title, sizeof wl2_trace_title, "%s", ci ? ci->title : "unknown");
+    if (!wl2_trace_atexit_registered) {
+        if (atexit(wide_wl2_trace_finish) == 0) wl2_trace_atexit_registered = 1;
+    }
+    wide_wl2_trace_active = 1;
+}
+
 /* ---- Super Mario Land ----
  * Level columns are streamed 7 columns ahead of the screen and 4 behind, so the background is already
  * correct up to 56 px right / 32 px left of the screen. Enemies are the limit: they live in an 8 bit X
@@ -721,6 +907,8 @@ static int wide_install_wario_sml3(int wario_dx)
 }
 int wide_install_profile(int game, int l, int r, int wario_dx)
 {
+    /* Flush a previous game's capture before replacing the active profile. */
+    wide_wl2_trace_finish();
     sml2_right_extra = 0;
     sml2_left_extra = 0;
     sml2_compositor_installed = 0;
@@ -733,11 +921,12 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
     if (l + r == 0) return 1;
     if (game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) {
-        /* Distinguish the monochrome and Color cartridges before widening.
-         * This profile adds no ROM patch; it uses the native PPU's wider view. */
+        /* Distinguish the monochrome and Color cartridges before widening. */
         if (!rom) return 0;
         int color_cartridge = (rom[0x143] & 0x80) != 0;
-        return color_cartridge == (game == GAME_WARIO_LAND2_GBC);
+        if (color_cartridge != (game == GAME_WARIO_LAND2_GBC)) return 0;
+        if (l + r > 0) wl2_trace_begin(game, l, r);
+        return 1;
     }
     if (game == GAME_WARIO_SML3) return wide_install_wario_sml3(wario_dx);
     if (game == GAME_SML2) {
