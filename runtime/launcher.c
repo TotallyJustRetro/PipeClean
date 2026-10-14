@@ -282,7 +282,7 @@ int launcher_prepare(int g, char *err, size_t n)
         hack_ok[g] = 1;
         snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
     }
-    int wario_dx = 0;
+    int wario_dx = g == GAME_WARIO_SML3 && wide_is_wario_dx_profile(NULL, NULL);
     if (g == GAME_WARIO_SML3 && c->romhack_selected >= 0 &&
         c->romhack_selected < c->romhack_count && c->romhack_selected < MAX_ROMHACKS) {
         const RomHackEntry *profile = &c->romhacks[c->romhack_selected];
