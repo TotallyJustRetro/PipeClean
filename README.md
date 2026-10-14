@@ -21,14 +21,14 @@ PipeClean now has seven game profiles across the Dr. Mario, Super Mario Land, an
 | **Dr. Mario** | Core runtime support, game profile, controller settings, and save-state features. The native recompilation path is used when the verified base ROM matches the build; modified game code can require the interpreter/compatibility path. |
 | **Super Mario Land** | Widescreen rendering and expanded view, configurable controls, save states, rewind, and suspend. Local co-op is experimental. |
 | **Super Mario Land 2: 6 Golden Coins** | MBC1-aware execution for the larger banked ROM, widescreen rendering, and gameplay-aware side-margin composition. The Homeworld has been adjusted to preserve native pixel scale instead of shrinking the full map into a tiny overview. Local and online co-op are experimental. |
-| **Wario Land: Super Mario Land 3** | Native-scale widescreen for the clean World ROM and the Wario Land DX v1.2 hack, using guarded, version-specific visibility adjustments. |
+| **Wario Land: Super Mario Land 3** | Native-scale widescreen reconstructs level margins from the live block map, with separate guarded visibility adjustments for the clean World ROM and Wario Land DX. |
 | **Wario Land II (Game Boy)** | Added as a separate monochrome Game Boy profile. |
 | **Wario Land II (Game Boy Color)** | Separate GBC profile; cartridge identification distinguishes it from the original Game Boy release. |
 | **Wario Land 3 (Game Boy Color)** | Added as a separate GBC profile. |
 
 ### A note about the Wario Land games
 
-The Wario entries remain developmental. This widescreen pass focuses on **Wario Land: Super Mario Land 3** and its Wario Land DX v1.2 ROM-hack profile; the other Wario titles are unchanged. The viewport stays at native pixel scale, and changes are applied to the in-memory cartridge image only after expected instruction bytes match. Unsupported revisions fall back to the original view.
+The Wario entries remain developmental. **Wario Land: Super Mario Land 3** now reconstructs widened level backgrounds from the live 16x16 block layout rather than repeating the 256px hardware tilemap ring. Its clean World ROM and Wario Land DX profiles use separate guarded object-visibility patches; DX is also recognized from its CGB-only MBC5 header when loaded as a full patched ROM. Adjustments are applied in memory, and unsupported revisions fall back to the original view.
 
 ## Highlights
 
