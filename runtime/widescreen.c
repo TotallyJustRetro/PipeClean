@@ -33,6 +33,12 @@ static int text_has_dx(const char *s)
 
 int wide_is_wario_dx_profile(const char *title, const char *path)
 {
+    /* A pre-patched DX ROM often has no "DX" in its header or filename.
+     * Detect the known CGB-only MBC5 expansion after the hack is loaded. */
+    const CartInfo *ci = cart_info();
+    if (rom && ci && ci->size >= 0x85000u &&
+        rom[0x143] == 0xC0 && rom[0x147] == 0x1B)
+        return 1;
     return text_has_dx(title) || text_has_dx(path);
 }
 
@@ -680,18 +686,30 @@ static int wario_dx_source_sites_ok(int already_patched)
 static int wide_install_wario_sml3(int wario_dx)
 {
     static const uint8_t original_fov[] = {0xC6, 0x10, 0xFE, 0xD0};
-    static const uint8_t clean_fov[] =    {0xC6, 0x21, 0xFE, 0xE2};
-    static const uint8_t dx_fov[] =       {0xC6, 0x1E, 0xFE, 0xED};
-    /* These offsets are tied to the 512 KiB World ROM family. The cartridge
-     * header's ROM-size code is 4 for 512 KiB; unsupported images fall back to
-     * the original-width display before any write occurs. */
-    if (!rom || rom[0x148] != 0x04) return 0;
+    static const uint8_t clean_fov[]    = {0xC6, 0x21, 0xFE, 0xE2};
+    static const uint8_t dx_fov[]       = {0xC6, 0x1E, 0xFE, 0xED};
+    const CartInfo *ci = cart_info();
+    if (!rom || !ci) return 0;
+
+    /* The DX patch expands the World ROM and changes it to a CGB-only MBC5
+     * cartridge. Do not reject it using the clean-ROM size code. */
+    if (wario_dx) {
+        if (ci->size < 0x85000u || rom[0x143] != 0xC0 || rom[0x147] != 0x1B)
+            return 0;
+    } else if (ci->size != 0x80000u || rom[0x148] != 0x04) {
+        return 0;
+    }
 
     if (!wario_dx) {
-        if (expect(0x3218, clean_fov, (int)sizeof clean_fov)) return 1;
-        if (!expect(0x3218, original_fov, (int)sizeof original_fov)) return 0;
-        rom[0x3219] = 0x21; /* expand the left/object visibility margin */
-        rom[0x321B] = 0xE2; /* permit objects beyond the original right edge */
+        /* Removing the early RET NC is essential: otherwise the game's
+         * original off-screen guard still clips the newly exposed area. */
+        if (expect(0x3218, clean_fov, (int)sizeof clean_fov) &&
+            rom[0x321C] == 0x00) return 1;
+        if (!expect(0x3218, original_fov, (int)sizeof original_fov) ||
+            rom[0x321C] != 0xD0) return 0;
+        rom[0x3219] = 0x21;
+        rom[0x321B] = 0xE2;
+        rom[0x321C] = 0x00;
         return 1;
     }
 
@@ -700,9 +718,9 @@ static int wide_install_wario_sml3(int wario_dx)
     if (!expect(0x3218, original_fov, (int)sizeof original_fov) ||
         !wario_dx_source_sites_ok(0)) return 0;
 
-    /* All sites were validated above, so the loaded cartridge is either
-     * changed completely or left untouched on a mismatch. The source ROM file
-     * on disk is never written. */
+    /* Match Bigodão's 30px DX profile: widen the main off-screen threshold,
+     * bypass the original early return, and adjust the DX object activation
+     * bounds. Validate every site before writing any byte. */
     rom[0x3219] = 0x1E;
     rom[0x321B] = 0xED;
     rom[0x321C] = 0x00;
