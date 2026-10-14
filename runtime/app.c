@@ -2387,7 +2387,7 @@ static int play_multiplayer(int g)
 
         companion_publish_state(g, f, paused);
 #if !defined(__ANDROID__)
-        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot);
+        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot, 1);
         companion_sim_render(&settings, win);
 #endif
         capture_pending_state_thumbnail();
@@ -2735,7 +2735,7 @@ static int play(int g)
         }
         companion_publish_state(g, f, paused);
 #if !defined(__ANDROID__)
-        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot);
+        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot, 1);
         companion_sim_render(&settings, win);
 #endif
         capture_pending_state_thumbnail();
@@ -2923,7 +2923,7 @@ int app_run(const char *autorun, const char *hack)
 #if defined(PIPECLEAN_DEV_BUILD)
         simulator_game = launcher_companion_layout_target_game(simulator_game);
 #endif
-        companion_sim_set_state(simulator_game, NULL, 0, 0);
+        companion_sim_set_state(simulator_game, NULL, 0, 0, 0);
         companion_sim_render(&settings, win);
 #endif
         companion_publish_launcher_dashboard(launcher_current_game());

@@ -156,15 +156,28 @@ static void wario_log_push(const char *entry)
     if (wario_expedition_log_count < 5) wario_expedition_log_count++;
 }
 
+static void companion_sim_reset_wario_tracking(void)
+{
+    wario_expedition_baseline = 0;
+    wario_treasure_animation_id = -1;
+    wario_treasure_animation_active = 0;
+    wario_expedition_log_count = 0;
+    memset(wario_expedition_log, 0, sizeof wario_expedition_log);
+    current_wario_coins = current_wario_hearts = current_wario_power = -1;
+    current_wario_treasure_mask = current_wario_time = -1;
+    wario_previous_coins = wario_previous_hearts = wario_previous_power = -1;
+    wario_previous_treasure_mask = wario_previous_stage = wario_previous_lives = -1;
+}
+
 static void companion_sim_update_wario(int game, const Frame *frame)
 {
-    if (game != GAME_WARIO_SML3 || !frame) {
-        wario_expedition_baseline = 0;
-        wario_treasure_animation_active = 0;
-        current_wario_coins = current_wario_hearts = current_wario_power = -1;
-        current_wario_treasure_mask = current_wario_time = -1;
+    if (game != GAME_WARIO_SML3) {
+        companion_sim_reset_wario_tracking();
         return;
     }
+    /* Rendering state is explicit; a temporarily unavailable frame must not
+       flip the deck back to the launcher dashboard or erase the expedition. */
+    if (!frame) return;
 
     int course = wario_ram_read(0xA804);
     uint8_t hearts_raw = wario_ram_read(0xA808), lives_raw = wario_ram_read(0xA809);
@@ -1678,12 +1691,22 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     sync_assets(s);
 }
 
-void companion_sim_set_state(int game, const Frame *frame, int paused, int selected_slot)
+void companion_sim_set_state(int game, const Frame *frame, int paused, int selected_slot, int playing)
 {
+    int was_playing = current_playing;
+    int previous_game = current_game;
+    int next_playing = playing != 0;
+    /* Select the game deck from the actual session lifecycle, not whether the
+       emulator happened to publish a frame this tick. This is important for
+       Wario Land during startup, pause, load, and rewind transitions. */
+    if (game == GAME_WARIO_SML3 && next_playing &&
+        (!was_playing || previous_game != GAME_WARIO_SML3))
+        companion_sim_reset_wario_tracking();
+
     current_game = game;
     current_paused = paused;
     current_slot = selected_slot < 0 ? 0 : selected_slot > 9 ? 9 : selected_slot;
-    current_playing = frame != NULL;
+    current_playing = next_playing;
     int next_item = frame ? frame->reserve_item : simulator_layout_preview_item();
     if (!simulator_layout_preview_enabled() && next_item != current_item) {
         Uint32 now = SDL_GetTicks();
@@ -1722,7 +1745,13 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
         if (frame->level_id != 0xff) current_stage = frame->level_id;
         if (game == GAME_SML && frame->level_bank != 0xff) current_world = frame->level_bank;
     }
-    companion_sim_update_wario(game, frame);
+    if (game != GAME_WARIO_SML3) {
+        companion_sim_update_wario(game, frame);
+    } else if (next_playing && frame) {
+        companion_sim_update_wario(game, frame);
+    } else if (!next_playing) {
+        companion_sim_reset_wario_tracking();
+    }
 }
 
 void companion_sim_render(Settings *s, SDL_Window *main_window)
