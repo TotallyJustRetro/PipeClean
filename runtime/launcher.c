@@ -3078,7 +3078,11 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         ui_text_fit(F_BOLD, 6.8f, rx + 7, ry + rh * .24f, rw - 14,
                     RGBA(127, 220, 236, 255), "PIPE CLEAN / POCKET QUEST");
         ui_text_fit(F_BOLD, 9, rx + 7, ry + rh * .52f, rw - 14,
-                    RGBA(247, 249, 255, 255), companion_editor_game == GAME_DRMARIO ? "DR. MARIO" : companion_editor_game == GAME_SML ? "SUPER MARIO LAND" : "SUPER MARIO LAND 2");
+                    RGBA(247, 249, 255, 255),
+                    companion_editor_game == GAME_DRMARIO ? "DR. MARIO" :
+                    companion_editor_game == GAME_SML ? "SUPER MARIO LAND" :
+                    companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2" :
+                    "WARIO LAND: TREASURE EXPEDITION");
         if (DECK_ELEM_HEADER == companion_editor_element)
             ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
     }
