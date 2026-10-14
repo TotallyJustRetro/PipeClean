@@ -2854,7 +2854,7 @@ static int companion_undo_count, companion_redo_count;
 
 static int deck_game_ready(int game)
 {
-    return game == GAME_SML || game == GAME_SML2;
+    return game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2;
 }
 
 static void deck_layout_defaults(CompanionLayoutCfg *d)
@@ -3038,8 +3038,8 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     ui_shadow(x, y, w, h, 11, 5, RGBA(0, 0, 0, 110));
     ui_rrect(x, y, w, h, 10, RGBA(12, 20, 34, 255));
     ui_vgrad(x + 2, y + 2, w - 4, h - 4,
-             companion_editor_game == GAME_SML ? RGBA(52, 87, 62, 255) :
-             companion_editor_game == GAME_SML2 ? RGBA(67, 49, 88, 255) : RGBA(24, 36, 58, 255),
+             companion_editor_game == GAME_DRMARIO ? RGBA(218, 239, 237, 255) :
+             companion_editor_game == GAME_SML ? RGBA(52, 87, 62, 255) : RGBA(67, 49, 88, 255),
              RGBA(16, 22, 38, 255));
     ui_clip(x + 2, y + 2, w - 4, h - 4);
     deck_editor_preview_asset(d, 0, d->background_path, x + 2, y + 2, w - 4, h - 4);
@@ -3071,7 +3071,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         ui_text_fit(F_BOLD, 6.8f, rx + 7, ry + rh * .24f, rw - 14,
                     RGBA(127, 220, 236, 255), "PIPE CLEAN / POCKET QUEST");
         ui_text_fit(F_BOLD, 9, rx + 7, ry + rh * .52f, rw - 14,
-                    RGBA(247, 249, 255, 255), companion_editor_game == GAME_SML ? "SUPER MARIO LAND" : "SUPER MARIO LAND 2");
+                    RGBA(247, 249, 255, 255), companion_editor_game == GAME_DRMARIO ? "DR. MARIO" : companion_editor_game == GAME_SML ? "SUPER MARIO LAND" : "SUPER MARIO LAND 2");
         if (DECK_ELEM_HEADER == companion_editor_element)
             ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
     }
@@ -3141,7 +3141,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         ui_text_fit(F_BOLD, 6, sx + 5, sy + 6, sw - 10, RGBA(191, 202, 222, 255), "ADVENTURE STATUS");
         ui_text_fit(F_BOLD, 8, sx + 5, sy + sh * .45f, sw - 10, RGBA(250, 240, 220, 255), "LIVES  × 03");
         ui_text_fit(F_BOLD, 7, sx + 5, sy + sh * .66f, sw - 10, RGBA(112, 225, 182, 255),
-                    companion_editor_game == GAME_SML ? "WORLD 1 - 1" : "STAGE 01");
+                    companion_editor_game == GAME_DRMARIO ? "LEVEL 00  /  SPEED LOW" : companion_editor_game == GAME_SML ? "WORLD 1 - 1" : "STAGE 01");
         if (DECK_ELEM_STATUS == companion_editor_element)
             ui_stroke(sx, sy, sw, sh, 7, 1.5f, RGBA(108, 218, 255, 255));
     }
@@ -3428,7 +3428,7 @@ static void deck_editor_layout(float x, float y)
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
     ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, "COMPANION DECK STUDIO");
     ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, RGBA(116, 222, 255, 255),
-                companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" : "SUPER MARIO LAND 2  /  LIVE CANVAS");
+                companion_editor_game == GAME_DRMARIO ? "DR. MARIO  /  CLINIC CANVAS" : companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" : "SUPER MARIO LAND 2  /  LIVE CANVAS");
 
     if (ui_button(x + 36, y + 105, 58, 34, "Back", B_GHOST, 1)) {
         companion_editor_page = 0;
