@@ -147,3 +147,4 @@ extern int ppu_w, ppu_xoff;
 /* gate: 0 = always wide, 1 = only while the timer interrupt is enabled (Super Mario Land levels),
  * 2 = legacy bottom-status-window gating (kept for compatibility). Otherwise the normal screen with bars. */
 void ppu_set_wide(int left, int right, int hud_lines, int centre_window, int gate);
+void ppu_set_wario_sml3(int enabled);
