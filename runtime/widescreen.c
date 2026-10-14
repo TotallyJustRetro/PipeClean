@@ -48,10 +48,17 @@ void wide_dims_profile(int game, int pct, int wario_dx, int *l, int *r)
     *l = *r = 0;
     if (pct <= 0) return;
     if (game == GAME_WARIO_SML3) {
-        /* Wario Land's culling code is tuned to the original viewport. Keep the
-         * clean ROM and the DX patch on their respective, verified margins. */
+        /* Wario Land: SML3 has separately verified clean/DX profiles. */
         int margin = (wario_dx ? 30 : 33) * pct;
         margin = (margin + 50) / 100;
+        *l = *r = margin;
+        return;
+    }
+    if (game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) {
+        /* WL2 currently uses the emulator's generic scroll/tilemap margin
+         * rendering. Keep the exposed extension inside the 256px BG ring;
+         * do not patch game code until per-version spawn bounds are verified. */
+        int margin = (32 * pct + 50) / 100;
         *l = *r = margin;
         return;
     }
@@ -725,6 +732,13 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
     if (l + r == 0) return 1;
+    if (game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) {
+        /* Distinguish the monochrome and Color cartridges before widening.
+         * This profile adds no ROM patch; it uses the native PPU's wider view. */
+        if (!rom) return 0;
+        int color_cartridge = (rom[0x143] & 0x80) != 0;
+        return color_cartridge == (game == GAME_WARIO_LAND2_GBC);
+    }
     if (game == GAME_WARIO_SML3) return wide_install_wario_sml3(wario_dx);
     if (game == GAME_SML2) {
         /* SML2's entity activation code lives in bank 2.  Its horizontal
