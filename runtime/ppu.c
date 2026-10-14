@@ -326,8 +326,10 @@ static void wario_render_margins(int y, int W, int L, uint8_t *out,
     int expected_x = ((int)wario_frame_scroll_x - 0x50) & 0xFF;
     int expected_y = ((int)wario_frame_scroll_y - 0x48) & 0xFF;
     int dx = (int)scx - expected_x, dy = (int)scy - expected_y;
-    if (dx > 128) dx -= 256; if (dx < -128) dx += 256;
-    if (dy > 128) dy -= 256; if (dy < -128) dy += 256;
+    if (dx > 128) dx -= 256;
+    if (dx < -128) dx += 256;
+    if (dy > 128) dy -= 256;
+    if (dy < -128) dy += 256;
     int world_y = (int)wario_frame_scroll_y - 0x48 + y + dy;
     for (int X = 0; X < W; X++) {
         if (X >= L && X < L + GB_W) continue;
