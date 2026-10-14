@@ -27,9 +27,10 @@ static int fail(int code, const char *msg)
 
 static void seed_wario_fov(void)
 {
-    rom[0x148] = 0x04; /* header marks the supported 512 KiB ROM family */
+    rom[0x148] = 0x04; /* clean World ROM: 512 KiB */
     rom[0x3218] = 0xC6; rom[0x3219] = 0x10;
     rom[0x321A] = 0xFE; rom[0x321B] = 0xD0;
+    rom[0x321C] = 0xD0; /* RET NC: the original object off-screen guard */
 }
 
 static void seed_dx_sites(void)
@@ -45,7 +46,7 @@ static void seed_dx_sites(void)
 int main(void)
 {
     int l, r;
-    rom = (uint8_t *)calloc(0x80000u, 1);
+    rom = (uint8_t *)calloc(0x100000u, 1);
     if (!rom) return 2;
     test_info.size = 0x80000u;
 
@@ -64,13 +65,17 @@ int main(void)
     if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
         return fail(7, "clean Wario Land signature was rejected");
     if (rom[0x3218] != 0xC6 || rom[0x3219] != 0x21 ||
-        rom[0x321A] != 0xFE || rom[0x321B] != 0xE2)
-        return fail(8, "clean-game culling bounds were not widened");
+        rom[0x321A] != 0xFE || rom[0x321B] != 0xE2 || rom[0x321C] != 0x00)
+        return fail(8, "clean-game view bounds and early off-screen return were not patched");
     if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
         return fail(9, "clean-game patch should be safe to recheck");
 
-    memset(rom, 0, 0x80000u);
+    memset(rom, 0, 0x100000u);
+    test_info.size = 0x100000u;
     seed_wario_fov();
+    rom[0x148] = 0x05; /* DX expansion: 1 MiB */
+    rom[0x143] = 0xC0; /* CGB-only */
+    rom[0x147] = 0x1B; /* MBC5 + RAM + battery */
     seed_dx_sites();
     if (!wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
         return fail(10, "DX Wario Land signatures were rejected");
@@ -82,8 +87,12 @@ int main(void)
     if (!wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
         return fail(12, "DX patch should be safe to recheck");
 
-    memset(rom, 0, 0x80000u);
+    memset(rom, 0, 0x100000u);
+    test_info.size = 0x100000u;
     seed_wario_fov();
+    rom[0x148] = 0x05;
+    rom[0x143] = 0xC0;
+    rom[0x147] = 0x1B;
     seed_dx_sites();
     rom[0x8486] = 0x22;
     if (wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
