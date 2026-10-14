@@ -171,7 +171,7 @@ static void companion_sim_update_wario(int game, const Frame *frame)
     uint8_t power_raw = wario_ram_read(0xA80A);
     uint8_t treasure_low = wario_ram_read(0xA80E), treasure_high = wario_ram_read(0xA80F);
     int lives = wario_bcd_pair(lives_raw);
-    current_lives = lives >= 0 ? lives : 0;
+    current_lives = lives;
     current_stage = course == 0xFF ? -1 : course;
     current_wario_hearts = wario_bcd_pair(hearts_raw);
     current_wario_power = power_raw <= 4 ? power_raw : -1;
@@ -951,6 +951,17 @@ static void draw_android_scenery(int game)
             fill(sx, sy, (i % 5 == 0) ? 4 : 2, (i % 5 == 0) ? 4 : 2,
                 i % 3 == 0 ? 255 : 203, i % 3 == 0 ? 214 : 181, i % 3 == 0 ? 107 : 232, 255);
         }
+    } else if (game == GAME_WARIO_SML3) {
+        fill(0, 388, 800, 62, 66, 45, 24, 255);
+        fill_circle(140, 424, 128, 55, 38, 22, 255);
+        fill_circle(420, 435, 155, 60, 41, 23, 255);
+        fill_circle(702, 418, 120, 50, 35, 20, 255);
+        fill_circle(720, 70, 25, 255, 214, 107, 220);
+        for (int i = 0; i < 28; i++) {
+            int sx = (i * 79 + 23) % 800, sy = (i * 43 + 17) % 365;
+            fill(sx, sy, (i % 5 == 0) ? 4 : 2, (i % 5 == 0) ? 4 : 2,
+                 (i % 4 == 0) ? 255 : 211, (i % 4 == 0) ? 230 : 170, 95, 220);
+        }
     } else {
         for (int i = 0; i < 32; i++)
             fill((i * 53 + 9) % 800, (i * 31 + 17) % 450, 3, 3, 110, 229, 239, 180);
@@ -1391,6 +1402,7 @@ static void draw_wario_status(const Settings *s, int x, int y, int w, int h)
     char value[48];
     draw_text_fit(x + 14, y + 48, 86, 1, 184, 170, 149, "LIVES");
     snprintf(value, sizeof value, "%02d", current_lives);
+    if (current_lives < 0) snprintf(value, sizeof value, "--");
     draw_text_fit(x + w - 50, y + 48, 36, 2, 255, 241, 212, value);
     draw_text_fit(x + 14, y + 67, 86, 1, 184, 170, 149, "HEARTS");
     snprintf(value, sizeof value, "%02d", current_wario_hearts);
