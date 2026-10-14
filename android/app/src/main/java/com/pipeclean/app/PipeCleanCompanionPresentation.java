@@ -1365,7 +1365,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             } else if (animation == ITEM_ANIM_SEND_OFF && displayedItem > 0) {
                 phase = Math.min(1f, Math.max(0f,
                     (now - itemAnimationStart) / (float)ITEM_SEND_OFF_MS));
-                itemDy = radius * 1.12f * phase;
+                itemDy = -radius * 1.12f * phase;
                 itemScale = 1f - 0.48f * phase;
                 itemAlpha = Math.max(0, (int)((1f - phase) * 255f));
                 animatedItem = displayedItem;
@@ -1430,14 +1430,22 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
 
             int itemLayer = itemAlpha < 255 ? c.saveLayerAlpha(
-                cx-radius*0.9f, cy-radius*1.05f, cx+radius*0.9f, cy+radius*2.05f, itemAlpha) : -1;
+                cx-radius*0.9f, cy-radius*1.75f, cx+radius*0.9f, cy+radius*0.8f, itemAlpha) : -1;
             c.save();
             c.translate(cx, cy + itemDy);
             c.scale(itemScale, itemScale);
             c.translate(-cx, -cy);
-            if(animatedItem>0) {
+            /* The live SML2 RAM IDs are opposite to the Deck's semantic texture
+             * slots: RAM 2 is Carrot and RAM 3 is Fire Flower. Keep editor
+             * previews semantic (2 = Fire Flower, 3 = Carrot), swap only live data. */
+            int shownItem = animatedItem;
+            if (!layoutEditorPreview && sml2()) {
+                if (shownItem == 2) shownItem = 3;
+                else if (shownItem == 3) shownItem = 2;
+            }
+            if(shownItem>0) {
                 int layoutGame = activeLayoutGame();
-                int textureIndex = 11 + animatedItem;
+                int textureIndex = 11 + shownItem;
                 if (layoutGame >= 0 && hasLayoutImage(layoutGame, textureIndex))
                     drawLayoutImageAsset(c, layoutGame, textureIndex, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
@@ -1445,10 +1453,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
                     drawLayoutImageAsset(c, layoutGame, 2, cx-radius*0.46f, cy-radius*0.46f,
                         radius*0.92f, radius*0.92f);
                 else
-                    drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,animatedItem);
-                textFit(c, itemName(animatedItem), cx, cy + radius * 0.66f, radius * 1.55f,
+                    drawPowerUpGlyph(c,-radius*0.46f+cx,-radius*0.46f+cy,radius*0.92f,shownItem);
+                textFit(c, itemName(shownItem), cx, cy + radius * 0.66f, radius * 1.55f,
                     Math.max(8f, radius * 0.11f), ink(), true);
-                textFit(c, actionHint(animatedItem), cx, cy + radius * 0.81f, radius * 1.68f,
+                textFit(c, actionHint(shownItem), cx, cy + radius * 0.81f, radius * 1.68f,
                     Math.max(6.5f, radius * 0.065f), muted(), true);
             } else {
                 drawPixelStar(c,cx,cy-radius*0.08f,17,0xFFB4A1CB);
