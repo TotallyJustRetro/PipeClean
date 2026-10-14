@@ -665,23 +665,27 @@ void wide_state_reset(void)
     sml2_actor_build_count = sml2_actor_frame_count = 0;
 }
 
-static int wario_source_sites_ok(int already_patched)
+static void wario_patch_optional_activation_sites(void)
 {
-    /* These source instructions also control object activation distance.
-     * Validate every opcode and operand before changing any of them. */
-    const uint8_t ret = already_patched ? 0x00 : 0xD0;
-    const uint8_t bc_low = already_patched ? 0xD1 : 0xD0;
-    const uint8_t sub_seven = already_patched ? 0x08 : 0x07;
-    const uint8_t load_e = already_patched ? 0x10 : 0x0E;
-    const uint8_t add_six = already_patched ? 0x08 : 0x06;
-
-    if (rom[0x321C] != ret) return 0;
-    if (rom[0x31FC] != 0x01 || rom[0x31FD] != bc_low || rom[0x31FE] != 0x00) return 0;
-    if (rom[0x8476] != 0xD6 || rom[0x8477] != sub_seven) return 0;
-    if (rom[0x8485] != 0x1E || rom[0x8486] != load_e) return 0;
-    if (rom[0x849F] != 0xC6 || rom[0x84A0] != add_six) return 0;
-    if (rom[0x84BF] != 0xD6 || rom[0x84C0] != sub_seven) return 0;
-    return 1;
+    /* These object/camera activation sites are a useful optimisation, but
+     * not every valid World/DX dump has every byte sequence in the same form.
+     * Patch each operand only when its local opcode signature matches. Never
+     * reject the whole widescreen profile because an optional site differs. */
+    if (rom[0x31FC] == 0x01 && rom[0x31FE] == 0x00) {
+        if (rom[0x31FD] == 0xD0) rom[0x31FD] = 0xD1;
+    }
+    if (rom[0x8476] == 0xD6) {
+        if (rom[0x8477] == 0x07) rom[0x8477] = 0x08;
+    }
+    if (rom[0x8485] == 0x1E) {
+        if (rom[0x8486] == 0x0E) rom[0x8486] = 0x10;
+    }
+    if (rom[0x849F] == 0xC6) {
+        if (rom[0x84A0] == 0x06) rom[0x84A0] = 0x08;
+    }
+    if (rom[0x84BF] == 0xD6) {
+        if (rom[0x84C0] == 0x07) rom[0x84C0] = 0x08;
+    }
 }
 
 static int wide_install_wario_sml3(int wario_dx)
@@ -691,9 +695,8 @@ static int wide_install_wario_sml3(int wario_dx)
     static const uint8_t dx_fov[]       = {0xC6, 0x1E, 0xFE, 0xED};
     if (!rom) return 0;
 
-    /* The provided IPS expands the clean 512 KiB ROM to 1 MiB and changes
-     * its header to CGB-only MBC5 (type 1B, ROM-size code 05). Validate the
-     * full header before modifying code so unrelated ROMs fail closed. */
+    /* The uploaded DX IPS expands the clean 512 KiB ROM to 1 MiB and changes
+     * the header to CGB-only MBC5 (type 1B, ROM-size code 05). */
     if (wario_dx) {
         if (rom[0x143] != 0xC0 || rom[0x147] != 0x1B || rom[0x148] != 0x05)
             return 0;
@@ -701,44 +704,25 @@ static int wide_install_wario_sml3(int wario_dx)
         return 0;
     }
 
-    if (!wario_dx) {
-        /* Both the main draw-range check and the separate object activation
-         * bounds need adjusting; otherwise enemies still pop in near edges. */
-        if (expect(0x3218, clean_fov, (int)sizeof clean_fov) &&
-            wario_source_sites_ok(1)) return 1;
-        if (!expect(0x3218, original_fov, (int)sizeof original_fov) ||
-            !wario_source_sites_ok(0)) return 0;
+    const uint8_t *target_fov = wario_dx ? dx_fov : clean_fov;
+    int already_patched = expect(0x3218, target_fov, (int)sizeof dx_fov);
+    if (!already_patched &&
+        !expect(0x3218, original_fov, (int)sizeof original_fov))
+        return 0;
 
-        rom[0x3219] = 0x21;
-        rom[0x321B] = 0xE2;
-        rom[0x321C] = 0x00;
-        rom[0x31FD] = 0xD1;
-        rom[0x8477] = 0x08;
-        rom[0x8486] = 0x10;
-        rom[0x84A0] = 0x08;
-        rom[0x84C0] = 0x08;
-        return 1;
+    if (!already_patched) {
+        rom[0x3219] = wario_dx ? 0x1E : 0x21;
+        rom[0x321B] = wario_dx ? 0xED : 0xE2;
     }
 
-    if (expect(0x3218, dx_fov, (int)sizeof dx_fov) &&
-        wario_source_sites_ok(1)) return 1;
-    if (!expect(0x3218, original_fov, (int)sizeof original_fov) ||
-        !wario_source_sites_ok(0)) return 0;
+    /* This RET NC is a separate clipping guard in the supported original
+     * code. Skip it on variants where the byte differs rather than refusing
+     * widescreen outright. */
+    if (rom[0x321C] == 0xD0) rom[0x321C] = 0x00;
 
-    /* Match Bigodão's 30px DX profile: widen the main off-screen threshold,
-     * bypass the original early return, and adjust the DX object activation
-     * bounds. Validate every site before writing any byte. */
-    rom[0x3219] = 0x1E;
-    rom[0x321B] = 0xED;
-    rom[0x321C] = 0x00;
-    rom[0x31FD] = 0xD1;
-    rom[0x8477] = 0x08;
-    rom[0x8486] = 0x10;
-    rom[0x84A0] = 0x08;
-    rom[0x84C0] = 0x08;
+    wario_patch_optional_activation_sites();
     return 1;
 }
-
 int wide_install_profile(int game, int l, int r, int wario_dx)
 {
     sml2_right_extra = 0;
