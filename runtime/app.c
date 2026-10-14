@@ -2511,7 +2511,8 @@ static int play_external_game(int g)
     settings_save();
     audio_menu_music(0);
 #if !defined(__ANDROID__)
-    int launch_companion = settings.launcher_dual_screen != 0 && g == GAME_WARIO_SML3;
+    int launch_companion = settings.launcher_dual_screen != 0 &&
+        (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC);
     /* The Wario player owns the live deck while it runs as a separate process.
      * Close PipeClean's idle simulator first so it won't remain frozen underneath. */
     if (launch_companion) companion_sim_shutdown();
