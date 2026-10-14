@@ -20,7 +20,7 @@ static SDL_mutex *fmx;
 static Frame pub;                         /* latest published frame */
 
 typedef struct {
-    uint8_t kind;          /* 0 = empty; 1 = mushroom, 2 = flower, 3 = carrot. */
+    uint8_t kind;          /* Raw value: SML1 1 = mushroom/2 = flower; SML2 2 = carrot/3 = Fire Flower. */
     uint8_t spawn_pending; /* SML1 defers respawn until the object slot is free. */
     uint8_t object[16];    /* Original SML1 power-up record at D190-D19F. */
 } ReserveItemState;
