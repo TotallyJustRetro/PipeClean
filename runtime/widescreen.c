@@ -136,7 +136,24 @@ static int wl2_trace_hit_order(const void *a, const void *b)
 void wide_wl2_trace_set_path(const char *path)
 {
     if (!path || !path[0]) return;
-    snprintf(wl2_trace_path, sizeof wl2_trace_path, "%s", path);
+
+    /* Keep GB and GBC captures separately so testing the second release never
+       overwrites the first. The launcher passes a path beside its executable;
+       preserve only that directory and choose a version-specific filename. */
+    const char *forward = strrchr(path, '/');
+    const char *backward = strrchr(path, '\\');
+    const char *separator = forward;
+    if (!separator || (backward && backward > separator)) separator = backward;
+    size_t directory_len = separator ? (size_t)(separator - path + 1) : 0;
+    if (directory_len >= sizeof wl2_trace_path) directory_len = sizeof wl2_trace_path - 1;
+    char directory[1200];
+    memcpy(directory, path, directory_len);
+    directory[directory_len] = '\0';
+
+    const char *filename = wl2_trace_game == GAME_WARIO_LAND2_GBC
+        ? "pipeclean-wl2-gbc-wide-trace.txt"
+        : "pipeclean-wl2-gb-wide-trace.txt";
+    snprintf(wl2_trace_path, sizeof wl2_trace_path, "%s%s", directory, filename);
 }
 
 void wide_wl2_trace_finish(void)
