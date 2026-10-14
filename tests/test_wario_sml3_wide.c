@@ -35,8 +35,7 @@ static void seed_wario_fov(void)
 
 static void seed_dx_sites(void)
 {
-    rom[0x321C] = 0xD0;
-    rom[0x31FC] = 0x01; rom[0x31FD] = 0xD0; rom[0x31FE] = 0x00;
+    rom[0x31FD] = 0x01; rom[0x31FE] = 0xD0; rom[0x31FF] = 0x00;
     rom[0x8476] = 0xD6; rom[0x8477] = 0x07;
     rom[0x8485] = 0x1E; rom[0x8486] = 0x0E;
     rom[0x849F] = 0xC6; rom[0x84A0] = 0x06;
@@ -66,12 +65,14 @@ int main(void)
     if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
         return fail(7, "clean Wario Land signature was rejected");
     if (rom[0x3218] != 0xC6 || rom[0x3219] != 0x21 ||
-        rom[0x321A] != 0xFE || rom[0x321B] != 0xE2 || rom[0x321C] != 0x00 ||
-        rom[0x31FD] != 0xD1 || rom[0x8477] != 0x08 ||
-        rom[0x8486] != 0x10 || rom[0x84A0] != 0x08 || rom[0x84C0] != 0x08)
-        return fail(8, "clean-game visibility and activation bounds were not widened");
+        rom[0x321A] != 0xFE || rom[0x321B] != 0xE2 || rom[0x321C] != 0xD0 ||
+        rom[0x31FE] != 0xD0 || rom[0x8477] != 0x07 ||
+        rom[0x8486] != 0x0E || rom[0x84A0] != 0x06 || rom[0x84C0] != 0x07)
+        return fail(8, "clean FOV patch altered the game's enemy activation routines");
     if (!wide_install_profile(GAME_WARIO_SML3, 33, 33, 0))
         return fail(9, "clean-game patch should be safe to recheck");
+    if (rom[0x321C] != 0xD0 || rom[0x8477] != 0x07)
+        return fail(20, "rechecking the clean profile changed enemy activation");
 
     /* Alternate valid World dumps must remain wide when optional activation
      * sites don't match the exact revision used to generate the patch map. */
@@ -95,10 +96,11 @@ int main(void)
     if (!wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
         return fail(10, "DX Wario Land signatures were rejected");
     if (rom[0x3219] != 0x1E || rom[0x321B] != 0xED ||
-        rom[0x321C] != 0x00 || rom[0x31FD] != 0xD1 ||
-        rom[0x8477] != 0x08 || rom[0x8486] != 0x10 ||
-        rom[0x84A0] != 0x08 || rom[0x84C0] != 0x08)
-        return fail(11, "DX-specific view and activation sites were not patched");
+        rom[0x321C] != 0xD0 || rom[0x31FD] != 0x01 ||
+        rom[0x31FE] != 0xD1 || rom[0x31FF] != 0x00 ||
+        rom[0x8477] != 0x07 || rom[0x8486] != 0x0E ||
+        rom[0x84A0] != 0x06 || rom[0x84C0] != 0x07)
+        return fail(11, "DX FOV patch did not preserve enemy activation or adjust the correct operand");
     if (!wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
         return fail(12, "DX patch should be safe to recheck");
 
@@ -126,7 +128,8 @@ int main(void)
     if (wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
         return fail(13, "an incompatible DX FOV signature was accepted");
     if (rom[0x3219] != 0x11 || rom[0x321B] != 0xD0 ||
-        rom[0x321C] != 0xD0 || rom[0x8477] != 0x07)
+        rom[0x321C] != 0xD0 || rom[0x31FE] != 0xD0 ||
+        rom[0x8477] != 0x07)
         return fail(14, "an incompatible ROM was partially changed");
 
     free(rom);
