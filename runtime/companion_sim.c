@@ -1516,6 +1516,9 @@ static void draw_wario_companion(const Settings *s)
             i == 3 ? 153 : 145, 42, labels[i], subs[i], i == 3);
     draw_slot_timeline(s, g);
     draw_wario_treasure_animation();
+    /* Present the Wario deck frame. Unlike the Dr. Mario draw path, this
+       renderer owns its complete frame and must flush it before returning. */
+    SDL_RenderPresent(deck_renderer);
 }
 
 static void draw_companion(const Settings *s)
