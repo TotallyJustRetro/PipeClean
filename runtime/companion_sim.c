@@ -38,6 +38,9 @@ static Uint32 asset_animation_started[N_GAMES][N_DECK_ASSET_PATHS];
 static char asset_paths[N_GAMES][N_DECK_ASSET_PATHS][512];
 static int current_game = -1, current_lives, current_stage = -1, current_world = -1;
 static int current_paused, current_slot, current_item, current_playing;
+enum { SIM_ITEM_ANIM_IDLE, SIM_ITEM_ANIM_ARRIVE, SIM_ITEM_ANIM_SEND_OFF };
+static int item_animation_kind, item_animation_item;
+static Uint32 item_animation_started;
 static int pressed_action, mouse_down_action;
 static SDL_Texture *dashboard_preview_texture;
 static int dashboard_preview_game = -2;
@@ -794,8 +797,36 @@ static void draw_android_scenery(int game)
 
 static void draw_hero_item(const Settings *s, int game, int item, float center_x, float center_y, float radius)
 {
-    float t = SDL_GetTicks() / 1000.0f;
+    Uint32 now = SDL_GetTicks();
+    float t = now / 1000.0f;
     int cx = (int)center_x, cy = (int)center_y, r = (int)radius;
+    int icon_cx = cx, icon_cy = cy, icon_r = r, render_item = item;
+    int animation = simulator_layout_preview_enabled() ? SIM_ITEM_ANIM_IDLE : item_animation_kind;
+    float phase = 1.0f;
+    if (animation == SIM_ITEM_ANIM_ARRIVE && item_animation_item > 0) {
+        phase = fminf(1.0f, (float)(now - item_animation_started) / 460.0f);
+        icon_cy -= (int)(r * 0.48f * (1.0f - phase));
+        icon_r = (int)(r * (0.35f + 0.65f * phase));
+        render_item = item_animation_item;
+        if (phase >= 1.0f) {
+            item_animation_kind = SIM_ITEM_ANIM_IDLE;
+            render_item = item;
+            icon_cy = cy; icon_r = r;
+        }
+    } else if (animation == SIM_ITEM_ANIM_SEND_OFF && item_animation_item > 0) {
+        phase = fminf(1.0f, (float)(now - item_animation_started) / 360.0f);
+        icon_cy += (int)(r * 1.12f * phase);
+        icon_r = (int)(r * (1.0f - 0.48f * phase));
+        render_item = item_animation_item;
+        if (phase >= 1.0f) {
+            item_animation_kind = SIM_ITEM_ANIM_IDLE;
+            render_item = item;
+            icon_cy = cy; icon_r = r;
+        }
+    } else if (!simulator_layout_preview_enabled() && item > 0) {
+        icon_cy += (int)(sinf(t * 2.25f) * r * 0.025f);
+        icon_r = (int)(r * (1.0f + sinf(t * 3.1f) * 0.018f));
+    }
     fill_circle(cx, cy, r + 22, 255, 216, 106, 40);
     fill_circle(cx, cy, r + 11, 255, 216, 106, 40);
     fill_circle(cx, cy, r - 7,
@@ -814,20 +845,24 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
             i % 4 == 0 ? 240 : i % 3 == 0 ? 107 : 214,
             i % 4 == 0 ? 174 : i % 3 == 0 ? 34 : 107, 255);
     }
-    int item_asset = item >= 1 && item <= 3 ? item + 11 : 2;
-    if (item > 0 && !assets[game][item_asset]) item_asset = 2;
-    if (item > 0 && assets[game][item_asset]) {
-        draw_asset_image(s, game, item_asset,
-            cx - r * 46 / 100, cy - r * 46 / 100, r * 92 / 100, r * 92 / 100);
-    } else if (item > 0) {
-        const char *label = item == 1 ? "MUSHROOM" :
-            game == GAME_SML ? "SUPERBALL FLOWER" :
-            item == 3 ? "CARROT" : "FIRE FLOWER";
-        fill_circle(cx, cy - 8, r / 3, 230, 53, 65, 255);
-        fill(cx - r / 3, cy - 1, r * 2 / 3, r / 4, 238, 238, 220, 255);
-        fill(cx - r / 4, cy + r / 5, r / 2, r / 2, 238, 238, 220, 255);
-        draw_text_fit(cx - r + 7, cy + r * 2 / 3, r * 2 - 14, 1,
-            theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
+    if (icon_r < 1) icon_r = 1;
+    if (render_item > 0) {
+        int item_asset = render_item >= 1 && render_item <= 3 ? render_item + 11 : 2;
+        if (!assets[game][item_asset]) item_asset = 2;
+        if (assets[game][item_asset]) {
+            draw_asset_image(s, game, item_asset,
+                icon_cx - icon_r * 46 / 100, icon_cy - icon_r * 46 / 100,
+                icon_r * 92 / 100, icon_r * 92 / 100);
+        } else {
+            const char *label = render_item == 1 ? "MUSHROOM" :
+                game == GAME_SML ? "SUPERBALL FLOWER" :
+                render_item == 3 ? "CARROT" : "FIRE FLOWER";
+            fill_circle(icon_cx, icon_cy - 8, icon_r / 3, 230, 53, 65, 255);
+            fill(icon_cx - icon_r / 3, icon_cy - 1, icon_r * 2 / 3, icon_r / 4, 238, 238, 220, 255);
+            fill(icon_cx - icon_r / 4, icon_cy + icon_r / 5, icon_r / 2, icon_r / 2, 238, 238, 220, 255);
+            draw_text_fit(icon_cx - icon_r + 7, icon_cy + icon_r * 2 / 3, icon_r * 2 - 14, 1,
+                theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
+        }
     } else {
         /* The empty pocket is represented by a lilac, pixel-like star. */
         fill(cx - 2, cy - 27, 4, 54, 180, 161, 203, 255);
@@ -835,13 +870,13 @@ static void draw_hero_item(const Settings *s, int game, int item, float center_x
         fill(cx - 14, cy - 14, 28, 28, 180, 161, 203, 255);
         fill(cx - 8, cy - 8, 16, 16, 36, 53, 76, 255);
     }
-    if (item > 0) {
-        const char *label = item == 1 ? "MUSHROOM" :
+    if (render_item > 0) {
+        const char *label = render_item == 1 ? "MUSHROOM" :
             game == GAME_SML ? "SUPERBALL FLOWER" :
-            item == 3 ? "CARROT" : "FIRE FLOWER";
-        draw_text_fit(cx - r, cy + (int)(r * .66f) - 10, r * 2, 1,
+            render_item == 3 ? "CARROT" : "FIRE FLOWER";
+        draw_text_fit(icon_cx - icon_r, icon_cy + (int)(icon_r * .66f) - 10, icon_r * 2, 1,
             theme_ink_r(game), theme_ink_g(game), theme_ink_b(game), label);
-        draw_text_fit(cx - r, cy + (int)(r * .81f) - 7, r * 2, 1,
+        draw_text_fit(icon_cx - icon_r, icon_cy + (int)(icon_r * .81f) - 7, icon_r * 2, 1,
             theme_muted_r(game), theme_muted_g(game), theme_muted_b(game),
             "TAP WHEN READY");
     }
@@ -1175,7 +1210,24 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
     current_paused = paused;
     current_slot = selected_slot < 0 ? 0 : selected_slot > 9 ? 9 : selected_slot;
     current_playing = frame != NULL;
-    current_item = frame ? frame->reserve_item : simulator_layout_preview_item();
+    int next_item = frame ? frame->reserve_item : simulator_layout_preview_item();
+    if (!simulator_layout_preview_enabled() && next_item != current_item) {
+        Uint32 now = SDL_GetTicks();
+        if (next_item > 0) {
+            item_animation_kind = SIM_ITEM_ANIM_ARRIVE;
+            item_animation_item = next_item;
+            item_animation_started = now;
+        } else if (current_item > 0 &&
+                   (item_animation_kind != SIM_ITEM_ANIM_SEND_OFF ||
+                    item_animation_item != current_item)) {
+            item_animation_kind = SIM_ITEM_ANIM_SEND_OFF;
+            item_animation_item = current_item;
+            item_animation_started = now;
+        }
+    } else if (simulator_layout_preview_enabled()) {
+        item_animation_kind = SIM_ITEM_ANIM_IDLE;
+    }
+    current_item = next_item;
     current_stage = -1;
     current_world = -1;
     current_lives = 0;
@@ -1354,6 +1406,11 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
             launcher_open_companion_layout_picker(1, game);
         } else if (up) {
             play_custom_deck_sound(d, up);
+            if (up == SIM_ITEM_USE && current_item > 0) {
+                item_animation_kind = SIM_ITEM_ANIM_SEND_OFF;
+                item_animation_item = current_item;
+                item_animation_started = SDL_GetTicks();
+            }
             push_action(up, 1);
         }
         pressed_action = 0;
