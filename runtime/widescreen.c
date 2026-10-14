@@ -682,11 +682,10 @@ static int wide_install_wario_sml3(int wario_dx)
     static const uint8_t original_fov[] = {0xC6, 0x10, 0xFE, 0xD0};
     static const uint8_t clean_fov[] =    {0xC6, 0x21, 0xFE, 0xE2};
     static const uint8_t dx_fov[] =       {0xC6, 0x1E, 0xFE, 0xED};
-    const CartInfo *ci = cart_info();
-
-    /* These offsets are tied to the 512 KiB World ROM family. A different
-     * revision or unsupported hack falls back to the original-width display. */
-    if (!rom || !ci || ci->size != 0x80000u) return 0;
+    /* These offsets are tied to the 512 KiB World ROM family. The cartridge
+     * header's ROM-size code is 4 for 512 KiB; unsupported images fall back to
+     * the original-width display before any write occurs. */
+    if (!rom || rom[0x148] != 0x04) return 0;
 
     if (!wario_dx) {
         if (expect(0x3218, clean_fov, (int)sizeof clean_fov)) return 1;
