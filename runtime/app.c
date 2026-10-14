@@ -270,6 +270,37 @@ void launcher_open_companion_layout_picker(int kind, int game)
     (*env)->DeleteLocalRef(env, cls);
 }
 
+/* Wario Land keeps the expedition counters in its cartridge RAM as BCD
+ * digits. Read through the mapper so this works with both MBC1 and the DX
+ * hack's MBC5 mapper. Values are sampled only for the Wario Land Companion. */
+static int wario_bcd_pair(uint8_t value)
+{
+    int tens = (value >> 4) & 0x0F, ones = value & 0x0F;
+    return tens <= 9 && ones <= 9 ? tens * 10 + ones : -1;
+}
+
+static int wario_read_companion_coins(void)
+{
+    uint8_t high = cart_ram_read(0xA805);
+    uint8_t mid  = cart_ram_read(0xA806);
+    uint8_t low  = cart_ram_read(0xA807);
+    int d0 = high & 0x0F, d1 = (mid >> 4) & 0x0F;
+    int d2 = mid & 0x0F, d3 = (low >> 4) & 0x0F, d4 = low & 0x0F;
+    if (d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 || d4 > 9) return -1;
+    return d0 * 10000 + d1 * 1000 + d2 * 100 + d3 * 10 + d4;
+}
+
+static int wario_read_companion_time(void)
+{
+    uint8_t high = cart_ram_read(0xA964);
+    uint8_t low = cart_ram_read(0xA965);
+    int hundreds = high & 0x0F;
+    int tens = (low >> 4) & 0x0F, ones = low & 0x0F;
+    if (high == 0xFF || low == 0xFF ||
+        hundreds > 9 || tens > 9 || ones > 9) return -1;
+    return hundreds * 100 + tens * 10 + ones;
+}
+
 static void companion_publish_state(int game, const Frame *frame, int paused)
 {
     static unsigned tick;
@@ -283,14 +314,33 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
     jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIIIIIII)V");
     if (method) {
         int lives = 0, stage = -1, world = -1;
+        int wario_coins = -1, wario_hearts = -1, wario_power = -1;
+        int wario_treasures = -1, wario_time = -1;
         int dual_screen = settings.launcher_dual_screen &&
-            (game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2);
+            (game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
+             game == GAME_WARIO_SML3);
         if (frame && (game == GAME_SML || game == GAME_SML2)) {
             uint8_t bcd = frame->p1_lives;
             int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
             lives = (tens <= 9 && ones <= 9) ? tens * 10 + ones : bcd;
             if (frame->level_id != 0xFF) stage = frame->level_id;
             if (game == GAME_SML && frame->level_bank != 0xFF) world = frame->level_bank;
+        }
+        if (frame && game == GAME_WARIO_SML3) {
+            int course = cart_ram_read(0xA804);
+            int heart_byte = cart_ram_read(0xA808);
+            int life_byte = cart_ram_read(0xA809);
+            int power = cart_ram_read(0xA80A);
+            int treasure_low = cart_ram_read(0xA80E);
+            int treasure_high = cart_ram_read(0xA80F);
+            lives = wario_bcd_pair((uint8_t)life_byte);
+            stage = course == 0xFF ? -1 : course;
+            wario_hearts = wario_bcd_pair((uint8_t)heart_byte);
+            wario_power = power <= 4 ? power : -1;
+            if (treasure_low != 0xFF && treasure_high != 0xFF)
+                wario_treasures = treasure_low | (treasure_high << 8);
+            wario_coins = wario_read_companion_coins();
+            wario_time = wario_read_companion_time();
         }
         (void)(*env)->CallVoidMethod(env, activity, method,
             (jint)game, (jint)lives, (jint)stage, (jint)world,
@@ -300,7 +350,9 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_score : -1),
             (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_level : -1),
             (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_speed : -1),
-            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_capsule : 0xFF));
+            (jint)(frame && game == GAME_DRMARIO ? frame->dr_mario_capsule : 0xFF),
+            (jint)wario_coins, (jint)wario_hearts, (jint)wario_power,
+            (jint)wario_treasures, (jint)wario_time);
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
         /* Send save-state paths, not pixel buffers. Java caches thumbnails and
