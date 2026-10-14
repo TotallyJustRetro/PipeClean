@@ -2511,6 +2511,9 @@ static int play_external_game(int g)
     settings_save();
     audio_menu_music(0);
 #if !defined(__ANDROID__)
+    /* These Wario ROMs own their Deck inside gbplayer. Wario Land II's GB and
+       GBC headers select a shared layout in the player; don't route them through
+       PipeClean's inactive simulator while the separate process is running. */
     int launch_companion = settings.launcher_dual_screen != 0 &&
         (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC);
     /* The Wario player owns the live deck while it runs as a separate process.
