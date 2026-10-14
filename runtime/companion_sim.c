@@ -1140,6 +1140,7 @@ static void draw_dr_mario_companion(const Settings *s,const CompanionLayoutCfg *
         draw_action_button(s,GAME_DRMARIO,action_ids[i],(int)ax,(int)ay,(int)aw,(int)ah,action_labels[i],action_subs[i],i==3);
     }
     draw_slot_timeline(s,GAME_DRMARIO);
+    draw_vinyl_notification(s);
     SDL_RenderPresent(deck_renderer);
 }
 
