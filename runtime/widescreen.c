@@ -664,10 +664,10 @@ void wide_state_reset(void)
     sml2_actor_build_count = sml2_actor_frame_count = 0;
 }
 
-static int wario_dx_source_sites_ok(int already_patched)
+static int wario_source_sites_ok(int already_patched)
 {
-    /* Check the instruction at each operand before changing it. These sites
-     * widen the DX build's object/camera margins without copying its renderer. */
+    /* These source instructions also control object activation distance.
+     * Validate every opcode and operand before changing any of them. */
     const uint8_t ret = already_patched ? 0x00 : 0xD0;
     const uint8_t bc_low = already_patched ? 0xD1 : 0xD0;
     const uint8_t sub_seven = already_patched ? 0x08 : 0x07;
@@ -701,22 +701,28 @@ static int wide_install_wario_sml3(int wario_dx)
     }
 
     if (!wario_dx) {
-        /* Removing the early RET NC is essential: otherwise the game's
-         * original off-screen guard still clips the newly exposed area. */
+        /* Both the main draw-range check and the separate object activation
+         * bounds need adjusting; otherwise enemies still pop in near edges. */
         if (expect(0x3218, clean_fov, (int)sizeof clean_fov) &&
-            rom[0x321C] == 0x00) return 1;
+            wario_source_sites_ok(1)) return 1;
         if (!expect(0x3218, original_fov, (int)sizeof original_fov) ||
-            rom[0x321C] != 0xD0) return 0;
+            !wario_source_sites_ok(0)) return 0;
+
         rom[0x3219] = 0x21;
         rom[0x321B] = 0xE2;
         rom[0x321C] = 0x00;
+        rom[0x31FD] = 0xD1;
+        rom[0x8477] = 0x08;
+        rom[0x8486] = 0x10;
+        rom[0x84A0] = 0x08;
+        rom[0x84C0] = 0x08;
         return 1;
     }
 
     if (expect(0x3218, dx_fov, (int)sizeof dx_fov) &&
-        wario_dx_source_sites_ok(1)) return 1;
+        wario_source_sites_ok(1)) return 1;
     if (!expect(0x3218, original_fov, (int)sizeof original_fov) ||
-        !wario_dx_source_sites_ok(0)) return 0;
+        !wario_source_sites_ok(0)) return 0;
 
     /* Match Bigodão's 30px DX profile: widen the main off-screen threshold,
      * bypass the original early return, and adjust the DX object activation
