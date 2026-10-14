@@ -21,6 +21,7 @@ int  wide_install(int game, int left, int right);
 extern int wide_wl2_trace_active;
 void wide_wl2_trace_instruction(uint16_t pc);
 void wide_wl2_trace_finish(void);
+void wide_wl2_trace_set_path(const char *path);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
 int wide_intercept_sml2(uint8_t op);
 /* Override SML2 enemy-spawn scan bounds at their verified bank-2 read sites. */
