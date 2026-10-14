@@ -4,6 +4,7 @@
  * handler) work. */
 #include "gb.h"
 #include "widescreen.h"
+#include "cart.h"
 
 /* ppu.c is also compiled alone by the CGB renderer unit test. Keep the
  * compositor an optional link-time feature for that target. */
@@ -30,6 +31,23 @@ uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
+static int wario_wide_enabled, wario_frame_active;
+static uint16_t wario_frame_scroll_x, wario_frame_scroll_y;
+static int wario_cached_level = -1;
+static uint8_t wario_block_attr[0x80][4], wario_block_known[0x80][4];
+static uint8_t wario_tile_attr[256], wario_tile_known[256];
+
+void ppu_set_wario_sml3(int enabled)
+{
+    wario_wide_enabled = enabled != 0;
+    if (!wario_wide_enabled) {
+        wario_frame_active = 0;
+        wario_cached_level = -1;
+        memset(wario_block_known, 0, sizeof wario_block_known);
+        memset(wario_tile_known, 0, sizeof wario_tile_known);
+    }
+}
+
 void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
 {
     if (l < 0) l = 0;
@@ -88,6 +106,10 @@ void ppu_reset(void)
     bgp = 0xFC; obp0 = obp1 = 0xFF; wy = wx = 0;
     dot = 0; ly = 0; mode = 2; lcd_on = 1; stat_line = 0; wlc = 0; off_cycles = 0;
     frame_count = 0;
+    wario_frame_active = 0;
+    wario_cached_level = -1;
+    memset(wario_block_known, 0, sizeof wario_block_known);
+    memset(wario_tile_known, 0, sizeof wario_tile_known);
 }
 
 static void update_stat(void)
@@ -168,6 +190,167 @@ static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *til
     uint8_t tile = vram[map_index];
     uint8_t attr = cgb_render_enabled ? vram_cgb1[map_index] : 0;
     return tile_pixel_data(tile, attr, map_x, map_y, attr_out, tile_out);
+}
+
+/* Wario Land stores its full 256x32 block layout in WRAM and the four tile
+ * IDs for each 16x16 block in cartridge RAM. The PPU's hardware tilemap is
+ * only a 256px ring, so simply reading it for wide margins causes repeated
+ * columns and obvious pop-in. Reconstruct those margins from the live map. */
+static int wario_ram_ready(void)
+{
+    const CartInfo *ci = cart_info();
+    return wario_wide_enabled && rom && cart_ram && ci &&
+           ci->ram_bytes > 0x0F00u && ci->size >= 0x80000u;
+}
+
+static int wario_unwrap_tile_coordinate(int map_tile, int reference)
+{
+    int coordinate = (reference & ~0xFF) + map_tile * 8;
+    if (coordinate - reference > 128) coordinate -= 256;
+    else if (reference - coordinate > 128) coordinate += 256;
+    return coordinate;
+}
+
+static int wario_block_at(int world_x, int world_y, uint8_t *block, int *tile_in_block)
+{
+    if (world_x < 0 || world_y < 0 || world_x >= 0x1000 || world_y >= 0x0200)
+        return 0;
+    unsigned layout_offset = (unsigned)(world_y >> 4) * 0x100u + (unsigned)(world_x >> 4);
+    *block = (uint8_t)(rd8((uint16_t)(0xC000u + layout_offset)) & 0x7Fu);
+    *tile_in_block = (((world_y >> 3) & 1) * 2) + ((world_x >> 3) & 1);
+    return 1;
+}
+
+static void wario_learn_visible_attributes(void)
+{
+    if (!cgb_render_enabled) return;
+    const int reference_x = (int)wario_frame_scroll_x - 0x50;
+    const int reference_y = (int)wario_frame_scroll_y - 0x48;
+    const int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    for (int map_y = 0; map_y < 32; map_y++) {
+        int world_y = wario_unwrap_tile_coordinate(map_y, reference_y);
+        if (world_y < 0 || world_y >= 0x0200) continue;
+        for (int map_x = 0; map_x < 32; map_x++) {
+            int world_x = wario_unwrap_tile_coordinate(map_x, reference_x);
+            if (world_x < 0 || world_x >= 0x1000) continue;
+            uint8_t block;
+            int part;
+            if (!wario_block_at(world_x, world_y, &block, &part)) continue;
+            size_t tile_offset = 0x0D00u + (size_t)block * 4u + (size_t)part;
+            const CartInfo *ci = cart_info();
+            if (!ci || tile_offset >= ci->ram_bytes) continue;
+            unsigned map_entry = (unsigned)map_off + (unsigned)map_y * 32u + (unsigned)map_x;
+            uint8_t tile = cart_ram[tile_offset];
+            if (vram[map_entry] != tile) continue;
+            uint8_t attr = vram_cgb1[map_entry];
+            wario_block_attr[block][part] = attr;
+            wario_block_known[block][part] = 1;
+            wario_tile_attr[tile] = attr;
+            wario_tile_known[tile] = 1;
+        }
+    }
+}
+
+static void wario_prepare_frame(void)
+{
+    wario_frame_active = 0;
+    if (!wario_ram_ready()) return;
+    const CartInfo *ci = cart_info();
+    if (!ci || ci->ram_bytes <= 0x0903u) return;
+    uint8_t game_mode = cart_ram[0x08C3u];
+    if (game_mode != 2 && game_mode != 3) return;
+    uint8_t level = cart_ram[0x0800u];
+    if (wario_cached_level != level) {
+        memset(wario_block_known, 0, sizeof wario_block_known);
+        memset(wario_tile_known, 0, sizeof wario_tile_known);
+        wario_cached_level = level;
+    }
+    wario_frame_scroll_x = (uint16_t)(((uint16_t)cart_ram[0x0902u] << 8) |
+                                      cart_ram[0x0903u]);
+    wario_frame_scroll_y = (uint16_t)(((uint16_t)cart_ram[0x0900u] << 8) |
+                                      cart_ram[0x0901u]);
+    wario_frame_active = 1;
+    wario_learn_visible_attributes();
+}
+
+static int wario_dx_palette_attr(uint8_t tile, uint8_t *attr)
+{
+    const CartInfo *ci = cart_info();
+    if (!rom || !ci || ci->size < 0x85000u ||
+        rom[0x143] != 0xC0 || rom[0x147] != 0x1B ||
+        !cart_ram || ci->ram_bytes <= 0x0800u)
+        return 0;
+    uint8_t level = cart_ram[0x0800u];
+    if (level > 0x2D) return 0;
+    size_t offset = 0x84000u + ((size_t)(0x41u + level) << 8) + tile;
+    if (offset >= ci->size || rom[offset] >= 8) return 0;
+    *attr = rom[offset];
+    return 1;
+}
+
+static int wario_margin_pixel(int world_x, int world_y, uint8_t *tile,
+                              uint8_t *attr, int *inside_world)
+{
+    uint8_t block;
+    int part;
+    *inside_world = wario_block_at(world_x, world_y, &block, &part);
+    if (!*inside_world) return 0;
+    size_t offset = 0x0D00u + (size_t)block * 4u + (size_t)part;
+    const CartInfo *ci = cart_info();
+    if (!ci || offset >= ci->ram_bytes) { *inside_world = 0; return 0; }
+    *tile = cart_ram[offset];
+    *attr = 0;
+    if (!cgb_render_enabled) return 1;
+
+    int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    unsigned map_entry = (unsigned)map_off +
+        (unsigned)(((unsigned)world_y >> 3) & 31u) * 32u +
+        (unsigned)(((unsigned)world_x >> 3) & 31u);
+    if (vram[map_entry] == *tile) {
+        *attr = vram_cgb1[map_entry];
+        wario_block_attr[block][part] = *attr;
+        wario_block_known[block][part] = 1;
+        wario_tile_attr[*tile] = *attr;
+        wario_tile_known[*tile] = 1;
+    } else if (!wario_dx_palette_attr(*tile, attr)) {
+        if (wario_block_known[block][part]) *attr = wario_block_attr[block][part];
+        else if (wario_tile_known[*tile]) *attr = wario_tile_attr[*tile];
+    }
+    return 1;
+}
+
+static void wario_render_margins(int y, int W, int L, uint8_t *out,
+                                 uint32_t *rgb, uint8_t *bgci, uint8_t *bgattr)
+{
+    if (!wario_frame_active || !wario_wide_enabled || W <= GB_W) return;
+    int expected_x = ((int)wario_frame_scroll_x - 0x50) & 0xFF;
+    int expected_y = ((int)wario_frame_scroll_y - 0x48) & 0xFF;
+    int dx = (int)scx - expected_x, dy = (int)scy - expected_y;
+    if (dx > 128) dx -= 256; if (dx < -128) dx += 256;
+    if (dy > 128) dy -= 256; if (dy < -128) dy += 256;
+    int world_y = (int)wario_frame_scroll_y - 0x48 + y + dy;
+    for (int X = 0; X < W; X++) {
+        if (X >= L && X < L + GB_W) continue;
+        int world_x = (int)wario_frame_scroll_x - 0x50 + (X - L) + dx;
+        uint8_t tile = 0, attr = 0;
+        int inside = 0;
+        if (!wario_margin_pixel(world_x, world_y, &tile, &attr, &inside)) {
+            bgci[X] = 0; bgattr[X] = 0;
+            out[X] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
+            if (cgb_render_enabled) rgb[X] = cgb_rgb(cgb_bg_palette, 0, 0);
+            ppu_bgtile[y][X] = 0xFFFF;
+            ppu_bguv[y][X] = 0;
+            continue;
+        }
+        int attr_out = 0, tile_id = 0;
+        int ci = tile_pixel_data(tile, attr, world_x, world_y, &attr_out, &tile_id);
+        bgci[X] = (uint8_t)ci; bgattr[X] = (uint8_t)attr_out;
+        out[X] = cgb_render_enabled ? (uint8_t)ci : (uint8_t)((bgp >> (ci * 2)) & 3);
+        if (cgb_render_enabled)
+            rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr_out & 7), (unsigned)ci);
+        ppu_bgtile[y][X] = (uint16_t)tile_id;
+        ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+    }
 }
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
@@ -279,6 +462,7 @@ static void render_line(int y)
         if (wide_sml2_snapshot_actors) wide_sml2_snapshot_actors();
         if (wide_sml2_prepare_frame)
             wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
+        wario_prepare_frame();
     }
     int sml2_margin_mode = 0;
     if (wide_on && ppu_w > GB_W && wide_sml2_world_origin) {
@@ -313,6 +497,11 @@ static void render_line(int y)
         memset(out, 0, W);
         memset(rgb, 0, W * sizeof rgb[0]);
     }
+
+    /* Wario's level map is reconstructed from its live 16x16 block layout;
+       its hardware tilemap ring otherwise repeats old columns and pops in. */
+    if (wide_on && W > GB_W && wario_wide_enabled)
+        wario_render_margins(y, W, L, out, rgb, bgci, bgattr);
 
     /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
        only the margins from the live 16x16 block map, leaving the original
@@ -354,7 +543,9 @@ static void render_line(int y)
         int map_off = (lcdc & 0x40) ? 0x1C00 : 0x1800;
         int x0 = wx - 7 + L + (win_centre ? hud_shift : 0), drew = 0;
         int first = win_centre ? 0 : (x0 < 0 ? 0 : x0);
-        for (int X = first; X < W; X++) {
+        int window_end = (wario_wide_enabled && W > GB_W) ? L + GB_W : W;
+        if (window_end > W) window_end = W;
+        for (int X = first; X < window_end; X++) {
             int px = (X - x0) & 0xFF, attr = 0, tile_id = 0;
             int ci = tile_pixel(map_off, px, wlc, &attr, &tile_id);
             bgci[X] = (uint8_t)ci; bgattr[X] = (uint8_t)attr;
