@@ -482,7 +482,7 @@ static void reserve_item_process_use_request(void)
         reserve_item_apply_active = 0;
         /* A217 drives the ROM's alternating character-sprite flash. Reuse
          * that native animation after the restored power-up becomes active. */
-        wr8(0xA217, 0x20);
+        if (rd8(0xA217) < 0x20) wr8(0xA217, 0x20);
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
     } else if (game == GAME_SML && reserve_item_state.kind <= 2 &&
                reserve_item_gameplay_active()) {
