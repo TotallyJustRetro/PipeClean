@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <stdio.h>
 #include "events.h"
+#include "wario_event_state.h"
 #include "gb.h"
 #include "rom.h"
 #include "audio.h"
@@ -32,9 +33,19 @@ static const EventDef sml2_defs[] = {
     {"life",   "Lose a life",      "Lives go down",                   0, 0, 3, 0xFF3030, 600, 100},
     {"oneup",  "Extra life",       "Lives go up",                     0, 0, 4, 0x6CFF8C, 400, 60},
 };
+/* Wario Land SML3 shares these state values with its Companion Deck tracker. */
+static const EventDef wario_sml3_defs[] = {
+    {"treasure", "Treasure found",      "Recover a hidden treasure",       0, 0, 0, 0xFFD34A, 500, 100},
+    {"power",    "Power-up",            "Gain a Wario power form",         0, 0, 0, 0xB58AFF, 300, 75},
+    {"damage",   "Damage / power loss", "Take damage or lose a form",      0, 0, 0, 0xFF3D4F, 340, 85},
+    {"coin",     "Coin collected",      "Collect coins",                   0, 0, 0, 0xFFD23C, 70, 35},
+    {"heart",    "Heart restored",      "Recover health",                  0, 0, 0, 0x6CFF8C, 160, 55},
+    {"extra",    "Extra life",          "Gain an extra life",              0, 0, 0, 0x6CFF8C, 450, 90},
+    {"lost",     "Life lost",           "Lose a life",                     0, 0, 0, 0xFF3030, 650, 100},
+};
 typedef struct { const EventDef *defs; int n; } GameEvents;
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
-static const GameEvents ge[N_GAMES] = {{dr_defs, N(dr_defs)}, {sml_defs, N(sml_defs)}, {sml2_defs, N(sml2_defs)}};
+static const GameEvents ge[N_GAMES] = {{dr_defs, N(dr_defs)}, {sml_defs, N(sml_defs)}, {sml2_defs, N(sml2_defs)}, {wario_sml3_defs, N(wario_sml3_defs)}};
 
 int events_count(int g) { return g >= 0 && g < N_GAMES ? ge[g].n : 0; }
 const EventDef *events_def(int g, int i) { return (g >= 0 && g < N_GAMES && i >= 0 && i < ge[g].n) ? &ge[g].defs[i] : NULL; }
@@ -133,10 +144,67 @@ static void hud_frame(void)
     hud_committed = hud_cand; hud_have = 1;
 }
 
+/* Wario Land SML3 stores its expedition counters in cartridge RAM. */
+static WarioEventTracker wario_event_tracker;
+
+static uint8_t wario_ram_read(uint16_t address)
+{
+    return cart_ram ? cart_ram[address & 0x1FFFu] : 0xFF;
+}
+
+static int wario_bcd_pair(uint8_t value)
+{
+    int tens = (value >> 4) & 0x0F, ones = value & 0x0F;
+    return tens <= 9 && ones <= 9 ? tens * 10 + ones : -1;
+}
+
+static int wario_bcd_coins(void)
+{
+    uint8_t high = wario_ram_read(0xA805);
+    uint8_t mid = wario_ram_read(0xA806);
+    uint8_t low = wario_ram_read(0xA807);
+    int d0 = high & 0x0F, d1 = (mid >> 4) & 0x0F;
+    int d2 = mid & 0x0F, d3 = (low >> 4) & 0x0F, d4 = low & 0x0F;
+    if (d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 || d4 > 9) return -1;
+    return d0 * 10000 + d1 * 1000 + d2 * 100 + d3 * 10 + d4;
+}
+
+static int wario_event_snapshot_read(WarioEventSnapshot *snapshot)
+{
+    if (!snapshot || !cart_ram) return 0;
+
+    uint8_t hearts_raw = wario_ram_read(0xA808);
+    uint8_t lives_raw = wario_ram_read(0xA809);
+    uint8_t power_raw = wario_ram_read(0xA80A);
+    uint8_t treasure_low = wario_ram_read(0xA80E);
+    uint8_t treasure_high = wario_ram_read(0xA80F);
+    if (treasure_low == 0xFF || treasure_high == 0xFF || power_raw > 4) return 0;
+
+    snapshot->coins = wario_bcd_coins();
+    snapshot->hearts = wario_bcd_pair(hearts_raw);
+    snapshot->lives = wario_bcd_pair(lives_raw);
+    snapshot->power = power_raw;
+    snapshot->treasure_mask = (int)treasure_low | ((int)treasure_high << 8);
+    return snapshot->coins >= 0 && snapshot->hearts >= 0 && snapshot->lives >= 0;
+}
+
+static void wario_event_frame(void)
+{
+    WarioEventSnapshot snapshot;
+    if (!wario_event_snapshot_read(&snapshot)) {
+        wario_event_tracker.have_previous = 0;
+        return;
+    }
+
+    int event = wario_event_tracker_update(&wario_event_tracker, &snapshot);
+    if (event >= 0) fire(event);
+}
+
 void events_begin(void)
 {
     cur_game = rom_loaded_game();
     qr = qw = 0; tap_frames = 0; hud_have = 0; hud_cnt = 0;
+    wario_event_tracker.have_previous = 0;
     apu_set_tap_mask(0);
     apu_set_trigger_hook(on_trigger);
     rules = NULL; n_rules = 0;
@@ -151,6 +219,7 @@ void events_end(void)
     apu_set_trigger_hook(NULL);
     apu_set_tap_mask(0);
     gb_watch_set(NULL, 0, NULL);
+    wario_event_tracker.have_previous = 0;
 }
 
 void events_state_reset(void)
@@ -160,6 +229,7 @@ void events_state_reset(void)
     hud_have = 0;
     hud_cnt = 0;
     tap_frames = 0;
+    wario_event_tracker.have_previous = 0;
     apu_set_tap_mask(0);
 }
 
@@ -167,6 +237,7 @@ void events_frame(void)
 {
     static int16_t tb[2048 * 2];
     if (cur_game == GAME_SML2) hud_frame();
+    else if (cur_game == GAME_WARIO_SML3) wario_event_frame();
     if (tap_frames > 0) {
         int n = apu_drain_tap(tb, 2048);
         if (n > 0) audio_pad_push(tb, n);

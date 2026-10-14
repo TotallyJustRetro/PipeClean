@@ -665,7 +665,9 @@ void pad_flash(uint32_t rgb) { flash_rgb = rgb; flash_t = 1.0f; }
 
 int pad_has_light(void)
 {
-    for (int i = 0; i < n_pads; i++) if (pads[i].mapped && SDL_GameControllerHasLED(pads[i].gc)) return 1;
+    /* Only DualSense lightbars are driven by PipeClean's event lighting. */
+    for (int i = 0; i < n_pads; i++)
+        if (pad_is_dualsense(i) && SDL_GameControllerHasLED(pads[i].gc)) return 1;
     return 0;
 }
 
@@ -674,11 +676,18 @@ static void pad_rumble_device(int device, int pct, int ms)
     if (pct <= 0 || device < 0 || device >= n_pads) return;
     if (pct > 100) pct = 100;
     Pad *p = &pads[device];
-    if (p->mapped && SDL_GameControllerHasRumble(p->gc)) {
-        Uint16 lo = (Uint16)(pct * 655);
-        Uint16 hi = (Uint16)(pct * 655 * 0.8f);
-        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms);
-    }
+    Uint16 lo = (Uint16)(pct * 655);
+    Uint16 hi = (Uint16)(pct * 655 * 0.8f);
+
+    /* Prefer mapped-controller rumble, then use the raw joystick API for
+       generic pads that SDL did not recognize as a GameController. */
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc) &&
+        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms) == 0)
+        return;
+
+    SDL_Joystick *j = joystick_for_device(device);
+    if (j && SDL_JoystickHasRumble(j))
+        SDL_JoystickRumble(j, lo, hi, (Uint32)ms);
 }
 
 void pad_rumble(int pct, int ms)
@@ -700,7 +709,10 @@ void pad_event_fx(int game, int ev)
     const GameCfg *c = &settings.g[game];
     if ((c->ds_ev_rumble >> ev) & 1)
         pad_rumble_selected(game, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
-    if ((c->ds_ev_led >> ev) & 1) pad_flash(d->color);
+    if (((c->ds_ev_led >> ev) & 1) &&
+        c->pad_device[0] >= 0 && c->pad_device[0] < n_pads &&
+        pad_is_dualsense(c->pad_device[0]))
+        pad_flash(d->color);
 }
 
 static uint32_t base_color(const GameCfg *c)
@@ -732,6 +744,7 @@ void pad_frame(float dt)
     send_acc = 0;
     last_sent = out;
     int device = settings.g[ctx_game].pad_device[0];
-    if (device >= 0 && device < n_pads && pads[device].mapped && SDL_GameControllerHasLED(pads[device].gc))
+    if (device >= 0 && device < n_pads && pad_is_dualsense(device) &&
+        pads[device].mapped && SDL_GameControllerHasLED(pads[device].gc))
         SDL_GameControllerSetLED(pads[device].gc, (Uint8)(out >> 16), (Uint8)(out >> 8), (Uint8)out);
 }
