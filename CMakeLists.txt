@@ -147,6 +147,10 @@ add_executable(test_sml_wide tests/test_sml_wide.c runtime/widescreen.c)
 target_include_directories(test_sml_wide PRIVATE runtime)
 add_test(NAME sml_wide COMMAND test_sml_wide)
 
+add_executable(test_wario_sml3_wide tests/test_wario_sml3_wide.c runtime/widescreen.c)
+target_include_directories(test_wario_sml3_wide PRIVATE runtime)
+add_test(NAME wario_sml3_widescreen COMMAND test_wario_sml3_wide)
+
 add_executable(test_cart_mbc1 tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c)
 target_include_directories(test_cart_mbc1 PRIVATE runtime)
 add_test(NAME cart_mbc1 COMMAND test_cart_mbc1)
