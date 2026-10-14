@@ -216,7 +216,7 @@ static int wario_block_at(int world_x, int world_y, uint8_t *block, int *tile_in
     if (world_x < 0 || world_y < 0 || world_x >= 0x1000 || world_y >= 0x0200)
         return 0;
     unsigned layout_offset = (unsigned)(world_y >> 4) * 0x100u + (unsigned)(world_x >> 4);
-    *block = (uint8_t)(rd8((uint16_t)(0xC000u + layout_offset)) & 0x7Fu);
+    *block = (uint8_t)(gb_wram_peek(layout_offset) & 0x7Fu);
     *tile_in_block = (((world_y >> 3) & 1) * 2) + ((world_x >> 3) & 1);
     return 1;
 }
