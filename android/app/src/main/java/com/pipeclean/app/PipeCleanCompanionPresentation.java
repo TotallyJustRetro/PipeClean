@@ -270,7 +270,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             layoutEditorPreview = false;
             dashboardMode = false;
             this.game = game;
-            this.lives = Math.max(0, Math.min(99, lives));
+            this.lives = game == 3 && lives < 0 ? -1 : Math.max(0, Math.min(99, lives));
             this.stage = stage;
             this.world = world;
             this.paused = paused;
@@ -333,7 +333,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private int warioTreasureCount() {
-            return warioTreasureMask < 0 ? 0 : Integer.bitCount(warioTreasureMask & 0xFFFF);
+            return warioTreasureMask < 0 ? 0 : Math.min(15, Integer.bitCount(warioTreasureMask & 0xFFFF));
         }
 
         private void observeWarioState() {
@@ -360,20 +360,24 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 pushExpeditionLog(String.format(Locale.US, "COURSE %02X ENTERED", stage & 0xFF));
 
             if (warioTreasureMask >= 0 && previousWarioTreasureMask >= 0) {
-                int gained = (warioTreasureMask & ~previousWarioTreasureMask) & 0xFFFF;
-                if (gained != 0) {
-                    for (int bit = 0; bit < 16; bit++) {
-                        if ((gained & (1 << bit)) != 0)
-                            pushExpeditionLog(String.format(Locale.US, "TREASURE %02d FOUND", bit + 1));
-                    }
-                    treasureAnimationId = 32 - Integer.numberOfLeadingZeros(gained);
-                    treasureAnimationStart = SystemClock.uptimeMillis();
-                    treasureAnimationActive = true;
-                    postInvalidateOnAnimation();
-                } else if (warioTreasureMask < previousWarioTreasureMask) {
-                    // State loads/rewinds can restore an earlier treasure mask.
-                    // Treat that as a new baseline, not as a negative collection event.
+                int oldMask = previousWarioTreasureMask & 0xFFFF;
+                int nextMask = warioTreasureMask & 0xFFFF;
+                if ((nextMask & oldMask) != oldMask) {
+                    // Save-state loads/rewinds can roll the bitfield backward. Never
+                    // celebrate a bit that was already known in the previous timeline.
                     treasureAnimationActive = false;
+                } else {
+                    int gained = (nextMask & ~oldMask) & 0xFFFF;
+                    if (gained != 0) {
+                        for (int bit = 0; bit < 16; bit++) {
+                            if ((gained & (1 << bit)) != 0)
+                                pushExpeditionLog(String.format(Locale.US, "TREASURE %02d FOUND", bit + 1));
+                        }
+                        treasureAnimationId = 32 - Integer.numberOfLeadingZeros(gained);
+                        treasureAnimationStart = SystemClock.uptimeMillis();
+                        treasureAnimationActive = true;
+                        postInvalidateOnAnimation();
+                    }
                 }
             }
             if (warioPower >= 0 && previousWarioPower >= 0 && warioPower != previousWarioPower)
@@ -1632,7 +1636,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
             c.restore();
 
-            badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", Math.max(0, lives)));
+            badge(c, 20, 55, 128, 47, "LIVES",
+                  lives >= 0 ? String.format(Locale.US, "× %02d", lives) : "× --");
             badge(c, 158, 55, 272, 47, "CURRENT COURSE", stageText());
             card(c, 20, 111, 410, 105, "TREASURE VAULT");
             int count = warioTreasureCount();
