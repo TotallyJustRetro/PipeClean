@@ -8,7 +8,8 @@
 static inline int companion_deck_supports_game_view(int game)
 {
     return game == GAME_DRMARIO || game == GAME_SML ||
-           game == GAME_SML2 || game == GAME_WARIO_SML3;
+           game == GAME_SML2 || game == GAME_WARIO_SML3 ||
+           game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC;
 }
 
 static inline int companion_deck_should_show_game_view(int game, int playing,
