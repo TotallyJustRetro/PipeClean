@@ -109,6 +109,11 @@ static size_t wram_offset(uint16_t a)
     return 0x1000u + (size_t)((cgb_mode ? cgb_svbk : 1u) - 1u) * 0x1000u + (size_t)(a - 0xD000);
 }
 
+uint8_t gb_wram_peek(size_t offset)
+{
+    return offset < sizeof wram ? wram[offset] : 0xFF;
+}
+
 static void io_write(uint8_t r, uint8_t v)
 {
     switch (r) {
