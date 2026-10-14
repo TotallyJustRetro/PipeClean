@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include "widescreen.h"
 #include "gb.h"
+#include "cart.h"
 
 /* ---- Super Mario Land ----
  * Level columns are streamed 7 columns ahead of the screen and 4 behind, so the background is already
