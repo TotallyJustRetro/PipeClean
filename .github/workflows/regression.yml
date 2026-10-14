@@ -214,6 +214,11 @@ jobs:
             --wide 100 \
             ci/sml2_smoke.gb
 
+      - name: Smoke-test Wario Land II GB/GBC CLI widescreen path
+        run: |
+          timeout 15s build-ci/PipeClean --headless --frames 2 --no-crc-check --wide 100 ci/wario-smoke/wario2-gb.gb
+          timeout 15s build-ci/PipeClean --headless --frames 2 --no-crc-check --wide 100 ci/wario-smoke/wario2-gbc.gbc
+
       - name: Test scripted multiplayer runner and deterministic replay
         run: |
           python3 tools/mp_test.py \
