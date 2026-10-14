@@ -270,9 +270,15 @@ void launcher_open_companion_layout_picker(int kind, int game)
     (*env)->DeleteLocalRef(env, cls);
 }
 
-/* Wario Land keeps the expedition counters in its cartridge RAM as BCD
- * digits. Read through the mapper so this works with both MBC1 and the DX
- * hack's MBC5 mapper. Values are sampled only for the Wario Land Companion. */
+/* Wario Land keeps the expedition counters in its 8 KiB cartridge RAM as BCD
+ * digits. Read the backing RAM directly because the game often disables SRAM
+ * between accesses; its original and DX profiles both use one RAM bank. */
+extern uint8_t *cart_ram;
+static uint8_t wario_ram_read(uint16_t address)
+{
+    return cart_ram ? cart_ram[address & 0x1FFFu] : 0xFF;
+}
+
 static int wario_bcd_pair(uint8_t value)
 {
     int tens = (value >> 4) & 0x0F, ones = value & 0x0F;
@@ -281,9 +287,9 @@ static int wario_bcd_pair(uint8_t value)
 
 static int wario_read_companion_coins(void)
 {
-    uint8_t high = cart_ram_read(0xA805);
-    uint8_t mid  = cart_ram_read(0xA806);
-    uint8_t low  = cart_ram_read(0xA807);
+    uint8_t high = wario_ram_read(0xA805);
+    uint8_t mid  = wario_ram_read(0xA806);
+    uint8_t low  = wario_ram_read(0xA807);
     int d0 = high & 0x0F, d1 = (mid >> 4) & 0x0F;
     int d2 = mid & 0x0F, d3 = (low >> 4) & 0x0F, d4 = low & 0x0F;
     if (d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 || d4 > 9) return -1;
@@ -292,8 +298,8 @@ static int wario_read_companion_coins(void)
 
 static int wario_read_companion_time(void)
 {
-    uint8_t high = cart_ram_read(0xA964);
-    uint8_t low = cart_ram_read(0xA965);
+    uint8_t high = wario_ram_read(0xA964);
+    uint8_t low = wario_ram_read(0xA965);
     int hundreds = high & 0x0F;
     int tens = (low >> 4) & 0x0F, ones = low & 0x0F;
     if (high == 0xFF || low == 0xFF ||
@@ -311,7 +317,7 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
     if (!env || !activity) return;
     jclass cls = (*env)->GetObjectClass(env, activity);
     if (!cls) return;
-    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIIIIIII)V");
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIIIIIIIIIIII)V");
     if (method) {
         int lives = 0, stage = -1, world = -1;
         int wario_coins = -1, wario_hearts = -1, wario_power = -1;
@@ -327,12 +333,12 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             if (game == GAME_SML && frame->level_bank != 0xFF) world = frame->level_bank;
         }
         if (frame && game == GAME_WARIO_SML3) {
-            int course = cart_ram_read(0xA804);
-            int heart_byte = cart_ram_read(0xA808);
-            int life_byte = cart_ram_read(0xA809);
-            int power = cart_ram_read(0xA80A);
-            int treasure_low = cart_ram_read(0xA80E);
-            int treasure_high = cart_ram_read(0xA80F);
+            int course = wario_ram_read(0xA804);
+            int heart_byte = wario_ram_read(0xA808);
+            int life_byte = wario_ram_read(0xA809);
+            int power = wario_ram_read(0xA80A);
+            int treasure_low = wario_ram_read(0xA80E);
+            int treasure_high = wario_ram_read(0xA80F);
             lives = wario_bcd_pair((uint8_t)life_byte);
             stage = course == 0xFF ? -1 : course;
             wario_hearts = wario_bcd_pair((uint8_t)heart_byte);
