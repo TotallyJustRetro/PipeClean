@@ -467,6 +467,16 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     }
 }
 
+/* FF9B is SML2's game-mode dispatcher; only queue a power-up event during
+ * active level play, not on the world map, title screen, or transition scenes.
+ * FF B3 is an SML1-specific value and must not be used as the SML2 game gate. */
+static int reserve_item_sml2_gameplay_active(void)
+{
+    uint16_t timer = (uint16_t)rd8(0xA254) | ((uint16_t)rd8(0xA255) << 8);
+    return rd8(0xFF9B) == 4 && timer != 0 && rd8(0xA221) == 0 &&
+           rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
+}
+
 /* The native SML2 gameplay loop calls the stock handler at $3451, which
  * consumes A26C: 1 = Mushroom, 2 = Fire Flower, 3 = Carrot. It then performs
  * the game's own power-up write, sound/timer updates, sprite transition and
@@ -529,7 +539,7 @@ static void reserve_item_process_use_request(void)
 
     if (game == GAME_SML2) {
         uint8_t stored = reserve_item_state.kind;
-        if ((stored != 2 && stored != 3) || !reserve_item_gameplay_active()) {
+        if ((stored != 2 && stored != 3) || !reserve_item_sml2_gameplay_active()) {
             reserve_item_use_request = 0;
             return;
         }
