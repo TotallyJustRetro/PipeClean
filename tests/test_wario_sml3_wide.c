@@ -77,6 +77,8 @@ int main(void)
     rom[0x143] = 0xC0; /* CGB-only */
     rom[0x147] = 0x1B; /* MBC5 + RAM + battery */
     seed_dx_sites();
+    if (!wide_is_wario_dx_profile(NULL, NULL))
+        return fail(15, "DX cartridge header should be detected without a DX filename");
     if (!wide_install_profile(GAME_WARIO_SML3, 30, 30, 1))
         return fail(10, "DX Wario Land signatures were rejected");
     if (rom[0x3219] != 0x1E || rom[0x321B] != 0xED ||
