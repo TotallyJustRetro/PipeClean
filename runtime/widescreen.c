@@ -180,6 +180,30 @@ void wide_wl2_trace_finish(void)
     memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
 }
 
+static size_t wl2_trace_header_rom_size(void)
+{
+    if (!rom) return 0;
+    unsigned code = rom[0x148];
+    if (code <= 8) return (size_t)0x8000u << code;
+    switch (code) {
+    case 0x52: return (size_t)72 * 0x4000u;
+    case 0x53: return (size_t)80 * 0x4000u;
+    case 0x54: return (size_t)96 * 0x4000u;
+    default: return 0;
+    }
+}
+
+static uint32_t wl2_trace_rom_crc32(const uint8_t *data, size_t size)
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (unsigned bit = 0; bit < 8; bit++)
+            crc = (crc >> 1) ^ (0xEDB88320u & (uint32_t)-(int32_t)(crc & 1u));
+    }
+    return ~crc;
+}
+
 static void wl2_trace_begin(int game, int left, int right)
 {
     memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
@@ -187,11 +211,19 @@ static void wl2_trace_begin(int game, int left, int right)
     wl2_trace_game = game;
     wl2_trace_left = left;
     wl2_trace_right = right;
-    const CartInfo *ci = cart_info();
-    wl2_trace_crc = ci ? ci->crc : 0;
-    wl2_trace_rom_size = ci ? ci->size : 0;
-    wl2_trace_cgb_flag = ci ? ci->cgb_flag : (rom ? rom[0x143] : 0);
-    snprintf(wl2_trace_title, sizeof wl2_trace_title, "%s", ci ? ci->title : "unknown");
+    wl2_trace_rom_size = wl2_trace_header_rom_size();
+    wl2_trace_crc = wl2_trace_rom_size ? wl2_trace_rom_crc32(rom, wl2_trace_rom_size) : 0;
+    wl2_trace_cgb_flag = rom ? rom[0x143] : 0;
+    memset(wl2_trace_title, 0, sizeof wl2_trace_title);
+    if (rom) {
+        memcpy(wl2_trace_title, rom + 0x134, 16);
+        for (size_t i = 0; i < 16; i++) {
+            unsigned char c = (unsigned char)wl2_trace_title[i];
+            if (c < 32 || c > 126) { wl2_trace_title[i] = 0; break; }
+        }
+    } else {
+        snprintf(wl2_trace_title, sizeof wl2_trace_title, "%s", "unknown");
+    }
     if (!wl2_trace_atexit_registered) {
         if (atexit(wide_wl2_trace_finish) == 0) wl2_trace_atexit_registered = 1;
     }
