@@ -2458,6 +2458,7 @@ static int play_multiplayer(int g)
     emu_set_turbo(0);
     audio_game_end();
     emu_mp_end();
+    wide_wl2_trace_finish();
     tex_collect_save();
     free(f);
     for (int i = 0; i < MAX_MP_PLAYERS - 1; i++) free(player_frames[i]);
