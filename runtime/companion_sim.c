@@ -1305,6 +1305,183 @@ static void draw_dr_mario_companion(const Settings *s,const CompanionLayoutCfg *
     SDL_RenderPresent(deck_renderer);
 }
 
+static const char *wario_course_text(void)
+{
+    static char text[32];
+    if (current_stage < 0) snprintf(text, sizeof text, "COURSE --");
+    else snprintf(text, sizeof text, "COURSE %02X", current_stage & 0xFF);
+    return text;
+}
+
+static int wario_treasure_count(void)
+{
+    int mask = current_wario_treasure_mask & 0xFFFF, count = 0;
+    if (current_wario_treasure_mask < 0) return 0;
+    for (int bit = 0; bit < 16; bit++) if (mask & (1 << bit)) count++;
+    return count > 15 ? 15 : count;
+}
+
+static void draw_wario_treasure_mark(int cx, int cy, int size, int found)
+{
+    fill_circle(cx, cy, size, found ? 255 : 82, found ? 204 : 75, found ? 87 : 62, 255);
+    fill_circle(cx - size / 3, cy - size / 3, size / 3, found ? 255 : 111,
+                found ? 242 : 100, found ? 181 : 85, found ? 255 : 180);
+    if (found) fill(cx - 1, cy - 1, 3, 3, 255, 249, 216, 255);
+}
+
+static void draw_wario_emblem(void)
+{
+    float t = SDL_GetTicks() / 1000.0f;
+    int cx = 400, cy = 142, radius = 57;
+    fill_circle(cx, cy + 3, radius + 17, 67, 42, 13, 150);
+    fill_circle(cx, cy, radius + 8, 88, 58, 21, 180);
+    fill_circle(cx, cy, radius, 48, 38, 27, 255);
+    outline_circle(cx, cy, radius - 3, 255, 214, 107, 255);
+    outline_circle(cx, cy, radius - 11, 189, 133, 55, 255);
+    /* Original chest emblem, assembled from shapes rather than game sprites. */
+    fill_round_rect(cx - 31, cy - 1, 62, 31, 5, 142, 79, 34, 255);
+    fill_round_rect(cx - 31, cy - 18, 62, 21, 5, 199, 129, 52, 255);
+    fill(cx - 4, cy - 17, 8, 46, 255, 214, 107, 255);
+    fill(cx - 23, cy + 11, 46, 4, 113, 62, 27, 255);
+    fill_circle(cx, cy + 5, 5, 255, 241, 181, 255);
+    for (int i = 0; i < 6; i++) {
+        float a = t * .65f + 6.2831853f * i / 6.0f;
+        int orbit = radius + 12 + (int)(sinf(t * 2.f + i) * 2.f);
+        int sx = cx + (int)(cosf(a) * orbit), sy = cy + (int)(sinf(a) * orbit);
+        fill(sx - 2, sy - 2, 4, 4, 255, (i % 2) ? 200 : 240, 107, 255);
+    }
+}
+
+static void draw_wario_vault(const Settings *s, int x, int y, int w, int h)
+{
+    int g = GAME_WARIO_SML3;
+    draw_android_card(s, x, y, w, h, g, "TREASURE VAULT");
+    int count = wario_treasure_count();
+    char text[48];
+    snprintf(text, sizeof text, "%02d / 15 TREASURES", count);
+    draw_text_fit(x + 14, y + 47, w - 28, 1, 255, 241, 212, text);
+    fill_round_rect(x + 14, y + 55, w - 28, 7, 3, 55, 42, 28, 255);
+    if (count > 0)
+        fill_round_rect(x + 14, y + 55, (w - 28) * count / 15, 7, 3,
+                        255, 200, 87, 255);
+    int start = x + 18, step = (w - 36) / 15;
+    for (int i = 0; i < 15; i++) {
+        int found = current_wario_treasure_mask >= 0 &&
+                    (current_wario_treasure_mask & (1 << i));
+        draw_wario_treasure_mark(start + i * step, y + h - 24, 4, found);
+    }
+    snprintf(text, sizeof text, "COIN BANK  %05d",
+             current_wario_coins >= 0 ? current_wario_coins : 0);
+    if (current_wario_coins < 0) snprintf(text, sizeof text, "COIN BANK  -----");
+    draw_text_fit(x + 14, y + h - 8, w - 28, 1, 184, 170, 149, text);
+}
+
+static void draw_wario_status(const Settings *s, int x, int y, int w, int h)
+{
+    int g = GAME_WARIO_SML3;
+    draw_android_card(s, x, y, w, h, g, "EXPEDITION STATUS");
+    char value[48];
+    draw_text_fit(x + 14, y + 48, 86, 1, 184, 170, 149, "LIVES");
+    snprintf(value, sizeof value, "%02d", current_lives);
+    draw_text_fit(x + w - 50, y + 48, 36, 2, 255, 241, 212, value);
+    draw_text_fit(x + 14, y + 67, 86, 1, 184, 170, 149, "HEARTS");
+    snprintf(value, sizeof value, "%02d", current_wario_hearts);
+    if (current_wario_hearts < 0) snprintf(value, sizeof value, "--");
+    draw_text_fit(x + w - 50, y + 67, 36, 2, 255, 241, 212, value);
+    draw_text_fit(x + 14, y + 86, 86, 1, 184, 170, 149, "POWER");
+    draw_text_fit(x + w - 76, y + 86, 62, 1, 255, 200, 87,
+                  wario_power_name(current_wario_power));
+    draw_text_fit(x + 14, y + 105, 86, 1, 184, 170, 149, "TIME LEFT");
+    snprintf(value, sizeof value, "%03d", current_wario_time);
+    if (current_wario_time < 0) snprintf(value, sizeof value, "---");
+    draw_text_fit(x + w - 50, y + 105, 36, 2, 255, 241, 212, value);
+}
+
+static void draw_wario_expedition_log(const Settings *s, int x, int y, int w, int h)
+{
+    int g = GAME_WARIO_SML3;
+    draw_android_card(s, x, y, w, h, g, "EXPEDITION LOG");
+    if (!wario_expedition_log_count) {
+        draw_text_fit(x + 14, y + 49, w - 28, 1, 184, 170, 149, "NO EVENTS RECORDED YET");
+        return;
+    }
+    int rows = wario_expedition_log_count < 4 ? wario_expedition_log_count : 4;
+    for (int i = 0; i < rows; i++) {
+        int row_y = y + 48 + i * 12;
+        int treasure = strncmp(wario_expedition_log[i], "TREASURE", 8) == 0;
+        fill_circle(x + 17, row_y - 3, 2, treasure ? 255 : 189,
+                    treasure ? 200 : 133, treasure ? 87 : 55, 255);
+        draw_text_fit(x + 25, row_y, w - 38, 1,
+            treasure ? 255 : (i == 0 ? 255 : 184),
+            treasure ? 200 : (i == 0 ? 241 : 170),
+            treasure ? 87 : (i == 0 ? 212 : 149), wario_expedition_log[i]);
+    }
+}
+
+static void draw_wario_treasure_animation(void)
+{
+    if (!wario_treasure_animation_active) return;
+    Uint32 elapsed = SDL_GetTicks() - wario_treasure_animation_started;
+    if (elapsed >= 1850) {
+        wario_treasure_animation_active = 0;
+        return;
+    }
+    float phase = elapsed / 1850.f;
+    int alpha = (int)((1.f - phase) * 170.f);
+    for (int i = 0; i < 3; i++)
+        outline_circle(400, 141, (int)(22 + phase * (95 + i * 20)),
+                       255, 214 - i * 15, 107, (Uint8)(alpha > 255 ? 255 : alpha));
+    fill_round_rect(246, 207, 308, 42, 9, 43, 31, 17, 238);
+    outline_round_rect(246, 207, 308, 42, 9, 255, 214, 107, 255);
+    draw_text_fit(267, 224, 266, 1, 255, 235, 165, "TREASURE FOUND!");
+    char text[48];
+    snprintf(text, sizeof text, "RELIC %02d ADDED TO YOUR VAULT",
+             wario_treasure_animation_id > 0 ? wario_treasure_animation_id : 1);
+    draw_text_fit(267, 239, 266, 1, 247, 233, 208, text);
+    for (int i = 0; i < 12; i++) {
+        float a = 6.2831853f * i / 12.f + phase * 1.3f;
+        int distance = (int)(32 + phase * 70 + (i % 3) * 7);
+        int sx = 400 + (int)(cosf(a) * distance), sy = 141 + (int)(sinf(a) * distance);
+        int sz = (int)(4.5f * (1.f - phase));
+        if (sz < 1) sz = 1;
+        fill(sx - sz / 2, sy - sz / 2, sz, sz, 255, (i % 3) ? 200 : 243, 107, 255);
+    }
+}
+
+static void draw_wario_companion(const Settings *s)
+{
+    int g = GAME_WARIO_SML3;
+    draw_android_scenery(g);
+    draw_asset_image(s, g, 0, 0, 0, 800, 450);
+    draw_android_header(s, 18, 7, 265, 49, g);
+    draw_text_fit(26, 23, 250, 1, 255, 200, 87, "PIPE CLEAN  •  TREASURE EXPEDITION");
+    draw_text_fit(25, 43, 260, 2, 255, 241, 212, "WARIO LAND: SUPER MARIO LAND 3");
+    draw_tiny_button(s, 593, 13, 105, 42, g, "BACKGROUND", "PNG / GIF", SIM_BACKGROUND);
+    draw_tiny_button(s, 704, 13, 72, 42, g, "CLOSE", "GAME", SIM_CLOSE_GAME);
+
+    draw_wario_vault(s, 20, 70, 230, 133);
+    draw_wario_emblem();
+    draw_wario_status(s, 556, 70, 220, 133);
+
+    draw_android_card(s, 267, 213, 266, 94, g, "CURRENT COURSE");
+    draw_text_fit(283, 254, 234, 2, 255, 200, 87, wario_course_text());
+    char info[48];
+    snprintf(info, sizeof info, "COIN BANK  %05d",
+             current_wario_coins >= 0 ? current_wario_coins : 0);
+    if (current_wario_coins < 0) snprintf(info, sizeof info, "COIN BANK  -----");
+    draw_text_fit(283, 279, 234, 1, 255, 241, 212, info);
+    draw_wario_expedition_log(s, 20, 213, 232, 94);
+
+    const int action_ids[4] = {SIM_SAVE, SIM_LOAD, SIM_PAUSE, SIM_REWIND};
+    const char *labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
+    const char *subs[4] = {"SNAPSHOT", "RESTORE", current_paused ? "CONTINUE" : "HOLD GAME", "HOLD TO REWIND"};
+    for (int i = 0; i < 4; i++)
+        draw_action_button(s, g, action_ids[i], 94 + i * 153, 320,
+            i == 3 ? 153 : 145, 42, labels[i], subs[i], i == 3);
+    draw_slot_timeline(s, g);
+    draw_wario_treasure_animation();
+}
+
 static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
