@@ -4,6 +4,7 @@
 #include "companion_sim.h"
 #include "settings.h"
 #include "games.h"
+#include "companion_deck_state.h"
 #include "emu.h"
 #include "cart.h"
 #include "launcher.h"
@@ -1521,9 +1522,8 @@ static void draw_companion(const Settings *s)
 {
     int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
     int editor_preview = simulator_layout_preview_enabled();
-    int is_deck_game = g == GAME_DRMARIO || g == GAME_SML || g == GAME_SML2 ||
-                       g == GAME_WARIO_SML3;
-    int show_game_deck = editor_preview || (current_playing && is_deck_game);
+    int show_game_deck = companion_deck_should_show_game_view(
+        g, current_playing, editor_preview);
 
     if (!show_game_deck) {
         fill(0, 0, 800, 450, 23, 35, 55, 255);
