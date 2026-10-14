@@ -1478,6 +1478,238 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.save(); applyLayoutTransform(c,3,450f,800f,225f,750f); drawSaveTimeline(c,14,704,422,92,true); c.restore();
         }
 
+        private String warioCoinsText() {
+            return warioCoins >= 0 ? String.format(Locale.US, "%05d", warioCoins) : "-----";
+        }
+
+        private String warioTimeText() {
+            return warioTime >= 0 ? String.format(Locale.US, "%03d", warioTime) : "---";
+        }
+
+        private void drawTreasureMark(Canvas c, float cx, float cy, float size, boolean found) {
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(found ? 0xFFFFD66B : 0x665B554B);
+            Path gem = new Path();
+            gem.moveTo(cx, cy - size);
+            gem.lineTo(cx + size * 0.78f, cy - size * 0.18f);
+            gem.lineTo(cx + size * 0.58f, cy + size * 0.72f);
+            gem.lineTo(cx, cy + size);
+            gem.lineTo(cx - size * 0.58f, cy + size * 0.72f);
+            gem.lineTo(cx - size * 0.78f, cy - size * 0.18f);
+            gem.close();
+            c.drawPath(gem, p);
+            p.setColor(found ? 0xFFFFF4C2 : 0x55352B1D);
+            c.drawCircle(cx, cy, size * 0.28f, p);
+            if (found) {
+                p.setColor(0xFFFFF9E6);
+                c.drawCircle(cx - size * 0.18f, cy - size * 0.28f, Math.max(1f, size * 0.10f), p);
+            }
+        }
+
+        private void drawWarioEmblem(Canvas c, float cx, float cy, float radius) {
+            float t = SystemClock.uptimeMillis() / 1000f;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0x503B260B);
+            c.drawCircle(cx, cy + 4, radius + 17, p);
+            p.setColor(0x663A260F);
+            c.drawCircle(cx, cy, radius + 8, p);
+            p.setColor(0xFF30261B);
+            c.drawCircle(cx, cy, radius, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(Math.max(2f, radius * 0.055f));
+            p.setColor(0xFFFFD66B);
+            c.drawCircle(cx, cy, radius - 4, p);
+            p.setColor(0x99BD8537);
+            c.drawCircle(cx, cy, radius - 12, p);
+            p.setStyle(Paint.Style.FILL);
+
+            // Original treasure-chest icon made from simple geometric shapes.
+            float chestW = radius * 1.10f, chestH = radius * 0.55f;
+            float left = cx - chestW * 0.5f, top = cy - chestH * 0.05f;
+            p.setColor(0xFF8E4E22);
+            c.drawRoundRect(left, top, left + chestW, top + chestH, 7, 7, p);
+            p.setColor(0xFFC78335);
+            c.drawRoundRect(left, top - chestH * 0.36f, left + chestW, top + chestH * 0.13f, 7, 7, p);
+            p.setColor(0xFFFFD66B);
+            c.drawRect(cx - radius * 0.08f, top - chestH * 0.34f,
+                       cx + radius * 0.08f, top + chestH * 0.93f, p);
+            c.drawRect(left + chestW * 0.12f, top + chestH * 0.54f,
+                       left + chestW * 0.88f, top + chestH * 0.65f, p);
+            p.setColor(0xFFFFF2B7);
+            c.drawCircle(cx, top + chestH * 0.38f, Math.max(2f, radius * 0.075f), p);
+            for (int i = 0; i < 6; i++) {
+                double a = t * 0.7 + (Math.PI * 2.0 * i / 6.0);
+                float orbit = radius + 11f + (float)Math.sin(t * 2.1f + i) * 2.5f;
+                float sx = cx + (float)Math.cos(a) * orbit;
+                float sy = cy + (float)Math.sin(a) * orbit;
+                p.setColor((i % 2 == 0) ? 0xFFFFF0A8 : 0xFFDDA24B);
+                c.drawRect(sx - 2, sy - 2, sx + 2, sy + 2, p);
+            }
+        }
+
+        private void drawWarioVault(Canvas c, float x, float y, float w, float h) {
+            card(c, x, y, w, h, "TREASURE VAULT");
+            int count = warioTreasureCount();
+            textFit(c, count + " / 15 TREASURES", x + 14, y + 49, w - 28, 12, ink());
+            float bx = x + 14, by = y + 58, bw = w - 28;
+            p.setColor(0x553A2B1B);
+            c.drawRoundRect(bx, by, bx + bw, by + 7, 4, 4, p);
+            p.setColor(accent());
+            if (warioTreasureMask >= 0 && count > 0)
+                c.drawRoundRect(bx, by, bx + bw * Math.min(1f, count / 15f), by + 7, 4, 4, p);
+            float step = Math.min(28f, (w - 34f) / 15f);
+            float first = x + (w - step * 15f) * 0.5f + step * 0.5f;
+            float my = y + h - 18f;
+            for (int i = 0; i < 15; i++) {
+                boolean found = warioTreasureMask >= 0 && (warioTreasureMask & (1 << i)) != 0;
+                drawTreasureMark(c, first + step * i, my, Math.min(5.5f, step * 0.22f), found);
+            }
+        }
+
+        private void drawWarioStatus(Canvas c, float x, float y, float w, float h) {
+            card(c, x, y, w, h, "EXPEDITION STATUS");
+            float left = x + 14, right = x + w - 12;
+            text(c, "LIVES", left, y + 48, 7.5f, muted());
+            textRight(c, lives >= 0 ? String.format(Locale.US, "%02d", lives) : "--",
+                      right, y + 48, 11, ink());
+            text(c, "HEARTS", left, y + 68, 7.5f, muted());
+            textRight(c, warioHearts >= 0 ? String.format(Locale.US, "%02d", warioHearts) : "--",
+                      right, y + 68, 11, ink());
+            text(c, "POWER", left, y + 88, 7.5f, muted());
+            textRight(c, warioPowerName(warioPower), right, y + 88, 9.5f, accent());
+            text(c, "TIME LEFT", left, y + 108, 7.5f, muted());
+            textRight(c, warioTimeText(), right, y + 108, 11, ink());
+        }
+
+        private void drawExpeditionLog(Canvas c, float x, float y, float w, float h, int rows) {
+            card(c, x, y, w, h, "EXPEDITION LOG");
+            int available = Math.max(0, Math.min(rows, expeditionLog.length));
+            float firstY = y + 45;
+            float rowH = Math.min(15f, (h - 49f) / Math.max(1, available));
+            for (int i = 0; i < available; i++) {
+                String entry = expeditionLog[i];
+                if (entry == null || entry.isEmpty()) continue;
+                float ry = firstY + i * rowH;
+                boolean treasure = entry.startsWith("TREASURE");
+                rect(c, x + 14, ry - 6, 4, 4, treasure ? 0xFFFFD66B : edge());
+                textFit(c, entry, x + 25, ry, w - 40, Math.min(8.5f, rowH * 0.67f),
+                        treasure ? accent() : (i == 0 ? ink() : muted()));
+            }
+            if (available == 0 || expeditionLog[0] == null)
+                text(c, "NO EVENTS RECORDED YET", x + 16, y + 48, 8, muted());
+        }
+
+        private void drawWarioLandscape(Canvas c) {
+            c.save();
+            headerPlate(c, 18, 7, 265, 49);
+            text(c, "PIPE CLEAN  •  TREASURE EXPEDITION", 26, 23, 8.4f, accent());
+            textFit(c, title(), 25, 43, 260, 15, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 552, 17, 34, 34, "×", RESET_BACKGROUND);
+            button(c, 593, 13, 105, 42, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.restore();
+
+            drawWarioVault(c, 20, 70, 230, 133);
+            drawWarioEmblem(c, 400, 139, 57);
+            drawWarioStatus(c, 556, 70, 220, 133);
+            card(c, 267, 213, 266, 94, "CURRENT COURSE");
+            textFit(c, stageText(), 400, 255, 230, 20, accent(), true);
+            textFit(c, "COIN BANK  " + warioCoinsText(), 400, 278, 230, 9.5f, ink(), true);
+            drawExpeditionLog(c, 20, 213, 232, 94, 4);
+
+            // Four familiar Companion Deck actions remain available without obscuring the log.
+            c.save(); applyLayoutTransform(c, 2, 800f, 450f, 400f, 343f); drawDockLandscape(c); c.restore();
+            c.save(); applyLayoutTransform(c, 3, 800f, 450f, 400f, 406.5f); drawSaveTimeline(c, 24, 365, 752, 83, false); c.restore();
+        }
+
+        private void drawWarioPortrait(Canvas c) {
+            c.save();
+            headerPlate(c, 14, 7, 220, 43);
+            text(c, "PIPE CLEAN  •  EXPEDITION", 20, 23, 7.5f, accent());
+            textFit(c, title(), 20, 41, 210, 12.5f, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 238, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.restore();
+
+            badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", Math.max(0, lives)));
+            badge(c, 158, 55, 272, 47, "CURRENT COURSE", stageText());
+            card(c, 20, 111, 410, 105, "TREASURE VAULT");
+            int count = warioTreasureCount();
+            text(c, count + " / 15 FOUND", 34, 151, 11, accent());
+            textFit(c, "TOTAL COINS  " + warioCoinsText(), 190, 151, 220, 9, ink());
+            float step = 23.2f, first = 34f, markY = 187f;
+            for (int i = 0; i < 15; i++) {
+                boolean found = warioTreasureMask >= 0 && (warioTreasureMask & (1 << i)) != 0;
+                drawTreasureMark(c, first + step * i, markY, 6.3f, found);
+            }
+
+            p.setColor(panel());
+            c.drawRoundRect(20, 223, 430, 268, 11, 11, p);
+            p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.2f);
+            c.drawRoundRect(20.6f, 223.6f, 429.4f, 267.4f, 10, 10, p);
+            p.setStyle(Paint.Style.FILL);
+            text(c, "HEARTS  " + (warioHearts >= 0 ? String.format(Locale.US, "%02d", warioHearts) : "--"),
+                 32, 242, 8, ink());
+            text(c, "POWER  " + warioPowerName(warioPower), 32, 258, 8, accent());
+            textRight(c, "TIME LEFT  " + warioTimeText(), 418, 258, 8, ink());
+
+            drawWarioEmblem(c, 225, 322, 42);
+            drawExpeditionLog(c, 20, 370, 410, 83, 3);
+
+            boolean idle = game < 0;
+            c.save(); applyLayoutTransform(c, 2, 450f, 800f, 225f, 552f);
+            button(c,20,466,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
+            button(c,232,466,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
+            button(c,20,524,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",
+                idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
+            button(c,232,524,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 3, 450f, 800f, 225f, 750f); drawSaveTimeline(c, 14, 704, 422, 92, true); c.restore();
+        }
+
+        private void drawTreasureCelebration(Canvas c, float w, float h) {
+            if (!treasureAnimationActive) return;
+            long elapsed = SystemClock.uptimeMillis() - treasureAnimationStart;
+            if (elapsed >= TREASURE_ANIMATION_MS) {
+                treasureAnimationActive = false;
+                return;
+            }
+            float phase = Math.max(0f, Math.min(1f, elapsed / (float)TREASURE_ANIMATION_MS));
+            float cx = w * 0.5f, cy = h * (h > w ? 0.39f : 0.37f);
+            int alpha = Math.max(0, Math.min(170, (int)((1f - phase) * 170f)));
+            p.setStyle(Paint.Style.STROKE);
+            for (int i = 0; i < 3; i++) {
+                p.setStrokeWidth(2.5f - i * 0.45f);
+                p.setColor((Math.max(0, alpha - i * 28) << 24) | 0x00FFD66B);
+                c.drawCircle(cx, cy, 22f + phase * (95f + i * 20f), p);
+            }
+            p.setStyle(Paint.Style.FILL);
+            float bannerW = Math.min(w - 28f, h > w ? 330f : 360f);
+            float bannerY = cy + (h > w ? 58f : 72f);
+            p.setColor(0xE82B2115);
+            c.drawRoundRect(cx - bannerW * 0.5f, bannerY, cx + bannerW * 0.5f,
+                            bannerY + 43f, 12, 12, p);
+            p.setColor(0xFFFFD66B);
+            p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.8f);
+            c.drawRoundRect(cx - bannerW * 0.5f, bannerY, cx + bannerW * 0.5f,
+                            bannerY + 43f, 12, 12, p);
+            p.setStyle(Paint.Style.FILL);
+            text(c, "TREASURE FOUND!", cx, bannerY + 18f, 10, 0xFFFFEBA5, true);
+            text(c, String.format(Locale.US, "RELIC %02d ADDED TO YOUR VAULT", Math.max(1, treasureAnimationId)),
+                 cx, bannerY + 33f, 7, 0xFFF7E9D0, true);
+            for (int i = 0; i < 12; i++) {
+                double a = (Math.PI * 2.0 * i / 12.0) + phase * 1.3;
+                float distance = 32f + phase * 70f + (i % 3) * 7f;
+                float sx = cx + (float)Math.cos(a) * distance;
+                float sy = cy + (float)Math.sin(a) * distance;
+                float size = Math.max(1.5f, 4.5f * (1f - phase));
+                rect(c, sx - size * 0.5f, sy - size * 0.5f, size, size,
+                     (i % 3 == 0) ? 0xFFFFF3C5 : 0xFFFFC857);
+            }
+            postInvalidateOnAnimation();
+        }
+
         private void drawLandscape(Canvas c) {
             if (drMario()) { drawDrMarioLandscape(c); return; }
             c.save();
