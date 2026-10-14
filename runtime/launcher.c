@@ -282,13 +282,18 @@ int launcher_prepare(int g, char *err, size_t n)
         hack_ok[g] = 1;
         snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
     }
+    int wario_dx = 0;
+    if (g == GAME_WARIO_SML3 && c->romhack_selected >= 0 &&
+        c->romhack_selected < c->romhack_count && c->romhack_selected < MAX_ROMHACKS) {
+        const RomHackEntry *profile = &c->romhacks[c->romhack_selected];
+        wario_dx = wide_is_wario_dx_profile(profile->title, profile->path);
+    }
     int wl, wr;
-    wide_dims(g, c->wide, &wl, &wr);
+    wide_dims_profile(g, c->wide, wario_dx, &wl, &wr);
     /* Always call wide_install, including when the requested width is zero.
-     * It clears runtime SML/SML2 hooks left by a previous game/session before
-     * the native-width PPU setup. Skipping it at 0% can leave widened spawn
-     * and cull bounds active even though the picture is back to 160 pixels. */
-    int wide_ready = wide_install(g, wl, wr);
+     * It clears runtime hooks left by a previous game/session before the native
+     * width setup. Unsupported Wario ROM revisions safely return to 160px. */
+    int wide_ready = wide_install_profile(g, wl, wr, wario_dx);
     if (wl + wr > 0 && !wide_ready) { wl = wr = 0; wide_note[g] = 1; } else wide_note[g] = 0;
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
