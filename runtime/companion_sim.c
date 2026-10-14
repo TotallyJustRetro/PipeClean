@@ -1377,7 +1377,9 @@ static void draw_wario_vault(const Settings *s, int x, int y, int w, int h)
     draw_android_card(s, x, y, w, h, g, "TREASURE VAULT");
     int count = wario_treasure_count();
     char text[48];
-    snprintf(text, sizeof text, "%02d / 15 TREASURES", count);
+    if (current_wario_treasure_mask >= 0)
+        snprintf(text, sizeof text, "%02d / 15 TREASURES", count);
+    else snprintf(text, sizeof text, "-- / 15 TREASURES");
     draw_text_fit(x + 14, y + 47, w - 28, 1, 255, 241, 212, text);
     fill_round_rect(x + 14, y + 55, w - 28, 7, 3, 55, 42, 28, 255);
     if (count > 0)
