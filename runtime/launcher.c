@@ -301,6 +301,8 @@ int launcher_prepare(int g, char *err, size_t n)
     snprintf(trace_path, sizeof trace_path, "%spipeclean-wl2-wide-trace.txt", settings_dir());
     wide_wl2_trace_set_path(trace_path);
     ppu_set_wario_sml3(g == GAME_WARIO_SML3 && wl + wr > 0 && wide_ready);
+    ppu_set_wl2_wide((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) &&
+                      wl + wr > 0 && wide_ready);
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
 }
