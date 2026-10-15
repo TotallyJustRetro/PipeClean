@@ -23,6 +23,7 @@ extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_tile(int, int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl2_block_attr(int, int, int, uint8_t *) __attribute__((weak));
 /* Renderer-only regression tests link ppu.c without the full GB bus module. */
 extern uint8_t rd8(uint16_t address) __attribute__((weak));
 #endif
@@ -774,13 +775,55 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
             attr = visual->attr[part];
         }
         if (cgb_render_enabled) {
-            /* Prefer an attribute captured when this exact world tile was in
-               the native viewport. Otherwise only trust the hardware map's
-               attributes when its ENTIRE 16x16 tile pattern agrees with the
-               selected ROM metatile. A single coincidentally matching 8x8
-               tile is not enough: recycled map-ring slots can share that tile
-               number but belong to a different palette/flip placement. */
-            if (!wl2_world_attr_at(world_x, world_y, &attr) && have_static_block) {
+            uint8_t world_attr = 0, palette_attr = 0;
+            int have_world_attr = wl2_world_attr_at(world_x, world_y, &world_attr);
+            int have_rom_palette = have_static_block && wide_wl2_block_attr &&
+                wide_wl2_block_attr(wl2_metatile_set, (int)id, (int)part,
+                                    &palette_attr);
+            if (have_rom_palette) {
+                /* The GBC ROM has a parallel static palette table for the same
+                   metatile set at 0xF0000. Use its palette ID as the source of
+                   truth, just as GB uses the static tile-ID table. The live
+                   map's attribute ring is only used for non-palette flags. */
+                attr = (uint8_t)(palette_attr & 0x07u);
+                if (have_world_attr) {
+                    attr |= (uint8_t)(world_attr & 0xF8u);
+                } else {
+                    int have_world_flags = 0;
+                    if (have_static_block) {
+                        unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
+                        int block_x = world_x & ~15;
+                        int block_y = world_y & ~15;
+                        int map_block_matches = 1;
+                        for (unsigned p = 0; p < 4; p++) {
+                            int px = block_x + (int)(p & 1u) * 8;
+                            int py = block_y + (int)(p >> 1) * 8;
+                            unsigned map_index = map_off +
+                                (((unsigned)py >> 3) & 31u) * 32u +
+                                (((unsigned)px >> 3) & 31u);
+                            if (vram[map_index] != static_block_tiles[p]) {
+                                map_block_matches = 0;
+                                break;
+                            }
+                        }
+                        if (map_block_matches) {
+                            unsigned map_index = map_off +
+                                ((unsigned)(world_y >> 3) & 31u) * 32u +
+                                ((unsigned)(world_x >> 3) & 31u);
+                            attr |= (uint8_t)(vram_cgb1[map_index] & 0xF8u);
+                            have_world_flags = 1;
+                        }
+                    }
+                    if (!have_world_flags && visual->valid)
+                        attr |= (uint8_t)(visual->attr[part] & 0xF8u);
+                }
+            } else if (have_world_attr) {
+                /* Unknown cartridge revisions use only attributes captured
+                   from the exact coordinate in the native viewport. */
+                attr = world_attr;
+            } else if (have_static_block) {
+                /* Fallback for ROMs without a verified palette table: accept
+                   ring flags/attributes only when the entire metatile matches. */
                 unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
                 int block_x = world_x & ~15;
                 int block_y = world_y & ~15;
@@ -802,9 +845,6 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
                         ((unsigned)(world_x >> 3) & 31u);
                     attr = vram_cgb1[map_index];
                 } else if (visual->valid) {
-                    /* Keep the ROM-selected tile and use the block's learned
-                       attribute as a stable fallback until the exact world
-                       coordinate is seen in the native viewport. */
                     attr = visual->attr[part];
                 } else {
                     attr = 0;
