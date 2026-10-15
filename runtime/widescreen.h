@@ -23,6 +23,8 @@ void wide_wl2_trace_instruction(uint16_t pc);
 void wide_wl2_trace_frame(const uint8_t *oam_snapshot);
 /* Read the full 8-bit Wario Land II 16x16 block ID from its swizzled level map. */
 int wide_wl2_block_at(int world_x, int world_y, uint8_t *block);
+/* Read a 4-tile definition from the verified ROM metatile table. */
+int wide_wl2_block_tile(int block, int part, uint8_t *tile);
 void wide_wl2_trace_finish(void);
 void wide_wl2_trace_set_path(const char *path);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
