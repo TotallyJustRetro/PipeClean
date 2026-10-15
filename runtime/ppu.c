@@ -22,6 +22,7 @@ extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak)
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl2_block_tile(int, int, uint8_t *) __attribute__((weak));
 /* Renderer-only regression tests link ppu.c without the full GB bus module. */
 extern uint8_t rd8(uint16_t address) __attribute__((weak));
 #endif
@@ -621,13 +622,32 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         uint8_t id;
         if (!wide_wl2_block_at || !wide_wl2_block_at(world_x, world_y, &id))
             continue;
-        const Wl2BlockVisual *visual = &wl2_block_visuals[id];
-        if (!visual->valid) continue;
-
         unsigned part = ((world_y & 8) ? 2u : 0u) + ((world_x & 8) ? 1u : 0u);
+        const Wl2BlockVisual *visual = &wl2_block_visuals[id];
+        uint8_t tile = 0, attr = 0;
+        int have_static_tile = wide_wl2_block_tile &&
+                               wide_wl2_block_tile((int)id, (int)part, &tile);
+        if (have_static_tile) {
+            /* Tile IDs come from the ROM's metatile table. CGB attributes are
+               per placement, so sample them from the live 256x256 map ring. */
+            if (cgb_render_enabled) {
+                unsigned mx = (unsigned)(X - L + scx) & 0xFFu;
+                unsigned my = (unsigned)(y + scy) & 0xFFu;
+                unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
+                unsigned map_index = map_off + ((my >> 3) & 31u) * 32u +
+                                     ((mx >> 3) & 31u);
+                attr = vram_cgb1[map_index];
+            }
+        } else {
+            /* Unknown revisions retain the conservative learned-pattern path. */
+            if (!visual->valid) continue;
+            tile = visual->tile[part];
+            attr = visual->attr[part];
+        }
+
         int attr_out = 0, tile_id = 0;
-        int ci = tile_pixel_data(visual->tile[part], visual->attr[part],
-                                 world_x, world_y, &attr_out, &tile_id);
+        int ci = tile_pixel_data(tile, attr, world_x, world_y,
+                                 &attr_out, &tile_id);
         bgci[X] = (uint8_t)ci;
         bgattr[X] = (uint8_t)attr_out;
         out[X] = cgb_render_enabled ? (uint8_t)ci
