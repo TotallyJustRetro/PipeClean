@@ -1175,7 +1175,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawThorControls(Canvas c, float h) {
             boolean idle = game < 0;
             c.save();
-            applyLayoutTransform(c, 2, 800f, h, 400f, 449f);
+            applyLayoutTransform(c, 2, 800f, h, 400f, 444f);
             float bx = 20f, by = 420f, bw = 184f, bh = 48f, gap = 8f;
             button(c, bx, by, bw, bh, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
             button(c, bx + bw + gap, by, bw, bh, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
@@ -2625,7 +2625,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if (thorSlot != 0) return thorSlot;
 
                 point[0] = x; point[1] = y;
-                inverseLayoutPoint(point, 2, false, 400f, 449f);
+                inverseLayoutPoint(point, 2, false, 400f, 444f);
                 if (inside(point[0], point[1], 20, 420, 184, 48)) return SAVE;
                 if (inside(point[0], point[1], 212, 420, 184, 48)) return LOAD;
                 if (inside(point[0], point[1], 404, 420, 184, 48)) return PAUSE;
