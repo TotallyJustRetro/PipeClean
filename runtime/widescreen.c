@@ -1754,7 +1754,8 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
          * If a revision differs, retain the generic PPU widening and leave the
          * unmatched game logic untouched. */
         const CartInfo *ci = cart_info ? cart_info() : NULL;
-        if (!rom || !ci || ci->size < 0x80000u || (rom[0x143] & 0x80u) == 0)
+        if (!rom || !ci || ci->size < 0x80000u || ci->ram_bytes < 0x8000u ||
+            (rom[0x143] & 0x80u) == 0)
             return 0;
         wl3_left_extra = l < 0 ? 0 : (l > 32 ? 32 : l);
         wl3_right_extra = r < 0 ? 0 : (r > 32 ? 32 : r);
