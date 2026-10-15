@@ -22,7 +22,6 @@ extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak)
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
-extern int wide_wl2_block_tile(int, int, uint8_t *) __attribute__((weak));
 /* Renderer-only regression tests link ppu.c without the full GB bus module. */
 extern uint8_t rd8(uint16_t address) __attribute__((weak));
 #endif
@@ -57,6 +56,7 @@ static Wl2BlockVisual wl2_ring_visuals[256];
 static uint8_t wl2_ring_seen[256], wl2_ring_conflict[256];
 static int wl2_frame_world_x0, wl2_frame_world_y0;
 static int wl2_frame_scx, wl2_frame_scy;
+static uint16_t wl2_frame_tref;
 static int wl2_cache_level = -1, wl2_cache_tref = -1, wl2_cache_cgb = -1;
 static uint16_t wario_frame_scroll_x, wario_frame_scroll_y;
 static int wario_cached_level = -1;
@@ -547,22 +547,12 @@ static void wl2_prepare_frame(void)
     wl2_frame_world_y0 = world_y0;
     wl2_frame_scx = scx;
     wl2_frame_scy = scy;
+    wl2_frame_tref = tref;
     memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
     memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
     memset(wl2_ring_visuals, 0, sizeof wl2_ring_visuals);
     memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
     memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
-
-    uint8_t static_tile_probe = 0;
-    int use_static_metatiles = wide_wl2_block_tile &&
-                               wide_wl2_block_tile(0, 0, &static_tile_probe);
-    if (use_static_metatiles) {
-        /* Supported releases contain the complete block-to-tile table in ROM.
-           The renderer no longer waits for a room chunk to enter the VRAM ring
-           before it can identify that block's four 8x8 tiles. */
-        wl2_frame_active = 1;
-        return;
-    }
 
     int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
     int first_y = wl2_floor16(world_y0);
@@ -633,27 +623,29 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         uint8_t id;
         if (!wide_wl2_block_at || !wide_wl2_block_at(world_x, world_y, &id))
             continue;
-        unsigned part = ((world_y & 8) ? 2u : 0u) + ((world_x & 8) ? 1u : 0u);
-        const Wl2BlockVisual *visual = &wl2_block_visuals[id];
-        uint8_t tile = 0, attr = 0;
-        int have_static_tile = wide_wl2_block_tile &&
-                               wide_wl2_block_tile((int)id, (int)part, &tile);
-        if (have_static_tile) {
-            /* Tile IDs come from the ROM's metatile table. CGB attributes are
-               per placement, so sample them from the live 256x256 map ring. */
-            if (cgb_render_enabled) {
-                unsigned mx = (unsigned)(X - L + scx) & 0xFFu;
-                unsigned my = (unsigned)(y + scy) & 0xFFu;
-                unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
-                unsigned map_index = map_off + ((my >> 3) & 31u) * 32u +
-                                     ((mx >> 3) & 31u);
+        /* The tile-definition pointer changes with the active room/tileset.
+           Read the current 128-entry metatile table from that address instead
+           of treating a convenient-looking fixed ROM offset as universal. */
+        if (id >= 0x80u) continue;
+        uint16_t tile_address = (uint16_t)(wl2_frame_tref + (unsigned)id * 4u + part);
+        if (wl2_frame_tref == 0 || wl2_frame_tref == 0xFFFFu ||
+            (unsigned)wl2_frame_tref + 0x1FFu > 0xFFFFu)
+            continue;
+        uint8_t tile = wl2_read_wram(tile_address);
+        uint8_t attr = 0;
+        if (cgb_render_enabled) {
+            /* CGB attributes belong to each map placement. Only reuse the
+               live map-ring attribute when its tile agrees with this block's
+               tile definition; otherwise avoid applying an unrelated palette
+               or flip (the main viewport will provide the authoritative copy
+               once that area is loaded). */
+            unsigned mx = (unsigned)(X - L + scx) & 0xFFu;
+            unsigned my = (unsigned)(y + scy) & 0xFFu;
+            unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
+            unsigned map_index = map_off + ((my >> 3) & 31u) * 32u +
+                                 ((mx >> 3) & 31u);
+            if (vram[map_index] == tile)
                 attr = vram_cgb1[map_index];
-            }
-        } else {
-            /* Unknown revisions retain the conservative learned-pattern path. */
-            if (!visual->valid) continue;
-            tile = visual->tile[part];
-            attr = visual->attr[part];
         }
 
         int attr_out = 0, tile_id = 0;
