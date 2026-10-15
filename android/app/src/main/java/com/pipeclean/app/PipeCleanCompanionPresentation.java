@@ -2470,8 +2470,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if (inside(point[0], point[1], 20, 511, 320, 48)) return PAUSE;
                 if (inside(point[0], point[1], 360, 511, 320, 48)) return REWIND;
                 point[0] = x; point[1] = y;
-                inverseLayoutPoint(point, 1, true, 350f, 280f);
-                if (inside(point[0], point[1], 200, 118, 300, 324)) return ITEM_USE;
+                inverseLayoutPoint(point, 1, true, 350f, drMario() ? 238f : 280f);
+                if (drMario() && inside(point[0], point[1], 20, 104, 660, 235)) return ITEM_USE;
+                if (!drMario() && inside(point[0], point[1], 200, 118, 300, 324)) return ITEM_USE;
             } else {
                 if(inside(hx,hy,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(hx,hy,593,13,105,42)) return BACKGROUND;
