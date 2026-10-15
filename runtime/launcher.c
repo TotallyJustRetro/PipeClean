@@ -2872,7 +2872,8 @@ static int companion_undo_count, companion_redo_count;
 static int deck_game_ready(int game)
 {
     return game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
-           game == GAME_WARIO_SML3;
+           game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
+           game == GAME_WARIO_LAND3_GBC || game == GAME_WARIO_LAND2_GBC;
 }
 
 static void deck_layout_defaults(CompanionLayoutCfg *d)

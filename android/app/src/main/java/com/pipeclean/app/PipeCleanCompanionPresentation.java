@@ -1101,7 +1101,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private boolean drMario() { return game == 0; }
         private boolean sml1() { return game == 1; }
         private boolean sml2() { return game == 2; }
-        private boolean wario() { return game == 3; }
+        private boolean wario() { return game == 3 || game == 5; }
         private boolean wario2() { return game == 4 || game == 6; }
         private int bg() { return drMario() ? 0xFFF0F7F7 : sml1() ? 0xFFB8D991 : sml2() ? 0xFF25152F : (wario() || wario2()) ? 0xFF211A13 : 0xFF172337; }
         private int panel() { return drMario() ? 0xF8FFFFFF : sml1() ? 0xF0F0F5D5 : sml2() ? 0xEE352342 : (wario() || wario2()) ? 0xEE36302A : 0xEE24354C; }
