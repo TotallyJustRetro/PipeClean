@@ -116,10 +116,21 @@ int main(void)
     test_info.crc = 0x047BDF80u;
     rom[0x18000u + 0x42u * 4u + 2u] = 0x5B;
     rom[0x18200u + 0x42u * 4u + 2u] = 0x65;
+    rom[0xF0000u + 0x42u * 4u + 2u] = 6;
+    rom[0xF0200u + 0x42u * 4u + 2u] = 7;
     if (!wide_wl2_block_tile(0, 0x42, 2, &metatile_tile) || metatile_tile != 0x5B)
         return fail(21, "verified GBC metatile table 0 lookup failed");
     if (!wide_wl2_block_tile(1, 0x42, 2, &metatile_tile) || metatile_tile != 0x65)
         return fail(26, "verified GBC metatile table 1 lookup failed");
+    uint8_t palette_id = 0;
+    if (!wide_wl2_block_attr(0, 0x42, 2, &palette_id) || palette_id != 6)
+        return fail(27, "verified GBC palette table 0 lookup failed");
+    if (!wide_wl2_block_attr(1, 0x42, 2, &palette_id) || palette_id != 7)
+        return fail(28, "verified GBC palette table 1 lookup failed");
+    test_info.crc = 0;
+    if (wide_wl2_block_attr(0, 0x42, 2, &palette_id))
+        return fail(29, "unknown GBC ROM revision used fixed palette data");
+    test_info.crc = 0x047BDF80u;
 
     rom[0x143] = 0xC0;
     if (!wide_install_profile(GAME_WARIO_LAND2_GBC, 32, 32, 0))
