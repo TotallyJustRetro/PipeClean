@@ -3111,10 +3111,10 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         const char *path = d->button_texture_by_action[4][0]
             ? d->button_texture_by_action[4] : d->button_texture_path;
         ui_rrect(x + w * bx / 700.f, y + h * by / 800.f,
-                 w * bw / 800.f, h * bh / 450.f, 4, RGBA(34, 48, 67, 240));
+                 w * bw / 700.f, h * bh / 800.f, 4, RGBA(34, 48, 67, 240));
         deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 28, path,
             x + w * bx / 700.f + 1, y + h * by / 800.f + 1,
-            w * bw / 800.f - 2, h * bh / 450.f - 2);
+            w * bw / 700.f - 2, h * bh / 800.f - 2);
         ui_text_c(F_BOLD, 5.4f, x + w * (bx + bw * .5f) / 700.f,
                   y + h * (by + bh * .43f) / 800.f, RGBA(246, 249, 255, 255), "BACKGROUND");
 
@@ -3125,10 +3125,10 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         path = d->button_texture_by_action[5][0]
             ? d->button_texture_by_action[5] : d->button_texture_path;
         ui_rrect(x + w * cx / 700.f, y + h * cy / 800.f,
-                 w * cw / 800.f, h * ch / 450.f, 4, RGBA(34, 48, 67, 240));
+                 w * cw / 700.f, h * ch / 800.f, 4, RGBA(34, 48, 67, 240));
         deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 29, path,
             x + w * cx / 700.f + 1, y + h * cy / 800.f + 1,
-            w * cw / 800.f - 2, h * ch / 450.f - 2);
+            w * cw / 700.f - 2, h * ch / 800.f - 2);
         ui_text_c(F_BOLD, 5.4f, x + w * (cx + cw * .5f) / 700.f,
                   y + h * (cy + ch * .43f) / 800.f, RGBA(246, 249, 255, 255), "CLOSE");
     }
