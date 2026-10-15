@@ -36,7 +36,6 @@ static char wl2_trace_title[17];
 static int wl2_trace_pending_valid;
 static size_t wl2_trace_pending_slot;
 static uint16_t wl2_trace_pending_next_pc;
-static uint8_t wl2_trace_pending_a, wl2_trace_pending_operand;
 
 static int wl2_trace_candidate_opcode(uint8_t op)
 {
@@ -231,8 +230,6 @@ void wide_wl2_trace_instruction(uint16_t pc)
         wl2_trace_pending_valid = 1;
         wl2_trace_pending_slot = slot;
         wl2_trace_pending_next_pc = (uint16_t)(pc + (op == 0xFE ? 2u : 1u));
-        wl2_trace_pending_a = cpu.a;
-        wl2_trace_pending_operand = operand;
     }
 }
 
@@ -348,6 +345,7 @@ static uint32_t wl2_trace_rom_crc32(const uint8_t *data, size_t size)
 
 static void wl2_trace_begin(int game, int left, int right)
 {
+    wl2_trace_pending_valid = 0;
     memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
     wl2_trace_count = 0;
     wl2_trace_game = game;
