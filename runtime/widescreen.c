@@ -118,9 +118,10 @@ int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
  * table. Each 16x16 block has four 8x8 tile IDs; block bit 7 is a world-map
  * flag, so the renderer must use only the low seven bits as the table index.
  * Guard exact supported dumps so altered revisions use the learned fallback. */
-int wide_wl2_block_tile(int block, int part, uint8_t *tile)
+int wide_wl2_block_tile(int table_set, int block, int part, uint8_t *tile)
 {
-    if (!tile || block < 0 || block >= 128 || part < 0 || part >= 4 ||
+    if (!tile || table_set < 0 || table_set >= 32 ||
+        block < 0 || block >= 128 || part < 0 || part >= 4 ||
         !wl2_profile_active || !rom)
         return 0;
 #if defined(__GNUC__) || defined(__clang__)
@@ -139,7 +140,13 @@ int wide_wl2_block_tile(int block, int part, uint8_t *tile)
     } else {
         return 0;
     }
-    *tile = rom[0x18000u + (size_t)block * 4u + (size_t)part];
+    /* The metatile bank contains 32 tables of 0x200 bytes. Each table
+       maps the 128 block IDs to four 8x8 tile IDs; PipeClean selects the
+       active table by comparing it against native-viewport samples. */
+    size_t offset = 0x18000u + (size_t)table_set * 0x200u +
+                    (size_t)block * 4u + (size_t)part;
+    if (offset >= 0x1C000u || offset >= ci->size) return 0;
+    *tile = rom[offset];
     return 1;
 }
 
