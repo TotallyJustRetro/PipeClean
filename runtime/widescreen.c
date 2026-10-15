@@ -114,6 +114,35 @@ int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
     return 1;
 }
 
+/* Data Crystal's WL2 ROM map identifies 0x18000 as the metatile
+ * table. Each 16x16 block has four 8x8 tile IDs; block bit 7 is a world-map
+ * flag, so the renderer must use only the low seven bits as the table index.
+ * Guard exact supported dumps so altered revisions use the learned fallback. */
+int wide_wl2_block_tile(int block, int part, uint8_t *tile)
+{
+    if (!tile || block < 0 || block >= 128 || part < 0 || part >= 4 ||
+        !wl2_profile_active || !rom)
+        return 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (cart_info == NULL) return 0;
+#endif
+    const CartInfo *ci = cart_info();
+    if (!ci) return 0;
+    if (wl2_profile_game == GAME_WARIO_LAND2_GB) {
+        if (ci->crc != 0x9C54358Du || ci->size != 0x100000u ||
+            (rom[0x143] & 0x80u) != 0)
+            return 0;
+    } else if (wl2_profile_game == GAME_WARIO_LAND2_GBC) {
+        if (ci->crc != 0x047BDF80u || ci->size != 0x200000u ||
+            (rom[0x143] & 0x80u) == 0)
+            return 0;
+    } else {
+        return 0;
+    }
+    *tile = rom[0x18000u + (size_t)block * 4u + (size_t)part];
+    return 1;
+}
+
 static int wl2_trace_candidate_opcode(uint8_t op)
 {
     return op == 0x19 || op == 0xC6 || op == 0xD6 || op == 0xFE ||
