@@ -20,6 +20,7 @@ extern int wide_sml2_margin_tile(int, int, uint8_t *, int *, int *) __attribute_
 extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
 extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
+extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -683,7 +684,9 @@ void ppu_tick(int n)
 {
     if (!lcd_on) {
         off_cycles += n;
-        if (off_cycles >= CYCLES_PER_FRAME) { off_cycles -= CYCLES_PER_FRAME; frame_count++; frame_hook(); }
+        if (off_cycles >= CYCLES_PER_FRAME) { off_cycles -= CYCLES_PER_FRAME; frame_count++;
+            if (wide_wl2_trace_frame) wide_wl2_trace_frame(oam);
+            frame_hook(); }
         return;
     }
     dot += n;
@@ -697,6 +700,7 @@ void ppu_tick(int n)
                 mode = 1; io_if |= 0x01; wlc = 0;
                 update_stat();
                 frame_count++;
+                if (wide_wl2_trace_frame) wide_wl2_trace_frame(oam);
                 frame_hook();
             } else { mode = 2; update_stat(); }
         } else {
