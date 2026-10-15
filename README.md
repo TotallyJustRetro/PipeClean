@@ -61,6 +61,8 @@ An Android project and debug APK build are included. The launcher has touch supp
 
 The companion deck includes a large, tappable item circle with a gold pixel ring and a press animation, plus quick actions for save, load, pause/resume, and rewind. Its Background control can load a custom PNG or animated GIF, and the deck also has a Close Game control.
 
+On the AYN Thor's 1080 × 1240 lower display, portrait decks use a responsive 700 × 800 canvas. Companion Deck Studio's portrait preview uses the same proportions, with draggable and resizable layout layers. Landscape displays keep the wide layout.
+
 **Android status:** CI can build the debug APK, but installation, lifecycle behavior, and real-device gameplay still need hands-on verification. Treat Android as a development build for now.
 
 ### Local co-op and experimental online co-op
