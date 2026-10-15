@@ -195,6 +195,15 @@ int main(void)
     set_bg_color(9, 0x03E0); /* palette 2 / color 1 = green */
     set_bg_color(13, 0x7C00); /* palette 3 / color 1 = blue */
     set_wl2_test_map(1, 0);
+    /* The first tile of the offscreen 16x16 block happens to match the
+       selected ROM tile ID, but its three neighboring tilemap entries are
+       stale from another part of the room. The old per-tile check accepted
+       its wrong red palette and created a tiny color pop-in. */
+    ppu_vram_bank_write(0);
+    ppu_vram_write((uint16_t)(0x1800u + 20u), 1); /* coincidental tile match */
+    ppu_vram_bank_write(1);
+    ppu_vram_write((uint16_t)(0x1800u + 20u), 1); /* stale red palette */
+    ppu_vram_bank_write(0);
     ppu_write(0x42, 0);
     ppu_write(0x43, 0);
     ppu_write(0x40, 0x91);
