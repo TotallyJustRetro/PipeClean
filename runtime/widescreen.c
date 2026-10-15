@@ -102,49 +102,15 @@ int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
     if (address >= 0xA000u) {
         size_t offset = (size_t)address - 0x8000u;
         if (offset >= ci->ram_bytes) return 0;
-        /* WL2's ROM metatile table has 256 four-tile entries; bit 7 is
-           part of the block ID here and must not be normalized away. */
-        *block = ram[offset];
+        /* The top bit is a map flag, not a metatile index. WL2 uses
+           a 128-entry, four-tile table selected by the active room. */
+        *block = (uint8_t)(ram[offset] & 0x7Fu);
         return 1;
     }
 
     /* The documented mapping falls back to the normal bus for exceptional
        rooms whose swizzled address wraps below A000. */
-    *block = rd8(address);
-    return 1;
-}
-
-/* The original GB and GBC releases share a ROM metatile table at
- * 0x18000: four 8x8 tile indices per 16x16 block. Using this source table
- * means the wider view can resolve blocks before the game's VRAM ring has
- * scrolled them into the native 160px viewport. The exact CRC guards are
- * intentional: unknown revisions keep the conservative learned-visual path. */
-int wide_wl2_block_tile(int block, int part, uint8_t *tile)
-{
-    if (!tile || block < 0 || block >= 256 || part < 0 || part >= 4 ||
-        !wl2_profile_active || !rom)
-        return 0;
-#if defined(__GNUC__) || defined(__clang__)
-    if (cart_info == NULL) return 0;
-#endif
-    const CartInfo *ci = cart_info();
-    if (!ci) return 0;
-
-    if (wl2_profile_game == GAME_WARIO_LAND2_GB) {
-        if (ci->crc != 0x9C54358Du || ci->size != 0x100000u ||
-            (rom[0x143] & 0x80u) != 0)
-            return 0;
-    } else if (wl2_profile_game == GAME_WARIO_LAND2_GBC) {
-        if (ci->crc != 0x047BDF80u || ci->size != 0x200000u ||
-            (rom[0x143] & 0x80u) == 0)
-            return 0;
-    } else {
-        return 0;
-    }
-
-    size_t offset = 0x18000u + (size_t)block * 4u + (size_t)part;
-    if (offset >= ci->size) return 0;
-    *tile = rom[offset];
+    *block = (uint8_t)(rd8(address) & 0x7Fu);
     return 1;
 }
 
