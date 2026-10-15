@@ -47,6 +47,16 @@ typedef struct {
     uint8_t tile[4], attr[4];
     uint8_t valid;
 } Wl2BlockVisual;
+/* Preserve CGB attributes by exact world-tile coordinate. The hardware
+ * tilemap is a 256x256 ring, so its attribute slots can be recycled for a
+ * different room while the widescreen renderer is still drawing older
+ * world coordinates in the margins. */
+#define WL2_WORLD_ATTR_EXTENT 0x1100
+#define WL2_WORLD_ATTR_TILES (WL2_WORLD_ATTR_EXTENT / 8)
+typedef struct {
+    uint8_t attr, valid;
+} Wl2WorldAttr;
+static Wl2WorldAttr wl2_world_attrs[WL2_WORLD_ATTR_TILES][WL2_WORLD_ATTR_TILES];
 static Wl2BlockVisual wl2_block_visuals[256];
 static Wl2BlockVisual wl2_frame_visuals[256];
 static uint8_t wl2_frame_seen[256], wl2_frame_conflict[256];
@@ -73,6 +83,7 @@ static void wl2_clear_visual_cache(void)
     memset(wl2_ring_visuals, 0, sizeof wl2_ring_visuals);
     memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
     memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
+    memset(wl2_world_attrs, 0, sizeof wl2_world_attrs);
     wl2_frame_active = 0;
     wl2_metatile_set = -1;
     wl2_cache_level = wl2_cache_tref = wl2_cache_cgb = -1;
@@ -490,6 +501,29 @@ static int wl2_align_origin(int world_origin, int ppu_scroll)
     return world_origin + wl2_scroll_delta(ppu_scroll, low);
 }
 
+static void wl2_store_world_attr(int world_x, int world_y, uint8_t attr)
+{
+    if (!cgb_render_enabled || world_x < 0 || world_y < 0 ||
+        world_x >= WL2_WORLD_ATTR_EXTENT || world_y >= WL2_WORLD_ATTR_EXTENT)
+        return;
+    Wl2WorldAttr *entry = &wl2_world_attrs[(unsigned)world_y >> 3]
+                                          [(unsigned)world_x >> 3];
+    entry->attr = attr;
+    entry->valid = 1;
+}
+
+static int wl2_world_attr_at(int world_x, int world_y, uint8_t *attr)
+{
+    if (!attr || world_x < 0 || world_y < 0 ||
+        world_x >= WL2_WORLD_ATTR_EXTENT || world_y >= WL2_WORLD_ATTR_EXTENT)
+        return 0;
+    const Wl2WorldAttr *entry = &wl2_world_attrs[(unsigned)world_y >> 3]
+                                                [(unsigned)world_x >> 3];
+    if (!entry->valid) return 0;
+    *attr = entry->attr;
+    return 1;
+}
+
 /* Learn a map-block's 2x2 graphic from the live VRAM map ring.
  * Native-viewport samples are authoritative. Samples from the extra left/right
  * area are speculative: they can prewarm block IDs before they enter view,
@@ -524,6 +558,11 @@ static void wl2_learn_block(int block_x, int block_y,
             unsigned part = (unsigned)(row * 2 + col);
             sample.tile[part] = vram[index];
             sample.attr[part] = cgb_render_enabled ? vram_cgb1[index] : 0;
+            /* Keep attributes for this exact world position before the game
+               recycles the corresponding 256px hardware-map ring slot. */
+            if (!speculative)
+                wl2_store_world_attr(block_x + col * 8, block_y + row * 8,
+                                     sample.attr[part]);
         }
     }
 
@@ -688,22 +727,33 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         int have_static_tile = wide_wl2_block_tile &&
                                wide_wl2_block_tile(wl2_metatile_set, (int)id,
                                                    (int)part, &tile);
-        if (cgb_render_enabled) {
-            /* CGB attributes are placement-specific and live beside the
-               256x256 hardware map ring. Index them by the same world
-               coordinates used to resolve the block, as the SML2 compositor
-               does. */
-            unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
-            unsigned map_index = map_off +
-                ((unsigned)(world_y >> 3) & 31u) * 32u +
-                ((unsigned)(world_x >> 3) & 31u);
-            attr = vram_cgb1[map_index];
-        }
         if (!have_static_tile) {
-            /* Unknown ROM revisions retain the frame-learned fallback. */
+            /* Unknown ROM revisions retain the frame-learned tile/attribute
+               pair rather than combining a learned tile with stale CGB data. */
             if (!visual->valid) continue;
             tile = visual->tile[part];
-            if (!cgb_render_enabled) attr = visual->attr[part];
+            attr = visual->attr[part];
+        }
+        if (cgb_render_enabled) {
+            /* Prefer an attribute captured when this exact world tile was in
+               the native viewport. The hardware tilemap is only a 256px ring
+               and may now contain another room's palette data. */
+            if (!wl2_world_attr_at(world_x, world_y, &attr) && have_static_tile) {
+                unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
+                unsigned map_index = map_off +
+                    ((unsigned)(world_y >> 3) & 31u) * 32u +
+                    ((unsigned)(world_x >> 3) & 31u);
+                if (vram[map_index] == tile) {
+                    attr = vram_cgb1[map_index];
+                } else if (visual->valid) {
+                    /* A mismatch means the ring slot is stale for this
+                       position: reuse the learned pair from this block ID. */
+                    tile = visual->tile[part];
+                    attr = visual->attr[part];
+                } else {
+                    attr = 0;
+                }
+            }
         }
 
         int attr_out = 0, tile_id = 0;
