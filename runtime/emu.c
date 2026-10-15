@@ -11,6 +11,7 @@
 #include "events.h"
 #include "settings.h"
 #include "dev_diag.h"
+#include "widescreen.h"
 
 EmuDev emu_dev = {.max_frames = -1};
 
@@ -4467,6 +4468,7 @@ void emu_stop(void)
     audio_game_abort();
     SDL_WaitThread(thr, NULL);
     thr = NULL;
+    wide_wl3_trace_finish();
     audio_game_end();
     events_end();
     rewind_free();
