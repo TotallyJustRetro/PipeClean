@@ -20,6 +20,7 @@ int  wide_install(int game, int left, int right);
 /* Wario Land II activation-bound diagnostics (active only with its widescreen profile). */
 extern int wide_wl2_trace_active;
 void wide_wl2_trace_instruction(uint16_t pc);
+void wide_wl2_trace_frame(const uint8_t *oam_snapshot);
 void wide_wl2_trace_finish(void);
 void wide_wl2_trace_set_path(const char *path);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
