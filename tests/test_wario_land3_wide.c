@@ -59,7 +59,7 @@ static void put_bounds_signature(size_t off, uint8_t object_adjust)
 static void put_right_spawn_signature(size_t off)
 {
     const uint8_t code[22] = {
-        0x21, 0x30, 0xC2, 0x3A, 0xE6, 0xF8, 0x5F, 0x66, 0x6B, 0x11, 0xB0,
+        0x21, 0x31, 0xC2, 0x3A, 0xE6, 0xF8, 0x5F, 0x66, 0x6B, 0x11, 0xB0,
         0x00, 0x19, 0x7C, 0xFE, 0x0A, 0x38, 0x02, 0x21, 0xF8, 0x09, 0x7C
     };
     memcpy(rom + off, code, sizeof code);
@@ -68,7 +68,7 @@ static void put_right_spawn_signature(size_t off)
 static void put_left_spawn_signature(size_t off)
 {
     const uint8_t code[20] = {
-        0x21, 0x30, 0xC2, 0x3A, 0xE6, 0xF8, 0x5F, 0x66, 0x6B, 0x11,
+        0x21, 0x31, 0xC2, 0x3A, 0xE6, 0xF8, 0x5F, 0x66, 0x6B, 0x11,
         0xF0, 0xFF, 0x19, 0xCB, 0x7C, 0x28, 0x02, 0x21, 0x00, 0x00
     };
     memcpy(rom + off, code, sizeof code);
@@ -162,7 +162,7 @@ int main(void)
     cpu.pc = (uint16_t)(pc_for_rom_offset(check_visible) + 28u);
     cpu.pc = (uint16_t)(pc_for_rom_offset(check_visible) + 28u);
     cpu.a = 0x10u; cpu.f = 0x40u; total_cycles = 0;
-    if (wide_intercept_wl3(0xC6u) != 1 || cpu.a != 0xD0u ||
+    if (wide_intercept_wl3(0xC6u) != 1 || cpu.a != 0xF0u ||
         cpu.pc != (uint16_t)(pc_for_rom_offset(check_visible) + 30u) ||
         total_cycles != 8u)
         return fail(9, "object width check should use 160+left+right pixels");
