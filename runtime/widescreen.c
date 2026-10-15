@@ -174,15 +174,20 @@ void wide_wl2_trace_instruction(uint16_t pc)
         operand = cpu.e;
 
     uint8_t scx = rd8(0xFF43u), scy = rd8(0xFF42u);
-    uint8_t camx = rd8(0xC660u), camy = rd8(0xC65Fu);
+    const int color_release = wl2_trace_game == GAME_WARIO_LAND2_GBC;
+    /* The TAS navigation notes use different RAM layouts for the two builds:
+       GBC player X/Y are D53C/D53A and camera X/Y are C660/C65F; GB player
+       X/Y are C53C/C53A and camera X/Y are D652/D651. */
+    uint16_t px_addr = color_release ? 0xD53Cu : 0xC53Cu;
+    uint16_t py_addr = color_release ? 0xD53Au : 0xC53Au;
+    uint16_t camx_addr = color_release ? 0xC660u : 0xD652u;
+    uint16_t camy_addr = color_release ? 0xC65Fu : 0xD651u;
+    uint8_t camx = rd8(camx_addr), camy = rd8(camy_addr);
     uint16_t bc = (uint16_t)(((uint16_t)cpu.b << 8) | cpu.c);
     uint16_t de = (uint16_t)(((uint16_t)cpu.d << 8) | cpu.e);
     uint16_t hl = (uint16_t)(((uint16_t)cpu.h << 8) | cpu.l);
-    /* Reverse-engineered navigation scripts identify D53C/D53A as the
-       big-endian world X/Y coordinates. Record ranges, not just the final
-       sample, so player movement and compare thresholds can be correlated. */
-    uint16_t px = (uint16_t)(((uint16_t)rd8(0xD53Cu) << 8) | rd8(0xD53Du));
-    uint16_t py = (uint16_t)(((uint16_t)rd8(0xD53Au) << 8) | rd8(0xD53Bu));
+    uint16_t px = (uint16_t)(((uint16_t)rd8(px_addr) << 8) | rd8((uint16_t)(px_addr + 1u)));
+    uint16_t py = (uint16_t)(((uint16_t)rd8(py_addr) << 8) | rd8((uint16_t)(py_addr + 1u)));
 
     uint32_t frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
     if (entry->hits == 0) {
