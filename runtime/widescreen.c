@@ -1622,8 +1622,8 @@ int wide_intercept_wl3(uint8_t op)
 int wide_wl3_block_at(int world_x, int world_y, uint8_t *block)
 {
     if (!block) return 0;
-    if (!wl3_profile_active || !rom || world_x < 0 || world_y < 0)
-        return 0;
+    if (!wl3_profile_active || !rom) return 0;
+    if (world_x < 0 || world_y < 0) return -1;
 #if defined(__GNUC__) || defined(__clang__)
     if (&cart_ram == NULL || cart_info == NULL) return 0;
 #endif
@@ -1663,7 +1663,6 @@ int wide_wl3_block_attr(int block, int part, uint8_t *attr)
      * eight-color palettes at D280, making its backing-store offset 0x3300. */
     size_t offset = 0x3300u + (size_t)block * 4u + (size_t)part;
     uint8_t value = gb_wram_peek(offset);
-    if (value == 0xFFu) return 0;
     *attr = value;
     return 1;
 }
