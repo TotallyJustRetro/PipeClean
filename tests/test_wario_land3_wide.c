@@ -36,10 +36,11 @@ static uint32_t rom_hash(void)
 
 static void put_bounds_signature(size_t off, uint8_t object_adjust)
 {
-    const uint8_t code[30] = {
+    const uint8_t code[40] = {
         0x21, 0x30, 0xC2, 0x2A, 0x6E, 0x67, 0x7B, 0xC6, object_adjust, 0x5F,
-        0x30, 0x04, 0x14, 0x28, 0x02, 0x7A, 0xBC, 0x38, 0x03, 0x20,
-        0x04, 0x7B, 0xBD, 0x38, 0x02, 0x28, 0x02, 0x7D, 0xC6, 0xA0
+        0x30, 0x04, 0x14, 0x28, 0x02, 0x78, 0xBC, 0x38, 0x03, 0x20,
+        0x04, 0x79, 0xBD, 0x38, 0x02, 0x28, 0x02, 0x7D, 0xC6, 0xA0,
+        0x00, 0x00, 0x7D, 0xC6, 0xA0, 0x00, 0x00, 0x00, 0x00, 0x00
     };
     memcpy(rom + off, code, sizeof code);
 }
@@ -122,9 +123,10 @@ int main(void)
 
     /* ADD A,$a0 is extended to the actual wider camera window. */
     cpu.pc = (uint16_t)(pc_for_rom_offset(check_visible) + 28u);
+    cpu.pc = (uint16_t)(pc_for_rom_offset(check_visible) + 33u);
     cpu.a = 0x10u; cpu.f = 0x40u; total_cycles = 0;
-    if (wide_intercept_wl3(0xC6u) != 1 || cpu.a != 0xF0u ||
-        cpu.pc != (uint16_t)(pc_for_rom_offset(check_visible) + 30u) ||
+    if (wide_intercept_wl3(0xC6u) != 1 || cpu.a != 0xD0u ||
+        cpu.pc != (uint16_t)(pc_for_rom_offset(check_visible) + 35u) ||
         total_cycles != 8u)
         return fail(9, "object width check should use 160+left+right pixels");
 
