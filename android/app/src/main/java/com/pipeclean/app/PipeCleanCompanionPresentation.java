@@ -397,6 +397,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
             final int columns = 39, center = columns / 2;
             int drawn = 0;
+            final float baseY = h - 5f;
+            final float rowStep = 6.6f;
             c.save();
             for (int row = 0; row < 16 && drawn < visible; row++) {
                 for (int distance = 0; distance <= center && drawn < visible; distance++) {
@@ -405,23 +407,40 @@ final class PipeCleanCompanionPresentation extends Presentation {
                         int column = center + side * distance;
                         if (column < 0 || column >= columns) continue;
                         float normalized = Math.abs(column - center) / (float) center;
-                        int columnHeight = 4 + Math.round((1f - normalized) * 12f);
+                        int wobble = ((column * 7 + row * 11) % 5) - 2;
+                        int columnHeight = Math.max(2, 3 + Math.round((1f - normalized) * 10f) + wobble);
                         if (row >= columnHeight) continue;
-
-                        float cx = 72f + column * 17.3f;
-                        float cy = 418f - row * 7f;
+                        float cx = 34f + column * 19.3f;
+                        float cy = baseY - 4.1f - row * rowStep;
+                        float coinW = 20f, coinH = 8f;
                         p.setStyle(Paint.Style.FILL);
-                        p.setColor(0x60200F00);
-                        c.drawRoundRect(cx - 9f, cy - 3.6f, cx + 9f, cy + 4.4f, 4f, 4f, p);
-                        p.setColor(0xD9985A10);
-                        c.drawRoundRect(cx - 9f, cy - 4f, cx + 9f, cy + 3.5f, 4f, 4f, p);
+                        p.setColor(0x78200F00);
+                        c.drawRoundRect(cx - coinW*.5f + 1f, cy - coinH*.32f,
+                            cx + coinW*.5f + 1f, cy + coinH*.62f, 4f, 4f, p);
+                        p.setColor(0xE9B66B15);
+                        c.drawRoundRect(cx - coinW*.5f, cy - coinH*.5f,
+                            cx + coinW*.5f, cy + coinH*.5f, 4f, 4f, p);
                         p.setStyle(Paint.Style.STROKE);
                         p.setStrokeWidth(0.9f);
-                        p.setColor(0xEFFFCA53);
-                        c.drawRoundRect(cx - 8.5f, cy - 3.5f, cx + 8.5f, cy + 3f, 3.5f, 3.5f, p);
+                        p.setColor(0xF5FFD05F);
+                        c.drawRoundRect(cx - coinW*.5f, cy - coinH*.5f,
+                            cx + coinW*.5f, cy + coinH*.5f, 4f, 4f, p);
                         p.setStyle(Paint.Style.FILL);
-                        p.setColor(0xBFFFF0A0);
-                        c.drawRoundRect(cx - 5.7f, cy - 2.1f, cx - 0.9f, cy - 0.6f, 0.7f, 0.7f, p);
+                        p.setColor(0xD5FFF0A0);
+                        c.drawRoundRect(cx - coinW*.30f, cy - coinH*.28f,
+                            cx - coinW*.06f, cy - coinH*.05f, 1f, 1f, p);
+                        if ((column * 3 + row * 5) % 13 == 0 && row < 3) {
+                            c.save();
+                            c.rotate(((column + row) % 2 == 0 ? -12f : 9f), cx, cy + 2f);
+                            p.setStyle(Paint.Style.FILL);
+                            p.setColor(0xFFF3B630);
+                            c.drawOval(cx - 6f, cy - 2f, cx + 6f, cy + 3f, p);
+                            p.setStyle(Paint.Style.STROKE);
+                            p.setStrokeWidth(0.7f);
+                            p.setColor(0xFFFFE28A);
+                            c.drawOval(cx - 6f, cy - 2f, cx + 6f, cy + 3f, p);
+                            c.restore();
+                        }
                         drawn++;
                     }
                 }
@@ -1112,7 +1131,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float[] bhBase = thor ? bhThor : portrait ? bhPortrait : bhLandscape;
             float canvasW = thor ? 800f : portrait ? 700f : 800f;
             float canvasH = thor ? 800f * 27f / 31f : portrait ? 800f : 450f;
-            for (int slot = 0; slot < LAYOUT_DECORATION_COUNT; slot++) {
+            int reservedWarioSlots = (wario() || wario2()) ? 4 : 0;
+            for (int slot = reservedWarioSlots; slot < LAYOUT_DECORATION_COUNT; slot++) {
                 int imageIndex = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
                 if (!hasLayoutImage(g, imageIndex)) continue;
                 float bx = w * bxBase[slot] / canvasW;
@@ -1388,39 +1408,54 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawThorControls(c, h);
         }
 
-        private void drawThorWario(Canvas c, float h) {
-            drawGoldCoinPile(c, h);
-            drawThorHeader(c, h);
-            drawWarioVault(c, 20, 78, 295, 138);
+        private void drawThorWarioBuiltInPile(Canvas c, float h) {
             c.save();
-            applyLayoutTransform(c, 1, 800f, h, 400f, 258f);
+            applyLayoutTransform(c, 8, 800f, h, 400f, h - 60f);
+            drawGoldCoinPile(c, h);
+            c.restore();
+        }
+
+        private void drawThorWario(Canvas c, float h) {
+            drawThorWarioBuiltInPile(c, h);
+            drawThorHeader(c, h);
+            c.save(); applyLayoutTransform(c, 5, 800f, h, 167.5f, 147f);
+            drawWarioVault(c, 20, 78, 295, 138);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 1, 800f, h, 400f, 258f);
             drawWarioEmblem(c, 400, 258, 48);
             c.restore();
-            c.save();
-            applyLayoutTransform(c, 4, 800f, h, 633f, 147f);
+            c.save(); applyLayoutTransform(c, 4, 800f, h, 633f, 147f);
             drawWarioStatus(c, 485, 78, 295, 138);
             c.restore();
+            c.save(); applyLayoutTransform(c, 7, 800f, h, 167.5f, 355f);
             drawExpeditionLog(c, 20, 300, 295, 110, 5);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 6, 800f, h, 632.5f, 355f);
             card(c, 485, 300, 295, 110, "CURRENT COURSE");
             textFit(c, stageText(), 500, 343, 265, 16, accent());
             textFit(c, "COIN BANK  " + warioCoinsText(), 500, 366, 265, 9.5f, ink());
             textFit(c, paused ? "EXPEDITION PAUSED" : "COURSE IN PROGRESS",
                 500, 388, 265, 8, muted());
+            c.restore();
             drawThorControls(c, h);
         }
 
         private void drawThorWario2(Canvas c, float h) {
-            drawGoldCoinPile(c, h);
+            drawThorWarioBuiltInPile(c, h);
             drawThorHeader(c, h);
+            c.save(); applyLayoutTransform(c, 5, 800f, h, 167.5f, 147f);
             drawWario2Grid(c, 20, 78, 295, 138, "TREASURE VAULT", wario2TreasureMask, false);
-            c.save();
-            applyLayoutTransform(c, 1, 800f, h, 400f, 258f);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 1, 800f, h, 400f, 258f);
             drawWarioEmblem(c, 400, 258, 46);
             c.restore();
+            c.save(); applyLayoutTransform(c, 6, 800f, h, 632.5f, 147f);
             drawWario2Grid(c, 485, 78, 295, 138, "PICTURE PANEL", wario2PictureMask, true);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 7, 800f, h, 167.5f, 355f);
             drawExpeditionLog(c, 20, 300, 295, 110, 5);
-            c.save();
-            applyLayoutTransform(c, 4, 800f, h, 633f, 355f);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 4, 800f, h, 633f, 355f);
             card(c, 485, 300, 295, 110, "ADVENTURE TRACKER");
             textFit(c, stageText(), 500, 343, 265, 16, accent());
             textFit(c, "COIN BANK  " + (warioCoins < 0 ? "------" :
