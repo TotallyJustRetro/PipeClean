@@ -2968,7 +2968,7 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
 {
     /* Coordinates are the native Thor Companion Deck portrait canvas (700x800). */
     switch (element) {
-    case DECK_ELEM_HEADER:    *x = 14;  *y = 7;   *w = 400; *h = 43;  break;
+    case DECK_ELEM_HEADER:    *x = 14;  *y = 7;   *w = 672; *h = 43;  break;
     case DECK_ELEM_ITEM:      *x = 180; *y = 132; *w = 340; *h = 300; break;
     case DECK_ELEM_CONTROLS:  *x = 20;  *y = 455; *w = 660; *h = 104; break;
     case DECK_ELEM_TIMELINE:  *x = 14;  *y = 704; *w = 672; *h = 92;  break;
@@ -3082,22 +3082,35 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         }
     }
 
-    /* Header layer */
+    /* Header layer: the selectable group includes title and both quick actions. */
     {
-        float rx, ry, rw, rh;
-        deck_editor_element_rect(d, DECK_ELEM_HEADER, x, y, w, h, &rx, &ry, &rw, &rh);
+        float sx = (float)(d->header_scale > 0 ? d->header_scale : 100) / 100.f;
+        float sy = (float)(d->header_scale_y > 0 ? d->header_scale_y : 100) / 100.f;
+        float dx = d->header_dx * (700.0f / 800.0f);
+        float dy = d->header_dy * (800.0f / 450.0f);
+        float hx = 350.f + (14.f - 350.f) * sx + dx;
+        float hy = 30.f + (7.f - 30.f) * sy + dy;
+        float hw = 400.f * sx, hh = 43.f * sy;
+        float rx = x + w * hx / 700.f, ry = y + h * hy / 800.f;
+        float rw = w * hw / 700.f, rh = h * hh / 800.f;
         ui_rrect(rx, ry, rw, rh, 5, RGBA(28, 40, 58, 210));
         deck_editor_preview_asset(d, 15, d->header_texture_path, rx + 1, ry + 1, rw - 2, rh - 2);
-        ui_text_fit(F_BOLD, 6.8f, rx + 7, ry + rh * .24f, rw - 14,
+        float textX = x + w * (350.f + (20.f - 350.f) * sx + dx) / 700.f;
+        float topY = y + h * (30.f + (23.f - 30.f) * sy + dy) / 800.f;
+        float titleY = y + h * (30.f + (41.f - 30.f) * sy + dy) / 800.f;
+        ui_text_fit(F_BOLD, 6.8f, textX, topY, rw - 14,
                     RGBA(127, 220, 236, 255), "PIPE CLEAN / POCKET QUEST");
-        ui_text_fit(F_BOLD, 9, rx + 7, ry + rh * .52f, rw - 14,
+        ui_text_fit(F_BOLD, 9, textX, titleY, rw - 14,
                     RGBA(247, 249, 255, 255),
                     companion_editor_game == GAME_DRMARIO ? "DR. MARIO" :
                     companion_editor_game == GAME_SML ? "SUPER MARIO LAND" :
                     companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2" :
                     "WARIO LAND: TREASURE EXPEDITION");
-        if (DECK_ELEM_HEADER == companion_editor_element)
-            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
+        if (DECK_ELEM_HEADER == companion_editor_element) {
+            float ex, ey, ew, eh;
+            deck_editor_element_rect(d, DECK_ELEM_HEADER, x, y, w, h, &ex, &ey, &ew, &eh);
+            ui_stroke(ex, ey, ew, eh, 5, 1.5f, RGBA(108, 218, 255, 255));
+        }
     }
 
     /* The top-right quick actions have independent textures too, and follow the header's placement transform. */
