@@ -22,6 +22,8 @@ extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak)
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
+/* Renderer-only regression tests link ppu.c without the full GB bus module. */
+extern uint8_t rd8(uint16_t address) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -465,7 +467,7 @@ static void wl2_prepare_frame(void)
 {
     wl2_frame_active = 0;
     if (!wl2_wide_enabled || !rom || !cart_ram || !cart_info() ||
-        !wide_wl2_block_at || ppu_w <= GB_W)
+        !wide_wl2_block_at || !rd8 || ppu_w <= GB_W)
         return;
 
     const int color_release = (rom[0x143] & 0x80u) != 0;
