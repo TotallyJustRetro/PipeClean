@@ -1361,6 +1361,7 @@ static void wario_patch_dx_activation_operand(void)
 
 static int wl3_profile_active;
 static int wl3_left_extra, wl3_right_extra;
+static size_t wl3_rom_size;
 static size_t wl3_bound_starts[WL3_MAX_BOUND_HOOKS];
 static size_t wl3_bound_count;
 static size_t wl3_right_spawn_adds[WL3_MAX_EDGE_HOOKS];
@@ -1422,6 +1423,7 @@ static int wl3_left_spawn_signature(const uint8_t *p)
 
 static void wl3_scan_runtime_hooks(size_t rom_size)
 {
+    wl3_rom_size = rom_size;
     wl3_bound_count = 0;
     wl3_right_spawn_count = 0;
     wl3_left_spawn_count = 0;
@@ -1514,7 +1516,7 @@ int wide_intercept_wl3(uint8_t op)
         wl3_pc_is_bound_width(cpu.pc)) {
         size_t off = cpu.pc < 0x4000u ? (size_t)cpu.pc
             : (size_t)(cart_hi - rom) + (size_t)(cpu.pc - 0x4000u);
-        if (off + 1u >= cart_info()->size || rom[off] != 0xC6u || rom[off + 1u] != 0xA0u)
+        if (off + 1u >= wl3_rom_size || rom[off] != 0xC6u || rom[off + 1u] != 0xA0u)
             return 0;
         unsigned add = 160u + (unsigned)wl3_left_extra + (unsigned)wl3_right_extra;
         unsigned sum = (unsigned)cpu.a + add;
@@ -1609,6 +1611,10 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
     sml2_scan_edge[0] = sml2_scan_edge[1] = -1;
     sml2_scan_pick[0] = sml2_scan_pick[1] = 0;
     sml2_scan_frame[0] = sml2_scan_frame[1] = -1;
+    wl3_profile_active = 0;
+    wl3_left_extra = wl3_right_extra = 0;
+    wl3_rom_size = 0;
+    wl3_bound_count = wl3_right_spawn_count = wl3_left_spawn_count = wl3_col_loop_count = 0;
     if (l + r == 0) return 1;
     if (game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) {
         /* Distinguish the monochrome and Color cartridges before widening. */
@@ -1621,12 +1627,18 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
         return 1;
     }
     if (game == GAME_WARIO_LAND3_GBC) {
-        /* Wario Land 3 is a CGB cartridge. This first pass widens the renderer
-         * without modifying ROM bytes; object activation/culling will be
-         * addressed from runtime traces rather than guessed offsets. */
+        /* Wario Land 3 is a CGB cartridge. Discover its camera/object
+         * windows from instruction signatures in the loaded image. The hooks
+         * alter only live CPU registers and scan bounds; the ROM stays intact.
+         * If a revision differs, retain the generic PPU widening and leave the
+         * unmatched game logic untouched. */
         const CartInfo *ci = cart_info ? cart_info() : NULL;
         if (!rom || !ci || ci->size < 0x80000u || (rom[0x143] & 0x80u) == 0)
             return 0;
+        wl3_left_extra = l < 0 ? 0 : (l > 32 ? 32 : l);
+        wl3_right_extra = r < 0 ? 0 : (r > 32 ? 32 : r);
+        wl3_profile_active = wl3_left_extra + wl3_right_extra > 0;
+        wl3_scan_runtime_hooks(ci->size);
         return 1;
     }
     if (game == GAME_WARIO_SML3) return wide_install_wario_sml3(wario_dx);
