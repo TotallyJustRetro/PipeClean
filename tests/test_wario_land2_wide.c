@@ -67,6 +67,17 @@ int main(void)
     if (rom_hash() != before)
         return fail(9, "GB profile unexpectedly modified the ROM image");
 
+    /* Verified GB metatile table: each 16x16 metatile uses four tile IDs. */
+    test_info.crc = 0x9C54358Du;
+    rom[0x18000u + 0x42u * 4u + 2u] = 0x6B;
+    uint8_t metatile_tile = 0;
+    if (!wide_wl2_block_tile(0x42, 2, &metatile_tile) || metatile_tile != 0x6B)
+        return fail(19, "verified GB metatile lookup failed");
+    test_info.crc = 0;
+    if (wide_wl2_block_tile(0x42, 2, &metatile_tile))
+        return fail(20, "unknown GB ROM revision used fixed metatile data");
+    test_info.crc = 0x9C54358Du;
+
     /* WL2's documented map address increments once per 16px block, with
        256 entries per row; level data is in the linear cartridge-RAM domain. */
     cart_ram[0x2000] = 0x42; /* world block (0,0) -> $A000 */
@@ -96,6 +107,13 @@ int main(void)
         return fail(11, "valid CGB-compatible cartridge header was rejected");
     if (rom_hash() != before)
         return fail(12, "GBC profile unexpectedly modified the ROM image");
+
+    /* The verified GBC release shares the documented metatile table layout. */
+    test_info.size = 0x200000u;
+    test_info.crc = 0x047BDF80u;
+    rom[0x18000u + 0x42u * 4u + 2u] = 0x5B;
+    if (!wide_wl2_block_tile(0x42, 2, &metatile_tile) || metatile_tile != 0x5B)
+        return fail(21, "verified GBC metatile lookup failed");
 
     rom[0x143] = 0xC0;
     if (!wide_install_profile(GAME_WARIO_LAND2_GBC, 32, 32, 0))
