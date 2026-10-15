@@ -622,6 +622,7 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         uint8_t id;
         if (!wide_wl2_block_at || !wide_wl2_block_at(world_x, world_y, &id))
             continue;
+        unsigned part = ((world_y & 8) ? 2u : 0u) + ((world_x & 8) ? 1u : 0u);
         const Wl2BlockVisual *visual = &wl2_block_visuals[id];
         uint8_t tile = 0, attr = 0;
         int have_static_tile = wide_wl2_block_tile &&
