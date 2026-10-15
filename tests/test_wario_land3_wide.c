@@ -75,7 +75,7 @@ int main(void)
     const size_t check_despawn = 0x10100u;
     const size_t spawn_right = 0x10200u;
     const size_t spawn_left = 0x10300u;
-    const size_t spawn_left_vertical = 0x10400u;
+    const size_t spawn_left_vertical = 0x10340u;
     const size_t spawn_scan_loop = 0x10500u;
     int left = 0, right = 0;
 
@@ -147,7 +147,7 @@ int main(void)
         !(cpu.f & 0x80u) || total_cycles != 8u)
         return fail(11, "right-edge object spawning should extend by 32px");
 
-    cpu.pc = (uint16_t)(pc_for_rom_offset(spawn_left) + 12u);
+    cpu.pc = (uint16_t)(pc_for_rom_offset(spawn_left_vertical) + 12u);
     cpu.h = 0x05u; cpu.l = 0x00u; cpu.f = 0x80u; total_cycles = 0;
     if (wide_intercept_wl3(0x19u) != 1 ||
         ((unsigned)cpu.h << 8 | cpu.l) != 0x04D0u ||
