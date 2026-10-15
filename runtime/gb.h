@@ -150,3 +150,4 @@ extern int ppu_w, ppu_xoff;
  * 2 = legacy bottom-status-window gating (kept for compatibility). Otherwise the normal screen with bars. */
 void ppu_set_wide(int left, int right, int hud_lines, int centre_window, int gate);
 void ppu_set_wario_sml3(int enabled);
+void ppu_set_wl2_wide(int enabled);
