@@ -1350,6 +1350,214 @@ static void wario_patch_dx_activation_operand(void)
     }
 }
 
+
+/* Wario Land 3's object manager has its own fixed-width camera checks.
+ * Discover the checked instruction sequences from the loaded ROM rather than
+ * hard-coding addresses for one banking/revision layout. The ROM is only read;
+ * changes happen in the interpreter's live CPU state. */
+#define WL3_MAX_BOUND_HOOKS 16u
+#define WL3_MAX_EDGE_HOOKS 16u
+#define WL3_MAX_LOOP_HOOKS 8u
+
+static int wl3_profile_active;
+static int wl3_left_extra, wl3_right_extra;
+static size_t wl3_bound_starts[WL3_MAX_BOUND_HOOKS];
+static size_t wl3_bound_count;
+static size_t wl3_right_spawn_adds[WL3_MAX_EDGE_HOOKS];
+static size_t wl3_right_spawn_count;
+static size_t wl3_left_spawn_adds[WL3_MAX_EDGE_HOOKS];
+static size_t wl3_left_spawn_count;
+static size_t wl3_col_loop_loads[WL3_MAX_LOOP_HOOKS];
+static size_t wl3_col_loop_count;
+
+static uint16_t wl3_pc_for_rom_offset(size_t off)
+{
+    return off < 0x4000u ? (uint16_t)off
+                         : (uint16_t)(0x4000u + (off & 0x3FFFu));
+}
+
+static int wl3_rom_offset_is_mapped(size_t off, uint16_t pc)
+{
+    if (!rom || pc != wl3_pc_for_rom_offset(off)) return 0;
+    if (off < 0x4000u) return cart_lo == rom;
+    return cart_hi && cart_hi == rom + (off & ~(size_t)0x3FFFu);
+}
+
+static int wl3_bounds_signature(const uint8_t *p)
+{
+    /* CheckObjectOnScreen is used both for the ON_SCREEN flag and for actor
+     * lifetime/despawn. The two copies differ only in their initial object-X
+     * adjustment (24 or $6f); both end in ADD A,SCREEN_WIDTH_PX ($c6,$a0). */
+    return p[0] == 0x21 && p[3] == 0x2A && p[4] == 0x6E && p[5] == 0x67 &&
+           p[6] == 0x7B && p[7] == 0xC6 &&
+           (p[8] == 0x18 || p[8] == 0x6F) && p[9] == 0x5F &&
+           p[10] == 0x30 && p[12] == 0x14 && p[13] == 0x28 &&
+           p[15] == 0x7A && p[16] == 0xBC && p[17] == 0x38 &&
+           p[19] == 0x20 && p[21] == 0x7B && p[22] == 0xBD &&
+           p[23] == 0x38 && p[25] == 0x28 && p[27] == 0x7D &&
+           p[28] == 0xC6 && p[29] == 0xA0;
+}
+
+static int wl3_right_spawn_signature(const uint8_t *p)
+{
+    /* ScrollCameraRight's object-row look-ahead: camera X + $b0 (176 px). */
+    return p[0] == 0x21 && p[3] == 0x3A && p[4] == 0xE6 && p[5] == 0xF8 &&
+           p[6] == 0x5F && p[7] == 0x66 && p[8] == 0x6B &&
+           p[9] == 0x11 && p[10] == 0xB0 && p[11] == 0x00 &&
+           p[12] == 0x19 && p[13] == 0x7C && p[14] == 0xFE &&
+           p[15] == 0x0A && p[16] == 0x38 && p[18] == 0x21 &&
+           p[19] == 0xF8 && p[20] == 0x09 && p[21] == 0x7C;
+}
+
+static int wl3_left_spawn_signature(const uint8_t *p)
+{
+    /* Horizontal/vertical edge setup: camera X - $10 (one block of lead). */
+    return p[0] == 0x21 && p[3] == 0x3A && p[4] == 0xE6 && p[5] == 0xF8 &&
+           p[6] == 0x5F && p[7] == 0x66 && p[8] == 0x6B &&
+           p[9] == 0x11 && p[10] == 0xF0 && p[11] == 0xFF &&
+           p[12] == 0x19 && p[13] == 0xCB && p[14] == 0x7C &&
+           p[15] == 0x28 && p[17] == 0x21 && p[18] == 0x00 &&
+           p[19] == 0x00;
+}
+
+static void wl3_scan_runtime_hooks(size_t rom_size)
+{
+    wl3_bound_count = 0;
+    wl3_right_spawn_count = 0;
+    wl3_left_spawn_count = 0;
+    wl3_col_loop_count = 0;
+    if (!rom || rom_size < 30u) return;
+
+    for (size_t off = 0; off + 30u <= rom_size; ++off) {
+        /* A fetched instruction sequence must live in a single 16 KiB bank. */
+        if ((off >> 14) != ((off + 29u) >> 14)) continue;
+        const uint8_t *p = rom + off;
+        if (wl3_bounds_signature(p) && wl3_bound_count < WL3_MAX_BOUND_HOOKS)
+            wl3_bound_starts[wl3_bound_count++] = off;
+    }
+
+    for (size_t off = 0; off + 22u <= rom_size; ++off) {
+        if ((off >> 14) != ((off + 21u) >> 14)) continue;
+        if (wl3_right_spawn_signature(rom + off) &&
+            wl3_right_spawn_count < WL3_MAX_EDGE_HOOKS)
+            wl3_right_spawn_adds[wl3_right_spawn_count++] = off + 12u;
+    }
+
+    for (size_t off = 0; off + 20u <= rom_size; ++off) {
+        if ((off >> 14) != ((off + 19u) >> 14)) continue;
+        if (wl3_left_spawn_signature(rom + off) &&
+            wl3_left_spawn_count < WL3_MAX_EDGE_HOOKS)
+            wl3_left_spawn_adds[wl3_left_spawn_count++] = off + 12u;
+    }
+
+    for (size_t off = 0; off + 5u <= rom_size; ++off) {
+        if ((off >> 14) != ((off + 4u) >> 14)) continue;
+        const uint8_t *p = rom + off;
+        /* SpawnColEdgeObjects scans the horizontal object row. Add the
+         * extra 16-pixel columns instead of letting its fixed 13-step loop
+         * stop short of the widened viewport. */
+        if (p[0] == 0x1E && p[1] == 0x0D && p[2] == 0xCB &&
+            p[3] == 0x7E && p[4] == 0x28 &&
+            wl3_col_loop_count < WL3_MAX_LOOP_HOOKS)
+            wl3_col_loop_loads[wl3_col_loop_count++] = off;
+    }
+}
+
+static int wl3_pc_is_bound_left(uint16_t pc)
+{
+    for (size_t i = 0; i < wl3_bound_count; ++i) {
+        size_t off = wl3_bound_starts[i] + 6u;
+        if (wl3_rom_offset_is_mapped(off, pc)) return 1;
+    }
+    return 0;
+}
+
+static int wl3_pc_is_bound_width(uint16_t pc)
+{
+    for (size_t i = 0; i < wl3_bound_count; ++i) {
+        size_t off = wl3_bound_starts[i] + 28u;
+        if (wl3_rom_offset_is_mapped(off, pc)) return 1;
+    }
+    return 0;
+}
+
+static int wl3_add_hl_de(uint16_t de)
+{
+    unsigned hl = (unsigned)((cpu.h << 8) | cpu.l);
+    unsigned sum = hl + (unsigned)de;
+    cpu.f = (uint8_t)((cpu.f & 0x80u) |
+        ((((hl & 0x0FFFu) + ((unsigned)de & 0x0FFFu)) > 0x0FFFu) ? 0x20u : 0u) |
+        (sum > 0xFFFFu ? 0x10u : 0u));
+    cpu.h = (uint8_t)(sum >> 8);
+    cpu.l = (uint8_t)sum;
+    cpu.pc = (uint16_t)(cpu.pc + 1u);
+    hw_tick(8);
+    return 1;
+}
+
+/* Called before each interpreted instruction. Returning one means that the
+ * original instruction was emulated here; returning zero lets it execute
+ * normally after any register adjustment. */
+int wide_intercept_wl3(uint8_t op)
+{
+    if (!wl3_profile_active || !rom || !cart_hi) return 0;
+
+    if (op == 0x7Bu && wl3_left_extra > 0 && wl3_pc_is_bound_left(cpu.pc)) {
+        unsigned hl = (unsigned)((cpu.h << 8) | cpu.l);
+        hl = (hl - (unsigned)wl3_left_extra) & 0xFFFFu;
+        cpu.h = (uint8_t)(hl >> 8);
+        cpu.l = (uint8_t)hl;
+        return 0; /* LD A,E still runs; the widened camera bound is in HL. */
+    }
+
+    if (op == 0xC6u && wl3_right_extra + wl3_left_extra > 0 &&
+        wl3_pc_is_bound_width(cpu.pc)) {
+        size_t off = cpu.pc < 0x4000u ? (size_t)cpu.pc
+            : (size_t)(cart_hi - rom) + (size_t)(cpu.pc - 0x4000u);
+        if (off + 1u >= cart_info()->size || rom[off] != 0xC6u || rom[off + 1u] != 0xA0u)
+            return 0;
+        unsigned add = 160u + (unsigned)wl3_left_extra + (unsigned)wl3_right_extra;
+        unsigned sum = (unsigned)cpu.a + add;
+        cpu.f = (uint8_t)(((sum & 0xFFu) == 0 ? 0x80u : 0u) |
+            ((((cpu.a & 0x0Fu) + (add & 0x0Fu)) > 0x0Fu) ? 0x20u : 0u) |
+            (sum > 0xFFu ? 0x10u : 0u));
+        cpu.a = (uint8_t)sum;
+        cpu.pc = (uint16_t)(cpu.pc + 2u);
+        hw_tick(8);
+        return 1;
+    }
+
+    if (op == 0x19u) { /* ADD HL,DE: widen the game's edge-spawn look-ahead. */
+        for (size_t i = 0; i < wl3_right_spawn_count; ++i) {
+            size_t off = wl3_right_spawn_adds[i];
+            if (wl3_rom_offset_is_mapped(off, cpu.pc) && rom[off] == 0x19u)
+                return wl3_add_hl_de((uint16_t)(0x00B0u + (unsigned)wl3_right_extra));
+        }
+        for (size_t i = 0; i < wl3_left_spawn_count; ++i) {
+            size_t off = wl3_left_spawn_adds[i];
+            if (wl3_rom_offset_is_mapped(off, cpu.pc) && rom[off] == 0x19u)
+                return wl3_add_hl_de((uint16_t)(0u - (0x0010u + (unsigned)wl3_left_extra)));
+        }
+    }
+
+    if (op == 0x1Eu) { /* LD E,$0d: extend the cross-screen spawn scan. */
+        for (size_t i = 0; i < wl3_col_loop_count; ++i) {
+            size_t off = wl3_col_loop_loads[i];
+            if (!wl3_rom_offset_is_mapped(off, cpu.pc) ||
+                rom[off] != 0x1Eu || rom[off + 1u] != 0x0Du)
+                continue;
+            unsigned extra_columns = ((unsigned)wl3_left_extra +
+                                      (unsigned)wl3_right_extra + 15u) / 16u;
+            cpu.e = (uint8_t)(0x0Du + extra_columns);
+            cpu.pc = (uint16_t)(cpu.pc + 2u);
+            hw_tick(8);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int wide_install_wario_sml3(int wario_dx)
 {
     static const uint8_t original_fov[] = {0xC6, 0x10, 0xFE, 0xD0};
