@@ -2977,16 +2977,16 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
         else if (companion_editor_game == GAME_WARIO_SML3 ||
                  companion_editor_game == GAME_WARIO_LAND2_GB ||
                  companion_editor_game == GAME_WARIO_LAND2_GBC) {
-            *x=342; *y=84; *w=116; *h=116;
+            *x=350; *y=208; *w=100; *h=100;
         } else { *x=300; *y=155; *w=200; *h=200; }
         break;
     case DECK_ELEM_CONTROLS: *x=20; *y=420; *w=760; *h=48; break;
     case DECK_ELEM_TIMELINE: *x=20; *y=510; *w=760; *h=DECK_EDITOR_THOR_H-520.0f; break;
     case DECK_ELEM_STATUS:
         if (companion_editor_game == GAME_DRMARIO) { *x=397; *y=78; *w=383; *h=304; }
-        else if (companion_editor_game == GAME_WARIO_SML3) { *x=430; *y=77; *w=350; *h=160; }
+        else if (companion_editor_game == GAME_WARIO_SML3) { *x=485; *y=78; *w=295; *h=138; }
         else if (companion_editor_game == GAME_WARIO_LAND2_GB ||
-                 companion_editor_game == GAME_WARIO_LAND2_GBC) { *x=415; *y=268; *w=365; *h=128; }
+                 companion_editor_game == GAME_WARIO_LAND2_GBC) { *x=485; *y=300; *w=295; *h=110; }
         else { *x=606; *y=136; *w=174; *h=242; }
         break;
     default:
@@ -3010,16 +3010,16 @@ static void deck_editor_element_anchor(int element, float *cx, float *cy)
         if (companion_editor_game==GAME_DRMARIO) { *cx=199; *cy=228; }
         else if (companion_editor_game==GAME_WARIO_SML3 ||
                  companion_editor_game==GAME_WARIO_LAND2_GB ||
-                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=400; *cy=142; }
+                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=400; *cy=258; }
         else { *cx=400; *cy=255; }
         break;
     case DECK_ELEM_CONTROLS: *cx=400; *cy=444; break;
     case DECK_ELEM_TIMELINE: *cx=400; *cy=596; break;
     case DECK_ELEM_STATUS:
         if (companion_editor_game==GAME_DRMARIO) { *cx=590; *cy=230; }
-        else if (companion_editor_game==GAME_WARIO_SML3) { *cx=600; *cy=157; }
+        else if (companion_editor_game==GAME_WARIO_SML3) { *cx=633; *cy=147; }
         else if (companion_editor_game==GAME_WARIO_LAND2_GB ||
-                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=600; *cy=332; }
+                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=633; *cy=355; }
         else { *cx=690; *cy=255; }
         break;
     default: break;
@@ -3089,6 +3089,31 @@ static void deck_editor_preview_emblem(float cx,float cy,float size)
     ui_rect(cx-size*.07f,cy-size*.45f,size*.14f,size*.9f,RGBA(255,214,107,255));
     ui_rrect(cx-size*.12f,cy-size*.05f,size*.24f,size*.24f,size*.12f,RGBA(255,241,181,255));
 }
+static void deck_editor_preview_gold_pile(float x,float y,float w,float h)
+{
+    const int columns=39,center=columns/2;
+    int drawn=0;
+    for(int row=0;row<8 && drawn<66;row++){
+        for(int dist=0;dist<=center && drawn<66;dist++){
+            for(int side=dist==0?0:-1;side<=1 && drawn<66;side+=2){
+                if(dist==0 && side==1)continue;
+                int col=center+side*dist;
+                if(col<0 || col>=columns)continue;
+                float norm=fabsf((float)(col-center)/(float)center);
+                int stack=4+(int)lroundf((1.f-norm)*12.f);
+                if(row>=stack)continue;
+                float cx=x+w*(72.f+col*17.3f)/800.f;
+                float cy=y+h*(418.f-row*7.f)/DECK_EDITOR_THOR_H;
+                float cw=w*18.f/800.f, ch=h*7.f/DECK_EDITOR_THOR_H;
+                ui_rrect(cx-cw*.5f,cy-ch*.5f,cw,ch,ch*.48f,RGBA(152,90,15,170));
+                ui_stroke(cx-cw*.5f,cy-ch*.5f,cw,ch,ch*.48f,.65f,RGBA(255,208,95,185));
+                ui_rect(cx-cw*.28f,cy-ch*.25f,cw*.25f,ch*.18f,RGBA(255,240,161,170));
+                drawn++;
+            }
+        }
+    }
+}
+
 static void deck_editor_preview_collection(float x,float y,float w,float h,int game,const char *title,int pieces)
 {
     deck_editor_preview_card(x,y,w,h,game,title);
@@ -3127,20 +3152,24 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     ui_shadow(x,y,w,h,11,5,RGBA(0,0,0,110)); ui_rrect(x,y,w,h,10,RGBA(12,20,34,255));
     ui_vgrad(x+2,y+2,w-4,h-4,dr_mario?RGBA(218,239,237,255):game==GAME_SML?RGBA(52,87,62,255):game==GAME_SML2?RGBA(67,49,88,255):RGBA(72,52,30,255),RGBA(16,22,38,255));
     ui_clip(x+2,y+2,w-4,h-4); deck_editor_preview_asset(d,0,d->background_path,x+2,y+2,w-4,h-4);
+    if(wario || wario2) deck_editor_preview_gold_pile(x,y,w,h);
 
     if(wario){
-        deck_editor_preview_card(x+w*20/800.f,y+h*77/DECK_EDITOR_THOR_H,w*350/800.f,h*160/DECK_EDITOR_THOR_H,game,"TREASURE VAULT");
-        ui_text_fit(F_BOLD,5.3f,x+w*34/800.f,y+h*124/DECK_EDITOR_THOR_H,w*322/800.f,RGBA(255,224,164,255),"00 / 15 TREASURES");
-        ui_rrect(x+w*34/800.f,y+h*132/DECK_EDITOR_THOR_H,w*322/800.f,h*7/DECK_EDITOR_THOR_H,3,RGBA(70,53,34,255));
-        for(int i=0;i<15;i++)ui_rrect(x+w*(38+i*20)/800.f,y+h*185/DECK_EDITOR_THOR_H,w*7/800.f,h*7/DECK_EDITOR_THOR_H,3,RGBA(143,95,43,255));
-        deck_editor_preview_log(x+w*20/800.f,y+h*255/DECK_EDITOR_THOR_H,w*370/800.f,h*143/DECK_EDITOR_THOR_H,game,0);
-        deck_editor_preview_card(x+w*410/800.f,y+h*255/DECK_EDITOR_THOR_H,w*370/800.f,h*143/DECK_EDITOR_THOR_H,game,"CURRENT COURSE");
-        ui_text_fit(F_BOLD,8,x+w*428/800.f,y+h*300/DECK_EDITOR_THOR_H,w*330/800.f,RGBA(255,200,87,255),"COURSE --");
-        ui_text_fit(F_REG,5.3f,x+w*428/800.f,y+h*330/DECK_EDITOR_THOR_H,w*330/800.f,RGBA(255,241,212,255),"COIN BANK -----");
+        float lx=x+w*20/800.f, ty=y+h*78/DECK_EDITOR_THOR_H;
+        float pw=w*295/800.f, ph=h*138/DECK_EDITOR_THOR_H;
+        deck_editor_preview_card(lx,ty,pw,ph,game,"TREASURE VAULT");
+        ui_text_fit(F_BOLD,5.0f,lx+pw*.045f,ty+ph*.34f,pw*.91f,RGBA(255,224,164,255),"00 / 15 TREASURES");
+        ui_rrect(lx+pw*.045f,ty+ph*.42f,pw*.91f,fmaxf(2.f,ph*.035f),2,RGBA(70,53,34,255));
+        for(int i=0;i<15;i++)ui_rrect(lx+pw*(.06f+i*.062f),ty+ph*.82f,pw*.025f,ph*.055f,3,RGBA(143,95,43,255));
+        deck_editor_preview_log(x+w*20/800.f,y+h*300/DECK_EDITOR_THOR_H,w*295/800.f,h*110/DECK_EDITOR_THOR_H,game,0);
+        deck_editor_preview_card(x+w*485/800.f,y+h*300/DECK_EDITOR_THOR_H,w*295/800.f,h*110/DECK_EDITOR_THOR_H,game,"CURRENT COURSE");
+        ui_text_fit(F_BOLD,7.0f,x+w*500/800.f,y+h*343/DECK_EDITOR_THOR_H,w*265/800.f,RGBA(255,200,87,255),"COURSE --");
+        ui_text_fit(F_REG,5.0f,x+w*500/800.f,y+h*366/DECK_EDITOR_THOR_H,w*265/800.f,RGBA(255,241,212,255),"COIN BANK -----");
+        ui_text_fit(F_REG,4.5f,x+w*500/800.f,y+h*388/DECK_EDITOR_THOR_H,w*265/800.f,RGBA(184,170,149,255),"COURSE IN PROGRESS");
     } else if(wario2){
-        deck_editor_preview_collection(x+w*20/800.f,y+h*77/DECK_EDITOR_THOR_H,w*365/800.f,h*175/DECK_EDITOR_THOR_H,game,"TREASURE VAULT",0);
-        deck_editor_preview_collection(x+w*415/800.f,y+h*77/DECK_EDITOR_THOR_H,w*365/800.f,h*175/DECK_EDITOR_THOR_H,game,"PICTURE PANEL",1);
-        deck_editor_preview_log(x+w*20/800.f,y+h*268/DECK_EDITOR_THOR_H,w*365/800.f,h*128/DECK_EDITOR_THOR_H,game,1);
+        deck_editor_preview_collection(x+w*20/800.f,y+h*78/DECK_EDITOR_THOR_H,w*295/800.f,h*138/DECK_EDITOR_THOR_H,game,"TREASURE VAULT",0);
+        deck_editor_preview_collection(x+w*485/800.f,y+h*78/DECK_EDITOR_THOR_H,w*295/800.f,h*138/DECK_EDITOR_THOR_H,game,"PICTURE PANEL",1);
+        deck_editor_preview_log(x+w*20/800.f,y+h*300/DECK_EDITOR_THOR_H,w*295/800.f,h*110/DECK_EDITOR_THOR_H,game,1);
     } else if(!dr_mario){
         deck_editor_preview_card(x+w*20/800.f,y+h*70/DECK_EDITOR_THOR_H,w*210/800.f,h*50/DECK_EDITOR_THOR_H,game,"LIVES");
         ui_text_fit(F_BOLD,6.5f,x+w*32/800.f,y+h*94/DECK_EDITOR_THOR_H,w*186/800.f,RGBA(250,240,220,255),"x 03");
@@ -3209,14 +3238,14 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
             ui_text_fit(F_BOLD,5.3f,sx+10,sy+sh*.73f,sw-20,RGBA(159,221,231,255),"SESSION / CLINIC STATUS");
             ui_text_fit(F_REG,5.2f,sx+10,sy+sh*.83f,sw-20,RGBA(234,241,244,255),"Live game information");
         } else if(wario){
-            ui_text_fit(F_BOLD,5.7f,sx+12,sy+9,sw-24,RGBA(255,214,107,255),"EXPEDITION STATUS");
-            const char *rows[4]={"LIVES                       --","HEARTS                      --","POWER                UNKNOWN","TIME LEFT                  ---"};
-            for(int i=0;i<4;i++)ui_text_fit(F_REG,5.1f,sx+12,sy+38+i*25.f,sw-24,RGBA(224,207,178,255),rows[i]);
+            ui_text_fit(F_BOLD,5.0f,sx+10,sy+8,sw-20,RGBA(255,214,107,255),"EXPEDITION STATUS");
+            const char *rows[4]={"LIVES                  --","HEARTS                --","POWER             UNKNOWN","TIME LEFT              ---"};
+            for(int i=0;i<4;i++)ui_text_fit(F_REG,4.4f,sx+10,sy+31+i*21.f,sw-20,RGBA(224,207,178,255),rows[i]);
         } else if(wario2){
-            ui_text_fit(F_BOLD,5.7f,sx+12,sy+9,sw-24,RGBA(255,214,107,255),"ADVENTURE TRACKER");
-            ui_text_fit(F_BOLD,7.4f,sx+12,sy+43,sw-24,RGBA(255,214,107,255),"STAGE --");
-            ui_text_fit(F_REG,5.5f,sx+12,sy+70,sw-24,RGBA(255,241,212,255),"COIN BANK ------");
-            ui_text_fit(F_REG,5.3f,sx+12,sy+93,sw-24,RGBA(184,170,149,255),"POCKET COINS ----");
+            ui_text_fit(F_BOLD,5.0f,sx+10,sy+8,sw-20,RGBA(255,214,107,255),"ADVENTURE TRACKER");
+            ui_text_fit(F_BOLD,6.6f,sx+10,sy+32,sw-20,RGBA(255,214,107,255),"STAGE --");
+            ui_text_fit(F_REG,4.8f,sx+10,sy+56,sw-20,RGBA(255,241,212,255),"COIN BANK ------");
+            ui_text_fit(F_REG,4.6f,sx+10,sy+78,sw-20,RGBA(184,170,149,255),"POCKET COINS ----");
         } else {
             ui_text_fit(F_BOLD,6,sx+5,sy+6,sw-10,RGBA(191,202,222,255),"ADVENTURE STATUS");
             ui_text_fit(F_BOLD,8,sx+5,sy+sh*.45f,sw-10,RGBA(250,240,220,255),"LIVES x 03");
