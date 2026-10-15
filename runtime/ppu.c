@@ -434,6 +434,32 @@ static int wl2_same_visual(const Wl2BlockVisual *a, const Wl2BlockVisual *b)
  * against block graphics observed in the unmodified 160px viewport. This
  * avoids assuming every room uses the table at 0x18000+0x000, while still
  * allowing the margin renderer to draw blocks that have never entered view. */
+/* Cache CGB palette attributes for every native 8x8 tile, not only tiles in
+ * completely visible 16x16 blocks. A partial block at the viewport edge is
+ * still authoritative for its world coordinate; skipping it can cause its
+ * expanded margin copy to switch palettes when the block fully scrolls in. */
+static int wl2_floor8(int v)
+{
+    return v >= 0 ? (v / 8) * 8 : -(((-v + 7) / 8) * 8);
+}
+
+static void wl2_cache_native_world_attrs(int world_x0, int world_y0, int map_off)
+{
+    if (!cgb_render_enabled) return;
+    int first_x = wl2_floor8(world_x0);
+    int first_y = wl2_floor8(world_y0);
+    for (int world_y = first_y; world_y < world_y0 + GB_H; world_y += 8) {
+        if (world_y < 0) continue;
+        for (int world_x = first_x; world_x < world_x0 + GB_W; world_x += 8) {
+            if (world_x < 0) continue;
+            unsigned map_index = (unsigned)map_off +
+                (((unsigned)world_y & 0xFFu) >> 3) * 32u +
+                (((unsigned)world_x & 0xFFu) >> 3);
+            wl2_store_world_attr(world_x, world_y, vram_cgb1[map_index]);
+        }
+    }
+}
+
 static void wl2_select_metatile_set(void)
 {
     uint8_t probe;
@@ -653,6 +679,10 @@ static void wl2_prepare_frame(void)
     memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
 
     int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    /* Record palette attributes even for 8x8 tiles partially clipped by the
+       native viewport edges; the 16x16 block learner intentionally skips
+       those incomplete blocks. */
+    wl2_cache_native_world_attrs(world_x0, world_y0, map_off);
     int first_y = wl2_floor16(world_y0);
     int first_native_x = wl2_floor16(world_x0);
     /* Pass 1: learn from blocks fully inside the original 160px viewport.
