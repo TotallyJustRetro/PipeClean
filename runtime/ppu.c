@@ -25,6 +25,10 @@ extern void wide_wl3_trace_frame(const uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_tile(int, int, int, uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_attr(int, int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_block_at(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_block_tile(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_block_attr(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_camera(int *, int *) __attribute__((weak));
 /* Renderer-only regression tests link ppu.c without the full GB bus module. */
 extern uint8_t rd8(uint16_t address) __attribute__((weak));
 #endif
@@ -45,6 +49,9 @@ static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate
 static int cfg_left, cfg_right;
 static int wario_wide_enabled, wario_frame_active;
 static int wl2_wide_enabled, wl2_frame_active;
+static int wl3_wide_enabled, wl3_frame_active;
+static int wl3_frame_world_x0, wl3_frame_world_y0;
+static int wl3_frame_scx, wl3_frame_scy;
 typedef struct {
     uint8_t tile[4], attr[4];
     uint8_t valid;
@@ -97,6 +104,12 @@ void ppu_set_wl2_wide(int enabled)
     if (wl2_wide_enabled != next) wl2_clear_visual_cache();
     wl2_wide_enabled = next;
     if (!next) wl2_frame_active = 0;
+}
+
+void ppu_set_wl3_wide(int enabled)
+{
+    wl3_wide_enabled = enabled != 0;
+    wl3_frame_active = 0;
 }
 
 void ppu_set_wario_sml3(int enabled)
@@ -867,6 +880,116 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
     }
 }
 
+
+static int wl3_align_origin(int world_origin, int ppu_scroll)
+{
+    int low = world_origin % 256;
+    if (low < 0) low += 256;
+    int delta = ppu_scroll - low;
+    if (delta > 128) delta -= 256;
+    if (delta < -128) delta += 256;
+    return world_origin + delta;
+}
+
+static void wl3_prepare_frame(void)
+{
+    wl3_frame_active = 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (!wide_wl3_block_at || !wide_wl3_block_tile || !wide_wl3_camera)
+        return;
+#endif
+    if (!wl3_wide_enabled || !rom || !cart_ram || !cart_info() ||
+        ppu_w <= GB_W || !wide_wl3_block_at ||
+        !wide_wl3_block_tile || !wide_wl3_camera)
+        return;
+
+    int camera_x = 0, camera_y = 0;
+    if (!wide_wl3_camera(&camera_x, &camera_y)) return;
+    int native_x0 = wl3_align_origin(camera_x, scx);
+    int native_y0 = wl3_align_origin(camera_y, scy);
+    int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    int first_x = (8 - (scx & 7)) & 7;
+    int first_y = (8 - (scy & 7)) & 7;
+    int hits = 0, samples = 0;
+
+    /* Verify that the candidate camera symbol, SRAM block map and current
+     * room graphics table describe the same live scene before extending it.
+     * Dynamic door/room variants and unknown ROM revisions fail closed. */
+    for (int sy = first_y; sy < GB_H - 8; sy += 8) {
+        for (int sx = first_x; sx < GB_W; sx += 8) {
+            uint8_t block = 0, expected_tile = 0;
+            int world_x = native_x0 + sx;
+            int world_y = native_y0 + sy;
+            int map_result = wide_wl3_block_at(world_x, world_y, &block);
+            if (map_result != 1) return;
+            int part = ((world_y & 8) ? 2 : 0) | ((world_x & 8) ? 1 : 0);
+            if (!wide_wl3_block_tile((int)block, part, &expected_tile)) return;
+            unsigned index = (unsigned)map_off +
+                (((unsigned)(sy + scy) >> 3) & 31u) * 32u +
+                (((unsigned)(sx + scx) >> 3) & 31u);
+            if (vram[index] == expected_tile) hits++;
+            samples++;
+        }
+    }
+    if (samples < 100 || hits * 100 < samples * 95) return;
+
+    wl3_frame_world_x0 = native_x0 - ppu_xoff;
+    wl3_frame_world_y0 = native_y0;
+    wl3_frame_scx = scx;
+    wl3_frame_scy = scy;
+    wl3_frame_active = 1;
+}
+
+static int wl3_scroll_delta(int current, int initial)
+{
+    int delta = current - initial;
+    if (delta > 128) delta -= 256;
+    if (delta < -128) delta += 256;
+    return delta;
+}
+
+static void wl3_render_margins(int y, int W, int L, uint8_t *out,
+                               uint32_t *rgb, uint8_t *bgci, uint8_t *bgattr)
+{
+    if (!wl3_wide_enabled || !wl3_frame_active || W <= GB_W) return;
+    int world_y = wl3_frame_world_y0 + wl3_scroll_delta(scy, wl3_frame_scy) + y;
+    if (world_y < 0 || world_y >= 1536) return;
+    int scroll_dx = wl3_scroll_delta(scx, wl3_frame_scx);
+
+    for (int X = 0; X < W; ++X) {
+        if (X >= L && X < L + GB_W) continue;
+        int world_x = wl3_frame_world_x0 + scroll_dx + X;
+        uint8_t block = 0, tile = 0, attr = 0;
+        int map_result = wide_wl3_block_at(world_x, world_y, &block);
+        if (map_result == 0) continue; /* Unknown frame/data: leave PPU output untouched. */
+        if (map_result < 0) {
+            bgci[X] = 0;
+            bgattr[X] = 0;
+            out[X] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
+            if (cgb_render_enabled) rgb[X] = cgb_rgb(cgb_bg_palette, 0, 0);
+            ppu_bgtile[y][X] = 0xFFFF;
+            ppu_bguv[y][X] = 0;
+            continue;
+        }
+
+        int part = ((world_y & 8) ? 2 : 0) | ((world_x & 8) ? 1 : 0);
+        if (!wide_wl3_block_tile((int)block, part, &tile)) continue;
+        if (cgb_render_enabled && wide_wl3_block_attr)
+            (void)wide_wl3_block_attr((int)block, part, &attr);
+
+        int attr_out = 0, tile_id = 0;
+        int ci = tile_pixel_data(tile, attr, world_x, world_y, &attr_out, &tile_id);
+        bgci[X] = (uint8_t)ci;
+        bgattr[X] = (uint8_t)attr_out;
+        out[X] = cgb_render_enabled ? (uint8_t)ci
+                                     : (uint8_t)((bgp >> (ci * 2)) & 3);
+        if (cgb_render_enabled)
+            rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr_out & 7), (unsigned)ci);
+        ppu_bgtile[y][X] = (uint16_t)tile_id;
+        ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+    }
+}
+
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
 uint8_t ppu_cgb_read(uint8_t r)
@@ -985,6 +1108,7 @@ static void render_line(int y)
             wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
         wario_prepare_frame();
         wl2_prepare_frame();
+        wl3_prepare_frame();
     }
     int sml2_margin_mode = 0;
     if (wide_on && ppu_w > GB_W && wide_sml2_world_origin) {
@@ -1026,6 +1150,11 @@ static void render_line(int y)
         wario_render_margins(y, W, L, out, rgb, bgci, bgattr);
     if (wide_on && W > GB_W && wl2_wide_enabled)
         wl2_render_margins(y, W, L, out, rgb, bgci, bgattr);
+    /* Wario Land 3 margins come from its live SRAM block map and dynamic room
+     * graphics/palette tables. The validation above leaves native 160px pixels
+     * untouched and refuses to draw margins when the tables don't agree. */
+    if (wide_on && W > GB_W && wl3_wide_enabled)
+        wl3_render_margins(y, W, L, out, rgb, bgci, bgattr);
 
     /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
        only the margins from the live 16x16 block map, leaving the original
