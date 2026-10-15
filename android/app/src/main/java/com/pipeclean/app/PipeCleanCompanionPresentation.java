@@ -188,8 +188,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private int warioLevelCoins, previousWarioPileCoins = -1;
         private int previousWarioPileStage = -1, previousWarioPileGame = -1;
         private float warioPileDisplayedCoins;
-        private long warioPileResetStarted;
-        private static final long WARIO_PILE_RESET_MS = 560L;
+        private boolean warioPileResetting;
         private static final int WARIO_PILE_MAX_COINS = 390;
         private long wario2TreasureMask = -1L, wario2PictureMask = -1L;
         private long previousWario2TreasureMask = -1L, previousWario2PictureMask = -1L;
@@ -325,56 +324,70 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (!wario() && !wario2()) {
                 warioLevelCoins = 0;
                 warioPileDisplayedCoins = 0f;
+                warioPileResetting = false;
                 previousWarioPileCoins = -1;
                 previousWarioPileStage = -1;
                 previousWarioPileGame = -1;
-                warioPileResetStarted = 0L;
                 return;
             }
 
-            long now = SystemClock.uptimeMillis();
             int reading = warioPileCoinReading();
             if (previousWarioPileGame != game) {
                 previousWarioPileGame = game;
                 warioLevelCoins = 0;
                 warioPileDisplayedCoins = 0f;
+                warioPileResetting = false;
                 previousWarioPileCoins = -1;
                 previousWarioPileStage = -1;
-                warioPileResetStarted = now;
             }
 
-            if (stage < 0 || reading < 0) {
+            if (stage < 0) {
+                previousWarioPileStage = -1;
+                previousWarioPileCoins = -1;
+                return;
+            }
+            if (reading < 0) {
+                previousWarioPileCoins = -1;
+                return;
+            }
+            if (previousWarioPileStage < 0) {
                 previousWarioPileStage = stage;
                 previousWarioPileCoins = reading;
                 return;
             }
-            if (previousWarioPileStage < 0 || previousWarioPileCoins < 0 ||
-                stage != previousWarioPileStage) {
+            if (stage != previousWarioPileStage) {
                 warioLevelCoins = 0;
-                warioPileResetStarted = now;
+                warioPileResetting = true;
                 previousWarioPileStage = stage;
                 previousWarioPileCoins = reading;
                 postInvalidateOnAnimation();
                 return;
             }
+            if (previousWarioPileCoins < 0) {
+                previousWarioPileCoins = reading;
+                return;
+            }
 
             int delta = reading - previousWarioPileCoins;
-            if (delta > 0) warioLevelCoins = Math.min(WARIO_PILE_MAX_COINS, warioLevelCoins + delta);
-            else if (delta < 0) warioLevelCoins = Math.max(0, warioLevelCoins + delta);
-            previousWarioPileStage = stage;
+            if (delta > 0)
+                warioLevelCoins = Math.min(WARIO_PILE_MAX_COINS, warioLevelCoins + delta);
             previousWarioPileCoins = reading;
-            if (delta != 0) postInvalidateOnAnimation();
+            if (delta > 0) postInvalidateOnAnimation();
         }
 
         private void drawGoldCoinPile(Canvas c, float h) {
             if (!wario() && !wario2()) return;
             long now = SystemClock.uptimeMillis();
-            int target = layoutEditorPreview ? 54 :
-                (now - warioPileResetStarted < WARIO_PILE_RESET_MS ? 0 : warioLevelCoins);
+            int target = layoutEditorPreview ? 180 : (warioPileResetting ? 0 : warioLevelCoins);
             float difference = target - warioPileDisplayedCoins;
             if (Math.abs(difference) > 0.2f) {
                 float step = Math.min(9f, Math.abs(difference));
                 warioPileDisplayedCoins += Math.signum(difference) * step;
+                postInvalidateOnAnimation();
+            }
+            if (!layoutEditorPreview && warioPileResetting && warioPileDisplayedCoins <= 0.2f) {
+                warioPileDisplayedCoins = 0f;
+                warioPileResetting = false;
                 postInvalidateOnAnimation();
             }
 
@@ -619,7 +632,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             warioLevelCoins = 0;
             warioPileDisplayedCoins = 0f;
             previousWarioPileCoins = previousWarioPileStage = previousWarioPileGame = -1;
-            warioPileResetStarted = 0L;
+            warioPileResetting = false;
             wario2TreasureMask = wario2PictureMask = -1L;
             wario2BaselineSet = false;
             wario2AnimationActive = false;
