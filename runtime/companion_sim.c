@@ -1863,13 +1863,15 @@ static void thor_transform_point(const CompanionLayoutCfg *d, int element,
                                   float cx, float cy, float *x, float *y)
 {
     int dx=0,dy=0,sx=100,sy=100;
-    switch(element) {
-    case 0: dx=d->header_dx; dy=d->header_dy; sx=d->header_scale; sy=d->header_scale_y; break;
-    case 1: dx=d->item_dx; dy=d->item_dy; sx=d->item_scale; sy=d->item_scale_y; break;
-    case 2: dx=d->controls_dx; dy=d->controls_dy; sx=d->controls_scale; sy=d->controls_scale_y; break;
-    case 3: dx=d->timeline_dx; dy=d->timeline_dy; sx=d->timeline_scale; sy=d->timeline_scale_y; break;
-    case 4: dx=d->status_dx; dy=d->status_dy; sx=d->status_scale; sy=d->status_scale_y; break;
-    default: dx=d->decoration_dx; dy=d->decoration_dy; sx=d->decoration_scale; sy=d->decoration_scale_y; break;
+    if(element==0){dx=d->header_dx;dy=d->header_dy;sx=d->header_scale;sy=d->header_scale_y;}
+    else if(element==1){dx=d->item_dx;dy=d->item_dy;sx=d->item_scale;sy=d->item_scale_y;}
+    else if(element==2){dx=d->controls_dx;dy=d->controls_dy;sx=d->controls_scale;sy=d->controls_scale_y;}
+    else if(element==3){dx=d->timeline_dx;dy=d->timeline_dy;sx=d->timeline_scale;sy=d->timeline_scale_y;}
+    else if(element==4){dx=d->status_dx;dy=d->status_dy;sx=d->status_scale;sy=d->status_scale_y;}
+    else if(element==5){dx=d->decoration_dx;dy=d->decoration_dy;sx=d->decoration_scale;sy=d->decoration_scale_y;}
+    else if(element>=6 && element<5+N_DECK_DECORATIONS){
+        int slot=element-6;dx=d->decoration_extra_dx[slot];dy=d->decoration_extra_dy[slot];
+        sx=d->decoration_extra_scale[slot];sy=d->decoration_extra_scale_y[slot];
     }
     float scale_x=(float)(sx>0?sx:100)/100.f, scale_y=(float)(sy>0?sy:100)/100.f;
     *x=cx+(*x-cx)*scale_x+dx;
@@ -1878,13 +1880,15 @@ static void thor_transform_point(const CompanionLayoutCfg *d, int element,
 static float thor_element_scale_x(const CompanionLayoutCfg *d,int element)
 {
     int v=element==0?d->header_scale:element==1?d->item_scale:element==2?d->controls_scale:
-        element==3?d->timeline_scale:element==4?d->status_scale:d->decoration_scale;
+        element==3?d->timeline_scale:element==4?d->status_scale:element==5?d->decoration_scale:
+        (element>=6&&element<5+N_DECK_DECORATIONS)?d->decoration_extra_scale[element-6]:100;
     return (float)(v>0?v:100)/100.f;
 }
 static float thor_element_scale_y(const CompanionLayoutCfg *d,int element)
 {
     int v=element==0?d->header_scale_y:element==1?d->item_scale_y:element==2?d->controls_scale_y:
-        element==3?d->timeline_scale_y:element==4?d->status_scale_y:d->decoration_scale_y;
+        element==3?d->timeline_scale_y:element==4?d->status_scale_y:element==5?d->decoration_scale_y:
+        (element>=6&&element<5+N_DECK_DECORATIONS)?d->decoration_extra_scale_y[element-6]:100;
     return (float)(v>0?v:100)/100.f;
 }
 
@@ -1922,7 +1926,8 @@ static void thor_decorations(const Settings *s,int g)
 {
     const CompanionLayoutCfg *d=&s->deck_layout[g];
     static const float bx[16]={280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495},by[16]={150,78,78,295,218,218,95,285,135,135,410,410,35,35,190,190},bw[16]={240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112},bh[16]={135,115,115,115,90,90,84,84,68,68,68,68,64,64,72,72};
-    for(int i=0;i<16;i++){const char *p=i==0?d->decoration_path:d->decoration_extra_path[i-1];if(!p[0])continue;float x=bx[i],y=by[i],w=bw[i],h=bh[i];transform_box(d,5+i,x+w*.5f,y+h*.5f,&x,&y,&w,&h);draw_asset_image(s,g,i==0?3:i<=7?20+i:22+i,(int)x,(int)y,(int)w,(int)h);}
+    int first_slot=(g==GAME_WARIO_SML3||wario_land2_supported_game(g))?4:0;
+    for(int i=first_slot;i<16;i++){const char *p=i==0?d->decoration_path:d->decoration_extra_path[i-1];if(!p[0])continue;float x=bx[i],y=by[i],w=bw[i],h=bh[i];transform_box(d,5+i,x+w*.5f,y+h*.5f,&x,&y,&w,&h);draw_asset_image(s,g,i==0?3:i<=7?20+i:22+i,(int)x,(int)y,(int)w,(int)h);}
 }
 static void thor_dashboard(const Settings *s,int selected)
 {
@@ -1985,7 +1990,7 @@ static void thor_dr_mario(const Settings *s,int g)
     draw_text_fit((int)tx,(int)ty,(int)(350*thor_element_scale_x(d,4)),(int)fmaxf(1.f,roundf(ts)),theme_ink_r(g),theme_ink_g(g),theme_ink_b(g),current_paused?"PAUSED — RESUME WHEN READY":"CLINIC STATUS  •  LIVE");
     thor_controls(s,g);thor_decorations(s,g);
 }
-static void thor_gold_coin_pile(int game)
+static void thor_gold_coin_pile(const CompanionLayoutCfg *d,int game)
 {
     if (game != GAME_WARIO_SML3 && !wario_land2_supported_game(game)) return;
     int target = wario_pile_resetting ? 0 : wario_pile_level_coins;
@@ -2002,6 +2007,8 @@ static void thor_gold_coin_pile(int game)
     if (visible < 1) return;
     if (visible > 390) visible = 390;
     const int columns = 39, center = columns / 2;
+    const float base_y = (float)SIM_THOR_HEIGHT - 5.f;
+    const float row_step = 6.6f;
     int drawn = 0;
     for (int row = 0; row < 16 && drawn < visible; row++) {
         for (int distance = 0; distance <= center && drawn < visible; distance++) {
@@ -2010,14 +2017,23 @@ static void thor_gold_coin_pile(int game)
                 int column = center + side * distance;
                 if (column < 0 || column >= columns) continue;
                 float normalized = fabsf((float)(column - center) / (float)center);
-                int column_height = 4 + (int)lroundf((1.f - normalized) * 12.f);
-                if (row >= column_height) continue;
-                int cx = 72 + (int)lroundf(column * 17.3f);
-                int cy = 418 - row * 7;
-                fill_round_rect(cx - 9, cy - 4, 18, 8, 4, 32, 18, 3, 115);
-                fill_round_rect(cx - 9, cy - 4, 18, 7, 4, 152, 88, 16, 226);
-                outline_round_rect(cx - 9, cy - 4, 18, 7, 4, 255, 202, 77, 235);
-                fill_round_rect(cx - 6, cy - 2, 5, 2, 1, 255, 238, 151, 185);
+                int wobble=((column*7+row*11)%5)-2;
+                int column_height=3+(int)lroundf((1.f-normalized)*10.f)+wobble;
+                if(column_height<2)column_height=2;
+                if(row>=column_height)continue;
+                float cx=34.f+column*19.3f;
+                float cy=base_y-4.1f-row*row_step;
+                float sx=thor_element_scale_x(d,8), sy=thor_element_scale_y(d,8);
+                thor_transform_point(d,8,400.f,(float)SIM_THOR_HEIGHT-60.f,&cx,&cy);
+                float coinw=20.f*sx, coinh=8.f*sy;
+                fill_round_rect((int)(cx-coinw*.5f+1),(int)(cy-coinh*.32f),(int)coinw,(int)(coinh*.95f),4,32,18,3,130);
+                fill_round_rect((int)(cx-coinw*.5f),(int)(cy-coinh*.5f),(int)coinw,(int)coinh,4,182,107,21,245);
+                outline_round_rect((int)(cx-coinw*.5f),(int)(cy-coinh*.5f),(int)coinw,(int)coinh,4,255,211,96,245);
+                fill_round_rect((int)(cx-coinw*.30f),(int)(cy-coinh*.28f),(int)(coinw*.24f),(int)(coinh*.2f),1,255,244,172,225);
+                if((column*3+row*5)%13==0 && row<3){
+                    fill_circle((int)cx,(int)(cy+2),(int)fmaxf(2.f,coinw*.28f),245,183,48,255);
+                    outline_circle((int)cx,(int)(cy+2),(int)fmaxf(2.f,coinw*.28f),255,226,138,255);
+                }
                 drawn++;
             }
         }
@@ -2026,29 +2042,35 @@ static void thor_gold_coin_pile(int game)
 static void thor_wario(const Settings *s,int g)
 {
     const CompanionLayoutCfg *d=&s->deck_layout[g];
-    thor_scene(s,g);thor_gold_coin_pile(g);thor_header(s,g);
-    draw_wario_vault(s,20,78,295,138);
+    thor_scene(s,g);thor_gold_coin_pile(d,g);thor_header(s,g);
+    float vx=20,vy=78,vw=295,vh=138;transform_box(d,5,167.5f,147,&vx,&vy,&vw,&vh);
+    draw_wario_vault(s,(int)vx,(int)vy,(int)vw,(int)vh);
     float ex=350,ey=208,ew=100,eh=100;transform_box(d,1,400,258,&ex,&ey,&ew,&eh);
     draw_wario_emblem_at((int)(ex+ew*.5f),(int)(ey+eh*.5f),(int)(fminf(ew,eh)*.46f));
     float x=485,y=78,w=295,h=138;transform_box(d,4,633,147,&x,&y,&w,&h);
     draw_wario_status(s,(int)x,(int)y,(int)w,(int)h);
-    draw_wario_expedition_log(s,20,300,295,110);
-    draw_android_card(s,485,300,295,110,g,"CURRENT COURSE");
-    draw_text_fit(500,343,265,2,255,200,87,wario_course_text());
+    float lx=20,ly=300,lw=295,lh=110;transform_box(d,7,167.5f,355,&lx,&ly,&lw,&lh);
+    draw_wario_expedition_log(s,(int)lx,(int)ly,(int)lw,(int)lh);
+    float cx=485,cy=300,cw=295,ch=110;transform_box(d,6,632.5f,355,&cx,&cy,&cw,&ch);
+    draw_android_card(s,(int)cx,(int)cy,(int)cw,(int)ch,g,"CURRENT COURSE");
+    draw_text_fit((int)(cx+15),(int)(cy+43),(int)(cw-30),2,255,200,87,wario_course_text());
     char info[64];if(current_wario_coins>=0)snprintf(info,sizeof info,"COIN BANK %05d",current_wario_coins);else snprintf(info,sizeof info,"COIN BANK -----");
-    draw_text_fit(500,366,265,1,255,241,212,info);
-    draw_text_fit(500,388,265,1,184,170,149,current_paused?"EXPEDITION PAUSED":"COURSE IN PROGRESS");
+    draw_text_fit((int)(cx+15),(int)(cy+66),(int)(cw-30),1,255,241,212,info);
+    draw_text_fit((int)(cx+15),(int)(cy+88),(int)(cw-30),1,184,170,149,current_paused?"EXPEDITION PAUSED":"COURSE IN PROGRESS");
     thor_controls(s,g);thor_decorations(s,g);draw_wario_treasure_animation();
 }
 static void thor_wario2(const Settings *s,int g)
 {
     const CompanionLayoutCfg *d=&s->deck_layout[g];
-    thor_scene(s,g);thor_gold_coin_pile(g);thor_header(s,g);
-    draw_wario2_collection(s,20,78,295,138,g,"TREASURE VAULT",current_wario2_state.treasures,0);
+    thor_scene(s,g);thor_gold_coin_pile(d,g);thor_header(s,g);
+    float vx=20,vy=78,vw=295,vh=138;transform_box(d,5,167.5f,147,&vx,&vy,&vw,&vh);
+    draw_wario2_collection(s,(int)vx,(int)vy,(int)vw,(int)vh,g,"TREASURE VAULT",current_wario2_state.treasures,0);
     float ex=350,ey=208,ew=100,eh=100;transform_box(d,1,400,258,&ex,&ey,&ew,&eh);
     draw_wario_emblem_at((int)(ex+ew*.5f),(int)(ey+eh*.5f),(int)(fminf(ew,eh)*.46f));
-    draw_wario2_collection(s,485,78,295,138,g,"PICTURE PANEL",current_wario2_state.picture_panels,1);
-    draw_wario2_expedition_log(s,20,300,295,110,g);
+    float px=485,py=78,pw=295,ph=138;transform_box(d,6,632.5f,147,&px,&py,&pw,&ph);
+    draw_wario2_collection(s,(int)px,(int)py,(int)pw,(int)ph,g,"PICTURE PANEL",current_wario2_state.picture_panels,1);
+    float lx=20,ly=300,lw=295,lh=110;transform_box(d,7,167.5f,355,&lx,&ly,&lw,&lh);
+    draw_wario2_expedition_log(s,(int)lx,(int)ly,(int)lw,(int)lh,g);
     float x=485,y=300,w=295,h=110;transform_box(d,4,633,355,&x,&y,&w,&h);
     draw_android_card(s,(int)x,(int)y,(int)w,(int)h,g,"ADVENTURE TRACKER");
     char stage[48],coins[48],pocket[48];
