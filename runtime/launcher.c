@@ -3114,10 +3114,10 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         const char *path = d->button_texture_by_action[4][0]
             ? d->button_texture_by_action[4] : d->button_texture_path;
         ui_rrect(x + w * bx / 800.f, y + h * by / DECK_EDITOR_THOR_H,
-                 w * bw / 700.f, h * bh / 800.f, 4, RGBA(34, 48, 67, 240));
+                 w * bw / 800.f, h * bh / DECK_EDITOR_THOR_H, 4, RGBA(34, 48, 67, 240));
         deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 28, path,
             x + w * bx / 800.f + 1, y + h * by / DECK_EDITOR_THOR_H + 1,
-            w * bw / 700.f - 2, h * bh / 800.f - 2);
+            w * bw / 800.f - 2, h * bh / DECK_EDITOR_THOR_H - 2);
         ui_text_c(F_BOLD, 5.4f, x + w * (bx + bw * .5f) / 800.f,
                   y + h * (by + bh * .43f) / DECK_EDITOR_THOR_H, RGBA(246, 249, 255, 255), "BACKGROUND");
 
@@ -3128,10 +3128,10 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         path = d->button_texture_by_action[5][0]
             ? d->button_texture_by_action[5] : d->button_texture_path;
         ui_rrect(x + w * cx / 800.f, y + h * cy / DECK_EDITOR_THOR_H,
-                 w * cw / 700.f, h * ch / 800.f, 4, RGBA(34, 48, 67, 240));
+                 w * cw / 800.f, h * ch / DECK_EDITOR_THOR_H, 4, RGBA(34, 48, 67, 240));
         deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 29, path,
             x + w * cx / 800.f + 1, y + h * cy / DECK_EDITOR_THOR_H + 1,
-            w * cw / 700.f - 2, h * ch / 800.f - 2);
+            w * cw / 800.f - 2, h * ch / DECK_EDITOR_THOR_H - 2);
         ui_text_c(F_BOLD, 5.4f, x + w * (cx + cw * .5f) / 800.f,
                   y + h * (cy + ch * .43f) / DECK_EDITOR_THOR_H, RGBA(246, 249, 255, 255), "CLOSE");
     }
@@ -3179,7 +3179,6 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         deck_editor_element_rect(d, DECK_ELEM_CONTROLS, x, y, w, h, &rx, &ry, &rw, &rh);
         static const char *labels[4] = {"SAVE", "LOAD", "PAUSE", "REWIND"};
         for (int b = 0; b < 4; b++) {
-            int col = b % 2, row = b / 2;
             float bw = (rw - 18.f) / 4.f, bh = rh - 6.f;
             float bx = rx + 3.f + b * (bw + 4.f);
             float by = ry + 3.f;
