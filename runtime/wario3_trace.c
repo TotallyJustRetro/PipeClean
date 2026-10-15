@@ -12,7 +12,7 @@
 
 #define WL3_PC_SLOTS 8192u
 #define WL3_OAM_EVENTS 8192u
-#define WL3_MEM_SLOTS 0x4000u
+#define WL3_MEM_SLOTS 0xA000u
 
 int wide_wl3_trace_active;
 
@@ -30,7 +30,7 @@ typedef struct {
     uint32_t hits, first_frame, last_frame;
     uint16_t address, last_pc;
     uint8_t first_value, min_value, max_value, old_value, new_value;
-    uint8_t opcode, used;
+    uint8_t opcode, bank, used;
 } Wl3MemEntry;
 
 typedef struct {
@@ -77,7 +77,7 @@ static size_t wl3_pc_slot(size_t offset, uint8_t opcode)
         size_t slot = (start + probe) & (WL3_PC_SLOTS - 1u);
         Wl3PcEntry *e = &pc_entries[slot];
         if (!e->used) {
-            if (pc_count >= WL3_PC_SLOTS) return WL3_PC_SLOTS;
+            if (pc_count >= WL3_PC_SLOTS / 2u) return WL3_PC_SLOTS;
             memset(e, 0, sizeof *e);
             e->used = 1;
             e->offset = (uint32_t)offset;
@@ -123,17 +123,26 @@ void wide_wl3_trace_memory_write(uint16_t address, uint8_t old_value, uint8_t ne
 {
     if (!wide_wl3_trace_active) return;
     size_t index;
-    if (address >= 0xA000u && address < 0xC000u)
+    uint8_t bank = 0xFFu; /* cartridge RAM bank is mapper-controlled */
+    if (address >= 0xA000u && address < 0xC000u) {
         index = (size_t)(address - 0xA000u);
-    else if (address >= 0xC000u && address < 0xE000u)
+    } else if (address >= 0xC000u && address < 0xD000u) {
         index = 0x2000u + (size_t)(address - 0xC000u);
-    else
+        bank = 0;
+    } else if (address >= 0xD000u && address < 0xE000u) {
+        bank = (uint8_t)(rd8(0xFF70u) & 7u);
+        if (!bank) bank = 1;
+        index = 0x3000u + (size_t)(bank - 1u) * 0x1000u + (size_t)(address - 0xD000u);
+    } else {
         return;
+    }
+    if (index >= WL3_MEM_SLOTS) return;
     Wl3MemEntry *e = &mem_entries[index];
     uint32_t frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
     if (!e->used) {
         e->used = 1;
         e->address = address;
+        e->bank = bank;
         e->first_frame = frame;
         e->first_value = new_value;
         e->min_value = new_value;
@@ -269,12 +278,12 @@ void wide_wl3_trace_finish(void)
     f = fopen(mem_path, "w");
     if (f) {
         fprintf(f, "PipeClean Wario Land 3 WRAM/ cartridge RAM writes v1\n");
-        fprintf(f, "Address writes firstFrame lastFrame firstValue minValue maxValue lastOld lastNew lastPC opcode\n");
+        fprintf(f, "Address bank writes firstFrame lastFrame firstValue minValue maxValue lastOld lastNew lastPC opcode\n");
         for (size_t i = 0; i < WL3_MEM_SLOTS; ++i) {
             const Wl3MemEntry *e = &mem_entries[i];
             if (!e->used) continue;
-            fprintf(f, "%04X %u %u %u %02X %02X %02X %02X %02X %04X %02X\n",
-                    e->address, (unsigned)e->hits, (unsigned)e->first_frame,
+            fprintf(f, "%04X %02X %u %u %u %02X %02X %02X %02X %02X %04X %02X\n",
+                    e->address, e->bank, (unsigned)e->hits, (unsigned)e->first_frame,
                     (unsigned)e->last_frame, e->first_value, e->min_value, e->max_value,
                     e->old_value, e->new_value, e->last_pc, e->opcode);
         }
@@ -321,7 +330,9 @@ void wide_wl3_trace_begin(int left, int right)
     const CartInfo *ci = cart_info();
     wl3_rom_size = ci ? ci->size : 0;
     wl3_crc = ci ? ci->crc : 0;
-    snprintf(wl3_title, sizeof wl3_title, "%s", ci ? ci->title : "unknown");
+    memset(wl3_title, 0, sizeof wl3_title);
+    if (ci) { memcpy(wl3_title, ci->title, sizeof wl3_title - 1u); wl3_title[sizeof wl3_title - 1u] = '\0'; }
+    else memcpy(wl3_title, "unknown", sizeof "unknown");
     wl3_trace_started = 1;
     wide_wl3_trace_active = 1;
     if (!wl3_atexit_registered) {
