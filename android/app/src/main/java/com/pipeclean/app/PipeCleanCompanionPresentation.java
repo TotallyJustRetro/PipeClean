@@ -2442,9 +2442,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             float referenceH = portrait ? 800f : 450f;
             float dx = layoutValues[g][base] * (referenceW / 800f);
             float dy = layoutValues[g][base + 1] * (referenceH / 450f);
-            float scale = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
-            point[0] = centerX + (point[0] - centerX - dx) / scale;
-            point[1] = centerY + (point[1] - centerY - dy) / scale;
+            float scaleX = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
+            float scaleY = Math.max(0.25f, Math.min(2.5f, layoutValues[g][37 + element] / 100f));
+            point[0] = centerX + (point[0] - centerX - dx) / scaleX;
+            point[1] = centerY + (point[1] - centerY - dy) / scaleY;
         }
 
         private int hitTest(float x,float y) {
