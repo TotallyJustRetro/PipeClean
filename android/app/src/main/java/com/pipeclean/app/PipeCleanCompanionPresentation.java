@@ -952,12 +952,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private boolean isThorAspect() {
             float aspect = getWidth() / (float) Math.max(1, getHeight());
-            return aspect >= 1.0f && aspect <= 1.30f;
+            return aspect >= 1.10f && aspect <= 1.20f;
         }
 
         private boolean isThorCanvas(float w, float h) {
             float aspect = w / Math.max(1f, h);
-            return aspect >= 1.0f && aspect <= 1.30f;
+            return aspect >= 1.10f && aspect <= 1.20f;
         }
 
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
@@ -1162,7 +1162,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             applyLayoutTransform(c, 0, 800f, h, 400f, 34f);
             headerPlate(c, 18, 7, 390, 49);
             text(c, "PIPE CLEAN  •  " +
-                ((wario() || wario2()) ? "TREASURE EXPEDITION" : drMario() ? "MEDICAL DECK" : "POCKET QUEST"),
+                (wario2() ? "STOLEN TREASURE" : wario() ? "TREASURE EXPEDITION" : drMario() ? "MEDICAL DECK" : "POCKET QUEST"),
                 27, 22, 8.8f, accent());
             textFit(c, title(), 26, 42, 372, 14, ink());
             if (!wallpaperPath.isEmpty()) smallButton(c, 502, 16, 31, 31, "×", RESET_BACKGROUND);

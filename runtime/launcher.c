@@ -3095,7 +3095,10 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
                     companion_editor_game == GAME_DRMARIO ? "DR. MARIO" :
                     companion_editor_game == GAME_SML ? "SUPER MARIO LAND" :
                     companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2" :
-                    "WARIO LAND: TREASURE EXPEDITION");
+                    (companion_editor_game == GAME_WARIO_LAND2_GB ||
+                     companion_editor_game == GAME_WARIO_LAND2_GBC)
+                        ? "WARIO LAND II: STOLEN TREASURE" :
+                        "WARIO LAND: TREASURE EXPEDITION");
         if (DECK_ELEM_HEADER == companion_editor_element) {
             float ex, ey, ew, eh;
             deck_editor_element_rect(d, DECK_ELEM_HEADER, x, y, w, h, &ex, &ey, &ew, &eh);
