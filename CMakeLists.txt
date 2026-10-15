@@ -159,6 +159,10 @@ add_executable(test_wario_land2_wide tests/test_wario_land2_wide.c runtime/wides
 target_include_directories(test_wario_land2_wide PRIVATE runtime)
 add_test(NAME wario_land2_widescreen COMMAND test_wario_land2_wide)
 
+add_executable(test_wario_land3_wide tests/test_wario_land3_wide.c runtime/widescreen.c)
+target_include_directories(test_wario_land3_wide PRIVATE runtime)
+add_test(NAME wario_land3_widescreen COMMAND test_wario_land3_wide)
+
 add_executable(test_wario_event_state tests/test_wario_event_state.c)
 target_include_directories(test_wario_event_state PRIVATE runtime)
 add_test(NAME wario_event_state COMMAND test_wario_event_state)
