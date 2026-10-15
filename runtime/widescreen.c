@@ -1453,8 +1453,12 @@ static void wl3_scan_runtime_hooks(size_t rom_size)
     /* Func_298d loads the room-specific 0x200-byte 16x16-block -> 2x2-tile
      * table with LD DE,wRoomBlockTiles; LD BC,$0200; CALL CopyHLToDE_BC.
      * Detect its RAM destination from code instead of baking in a WRAM layout. */
-    for (size_t off = 0; off + 7u <= rom_size; ++off) {
-        if ((off >> 14) != ((off + 6u) >> 14)) continue;
+    /* The room-table copier lives in fixed ROM0 (Func_298d in the
+     * public disassembly). Search only that fixed bank so a compressed data
+     * blob with a coincidental LD DE / LD BC,$0200 byte pattern cannot become
+     * the active graphics table pointer. */
+    size_t fixed_size = rom_size < 0x4000u ? rom_size : 0x4000u;
+    for (size_t off = 0; off + 7u <= fixed_size; ++off) {
         const uint8_t *p = rom + off;
         if (p[0] != 0x11u || p[3] != 0x01u || p[4] != 0x00u ||
             p[5] != 0x02u || p[6] != 0xCDu) continue;
