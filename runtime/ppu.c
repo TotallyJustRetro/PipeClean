@@ -553,6 +553,17 @@ static void wl2_prepare_frame(void)
     memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
     memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
 
+    uint8_t static_tile_probe = 0;
+    int use_static_metatiles = wide_wl2_block_tile &&
+                               wide_wl2_block_tile(0, 0, &static_tile_probe);
+    if (use_static_metatiles) {
+        /* Supported releases contain the complete block-to-tile table in ROM.
+           The renderer no longer waits for a room chunk to enter the VRAM ring
+           before it can identify that block's four 8x8 tiles. */
+        wl2_frame_active = 1;
+        return;
+    }
+
     int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
     int first_y = wl2_floor16(world_y0);
     int first_native_x = wl2_floor16(world_x0);
