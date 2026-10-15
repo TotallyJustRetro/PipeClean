@@ -40,6 +40,11 @@ void wide_wl3_trace_set_path(const char *path);
 /* Interpreter hooks used for runtime-only game-specific camera/object bounds. */
 int wide_intercept_sml2(uint8_t op);
 int wide_intercept_wl3(uint8_t op);
+/* Wario Land 3 room map, dynamic block graphics/palettes, and camera. */
+int wide_wl3_block_at(int world_x, int world_y, uint8_t *block);
+int wide_wl3_block_tile(int block, int part, uint8_t *tile);
+int wide_wl3_block_attr(int block, int part, uint8_t *attr);
+int wide_wl3_camera(int *camera_x, int *camera_y);
 /* Override SML2 enemy-spawn scan bounds at their verified bank-2 read sites. */
 uint8_t wide_read_sml2(uint16_t address, uint8_t value);
 /* Clear per-frame SML2 widescreen scanner state after a save-state/rewind load. */
