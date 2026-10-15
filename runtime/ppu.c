@@ -399,8 +399,10 @@ static int wl2_floor16(int v)
 
 static int wl2_same_visual(const Wl2BlockVisual *a, const Wl2BlockVisual *b)
 {
-    return memcmp(a->tile, b->tile, sizeof a->tile) == 0 &&
-           memcmp(a->attr, b->attr, sizeof a->attr) == 0;
+    /* CGB tilemap attributes can vary by placement (for example, a flipped
+       copy of the same block). The four tile IDs define the block's geometry;
+       keep the latest observed attributes instead of discarding such blocks. */
+    return memcmp(a->tile, b->tile, sizeof a->tile) == 0;
 }
 
 static int wl2_align_origin(int world_origin, int ppu_scroll)
@@ -448,6 +450,8 @@ static void wl2_learn_visible_block(int block_x, int block_y,
         wl2_frame_visuals[id] = sample;
     } else if (!wl2_same_visual(&wl2_frame_visuals[id], &sample)) {
         wl2_frame_conflict[id] = 1;
+    } else {
+        memcpy(wl2_frame_visuals[id].attr, sample.attr, sizeof sample.attr);
     }
 }
 
