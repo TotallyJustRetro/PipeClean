@@ -1651,19 +1651,19 @@ static void draw_wario_treasure_animation(void)
     float phase = elapsed / 1850.f;
     int alpha = (int)((1.f - phase) * 170.f);
     for (int i = 0; i < 3; i++)
-        outline_circle(400, 141, (int)(22 + phase * (95 + i * 20)),
+        outline_circle(400, 258, (int)(22 + phase * (95 + i * 20)),
                        255, 214 - i * 15, 107, (Uint8)(alpha > 255 ? 255 : alpha));
-    fill_round_rect(246, 207, 308, 42, 9, 43, 31, 17, 238);
-    outline_round_rect(246, 207, 308, 42, 9, 255, 214, 107, 255);
-    draw_text_fit(267, 224, 266, 1, 255, 235, 165, "TREASURE FOUND!");
+    fill_round_rect(246, 311, 308, 42, 9, 43, 31, 17, 238);
+    outline_round_rect(246, 311, 308, 42, 9, 255, 214, 107, 255);
+    draw_text_fit(267, 328, 266, 1, 255, 235, 165, "TREASURE FOUND!");
     char text[48];
     snprintf(text, sizeof text, "RELIC %02d ADDED TO YOUR VAULT",
              wario_treasure_animation_id > 0 ? wario_treasure_animation_id : 1);
-    draw_text_fit(267, 239, 266, 1, 247, 233, 208, text);
+    draw_text_fit(267, 343, 266, 1, 247, 233, 208, text);
     for (int i = 0; i < 12; i++) {
         float a = 6.2831853f * i / 12.f + phase * 1.3f;
         int distance = (int)(32 + phase * 70 + (i % 3) * 7);
-        int sx = 400 + (int)(cosf(a) * distance), sy = 141 + (int)(sinf(a) * distance);
+        int sx = 400 + (int)(cosf(a) * distance), sy = 258 + (int)(sinf(a) * distance);
         int sz = (int)(4.5f * (1.f - phase));
         if (sz < 1) sz = 1;
         fill(sx - sz / 2, sy - sz / 2, sz, sz, 255, (i % 3) ? 200 : 243, 107, 255);
@@ -1774,21 +1774,21 @@ static void draw_wario2_celebration(void)
     float phase = elapsed / 1850.f;
     int alpha = (int)((1.f - phase) * 170.f);
     for (int i = 0; i < 3; i++)
-        outline_circle(400, 141, (int)(22 + phase * (95 + i * 20)),
+        outline_circle(400, 258, (int)(22 + phase * (95 + i * 20)),
                        255, 214 - i * 15, 107, (Uint8)(alpha > 255 ? 255 : alpha));
-    fill_round_rect(230, 207, 340, 42, 9, 43, 31, 17, 238);
-    outline_round_rect(230, 207, 340, 42, 9, 255, 214, 107, 255);
-    draw_text_fit(246, 223, 308, 1, 255, 235, 165,
+    fill_round_rect(230, 311, 340, 42, 9, 43, 31, 17, 238);
+    outline_round_rect(230, 311, 340, 42, 9, 255, 214, 107, 255);
+    draw_text_fit(246, 328, 308, 1, 255, 235, 165,
         wario2_animation_kind == WARIO2_ANIM_PICTURE ? "PICTURE PANEL FOUND!" : "TREASURE FOUND!");
     char label[48];
     snprintf(label, sizeof label, "%s %02d / 50",
         wario2_animation_kind == WARIO2_ANIM_PICTURE ? "PICTURE PIECE" : "TREASURE",
         wario2_animation_id > 0 ? wario2_animation_id : 1);
-    draw_text_fit(246, 239, 308, 1, 247, 233, 208, label);
+    draw_text_fit(246, 343, 308, 1, 247, 233, 208, label);
     for (int i = 0; i < 12; i++) {
         float a = 6.2831853f * i / 12.f + phase * 1.3f;
         int distance = (int)(32 + phase * 70 + (i % 3) * 7);
-        int sx = 400 + (int)(cosf(a) * distance), sy = 141 + (int)(sinf(a) * distance);
+        int sx = 400 + (int)(cosf(a) * distance), sy = 258 + (int)(sinf(a) * distance);
         int sz = (int)(4.5f * (1.f - phase));
         if (sz < 1) sz = 1;
         fill(sx - sz / 2, sy - sz / 2, sz, sz, 255,
