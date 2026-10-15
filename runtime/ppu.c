@@ -757,10 +757,17 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         unsigned part = ((world_y & 8) ? 2u : 0u) + ((world_x & 8) ? 1u : 0u);
         const Wl2BlockVisual *visual = &wl2_block_visuals[id];
         uint8_t tile = 0, attr = 0;
-        int have_static_tile = wide_wl2_block_tile &&
-                               wide_wl2_block_tile(wl2_metatile_set, (int)id,
-                                                   (int)part, &tile);
-        if (!have_static_tile) {
+        uint8_t static_block_tiles[4];
+        int have_static_block = wide_wl2_block_tile != NULL;
+        for (unsigned p = 0; p < 4 && have_static_block; p++) {
+            if (!wide_wl2_block_tile(wl2_metatile_set, (int)id, (int)p,
+                                     &static_block_tiles[p]))
+                have_static_block = 0;
+        }
+        int have_static_tile = have_static_block;
+        if (have_static_block) {
+            tile = static_block_tiles[part];
+        } else {
             /* Unknown ROM revisions retain the frame-learned tile/attribute
                pair rather than combining a learned tile with stale CGB data. */
             if (!visual->valid) continue;
@@ -769,19 +776,36 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         }
         if (cgb_render_enabled) {
             /* Prefer an attribute captured when this exact world tile was in
-               the native viewport. The hardware tilemap is only a 256px ring
-               and may now contain another room's palette data. */
-            if (!wl2_world_attr_at(world_x, world_y, &attr) && have_static_tile) {
+               the native viewport. Otherwise only trust the hardware map's
+               attributes when its ENTIRE 16x16 tile pattern agrees with the
+               selected ROM metatile. A single coincidentally matching 8x8
+               tile is not enough: recycled map-ring slots can share that tile
+               number but belong to a different palette/flip placement. */
+            if (!wl2_world_attr_at(world_x, world_y, &attr) && have_static_block) {
                 unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
-                unsigned map_index = map_off +
-                    ((unsigned)(world_y >> 3) & 31u) * 32u +
-                    ((unsigned)(world_x >> 3) & 31u);
-                if (vram[map_index] == tile) {
+                int block_x = world_x & ~15;
+                int block_y = world_y & ~15;
+                int map_block_matches = 1;
+                for (unsigned p = 0; p < 4; p++) {
+                    int px = block_x + (int)(p & 1u) * 8;
+                    int py = block_y + (int)(p >> 1) * 8;
+                    unsigned map_index = map_off +
+                        (((unsigned)py >> 3) & 31u) * 32u +
+                        (((unsigned)px >> 3) & 31u);
+                    if (vram[map_index] != static_block_tiles[p]) {
+                        map_block_matches = 0;
+                        break;
+                    }
+                }
+                if (map_block_matches) {
+                    unsigned map_index = map_off +
+                        ((unsigned)(world_y >> 3) & 31u) * 32u +
+                        ((unsigned)(world_x >> 3) & 31u);
                     attr = vram_cgb1[map_index];
                 } else if (visual->valid) {
-                    /* A mismatch means the ring slot is stale for this
-                       position: reuse the learned pair from this block ID. */
-                    tile = visual->tile[part];
+                    /* Keep the ROM-selected tile and use the block's learned
+                       attribute as a stable fallback until the exact world
+                       coordinate is seen in the native viewport. */
                     attr = visual->attr[part];
                 } else {
                     attr = 0;
