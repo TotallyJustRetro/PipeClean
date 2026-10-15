@@ -463,6 +463,18 @@ static void wl2_learn_visible_block(int block_x, int block_y,
     }
 }
 
+static uint8_t wl2_read_wram(uint16_t address)
+{
+    /* These game variables are documented by WRAM-domain offsets. For Dxxx
+       addresses, rd8() follows the active SVBK bank instead of the physical
+       bank where Wario Land II keeps its coordinates and level state. */
+#if defined(__GNUC__) || defined(__clang__)
+    if (gb_wram_peek && address >= 0xC000u && address < 0xE000u)
+        return gb_wram_peek((size_t)(address - 0xC000u));
+#endif
+    return rd8(address);
+}
+
 static void wl2_prepare_frame(void)
 {
     wl2_frame_active = 0;
@@ -477,16 +489,18 @@ static void wl2_prepare_frame(void)
     uint16_t camy_addr = color_release ? 0xC65Fu : 0xD651u;
     uint16_t tref_addr = color_release ? 0xC704u : 0xD6EBu;
     uint16_t level_addr = color_release ? 0xD510u : 0xC510u;
-    int player_x = ((int)rd8(px_addr) << 8) | rd8((uint16_t)(px_addr + 1u));
-    int player_y = ((int)rd8(py_addr) << 8) | rd8((uint16_t)(py_addr + 1u));
-    int world_x0 = player_x - rd8(camx_addr);
-    int world_y0 = player_y - rd8(camy_addr);
+    int player_x = ((int)wl2_read_wram(px_addr) << 8) |
+                   wl2_read_wram((uint16_t)(px_addr + 1u));
+    int player_y = ((int)wl2_read_wram(py_addr) << 8) |
+                   wl2_read_wram((uint16_t)(py_addr + 1u));
+    int world_x0 = player_x - wl2_read_wram(camx_addr);
+    int world_y0 = player_y - wl2_read_wram(camy_addr);
     world_x0 = wl2_align_origin(world_x0, scx);
     world_y0 = wl2_align_origin(world_y0, scy);
 
-    uint16_t tref = (uint16_t)(((uint16_t)rd8(tref_addr) << 8) |
-                                rd8((uint16_t)(tref_addr + 1u)));
-    int level = rd8(level_addr);
+    uint16_t tref = (uint16_t)(((uint16_t)wl2_read_wram(tref_addr) << 8) |
+                                wl2_read_wram((uint16_t)(tref_addr + 1u)));
+    int level = wl2_read_wram(level_addr);
     int cgb = cgb_render_enabled != 0;
     if (tref == 0 || tref == 0xFFFFu ||
         world_x0 < -16 || world_x0 > 0x1000 ||
@@ -668,7 +682,12 @@ void ppu_write(uint8_t r, uint8_t v)
 /* ------------------------------------------------------------------ */
 static void render_line(int y)
 {
-    if (y == 0) ppu_refresh_wide_layout();
+    if (y == 0) {
+        ppu_refresh_wide_layout();
+        /* Sample after the VBlank routine, when OAM and game RAM have been
+           updated for the image now about to be rendered. */
+        if (wide_wl2_trace_frame) wide_wl2_trace_frame(oam);
+    }
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
     if (y == 0 && ppu_w > GB_W) {
@@ -909,7 +928,6 @@ void ppu_tick(int n)
                 mode = 1; io_if |= 0x01; wlc = 0;
                 update_stat();
                 frame_count++;
-                if (wide_wl2_trace_frame) wide_wl2_trace_frame(oam);
                 frame_hook();
             } else { mode = 2; update_stat(); }
         } else {
