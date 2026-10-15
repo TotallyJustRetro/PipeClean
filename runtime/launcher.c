@@ -290,6 +290,8 @@ int launcher_prepare(int g, char *err, size_t n)
     }
     int wl, wr;
     wide_dims_profile(g, c->wide, wario_dx, &wl, &wr);
+    /* Finalize any previous Wario Land 3 trace before replacing its profile. */
+    wide_wl3_trace_finish();
     /* Always call wide_install, including when the requested width is zero.
      * It clears runtime hooks left by a previous game/session before the native
      * width setup. Unsupported Wario ROM revisions safely return to 160px. */
@@ -300,6 +302,9 @@ int launcher_prepare(int g, char *err, size_t n)
     char trace_path[1200];
     snprintf(trace_path, sizeof trace_path, "%spipeclean-wl2-wide-trace.txt", settings_dir());
     wide_wl2_trace_set_path(trace_path);
+    wide_wl3_trace_set_path(trace_path);
+    wide_wl3_trace_begin(g == GAME_WARIO_LAND3_GBC && wl + wr > 0 && wide_ready ? wl : 0,
+                         g == GAME_WARIO_LAND3_GBC && wl + wr > 0 && wide_ready ? wr : 0);
     ppu_set_wario_sml3(g == GAME_WARIO_SML3 && wl + wr > 0 && wide_ready);
     ppu_set_wl2_wide((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) &&
                       wl + wr > 0 && wide_ready);
