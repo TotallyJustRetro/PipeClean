@@ -22,7 +22,7 @@ extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak)
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
-extern int wide_wl2_block_tile(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl2_block_tile(int, int, int, uint8_t *) __attribute__((weak));
 /* Renderer-only regression tests link ppu.c without the full GB bus module. */
 extern uint8_t rd8(uint16_t address) __attribute__((weak));
 #endif
@@ -58,6 +58,7 @@ static uint8_t wl2_ring_seen[256], wl2_ring_conflict[256];
 static int wl2_frame_world_x0, wl2_frame_world_y0;
 static int wl2_frame_scx, wl2_frame_scy;
 static int wl2_cache_level = -1, wl2_cache_tref = -1, wl2_cache_cgb = -1;
+static int wl2_metatile_set = -1;
 static uint16_t wario_frame_scroll_x, wario_frame_scroll_y;
 static int wario_cached_level = -1;
 static uint8_t wario_block_attr[0x80][4], wario_block_known[0x80][4];
@@ -73,6 +74,7 @@ static void wl2_clear_visual_cache(void)
     memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
     memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
     wl2_frame_active = 0;
+    wl2_metatile_set = -1;
     wl2_cache_level = wl2_cache_tref = wl2_cache_cgb = -1;
 }
 
@@ -417,6 +419,49 @@ static int wl2_same_visual(const Wl2BlockVisual *a, const Wl2BlockVisual *b)
     return memcmp(a->tile, b->tile, sizeof a->tile) == 0;
 }
 
+/* Choose the active 0x200-byte metatile set by matching its tile IDs
+ * against block graphics observed in the unmodified 160px viewport. This
+ * avoids assuming every room uses the table at 0x18000+0x000, while still
+ * allowing the margin renderer to draw blocks that have never entered view. */
+static void wl2_select_metatile_set(void)
+{
+    uint8_t probe;
+    if (!rom || !wide_wl2_block_tile ||
+        !wide_wl2_block_tile(0, 0, 0, &probe)) {
+        wl2_metatile_set = -1;
+        return;
+    }
+
+    int score[32] = {0};
+    int compared = 0;
+    for (unsigned id = 0; id < 128; id++) {
+        if (!wl2_frame_seen[id] || wl2_frame_conflict[id]) continue;
+        const uint8_t *observed = wl2_frame_visuals[id].tile;
+        compared++;
+        for (unsigned set = 0; set < 32; set++) {
+            size_t off = 0x18000u + (size_t)set * 0x200u + (size_t)id * 4u;
+            if (memcmp(rom + off, observed, 4) == 0)
+                score[set]++;
+        }
+    }
+
+    /* Common metatiles are shared across many sets. Wait for several
+       distinctive visible blocks before replacing the current selection. */
+    if (compared < 4) return;
+    int best = -1, best_score = -1, second_score = -1;
+    for (int set = 0; set < 32; set++) {
+        if (score[set] > best_score) {
+            second_score = best_score;
+            best_score = score[set];
+            best = set;
+        } else if (score[set] > second_score) {
+            second_score = score[set];
+        }
+    }
+    if (best >= 0 && best_score >= 3 && best_score - second_score >= 2)
+        wl2_metatile_set = best;
+}
+
 static int wl2_scroll_delta(int current, int initial)
 {
     int delta = current - initial;
@@ -538,6 +583,7 @@ static void wl2_prepare_frame(void)
     if (wl2_cache_level != level || wl2_cache_tref != (int)tref ||
         wl2_cache_cgb != cgb) {
         memset(wl2_block_visuals, 0, sizeof wl2_block_visuals);
+        wl2_metatile_set = -1;
         wl2_cache_level = level;
         wl2_cache_tref = (int)tref;
         wl2_cache_cgb = cgb;
@@ -576,6 +622,7 @@ static void wl2_prepare_frame(void)
             wl2_block_visuals[id].valid = 1;
         }
     }
+    wl2_select_metatile_set();
 
     /* Pass 2: look ahead into the actual 256x256 hardware tilemap ring.
        WL2 often has the next/previous room columns populated before they enter
@@ -626,7 +673,8 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         const Wl2BlockVisual *visual = &wl2_block_visuals[id];
         uint8_t tile = 0, attr = 0;
         int have_static_tile = wide_wl2_block_tile &&
-                               wide_wl2_block_tile((int)id, (int)part, &tile);
+                               wide_wl2_block_tile(wl2_metatile_set, (int)id,
+                                                   (int)part, &tile);
         if (cgb_render_enabled) {
             /* CGB attributes are placement-specific and live beside the
                256x256 hardware map ring. Index them by the same world
