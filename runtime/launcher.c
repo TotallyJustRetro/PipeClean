@@ -2865,6 +2865,7 @@ static int companion_editor_preview_item = 1;
 static int companion_editor_sound_selection;
 static int companion_editor_dragging, companion_editor_resizing;
 static float companion_editor_last_x, companion_editor_last_y;
+static float companion_editor_drag_residual_x, companion_editor_drag_residual_y;
 static int companion_editor_preview_hover;
 static CompanionLayoutCfg companion_undo[16], companion_redo[16];
 static int companion_undo_count, companion_redo_count;
@@ -2969,37 +2970,59 @@ static int *deck_element_scale_y(CompanionLayoutCfg *d, int element)
 
 static void deck_editor_element_base(int element, float *x, float *y, float *w, float *h)
 {
-    /* The editor's design canvas mirrors the AYN Thor bottom screen (31:27). */
     switch (element) {
-    case DECK_ELEM_HEADER:    *x = 18;  *y = 7;   *w = 764; *h = 49; break;
-    case DECK_ELEM_ITEM:      *x = 300; *y = 155; *w = 200; *h = 200; break;
-    case DECK_ELEM_CONTROLS:  *x = 20;  *y = 420; *w = 760; *h = 48; break;
-    case DECK_ELEM_TIMELINE:  *x = 20;  *y = 510; *w = 760; *h = DECK_EDITOR_THOR_H - 510.0f; break;
-    case DECK_ELEM_STATUS:    *x = 606; *y = 136; *w = 174; *h = 242; break;
+    case DECK_ELEM_HEADER: *x=18; *y=7; *w=764; *h=49; break;
+    case DECK_ELEM_ITEM:
+        if (companion_editor_game == GAME_DRMARIO) { *x=20; *y=78; *w=358; *h=304; }
+        else if (companion_editor_game == GAME_WARIO_SML3 ||
+                 companion_editor_game == GAME_WARIO_LAND2_GB ||
+                 companion_editor_game == GAME_WARIO_LAND2_GBC) {
+            *x=342; *y=84; *w=116; *h=116;
+        } else { *x=300; *y=155; *w=200; *h=200; }
+        break;
+    case DECK_ELEM_CONTROLS: *x=20; *y=420; *w=760; *h=48; break;
+    case DECK_ELEM_TIMELINE: *x=20; *y=510; *w=760; *h=DECK_EDITOR_THOR_H-520.0f; break;
+    case DECK_ELEM_STATUS:
+        if (companion_editor_game == GAME_DRMARIO) { *x=397; *y=78; *w=383; *h=304; }
+        else if (companion_editor_game == GAME_WARIO_SML3) { *x=430; *y=77; *w=350; *h=160; }
+        else if (companion_editor_game == GAME_WARIO_LAND2_GB ||
+                 companion_editor_game == GAME_WARIO_LAND2_GBC) { *x=415; *y=268; *w=365; *h=128; }
+        else { *x=606; *y=136; *w=174; *h=242; }
+        break;
     default:
         if (element >= DECK_ELEM_DECORATION && element < N_DECK_ELEM) {
-            static const float bx[N_DECK_DECORATIONS] = {
-                280, 20, 610, 315, 26, 634, 190, 488,
-                26, 675, 195, 565, 40, 695, 315, 495
-            };
-            static const float by[N_DECK_DECORATIONS] = {
-                150, 78, 78, 295, 218, 218, 95, 285,
-                135, 135, 410, 410, 35, 35, 190, 190
-            };
-            static const float bw[N_DECK_DECORATIONS] = {
-                240, 170, 170, 170, 140, 140, 122, 122,
-                100, 100, 100, 100, 95, 95, 112, 112
-            };
-            static const float bh[N_DECK_DECORATIONS] = {
-                135, 115, 115, 115, 90, 90, 84, 84,
-                68, 68, 68, 68, 64, 64, 72, 72
-            };
-            int slot = element - DECK_ELEM_DECORATION;
-            *x = bx[slot]; *y = by[slot]; *w = bw[slot]; *h = bh[slot];
-        } else {
-            *x = 400; *y = 250; *w = 112; *h = 74;
-        }
+            static const float bx[N_DECK_DECORATIONS]={280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
+            static const float by[N_DECK_DECORATIONS]={150,78,78,295,218,218,95,285,135,135,410,410,35,35,190,190};
+            static const float bw[N_DECK_DECORATIONS]={240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
+            static const float bh[N_DECK_DECORATIONS]={135,115,115,115,90,90,84,84,68,68,68,68,64,64,72,72};
+            int slot=element-DECK_ELEM_DECORATION;
+            *x=bx[slot]; *y=by[slot]; *w=bw[slot]; *h=bh[slot];
+        } else { *x=400; *y=250; *w=112; *h=74; }
         break;
+    }
+}
+static void deck_editor_element_anchor(int element, float *cx, float *cy)
+{
+    *cx=400.0f; *cy=34.0f;
+    switch(element) {
+    case DECK_ELEM_HEADER: *cx=400; *cy=34; break;
+    case DECK_ELEM_ITEM:
+        if (companion_editor_game==GAME_DRMARIO) { *cx=199; *cy=228; }
+        else if (companion_editor_game==GAME_WARIO_SML3 ||
+                 companion_editor_game==GAME_WARIO_LAND2_GB ||
+                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=400; *cy=142; }
+        else { *cx=400; *cy=255; }
+        break;
+    case DECK_ELEM_CONTROLS: *cx=400; *cy=444; break;
+    case DECK_ELEM_TIMELINE: *cx=400; *cy=596; break;
+    case DECK_ELEM_STATUS:
+        if (companion_editor_game==GAME_DRMARIO) { *cx=590; *cy=230; }
+        else if (companion_editor_game==GAME_WARIO_SML3) { *cx=600; *cy=157; }
+        else if (companion_editor_game==GAME_WARIO_LAND2_GB ||
+                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=600; *cy=332; }
+        else { *cx=690; *cy=255; }
+        break;
+    default: break;
     }
 }
 
@@ -3007,17 +3030,17 @@ static void deck_editor_element_rect(CompanionLayoutCfg *d, int element,
                                      float px, float py, float pw, float ph,
                                      float *rx, float *ry, float *rw, float *rh)
 {
-    float x, y, w, h;
-    deck_editor_element_base(element, &x, &y, &w, &h);
-    float scale_x = (float)*deck_element_scale(d, element) / 100.0f;
-    float scale_y = (float)*deck_element_scale_y(d, element) / 100.0f;
-    /* Stored offsets keep the runtime's historical 800x450 reference units. */
-    x += (float)*deck_element_x(d, element);
-    y += (float)*deck_element_y(d, element) * (DECK_EDITOR_THOR_H / 450.0f);
-    *rx = px + (x + w * 0.5f - w * scale_x * 0.5f) * (pw / 800.0f);
-    *ry = py + (y + h * 0.5f - h * scale_y * 0.5f) * (ph / DECK_EDITOR_THOR_H);
-    *rw = w * (pw / 800.0f) * scale_x;
-    *rh = h * (ph / DECK_EDITOR_THOR_H) * scale_y;
+    float x,y,w,h,cx,cy;
+    deck_editor_element_base(element,&x,&y,&w,&h);
+    deck_editor_element_anchor(element,&cx,&cy);
+    if (element >= DECK_ELEM_DECORATION) { cx=x+w*.5f; cy=y+h*.5f; }
+    float sx=(float)*deck_element_scale(d,element)/100.f;
+    float sy=(float)*deck_element_scale_y(d,element)/100.f;
+    float dx=(float)*deck_element_x(d,element);
+    float dy=(float)*deck_element_y(d,element)*(DECK_EDITOR_THOR_H/450.f);
+    x=cx+(x-cx)*sx+dx; y=cy+(y-cy)*sy+dy;
+    *rx=px+x*(pw/800.f); *ry=py+y*(ph/DECK_EDITOR_THOR_H);
+    *rw=w*(pw/800.f)*sx; *rh=h*(ph/DECK_EDITOR_THOR_H)*sy;
 }
 
 static const char *deck_editor_preview_asset_path(const CompanionLayoutCfg *d, int index)
@@ -3049,186 +3072,197 @@ static void deck_editor_preview_asset(const CompanionLayoutCfg *d, int asset_ind
         ui_image_file_fit(path, x, y, w, h);
 }
 
-static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
+static void deck_editor_preview_card(float x,float y,float w,float h,int game,const char *title)
 {
-    ui_shadow(x, y, w, h, 11, 5, RGBA(0, 0, 0, 110));
-    ui_rrect(x, y, w, h, 10, RGBA(12, 20, 34, 255));
-    ui_vgrad(x + 2, y + 2, w - 4, h - 4,
-             companion_editor_game == GAME_DRMARIO ? RGBA(218, 239, 237, 255) :
-             companion_editor_game == GAME_SML ? RGBA(52, 87, 62, 255) : RGBA(67, 49, 88, 255),
-             RGBA(16, 22, 38, 255));
-    ui_clip(x + 2, y + 2, w - 4, h - 4);
-    deck_editor_preview_asset(d, 0, d->background_path, x + 2, y + 2, w - 4, h - 4);
-    /* Background and all inserted artwork are fit-within by default; no asset is silently cropped. */
-
-    for (int e = DECK_ELEM_DECORATION; e < N_DECK_ELEM; e++) {
-        int slot = e - DECK_ELEM_DECORATION;
-        const char *asset = deck_decoration_path_const(d, slot);
-        if (!asset[0]) continue;
-        float rx, ry, rw, rh;
-        deck_editor_element_rect(d, e, x, y, w, h, &rx, &ry, &rw, &rh);
-        deck_editor_preview_asset(d, deck_decoration_asset_index(slot), asset, rx, ry, rw, rh);
-        if (e == companion_editor_element)
-            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
-    }
-
-    /* Header layer: the selectable group includes title and both quick actions. */
-    {
-        float sx = (float)(d->header_scale > 0 ? d->header_scale : 100) / 100.f;
-        float sy = (float)(d->header_scale_y > 0 ? d->header_scale_y : 100) / 100.f;
-        float dx = d->header_dx;
-        float dy = d->header_dy * (DECK_EDITOR_THOR_H / 450.0f);
-        float hx = 400.f + (18.f - 400.f) * sx + dx;
-        float hy = 34.f + (7.f - 34.f) * sy + dy;
-        float hw = 390.f * sx, hh = 49.f * sy;
-        float rx = x + w * hx / 800.f, ry = y + h * hy / DECK_EDITOR_THOR_H;
-        float rw = w * hw / 800.f, rh = h * hh / DECK_EDITOR_THOR_H;
-        ui_rrect(rx, ry, rw, rh, 5, RGBA(28, 40, 58, 210));
-        deck_editor_preview_asset(d, 15, d->header_texture_path, rx + 1, ry + 1, rw - 2, rh - 2);
-        float textX = x + w * (400.f + (27.f - 400.f) * sx + dx) / 800.f;
-        float topY = y + h * (34.f + (22.f - 34.f) * sy + dy) / DECK_EDITOR_THOR_H;
-        float titleY = y + h * (34.f + (42.f - 34.f) * sy + dy) / DECK_EDITOR_THOR_H;
-        ui_text_fit(F_BOLD, 6.8f, textX, topY, rw - 14,
-                    RGBA(127, 220, 236, 255), "PIPE CLEAN / POCKET QUEST");
-        ui_text_fit(F_BOLD, 9, textX, titleY, rw - 14,
-                    RGBA(247, 249, 255, 255),
-                    companion_editor_game == GAME_DRMARIO ? "DR. MARIO" :
-                    companion_editor_game == GAME_SML ? "SUPER MARIO LAND" :
-                    companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2" :
-                    (companion_editor_game == GAME_WARIO_LAND2_GB ||
-                     companion_editor_game == GAME_WARIO_LAND2_GBC)
-                        ? "WARIO LAND II: STOLEN TREASURE" :
-                        "WARIO LAND: TREASURE EXPEDITION");
-        if (DECK_ELEM_HEADER == companion_editor_element) {
-            float ex, ey, ew, eh;
-            deck_editor_element_rect(d, DECK_ELEM_HEADER, x, y, w, h, &ex, &ey, &ew, &eh);
-            ui_stroke(ex, ey, ew, eh, 5, 1.5f, RGBA(108, 218, 255, 255));
-        }
-    }
-
-    /* The top-right quick actions have independent textures too, and follow the header's placement transform. */
-    {
-        float sx = (float)(d->header_scale > 0 ? d->header_scale : 100) / 100.f;
-        float sy = (float)(d->header_scale_y > 0 ? d->header_scale_y : 100) / 100.f;
-        float bx = 542, by = 12, bw = 112, bh = 39;
-        bx = 400.f + (bx - 400.f) * sx + d->header_dx;
-        by = 34.f + (by - 34.f) * sy + d->header_dy * (DECK_EDITOR_THOR_H / 450.0f);
-        bw *= sx; bh *= sy;
-        const char *path = d->button_texture_by_action[4][0]
-            ? d->button_texture_by_action[4] : d->button_texture_path;
-        ui_rrect(x + w * bx / 800.f, y + h * by / DECK_EDITOR_THOR_H,
-                 w * bw / 800.f, h * bh / DECK_EDITOR_THOR_H, 4, RGBA(34, 48, 67, 240));
-        deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 28, path,
-            x + w * bx / 800.f + 1, y + h * by / DECK_EDITOR_THOR_H + 1,
-            w * bw / 800.f - 2, h * bh / DECK_EDITOR_THOR_H - 2);
-        ui_text_c(F_BOLD, 5.4f, x + w * (bx + bw * .5f) / 800.f,
-                  y + h * (by + bh * .43f) / DECK_EDITOR_THOR_H, RGBA(246, 249, 255, 255), "BACKGROUND");
-
-        float cx = 662, cy = 12, cw = 120, ch = 39;
-        cx = 400.f + (cx - 400.f) * sx + d->header_dx;
-        cy = 34.f + (cy - 34.f) * sy + d->header_dy * (DECK_EDITOR_THOR_H / 450.0f);
-        cw *= sx; ch *= sy;
-        path = d->button_texture_by_action[5][0]
-            ? d->button_texture_by_action[5] : d->button_texture_path;
-        ui_rrect(x + w * cx / 800.f, y + h * cy / DECK_EDITOR_THOR_H,
-                 w * cw / 800.f, h * ch / DECK_EDITOR_THOR_H, 4, RGBA(34, 48, 67, 240));
-        deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 29, path,
-            x + w * cx / 800.f + 1, y + h * cy / DECK_EDITOR_THOR_H + 1,
-            w * cw / 800.f - 2, h * ch / DECK_EDITOR_THOR_H - 2);
-        ui_text_c(F_BOLD, 5.4f, x + w * (cx + cw * .5f) / 800.f,
-                  y + h * (cy + ch * .43f) / DECK_EDITOR_THOR_H, RGBA(246, 249, 255, 255), "CLOSE");
-    }
-
-    /* Reserve item — use its exact assigned texture, or the legacy generic fallback. */
-    {
-        float rx, ry, rw, rh;
-        deck_editor_element_rect(d, DECK_ELEM_ITEM, x, y, w, h, &rx, &ry, &rw, &rh);
-        int item_id = companion_editor_preview_item;
-        const char *item_path = item_id >= 1 && item_id <= 3
-            ? deck_editor_preview_asset_path(d, 11 + item_id) : "";
-        if (!item_path[0]) item_path = d->item_texture_path;
-        float inset_x = rw * .16f, inset_y = rh * .13f;
-        if (item_path[0]) deck_editor_preview_asset(d, item_path == d->item_texture_path ? 2 : 11 + item_id, item_path, rx + inset_x, ry + inset_y, rw - inset_x * 2, rh - inset_y * 2);
-        else {
-            ui_rrect(rx + rw * .25f, ry + rh * .25f, rw * .5f, rh * .48f, 8, RGBA(255, 205, 75, 245));
-            ui_text_c(F_BOLD, 13, rx + rw * .5f, ry + rh * .36f, RGBA(61, 43, 20, 255), "?");
-        }
-        ui_text_c(F_BOLD, 5.6f, rx + rw * .5f, ry + rh * .81f,
-                  RGBA(248, 245, 230, 255),
-                  item_id == 1 ? "MUSHROOM" :
-                  item_id == 2 ? (companion_editor_game == GAME_SML ? "SUPERBALL FLOWER" : "FIRE FLOWER") :
-                  item_id == 3 ? "CARROT" : "ITEM PREVIEW");
-        if (DECK_ELEM_ITEM == companion_editor_element)
-            ui_stroke(rx, ry, rw, rh, 8, 1.5f, RGBA(108, 218, 255, 255));
-    }
-
-    /* Adventure Status is a first-class transformable element, just like the header. */
-    {
-        float sx, sy, sw, sh;
-        deck_editor_element_rect(d, DECK_ELEM_STATUS, x, y, w, h, &sx, &sy, &sw, &sh);
-        ui_rrect(sx, sy, sw, sh, 7, RGBA(34, 44, 62, 240));
-        deck_editor_preview_asset(d, 16, d->status_texture_path, sx + 1, sy + 1, sw - 2, sh - 2);
-        ui_text_fit(F_BOLD, 6, sx + 5, sy + 6, sw - 10, RGBA(191, 202, 222, 255), "ADVENTURE STATUS");
-        ui_text_fit(F_BOLD, 8, sx + 5, sy + sh * .45f, sw - 10, RGBA(250, 240, 220, 255), "LIVES  × 03");
-        ui_text_fit(F_BOLD, 7, sx + 5, sy + sh * .66f, sw - 10, RGBA(112, 225, 182, 255),
-                    companion_editor_game == GAME_DRMARIO ? "LEVEL 00  /  SPEED LOW" : companion_editor_game == GAME_SML ? "WORLD 1 - 1" : "STAGE 01");
-        if (DECK_ELEM_STATUS == companion_editor_element)
-            ui_stroke(sx, sy, sw, sh, 7, 1.5f, RGBA(108, 218, 255, 255));
-    }
-
-    /* Separate images for Save, Load, Pause and Rewind. */
-    {
-        float rx, ry, rw, rh;
-        deck_editor_element_rect(d, DECK_ELEM_CONTROLS, x, y, w, h, &rx, &ry, &rw, &rh);
-        static const char *labels[4] = {"SAVE", "LOAD", "PAUSE", "REWIND"};
-        for (int b = 0; b < 4; b++) {
-            float bw = (rw - 18.f) / 4.f, bh = rh - 6.f;
-            float bx = rx + 3.f + b * (bw + 4.f);
-            float by = ry + 3.f;
-            int texture_index = 17 + b;
-            const char *custom = deck_editor_preview_asset_path(d, texture_index);
-            if (!custom[0]) texture_index = 1, custom = d->button_texture_path;
-            ui_rrect(bx, by, bw, bh, 4, RGBA(29, 42, 60, 240));
-            deck_editor_preview_asset(d, texture_index, custom, bx + 1, by + 1, bw - 2, bh - 2);
-            ui_stroke(bx, by, bw, bh, 4, .7f, RGBA(105, 137, 174, 230));
-            ui_text_c(F_BOLD, 6.1f, bx + bw * .5f, by + bh * .39f, RGBA(246, 249, 255, 255), labels[b]);
-        }
-        if (DECK_ELEM_CONTROLS == companion_editor_element)
-            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
-    }
-
-    /* Timeline is a wide strip; the editor intentionally has no duplicate save-preview card. */
-    {
-        float rx, ry, rw, rh;
-        deck_editor_element_rect(d, DECK_ELEM_TIMELINE, x, y, w, h, &rx, &ry, &rw, &rh);
-        ui_rrect(rx, ry, rw, rh, 5, RGBA(24, 34, 51, 235));
-        ui_text_fit(F_BOLD, 6.5f, rx + 5, ry + 4, rw - 10,
-                    RGBA(218, 228, 245, 255), "SAVE-STATE TIMELINE");
-        for (int slot = 0; slot < 10; slot++) {
-            float tile_w = (rw - 18) / 10.f;
-            float tx = rx + 3 + slot * (tile_w + 1);
-            ui_rrect(tx, ry + rh * .28f, tile_w, rh * .54f, 2,
-                     slot == 0 ? RGBA(86, 180, 200, 190) : RGBA(66, 81, 106, 200));
-        }
-        if (DECK_ELEM_TIMELINE == companion_editor_element)
-            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
-    }
-
-    ui_unclip();
-    float sx, sy, sw, sh;
-    deck_editor_element_rect(d, companion_editor_element, x, y, w, h, &sx, &sy, &sw, &sh);
-    ui_stroke(sx, sy, sw, sh, 5, 2, RGBA(117, 213, 255, 255));
-    /* Large, high-contrast handles are sized for touchscreens as well as a mouse. */
-    /* Oversized grab handles are designed for touch input on handheld displays. */
-    ui_rrect(sx + sw - 26, sy + sh * .5f - 13, 26, 26, 7, RGBA(250, 252, 255, 255));
-    ui_rrect(sx + sw * .5f - 13, sy + sh - 26, 26, 26, 7, RGBA(250, 252, 255, 255));
-    ui_rrect(sx + sw - 26, sy + sh - 26, 26, 26, 7, RGBA(93, 207, 255, 255));
+    uint32_t fill=game==GAME_DRMARIO?RGBA(236,249,247,245):game==GAME_SML?RGBA(35,57,43,242):game==GAME_SML2?RGBA(53,35,66,242):RGBA(36,53,76,242);
+    uint32_t edge=game==GAME_DRMARIO?RGBA(21,157,173,230):game==GAME_SML?RGBA(128,169,81,230):RGBA(189,133,55,230);
+    ui_rrect(x,y,w,h,6,fill); ui_stroke(x,y,w,h,6,.8f,edge);
+    ui_rect(x+9,y+8,fmaxf(4.f,w-18),2.f,edge);
+    ui_text_fit(F_BOLD,5.5f,x+9,y+14,w-18,game==GAME_DRMARIO?RGBA(60,91,104,255):RGBA(214,203,179,255),title);
+}
+static void deck_editor_preview_emblem(float cx,float cy,float size)
+{
+    ui_rrect(cx-size,cy-size,size*2,size*2,size,RGBA(67,42,18,180));
+    ui_stroke(cx-size+3,cy-size+3,size*2-6,size*2-6,size,1.1f,RGBA(255,214,107,255));
+    ui_rrect(cx-size*.55f,cy-size*.18f,size*1.1f,size*.65f,5,RGBA(142,79,34,255));
+    ui_rrect(cx-size*.55f,cy-size*.46f,size*1.1f,size*.48f,5,RGBA(199,129,52,255));
+    ui_rect(cx-size*.07f,cy-size*.45f,size*.14f,size*.9f,RGBA(255,214,107,255));
+    ui_rrect(cx-size*.12f,cy-size*.05f,size*.24f,size*.24f,size*.12f,RGBA(255,241,181,255));
+}
+static void deck_editor_preview_collection(float x,float y,float w,float h,int game,const char *title,int pieces)
+{
+    deck_editor_preview_card(x,y,w,h,game,title);
+    ui_text_fit(F_BOLD,5.3f,x+10,y+33,w-20,RGBA(255,224,164,255),pieces?"00 / 50 PICTURE PIECES":"00 / 50 TREASURES");
+    ui_rrect(x+10,y+43,w-20,4,2,RGBA(70,53,34,255));
+    float stepx=(w-24)/10.f,stepy=(h-57)/5.f;
+    for(int i=0;i<50;i++){float cx=x+12+stepx*((i%10)+.5f),cy=y+51+stepy*((i/10)+.5f);
+        if(pieces)ui_rrect(cx-2.1f,cy-2.1f,4.2f,4.2f,1,RGBA(119,94,64,220));
+        else ui_rrect(cx-2.2f,cy-2.2f,4.4f,4.4f,2.2f,RGBA(143,95,43,255));}
+}
+static void deck_editor_preview_log(float x,float y,float w,float h,int game,int wario2)
+{
+    deck_editor_preview_card(x,y,w,h,game,"EXPEDITION LOG");
+    const char *rows[4]={wario2?"TREASURE VAULT READY":"COURSE ENTRY RECORDED",wario2?"PICTURE PANEL  00 / 50":"COIN BANK  SYNCED","SAVE STATE TIMELINE LINKED","CURRENT RUN MONITORED"};
+    for(int i=0;i<4;i++){float ry=y+38+i*21.f;ui_rrect(x+11,ry+2,4,4,2,i==0?RGBA(255,200,87,255):RGBA(184,170,149,255));
+        ui_text_fit(F_REG,5.2f,x+20,ry,w-30,i==0?RGBA(255,223,165,255):RGBA(190,186,176,255),rows[i]);}
 }
 
+static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
+{
+    int game=companion_editor_game;
+    int wario=game==GAME_WARIO_SML3;
+    int wario2=game==GAME_WARIO_LAND2_GB||game==GAME_WARIO_LAND2_GBC;
+    int dr_mario=game==GAME_DRMARIO;
+    ui_shadow(x,y,w,h,11,5,RGBA(0,0,0,110)); ui_rrect(x,y,w,h,10,RGBA(12,20,34,255));
+    ui_vgrad(x+2,y+2,w-4,h-4,dr_mario?RGBA(218,239,237,255):game==GAME_SML?RGBA(52,87,62,255):game==GAME_SML2?RGBA(67,49,88,255):RGBA(72,52,30,255),RGBA(16,22,38,255));
+    ui_clip(x+2,y+2,w-4,h-4); deck_editor_preview_asset(d,0,d->background_path,x+2,y+2,w-4,h-4);
+
+    if(wario){
+        deck_editor_preview_card(x+w*20/800.f,y+h*77/DECK_EDITOR_THOR_H,w*350/800.f,h*160/DECK_EDITOR_THOR_H,game,"TREASURE VAULT");
+        ui_text_fit(F_BOLD,5.3f,x+w*34/800.f,y+h*124/DECK_EDITOR_THOR_H,w*322/800.f,RGBA(255,224,164,255),"00 / 15 TREASURES");
+        ui_rrect(x+w*34/800.f,y+h*132/DECK_EDITOR_THOR_H,w*322/800.f,h*7/DECK_EDITOR_THOR_H,3,RGBA(70,53,34,255));
+        for(int i=0;i<15;i++)ui_rrect(x+w*(38+i*20)/800.f,y+h*185/DECK_EDITOR_THOR_H,w*7/800.f,h*7/DECK_EDITOR_THOR_H,3,RGBA(143,95,43,255));
+        deck_editor_preview_log(x+w*20/800.f,y+h*255/DECK_EDITOR_THOR_H,w*370/800.f,h*143/DECK_EDITOR_THOR_H,game,0);
+        deck_editor_preview_card(x+w*410/800.f,y+h*255/DECK_EDITOR_THOR_H,w*370/800.f,h*143/DECK_EDITOR_THOR_H,game,"CURRENT COURSE");
+        ui_text_fit(F_BOLD,8,x+w*428/800.f,y+h*300/DECK_EDITOR_THOR_H,w*330/800.f,RGBA(255,200,87,255),"COURSE --");
+        ui_text_fit(F_REG,5.3f,x+w*428/800.f,y+h*330/DECK_EDITOR_THOR_H,w*330/800.f,RGBA(255,241,212,255),"COIN BANK -----");
+    } else if(wario2){
+        deck_editor_preview_collection(x+w*20/800.f,y+h*77/DECK_EDITOR_THOR_H,w*365/800.f,h*175/DECK_EDITOR_THOR_H,game,"TREASURE VAULT",0);
+        deck_editor_preview_collection(x+w*415/800.f,y+h*77/DECK_EDITOR_THOR_H,w*365/800.f,h*175/DECK_EDITOR_THOR_H,game,"PICTURE PANEL",1);
+        deck_editor_preview_log(x+w*20/800.f,y+h*268/DECK_EDITOR_THOR_H,w*365/800.f,h*128/DECK_EDITOR_THOR_H,game,1);
+    } else if(!dr_mario){
+        deck_editor_preview_card(x+w*20/800.f,y+h*70/DECK_EDITOR_THOR_H,w*210/800.f,h*50/DECK_EDITOR_THOR_H,game,"LIVES");
+        ui_text_fit(F_BOLD,6.5f,x+w*32/800.f,y+h*94/DECK_EDITOR_THOR_H,w*186/800.f,RGBA(250,240,220,255),"x 03");
+        deck_editor_preview_card(x+w*244/800.f,y+h*70/DECK_EDITOR_THOR_H,w*320/800.f,h*50/DECK_EDITOR_THOR_H,game,game==GAME_SML?"WORLD / LEVEL":"CURRENT STAGE");
+        ui_text_fit(F_BOLD,6.5f,x+w*258/800.f,y+h*94/DECK_EDITOR_THOR_H,w*290/800.f,RGBA(255,214,107,255),game==GAME_SML?"WORLD 1 - 1":"STAGE 01");
+        deck_editor_preview_card(x+w*578/800.f,y+h*70/DECK_EDITOR_THOR_H,w*202/800.f,h*50/DECK_EDITOR_THOR_H,game,"SESSION");
+        ui_text_fit(F_BOLD,6.5f,x+w*592/800.f,y+h*94/DECK_EDITOR_THOR_H,w*174/800.f,RGBA(250,240,220,255),"IN PLAY");
+    }
+
+    /* The header and its quick actions share one transform. */
+    {
+        float sx=(float)(d->header_scale>0?d->header_scale:100)/100.f, sy=(float)(d->header_scale_y>0?d->header_scale_y:100)/100.f;
+        float dx=d->header_dx,dy=d->header_dy*(DECK_EDITOR_THOR_H/450.f);
+        float hx=400+(18-400)*sx+dx,hy=34+(7-34)*sy+dy,hw=390*sx,hh=49*sy;
+        float rx=x+w*hx/800.f,ry=y+h*hy/DECK_EDITOR_THOR_H,rw=w*hw/800.f,rh=h*hh/DECK_EDITOR_THOR_H;
+        ui_rrect(rx,ry,rw,rh,5,RGBA(28,40,58,210));deck_editor_preview_asset(d,15,d->header_texture_path,rx+1,ry+1,rw-2,rh-2);
+        float tx=x+w*(400+(27-400)*sx+dx)/800.f,top=y+h*(34+(22-34)*sy+dy)/DECK_EDITOR_THOR_H,titley=y+h*(34+(42-34)*sy+dy)/DECK_EDITOR_THOR_H;
+        ui_text_fit(F_BOLD,6.8f,tx,top,rw-14,RGBA(127,220,236,255),dr_mario?"PIPE CLEAN / MEDICAL DECK":wario?"PIPE CLEAN / TREASURE EXPEDITION":wario2?"PIPE CLEAN / STOLEN TREASURE":"PIPE CLEAN / POCKET QUEST");
+        ui_text_fit(F_BOLD,9,tx,titley,rw-14,RGBA(247,249,255,255),dr_mario?"DR. MARIO":game==GAME_SML?"SUPER MARIO LAND":game==GAME_SML2?"SUPER MARIO LAND 2":wario2?"WARIO LAND II: STOLEN TREASURE":"WARIO LAND: TREASURE EXPEDITION");
+        float bx=542,by=12,bw=112,bh=39;bx=400+(bx-400)*sx+dx;by=34+(by-34)*sy+dy;bw*=sx;bh*=sy;
+        const char *path=d->button_texture_by_action[4][0]?d->button_texture_by_action[4]:d->button_texture_path;
+        ui_rrect(x+w*bx/800.f,y+h*by/DECK_EDITOR_THOR_H,w*bw/800.f,h*bh/DECK_EDITOR_THOR_H,4,RGBA(34,48,67,240));
+        deck_editor_preview_asset(d,path==d->button_texture_path?1:28,path,x+w*bx/800.f+1,y+h*by/DECK_EDITOR_THOR_H+1,w*bw/800.f-2,h*bh/DECK_EDITOR_THOR_H-2);
+        ui_text_c(F_BOLD,5.4f,x+w*(bx+bw*.5f)/800.f,y+h*(by+bh*.43f)/DECK_EDITOR_THOR_H,RGBA(246,249,255,255),"BACKGROUND");
+        bx=662;by=12;bw=120;bh=39;bx=400+(bx-400)*sx+dx;by=34+(by-34)*sy+dy;bw*=sx;bh*=sy;
+        path=d->button_texture_by_action[5][0]?d->button_texture_by_action[5]:d->button_texture_path;
+        ui_rrect(x+w*bx/800.f,y+h*by/DECK_EDITOR_THOR_H,w*bw/800.f,h*bh/DECK_EDITOR_THOR_H,4,RGBA(34,48,67,240));
+        deck_editor_preview_asset(d,path==d->button_texture_path?1:29,path,x+w*bx/800.f+1,y+h*by/DECK_EDITOR_THOR_H+1,w*bw/800.f-2,h*bh/DECK_EDITOR_THOR_H-2);
+        ui_text_c(F_BOLD,5.4f,x+w*(bx+bw*.5f)/800.f,y+h*(by+bh*.43f)/DECK_EDITOR_THOR_H,RGBA(246,249,255,255),"CLOSE");
+    }
+
+    {
+        float ix,iy,iw,ih;deck_editor_element_rect(d,DECK_ELEM_ITEM,x,y,w,h,&ix,&iy,&iw,&ih);
+        if(dr_mario){
+            deck_editor_preview_card(ix,iy,iw,ih,game,"NEXT CAPSULE");
+            ui_rrect(ix+iw*.81f,iy+ih*.07f,iw*.08f,ih*.12f,3,RGBA(21,157,173,255));
+            ui_rrect(ix+iw*.79f,iy+ih*.09f,iw*.12f,ih*.06f,3,RGBA(21,157,173,255));
+            ui_rrect(ix+iw*.27f,iy+ih*.42f,iw*.23f,ih*.19f,ih*.095f,RGBA(29,180,218,255));
+            ui_rrect(ix+iw*.50f,iy+ih*.42f,iw*.23f,ih*.19f,ih*.095f,RGBA(230,91,105,255));
+            ui_text_c(F_BOLD,5.3f,ix+iw*.5f,iy+ih*.82f,RGBA(112,137,146,255),"NEXT PILL READY");
+        } else if(wario||wario2){
+            deck_editor_preview_emblem(ix+iw*.5f,iy+ih*.5f,fminf(iw,ih)*.44f);
+        } else {
+            int item_id=companion_editor_preview_item;
+            const char *item_path=item_id>=1&&item_id<=3?deck_editor_preview_asset_path(d,11+item_id):"";
+            if(!item_path[0])item_path=d->item_texture_path;
+            float inset_x=iw*.16f,inset_y=ih*.13f;
+            if(item_path[0])deck_editor_preview_asset(d,item_path==d->item_texture_path?2:11+item_id,item_path,ix+inset_x,iy+inset_y,iw-inset_x*2,ih-inset_y*2);
+            else {ui_rrect(ix+iw*.25f,iy+ih*.25f,iw*.5f,ih*.48f,8,RGBA(255,205,75,245));ui_text_c(F_BOLD,13,ix+iw*.5f,iy+ih*.36f,RGBA(61,43,20,255),"?");}
+            ui_text_c(F_BOLD,5.6f,ix+iw*.5f,iy+ih*.81f,RGBA(248,245,230,255),item_id==1?"MUSHROOM":item_id==2?(game==GAME_SML?"SUPERBALL FLOWER":"FIRE FLOWER"):item_id==3?"CARROT":"RESERVE ITEM");
+        }
+    }
+
+    {
+        float sx,sy,sw,sh;deck_editor_element_rect(d,DECK_ELEM_STATUS,x,y,w,h,&sx,&sy,&sw,&sh);
+        ui_rrect(sx,sy,sw,sh,7,dr_mario?RGBA(27,47,57,240):game==GAME_SML?RGBA(240,245,213,245):RGBA(34,44,62,240));
+        if(d->status_texture_path[0])deck_editor_preview_asset(d,16,d->status_texture_path,sx+1,sy+1,sw-2,sh-2);
+        if(dr_mario){
+            ui_text_fit(F_BOLD,5.8f,sx+10,sy+8,sw-20,RGBA(159,221,231,255),"SCORE");
+            ui_text_fit(F_BOLD,11,sx+10,sy+sh*.14f,sw-20,RGBA(255,214,107,255),"00000000");
+            ui_rrect(sx+8,sy+sh*.37f,sw-16,sh*.27f,5,RGBA(34,61,72,255));
+            ui_text_fit(F_BOLD,5.5f,sx+14,sy+sh*.42f,sw*.46f,RGBA(159,221,231,255),"VIRUS LEVEL");
+            ui_text_fit(F_BOLD,10,sx+14,sy+sh*.49f,sw*.46f,RGBA(255,241,212,255),"00");
+            ui_text_fit(F_BOLD,5.5f,sx+sw*.53f,sy+sh*.42f,sw*.38f,RGBA(159,221,231,255),"SPEED");
+            ui_text_fit(F_BOLD,10,sx+sw*.53f,sy+sh*.49f,sw*.38f,RGBA(255,241,212,255),"LOW");
+            ui_text_fit(F_BOLD,5.3f,sx+10,sy+sh*.73f,sw-20,RGBA(159,221,231,255),"SESSION / CLINIC STATUS");
+            ui_text_fit(F_REG,5.2f,sx+10,sy+sh*.83f,sw-20,RGBA(234,241,244,255),"Live game information");
+        } else if(wario){
+            ui_text_fit(F_BOLD,5.7f,sx+12,sy+9,sw-24,RGBA(255,214,107,255),"EXPEDITION STATUS");
+            const char *rows[4]={"LIVES                       --","HEARTS                      --","POWER                UNKNOWN","TIME LEFT                  ---"};
+            for(int i=0;i<4;i++)ui_text_fit(F_REG,5.1f,sx+12,sy+38+i*25.f,sw-24,RGBA(224,207,178,255),rows[i]);
+        } else if(wario2){
+            ui_text_fit(F_BOLD,5.7f,sx+12,sy+9,sw-24,RGBA(255,214,107,255),"ADVENTURE TRACKER");
+            ui_text_fit(F_BOLD,7.4f,sx+12,sy+43,sw-24,RGBA(255,214,107,255),"STAGE --");
+            ui_text_fit(F_REG,5.5f,sx+12,sy+70,sw-24,RGBA(255,241,212,255),"COIN BANK ------");
+            ui_text_fit(F_REG,5.3f,sx+12,sy+93,sw-24,RGBA(184,170,149,255),"POCKET COINS ----");
+        } else {
+            ui_text_fit(F_BOLD,6,sx+5,sy+6,sw-10,RGBA(191,202,222,255),"ADVENTURE STATUS");
+            ui_text_fit(F_BOLD,8,sx+5,sy+sh*.45f,sw-10,RGBA(250,240,220,255),"LIVES x 03");
+            ui_text_fit(F_BOLD,7,sx+5,sy+sh*.66f,sw-10,RGBA(112,225,182,255),game==GAME_SML?"WORLD 1 - 1":"STAGE 01");
+        }
+    }
+
+    {
+        float rx,ry,rw,rh;deck_editor_element_rect(d,DECK_ELEM_CONTROLS,x,y,w,h,&rx,&ry,&rw,&rh);
+        static const char *labels[4]={"SAVE","LOAD","PAUSE","REWIND"};
+        float bw=(rw-24.f)/4.f,bh=rh;
+        for(int b=0;b<4;b++){
+            float bx=rx+b*(bw+8.f),by=ry;
+            int texture_index=17+b;const char *custom=deck_editor_preview_asset_path(d,texture_index);
+            if(!custom[0])texture_index=1,custom=d->button_texture_path;
+            ui_rrect(bx,by,bw,bh,4,RGBA(29,42,60,240));
+            deck_editor_preview_asset(d,texture_index,custom,bx+1,by+1,bw-2,bh-2);
+            ui_stroke(bx,by,bw,bh,4,.7f,RGBA(105,137,174,230));
+            ui_text_c(F_BOLD,6.1f,bx+bw*.5f,by+bh*.39f,RGBA(246,249,255,255),labels[b]);
+        }
+    }
+    {
+        float rx,ry,rw,rh;deck_editor_element_rect(d,DECK_ELEM_TIMELINE,x,y,w,h,&rx,&ry,&rw,&rh);
+        ui_rrect(rx,ry,rw,rh,5,RGBA(24,34,51,235));
+        ui_text_fit(F_BOLD,6.5f,rx+5,ry+4,rw-10,RGBA(218,228,245,255),"SAVE-STATE TIMELINE");
+        for(int slot=0;slot<10;slot++){float tile_w=(rw-18)/10.f,tx=rx+3+slot*(tile_w+1);
+            ui_rrect(tx,ry+rh*.28f,tile_w,rh*.54f,2,slot==0?RGBA(86,180,200,190):RGBA(66,81,106,200));}
+    }
+    for(int e=DECK_ELEM_DECORATION;e<N_DECK_ELEM;e++){
+        int slot=e-DECK_ELEM_DECORATION;const char *asset=deck_decoration_path_const(d,slot);if(!asset[0])continue;
+        float rx,ry,rw,rh;deck_editor_element_rect(d,e,x,y,w,h,&rx,&ry,&rw,&rh);
+        deck_editor_preview_asset(d,deck_decoration_asset_index(slot),asset,rx,ry,rw,rh);
+        if(e==companion_editor_element)ui_stroke(rx,ry,rw,rh,5,1.5f,RGBA(108,218,255,255));
+    }
+    ui_unclip();
+    float sx,sy,sw,sh;deck_editor_element_rect(d,companion_editor_element,x,y,w,h,&sx,&sy,&sw,&sh);
+    ui_stroke(sx,sy,sw,sh,5,2,RGBA(117,213,255,255));
+    ui_rrect(sx+sw-26,sy+sh*.5f-13,26,26,7,RGBA(250,252,255,255));
+    ui_rrect(sx+sw*.5f-13,sy+sh-26,26,26,7,RGBA(250,252,255,255));
+    ui_rrect(sx+sw-26,sy+sh-26,26,26,7,RGBA(93,207,255,255));
+}
 static void deck_editor_begin_drag(float x, float y, float preview_x, float preview_y,
                                    float preview_w, float preview_h)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    /* Give the selected layer first refusal so it remains draggable when art overlaps it. */
+    if (companion_editor_element >= 0 && companion_editor_element < N_DECK_ELEM) {
+        float sx, sy, sw, sh;
+        deck_editor_element_rect(d, companion_editor_element, preview_x, preview_y,
+                                 preview_w, preview_h, &sx, &sy, &sw, &sh);
+        if (x >= sx && y >= sy && x < sx + sw && y < sy + sh) {
+            companion_editor_dragging = 1; companion_editor_resizing = 0;
+            companion_editor_last_x = x; companion_editor_last_y = y;
+            companion_editor_drag_residual_x = companion_editor_drag_residual_y = 0.f;
+            deck_editor_snapshot(); return;
+        }
+    }
     int order[N_DECK_ELEM];
     int n = 0;
     for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION; e--) {
@@ -3252,6 +3286,7 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
         int corner_handle = x >= rx + rw - 30 && y >= ry + rh - 30;
         companion_editor_resizing = corner_handle ? 1 : right_handle ? 2 : bottom_handle ? 3 : 0;
         companion_editor_dragging = 1;
+        companion_editor_drag_residual_x = companion_editor_drag_residual_y = 0.f;
         companion_editor_last_x = x;
         companion_editor_last_y = y;
         deck_editor_snapshot();
@@ -3279,8 +3314,14 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
     } else {
         int *ox = deck_element_x(d, companion_editor_element);
         int *oy = deck_element_y(d, companion_editor_element);
-        *ox += (int)((dx / (preview_w / 700.0f)) * (800.0f / 700.0f));
-        *oy += (int)((dy / (preview_h / 800.0f)) * (450.0f / 800.0f));
+        companion_editor_drag_residual_x += dx * (800.0f / preview_w);
+        companion_editor_drag_residual_y += dy * (450.0f / preview_h);
+        int move_x = (int)truncf(companion_editor_drag_residual_x);
+        int move_y = (int)truncf(companion_editor_drag_residual_y);
+        companion_editor_drag_residual_x -= move_x;
+        companion_editor_drag_residual_y -= move_y;
+        *ox += move_x;
+        *oy += move_y;
         if (*ox < -400) *ox = -400;
         if (*ox > 400) *ox = 400;
         if (*oy < -400) *oy = -400;

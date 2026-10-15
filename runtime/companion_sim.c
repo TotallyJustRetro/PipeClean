@@ -31,10 +31,6 @@
 #define SIM_BACKGROUND 10
 #define SIM_CLOSE_GAME 12
 #define SIM_SLOT_SELECT_BASE 20
-#define SIM_THOR_WIDTH 800
-#define SIM_THOR_HEIGHT 697
-#define SIM_THOR_WINDOW_WIDTH 775
-#define SIM_THOR_WINDOW_HEIGHT 675
 
 static SDL_Window *deck_window;
 static SDL_Renderer *deck_renderer;
@@ -886,9 +882,9 @@ static time_t slot_state_mtime(int game, int slot)
 
 static void draw_slot_timeline(const Settings *s, int game)
 {
-    float x = 20.0f, y = 510.0f, w = 760.0f, h = (float)SIM_THOR_HEIGHT - 520.0f;
+    float x = 24.0f, y = 365.0f, w = 752.0f, h = 83.0f;
     const CompanionLayoutCfg *d = &s->deck_layout[game];
-    transform_box(d, 3, 400.0f, 596.0f, &x, &y, &w, &h);
+    transform_box(d, 3, 400.0f, 406.5f, &x, &y, &w, &h);
     draw_text((int)x + 2, (int)y + 2, 1,
         theme_accent_r(game), theme_accent_g(game), theme_accent_b(game),
         "SAVE-STATE TIMELINE");
@@ -1358,7 +1354,7 @@ static void transform_box(const CompanionLayoutCfg *d, int element,
     float scale_x = (float)(size_x > 0 ? size_x : 100) / 100.f;
     float scale_y = (float)(size_y > 0 ? size_y : 100) / 100.f;
     *x = cx + (*x - cx) * scale_x + dx;
-    *y = cy + (*y - cy) * scale_y + dy * ((float)SIM_THOR_HEIGHT / 450.0f);
+    *y = cy + (*y - cy) * scale_y + dy;
     *w *= scale_x;
     *h *= scale_y;
 }
@@ -1782,86 +1778,116 @@ static void draw_wario2_companion(const Settings *s, int game)
     SDL_RenderPresent(deck_renderer);
 }
 
-
-static void thor_scene(const Settings *s,int g)
-{
-    int h=SIM_THOR_HEIGHT;fill(0,0,800,h,theme_bg_r(g),theme_bg_g(g),theme_bg_b(g),255);
-    if(g==GAME_SML){fill(0,h-75,800,75,156,201,119,255);fill_circle(170,h-40,165,145,193,109,255);fill_circle(395,h-36,133,138,185,103,255);fill_circle(680,h-45,150,153,200,117,255);}
-    else if(g==GAME_SML2){fill(0,h-64,800,64,57,39,73,255);fill_circle(180,h-39,155,48,32,61,255);fill_circle(485,h-31,170,52,33,66,255);fill_circle(734,h-45,130,48,32,61,255);}
-    else if(g==GAME_DRMARIO){for(int y=64;y<h;y+=24)fill(0,y,800,1,21,157,173,16);}
-    else for(int i=0;i<44;i++)fill((i*53+9)%800,(i*47+17)%h,3,3,255,(i%2)?200:234,107,160);
-    draw_asset_image(s,g,0,0,0,800,h);
-}
-static void thor_header(const Settings *s,int g)
-{
-    const char *tag=g==GAME_DRMARIO?"PIPE CLEAN  •  MEDICAL DECK":g==GAME_WARIO_SML3?"PIPE CLEAN  •  TREASURE EXPEDITION":wario_land2_supported_game(g)?"PIPE CLEAN  •  STOLEN TREASURE":"PIPE CLEAN  •  POCKET QUEST";
-    const char *title=g==GAME_DRMARIO?"DR MARIO":g==GAME_SML?"SUPER MARIO LAND":g==GAME_SML2?"SUPER MARIO LAND 2":g==GAME_WARIO_SML3?"WARIO LAND: SUPER MARIO LAND 3":g==GAME_WARIO_LAND2_GBC?"WARIO LAND II // COLOR QUEST":"WARIO LAND II // CLASSIC QUEST";
-    draw_android_header(s,18,7,390,49,g);draw_text_fit(27,22,372,1,theme_accent_r(g),theme_accent_g(g),theme_accent_b(g),tag);draw_text_fit(26,42,372,2,theme_ink_r(g),theme_ink_g(g),theme_ink_b(g),title);
-    draw_tiny_button(s,542,12,112,39,g,"BACKGROUND","PNG / GIF",SIM_BACKGROUND);draw_tiny_button(s,662,12,120,39,g,"CLOSE","GAME",SIM_CLOSE_GAME);
-}
-static void thor_controls(const Settings *s,int g)
-{
-    const int ids[4]={SIM_SAVE,SIM_LOAD,SIM_PAUSE,SIM_REWIND};const char *labels[4]={"SAVE","LOAD",current_paused?"RESUME":"PAUSE","REWIND"};
-    const char *subs[4]={"SNAPSHOT","RESTORE",current_paused?"CONTINUE":"HOLD GAME","HOLD TO REWIND"};
-    for(int i=0;i<4;i++)draw_action_button(s,g,ids[i],20+i*192,420,184,48,labels[i],subs[i],i==3);draw_slot_timeline(s,g);
-}
-static void thor_decorations(const Settings *s,int g)
-{
-    const CompanionLayoutCfg *d=&s->deck_layout[g];
-    static const float bx[16]={280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495},by[16]={150,78,78,295,218,218,95,285,135,135,410,410,35,35,190,190},bw[16]={240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112},bh[16]={135,115,115,115,90,90,84,84,68,68,68,68,64,64,72,72};
-    for(int i=0;i<16;i++){const char *p=i==0?d->decoration_path:d->decoration_extra_path[i-1];if(!p[0])continue;float x=bx[i],y=by[i],w=bw[i],h=bh[i];transform_box(d,5+i,x+w*.5f,y+h*.5f,&x,&y,&w,&h);draw_asset_image(s,g,i==0?3:i<=7?20+i:22+i,(int)x,(int)y,(int)w,(int)h);}
-}
-static void thor_dashboard(const Settings *s,int selected)
-{
-    fill(0,0,800,SIM_THOR_HEIGHT,23,35,55,255);for(int y=0;y<SIM_THOR_HEIGHT;y+=6)fill(0,y,800,1,0,0,0,18);
-    draw_android_header(s,18,7,390,49,-1);draw_text(27,15,1,110,229,239,"PIPE CLEAN  •  GAME LIBRARY");draw_text(27,28,2,234,245,255,"READY TO PLAY");
-    draw_android_card(s,20,65,460,585,-1,"SELECTED GAME");draw_dashboard_preview(34,94,432,270,selected);
-    const char *name=selected>=0&&selected<N_GAMES&&games[selected].name?games[selected].name:"CHOOSE A GAME";if(selected==GAME_SML)name="SUPER MARIO LAND";else if(selected==GAME_SML2)name="SUPER MARIO LAND 2";
-    draw_text_fit(36,386,420,2,234,245,255,name);char time[48];play_time_label(selected>=0&&selected<N_GAMES?s->game_play_seconds[selected]:0,time,sizeof time);draw_text(36,426,1,175,195,221,"TOTAL PLAY TIME");draw_text_fit(36,440,420,2,110,229,239,time);
-    draw_android_card(s,492,65,288,585,-1,"RECENTLY PLAYED");int row=0;
-    for(int i=0;i<N_RECENT_PLAYED;i++){int id=s->recent_played[i];if(id<0||id>=N_GAMES)continue;int y=99+row*49;fill_round_rect(504,y,264,43,7,row?23:56,row?34:214,row?55:155,65);fill_circle(518,y+21,4,110,229,239,255);
-        const char *rn=games[id].name?games[id].name:"GAME";if(id==GAME_SML)rn="SUPER MARIO LAND";else if(id==GAME_SML2)rn="SUPER MARIO LAND 2";draw_text_fit(530,y+10,224,1,234,245,255,rn);char pt[40];play_time_label(s->game_play_seconds[id],pt,sizeof pt);draw_text_fit(530,y+25,224,1,175,195,221,pt);row++;}
-    if(row==0){draw_text(510,119,1,175,195,221,"YOUR ADVENTURE");draw_text_fit(510,145,246,1,234,245,255,"GAMES YOU LAUNCH APPEAR HERE");draw_text_fit(510,166,246,1,175,195,221,"PLAY TIME IS SAVED AUTOMATICALLY");}
-}
-static void thor_default(const Settings *s,int g)
-{
-    const CompanionLayoutCfg *d=&s->deck_layout[g];thor_scene(s,g);thor_header(s,g);
-    draw_android_card(s,20,70,210,50,g,"LIVES");char lives[24];snprintf(lives,sizeof lives,"× %02d",current_lives);draw_text_fit(32,95,188,2,theme_ink_r(g),theme_ink_g(g),theme_ink_b(g),lives);
-    draw_android_card(s,244,70,320,50,g,g==GAME_SML?"WORLD / LEVEL":"CURRENT STAGE");char stage[32];if(g==GAME_SML&&current_world>0&&current_stage>0)snprintf(stage,sizeof stage,"%d - %d",current_world,current_stage);else if(g==GAME_SML2&&current_stage>=0)snprintf(stage,sizeof stage,"STAGE %02d",current_stage);else snprintf(stage,sizeof stage,"--");
-    draw_text_fit(258,95,290,2,theme_accent_r(g),theme_accent_g(g),theme_accent_b(g),stage);draw_android_card(s,578,70,202,50,g,"SESSION");draw_text_fit(592,95,174,2,theme_ink_r(g),theme_ink_g(g),theme_ink_b(g),current_paused?"PAUSED":"IN PLAY");
-    draw_android_card(s,20,136,174,242,g,"RESERVE ITEM");draw_text_fit(32,184,150,1,theme_muted_r(g),theme_muted_g(g),theme_muted_b(g),current_item>0?"ITEM STORED":"NO ITEM STORED");draw_text_fit(32,207,150,1,theme_ink_r(g),theme_ink_g(g),theme_ink_b(g),current_item>0?"TAP TO USE":"Collect a power-up");
-    float ix=300,iy=155,iw=200,ih=200;transform_box(d,1,400,255,&ix,&iy,&iw,&ih);draw_hero_item(s,g,current_item,(int)(ix+iw*.5f),(int)(iy+ih*.5f),iw*.46f);
-    float x=606,y=136,w=174,h=242;transform_box(d,4,x+w*.5f,y+h*.5f,&x,&y,&w,&h);draw_android_card(s,(int)x,(int)y,(int)w,(int)h,g,"ADVENTURE STATUS");draw_text(620,183,1,theme_muted_r(g),theme_muted_g(g),theme_muted_b(g),"LIVES");snprintf(lives,sizeof lives,"× %02d",current_lives);draw_text(620,204,2,theme_ink_r(g),theme_ink_g(g),theme_ink_b(g),lives);
-    draw_text_fit(620,237,145,1,theme_muted_r(g),theme_muted_g(g),theme_muted_b(g),g==GAME_SML?"WORLD / LEVEL":"CURRENT STAGE");draw_text_fit(620,258,145,2,theme_accent_r(g),theme_accent_g(g),theme_accent_b(g),stage);draw_text_fit(620,294,145,1,theme_muted_r(g),theme_muted_g(g),theme_muted_b(g),current_paused?"GAME PAUSED":"PLAYING NOW");
-    thor_controls(s,g);thor_decorations(s,g);
-}
-static void thor_dr_mario(const Settings *s,int g)
-{
-    const CompanionLayoutCfg *d=&s->deck_layout[g];thor_scene(s,g);thor_header(s,g);draw_android_card(s,20,78,358,304,g,"NEXT CAPSULE");draw_dr_mario_medical_cross(344,101,14,21,157,173,255);draw_dr_mario_capsule(199,226,166,70,current_dr_mario_capsule);
-    draw_text_fit(34,318,322,1,theme_muted_r(g),theme_muted_g(g),theme_muted_b(g),current_dr_mario_capsule>=0&&current_dr_mario_capsule<=0x17?"READY TO DROP":"WAITING FOR PILL");draw_android_card(s,397,78,383,91,g,"SCORE");char score[20];if(current_dr_mario_score>=0)snprintf(score,sizeof score,"%08u",(unsigned)current_dr_mario_score);else snprintf(score,sizeof score,"--------");draw_text_fit(416,139,344,3,theme_accent_r(g),theme_accent_g(g),theme_accent_b(g),score);
-    char level[16];if(current_dr_mario_level>=0)snprintf(level,sizeof level,"%02d",current_dr_mario_level);else snprintf(level,sizeof level,"--");draw_dr_mario_metric(s,d,397,183,184,133,"VIRUS LEVEL",level,3);draw_dr_mario_metric(s,d,594,183,186,133,"SPEED",dr_mario_speed_label(current_dr_mario_speed),3);
-    draw_android_card(s,397,330,383,52,g,"SESSION");draw_text_fit(412,361,350,1,theme_ink_r(g),theme_ink_g(g),theme_ink_b(g),current_paused?"PAUSED — RESUME WHEN READY":"CLINIC STATUS  •  LIVE");thor_controls(s,g);thor_decorations(s,g);
-}
-static void thor_wario(const Settings *s,int g)
-{
-    thor_scene(s,g);thor_header(s,g);draw_wario_vault(s,20,77,350,160);draw_wario_emblem();draw_wario_status(s,430,77,350,160);draw_wario_expedition_log(s,20,255,370,143);draw_android_card(s,410,255,370,143,g,"CURRENT COURSE");draw_text_fit(428,300,330,2,255,200,87,wario_course_text());char info[64];if(current_wario_coins>=0)snprintf(info,sizeof info,"COIN BANK %05d",current_wario_coins);else snprintf(info,sizeof info,"COIN BANK -----");
-    draw_text_fit(428,330,330,1,255,241,212,info);draw_text_fit(428,362,330,1,184,170,149,current_paused?"TREASURE EXPEDITION  •  PAUSED":"TREASURE EXPEDITION  •  IN PLAY");thor_controls(s,g);thor_decorations(s,g);draw_wario_treasure_animation();
-}
-static void thor_wario2(const Settings *s,int g)
-{
-    thor_scene(s,g);thor_header(s,g);draw_wario2_collection(s,20,77,365,175,g,"TREASURE VAULT",current_wario2_state.treasures,0);draw_wario2_collection(s,415,77,365,175,g,"PICTURE PANEL",current_wario2_state.picture_panels,1);draw_wario2_expedition_log(s,20,268,365,128,g);draw_android_card(s,415,268,365,128,g,"ADVENTURE TRACKER");
-    char stage[48],coins[48],pocket[48];if(current_wario2_state.stage<0)snprintf(stage,sizeof stage,"STAGE --");else snprintf(stage,sizeof stage,"STAGE %02X",current_wario2_state.stage&0xFF);if(current_wario2_state.bank_coins<0)snprintf(coins,sizeof coins,"COIN BANK ------");else snprintf(coins,sizeof coins,"COIN BANK %06d",current_wario2_state.bank_coins);if(current_wario2_state.overworld_coins<0)snprintf(pocket,sizeof pocket,"POCKET COINS ----");else snprintf(pocket,sizeof pocket,"POCKET COINS %04d",current_wario2_state.overworld_coins);
-    draw_text_fit(431,311,330,2,255,214,107,stage);draw_text_fit(431,342,330,1,255,241,212,coins);draw_text_fit(431,366,330,1,184,170,149,pocket);thor_controls(s,g);thor_decorations(s,g);draw_wario2_celebration();
-}
-
 static void draw_companion(const Settings *s)
 {
-    int g=current_game>=0&&current_game<N_GAMES?current_game:-1;
-    int preview=simulator_layout_preview_enabled();
-    if(!companion_deck_should_show_game_view(g,current_playing,preview)){int selected=g;if(selected<0||selected>=N_GAMES)selected=launcher_current_game();thor_dashboard(s,selected);draw_vinyl_notification(s);SDL_RenderPresent(deck_renderer);return;}
-    if(g<0||g>=N_GAMES)g=GAME_SML;
-    if(g==GAME_DRMARIO)thor_dr_mario(s,g);else if(g==GAME_WARIO_SML3)thor_wario(s,g);else if(wario_land2_supported_game(g))thor_wario2(s,g);else thor_default(s,g);
-    draw_vinyl_notification(s);SDL_RenderPresent(deck_renderer);
+    int g = current_game >= 0 && current_game < N_GAMES ? current_game : -1;
+    int editor_preview = simulator_layout_preview_enabled();
+    int show_game_deck = companion_deck_should_show_game_view(
+        g, current_playing, editor_preview);
+
+    if (!show_game_deck) {
+        fill(0, 0, 800, 450, 23, 35, 55, 255);
+        draw_dashboard(s, g);
+        draw_vinyl_notification(s);
+        SDL_RenderPresent(deck_renderer);
+        return;
+    }
+
+    if (g < 0 || g >= N_GAMES) g = GAME_SML;
+    const CompanionLayoutCfg *d = &s->deck_layout[g];
+    if (g == GAME_DRMARIO) { draw_dr_mario_companion(s, d); return; }
+    if (g == GAME_WARIO_SML3) { draw_wario_companion(s); return; }
+    if (wario_land2_supported_game(g)) { draw_wario2_companion(s, g); return; }
+    draw_android_scenery(g);
+    draw_asset_image(s, g, 0, 0, 0, 800, 450);
+
+    float hx = 18, hy = 7, hw = 265, hh = 49;
+    transform_box(d, 0, 400, 31.5f, &hx, &hy, &hw, &hh);
+    draw_android_header(s, (int)hx, (int)hy, (int)hw, (int)hh, g);
+    draw_text_fit((int)hx + 8, (int)hy + 10, (int)hw - 16, 1,
+        theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), "PIPE CLEAN  \xE2\x80\xA2  POCKET QUEST");
+    draw_text_fit((int)hx + 8, (int)hy + 25, (int)hw - 16, 2,
+        theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), android_game_title(g));
+
+    float bgx = 593, bgy = 13, bgw = 105, bgh = 42;
+    transform_box(d, 0, 400, 31.5f, &bgx, &bgy, &bgw, &bgh);
+    draw_tiny_button(s, (int)bgx, (int)bgy, (int)bgw, (int)bgh, g, "BACKGROUND", "PNG / GIF", SIM_BACKGROUND);
+    float closex = 704, closey = 13, closew = 72, closeh = 42;
+    transform_box(d, 0, 400, 31.5f, &closex, &closey, &closew, &closeh);
+    draw_tiny_button(s, (int)closex, (int)closey, (int)closew, (int)closeh, g, "CLOSE", "GAME", SIM_CLOSE_GAME);
+
+    /* Save-state thumbnails are represented by the timeline below. */
+    /* The reserve item stays at the visual center and uses the per-game layout transform. */
+    float ix = 272, iy = 36, iw = 256, ih = 256;
+    transform_box(d, 1, 400, 164, &ix, &iy, &iw, &ih);
+    draw_hero_item(s, g, current_item, ix + iw * .5f, iy + ih * .5f, iw * .5f);
+
+    /* Status card uses the exact same origin and independent width/height transform as the editor. */
+    float sx = 620, sy = 76, sw = 156, sh = 128;
+    transform_box(d, 4, 698, 140, &sx, &sy, &sw, &sh);
+    draw_android_card(s, (int)sx, (int)sy, (int)sw, (int)sh, g, "ADVENTURE STATUS");
+    float status_scale_x = sw / 156.0f, status_scale_y = sh / 128.0f;
+    float status_uniform_scale = fminf(status_scale_x, status_scale_y);
+    fill_circle((int)(sx + 17 * status_scale_x), (int)(sy + 35 * status_scale_y),
+                (int)fmaxf(1.f, 8 * status_uniform_scale), 255, 214, 107, 190);
+    draw_text_fit((int)(sx + 32 * status_scale_x), (int)(sy + 29 * status_scale_y),
+        (int)(110 * status_scale_x), 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g), "LIVES");
+    char lives_text[24];
+    snprintf(lives_text, sizeof lives_text, "\xC3\x97 %02d", current_lives);
+    draw_text_fit((int)(sx + 32 * status_scale_x), (int)(sy + 43 * status_scale_y),
+        (int)(110 * status_scale_x), 2, theme_ink_r(g), theme_ink_g(g), theme_ink_b(g), lives_text);
+    draw_text_fit((int)(sx + 14 * status_scale_x), (int)(sy + 69 * status_scale_y),
+        (int)(126 * status_scale_x), 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
+        g == GAME_SML ? "WORLD / LEVEL" : "CURRENT STAGE");
+    char stage_text[32];
+    if (g == GAME_SML && current_world > 0 && current_stage > 0)
+        snprintf(stage_text, sizeof stage_text, "%d - %d", current_world, current_stage);
+    else if (g == GAME_SML2 && current_stage >= 0)
+        snprintf(stage_text, sizeof stage_text, "STAGE %02d", current_stage);
+    else snprintf(stage_text, sizeof stage_text, "--");
+    draw_text_fit((int)(sx + 14 * status_scale_x), (int)(sy + 87 * status_scale_y),
+        (int)(126 * status_scale_x), 2, theme_accent_r(g), theme_accent_g(g), theme_accent_b(g), stage_text);
+    draw_text_fit((int)(sx + 14 * status_scale_x), (int)(sy + 112 * status_scale_y),
+        (int)(126 * status_scale_x), 1, theme_muted_r(g), theme_muted_g(g), theme_muted_b(g),
+        current_paused ? "PAUSED" : "IN PLAY");
+
+    /* Action controls use the same Android coordinates, with each transform shared with the editor. */
+    const int action_ids[4] = {SIM_SAVE, SIM_LOAD, SIM_PAUSE, SIM_REWIND};
+    const char *action_labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
+    const char *action_subs[4] = {"SNAPSHOT", "RESTORE",
+        current_paused ? "CONTINUE" : "HOLD GAME", "HOLD TO REWIND"};
+    for (int i = 0; i < 4; i++) {
+        float ax = 94.0f + i * 153.0f, ay = 320.0f;
+        float aw = (i == 3) ? 153.0f : 145.0f, ah = 42.0f;
+        transform_box(d, 2, 400, 343, &ax, &ay, &aw, &ah);
+        draw_action_button(s, g, action_ids[i], (int)ax, (int)ay,
+            (int)aw, (int)ah, action_labels[i], action_subs[i], i == 3);
+    }
+
+    draw_slot_timeline(s, g);
+
+    static const float decoration_x[N_DECK_DECORATIONS] = {
+        280, 20, 610, 315, 26, 634, 190, 488, 26, 675, 195, 565, 40, 695, 315, 495
+    };
+    static const float decoration_y[N_DECK_DECORATIONS] = {
+        153, 78, 78, 245, 218, 218, 85, 260, 135, 135, 290, 290, 35, 35, 175, 175
+    };
+    static const float decoration_w[N_DECK_DECORATIONS] = {
+        240, 170, 170, 170, 140, 140, 122, 122, 100, 100, 100, 100, 95, 95, 112, 112
+    };
+    static const float decoration_h[N_DECK_DECORATIONS] = {
+        144, 120, 120, 120, 92, 92, 86, 86, 70, 70, 70, 70, 65, 65, 74, 74
+    };
+    for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
+        float dx = decoration_x[slot], dy = decoration_y[slot];
+        float dw = decoration_w[slot], dh = decoration_h[slot];
+        transform_box(d, 5 + slot, 400, 225, &dx, &dy, &dw, &dh);
+        int asset_index = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
+        if (assets[g][asset_index])
+            draw_asset_image(s, g, asset_index, (int)dx, (int)dy, (int)dw, (int)dh);
+    }
+
+    SDL_RenderPresent(deck_renderer);
 }
 
 void companion_sim_sync(Settings *s, SDL_Window *main_window)
@@ -1900,17 +1926,18 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
     }
     int x = mx + mw + 18;
     int y = my + 45;
-    if (x + SIM_THOR_WINDOW_WIDTH > bounds.x + bounds.w) x = mx - (SIM_THOR_WINDOW_WIDTH + 18);
-    if (x < bounds.x) x = bounds.x + (bounds.w - SIM_THOR_WINDOW_WIDTH) / 2;
-    if (y + SIM_THOR_WINDOW_HEIGHT > bounds.y + bounds.h) y = bounds.y + (bounds.h - SIM_THOR_WINDOW_HEIGHT) / 2;
-    deck_window = SDL_CreateWindow("PipeClean Companion Deck - Desktop Simulator (31:27)",x,y,SIM_THOR_WINDOW_WIDTH,SIM_THOR_WINDOW_HEIGHT,SDL_WINDOW_RESIZABLE|SDL_WINDOW_ALLOW_HIGHDPI);
+    if (x + 800 > bounds.x + bounds.w) x = mx - 818;
+    if (x < bounds.x) x = bounds.x + (bounds.w - 800) / 2;
+    if (y + 450 > bounds.y + bounds.h) y = bounds.y + (bounds.h - 450) / 2;
+    deck_window = SDL_CreateWindow("PipeClean Companion Deck - Desktop Simulator",
+        x, y, 800, 450, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (!deck_window) {
         fprintf(stderr, "Companion Deck simulator window: %s\n", SDL_GetError());
         s->launcher_dual_screen = 0;
         settings_save();
         return;
     }
-    SDL_SetWindowMinimumSize(deck_window, 465, 405);
+    SDL_SetWindowMinimumSize(deck_window, 480, 320);
     deck_renderer = SDL_CreateRenderer(deck_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!deck_renderer) deck_renderer = SDL_CreateRenderer(deck_window, -1, SDL_RENDERER_SOFTWARE);
     if (!deck_renderer) {
@@ -1921,7 +1948,7 @@ void companion_sim_sync(Settings *s, SDL_Window *main_window)
         return;
     }
     SDL_SetRenderDrawBlendMode(deck_renderer, SDL_BLENDMODE_BLEND);
-    SDL_RenderSetLogicalSize(deck_renderer, SIM_THOR_WIDTH, SIM_THOR_HEIGHT);
+    SDL_RenderSetLogicalSize(deck_renderer, 800, 450);
     sync_assets(s);
 }
 
@@ -2039,9 +2066,9 @@ static void inverse_point(const CompanionLayoutCfg *d, int element, float *x, fl
 static int timeline_hit_slot(const Settings *s, int game, float x, float y)
 {
     const CompanionLayoutCfg *d = &s->deck_layout[game];
-    float base_x = 20.0f, base_y = 510.0f, w = 760.0f, h = (float)SIM_THOR_HEIGHT - 520.0f;
+    float base_x = 24.0f, base_y = 365.0f, w = 752.0f, h = 83.0f;
     float logical_x = x, logical_y = y;
-    inverse_point(d, 3, &logical_x, &logical_y, 400.0f, 596.0f);
+    inverse_point(d, 3, &logical_x, &logical_y, 400.0f, 406.5f);
     if (!inside(logical_x, logical_y, base_x, base_y + 14.0f, w, h - 14.0f)) return -1;
 
     float focus = (float)current_slot, gap = 5.0f;
@@ -2074,17 +2101,17 @@ static int inside(float x, float y, float rx, float ry, float rw, float rh)
 static void inverse_point(const CompanionLayoutCfg *d, int element, float *x, float *y,
                           float cx, float cy)
 {
-    int dx=0,dy=0,sx=100,sy=100;
-    switch(element) {
-    case 0: dx=d->header_dx; dy=d->header_dy; sx=d->header_scale; sy=d->header_scale_y; break;
-    case 1: dx=d->item_dx; dy=d->item_dy; sx=d->item_scale; sy=d->item_scale_y; break;
-    case 2: dx=d->controls_dx; dy=d->controls_dy; sx=d->controls_scale; sy=d->controls_scale_y; break;
-    case 3: dx=d->timeline_dx; dy=d->timeline_dy; sx=d->timeline_scale; sy=d->timeline_scale_y; break;
-    default: dx=d->decoration_dx; dy=d->decoration_dy; sx=d->decoration_scale; sy=d->decoration_scale_y; break;
+    int dx = 0, dy = 0, size = 100;
+    switch (element) {
+    case 0: dx=d->header_dx; dy=d->header_dy; size=d->header_scale; break;
+    case 1: dx=d->item_dx; dy=d->item_dy; size=d->item_scale; break;
+    case 2: dx=d->controls_dx; dy=d->controls_dy; size=d->controls_scale; break;
+    case 3: dx=d->timeline_dx; dy=d->timeline_dy; size=d->timeline_scale; break;
+    default: dx=d->decoration_dx; dy=d->decoration_dy; size=d->decoration_scale; break;
     }
-    float scale_x=sx>0?(float)sx/100.f:1.f, scale_y=sy>0?(float)sy/100.f:1.f;
-    *x=cx+(*x-cx-dx)/scale_x;
-    *y=cy+(*y-cy-dy*((float)SIM_THOR_HEIGHT/450.0f))/scale_y;
+    float scale = size > 0 ? (float)size / 100.f : 1.f;
+    *x = cx + (*x - cx - dx) / scale;
+    *y = cy + (*y - cy - dy) / scale;
 }
 
 int companion_sim_handle_event(const SDL_Event *e, Settings *s)
@@ -2124,14 +2151,27 @@ int companion_sim_handle_event(const SDL_Event *e, Settings *s)
             return 1;
         }
         mouse_down_action = 0;
-        float tx=x,ty=y;inverse_point(d,0,&tx,&ty,400,34);
-        if(inside(tx,ty,662,12,120,39))mouse_down_action=SIM_CLOSE_GAME;
-        else if(inside(tx,ty,542,12,112,39))mouse_down_action=SIM_BACKGROUND;
-        else{inverse_point(d,2,&tx,&ty,400,449);
-            if(inside(tx,ty,20,420,184,48))mouse_down_action=SIM_SAVE;else if(inside(tx,ty,212,420,184,48))mouse_down_action=SIM_LOAD;
-            else if(inside(tx,ty,404,420,184,48))mouse_down_action=SIM_PAUSE;else if(inside(tx,ty,596,420,184,48))mouse_down_action=SIM_REWIND;
-            else{tx=x;ty=y;inverse_point(d,1,&tx,&ty,400,255);if(inside(tx,ty,300,155,200,200))mouse_down_action=SIM_ITEM_USE;
-                else{int slot=timeline_hit_slot(s,game,x,y);if(slot>=0)mouse_down_action=SIM_SLOT_SELECT_BASE+slot;}}
+        float tx=x, ty=y;
+        inverse_point(d, 0, &tx, &ty, 400, 31.5f);
+        if (inside(tx, ty, 704, 13, 72, 42)) {
+            mouse_down_action = SIM_CLOSE_GAME;
+        } else if (inside(tx, ty, 593, 13, 105, 42)) {
+            mouse_down_action = SIM_BACKGROUND;
+        } else {
+        inverse_point(d, 2, &tx, &ty, 400, 343);
+        if (inside(tx, ty, 94, 320, 147, 42)) mouse_down_action = SIM_SAVE;
+        else if (inside(tx, ty, 247, 320, 147, 42)) mouse_down_action = SIM_LOAD;
+        else if (inside(tx, ty, 400, 320, 147, 42)) mouse_down_action = SIM_PAUSE;
+        else if (inside(tx, ty, 553, 320, 153, 42)) mouse_down_action = SIM_REWIND;
+        else {
+            tx=x; ty=y;
+            inverse_point(d, 1, &tx, &ty, 400, 164);
+            if (inside(tx, ty, 236, 8, 328, 310)) mouse_down_action = SIM_ITEM_USE;
+            else {
+                int slot = timeline_hit_slot(s, game, x, y);
+                if (slot >= 0) mouse_down_action = SIM_SLOT_SELECT_BASE + slot;
+            }
+        }
         }
         pressed_action = mouse_down_action;
         if (mouse_down_action == SIM_REWIND) {
