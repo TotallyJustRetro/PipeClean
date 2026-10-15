@@ -10,6 +10,18 @@
  * value ranges and conditional branches. This is diagnostics only: it never
  * modifies the ROM or CPU state. */
 #define WL2_TRACE_SLOTS 4096u
+#define WL2_OAM_EVENT_SLOTS 4096u
+
+typedef struct {
+    uint32_t frame;
+    uint16_t px, py;
+    int16_t old_sx, old_sy, sx, sy;
+    uint8_t camx, camy, scx, scy;
+    uint8_t sprite, from_region, to_region;
+    uint8_t old_y, old_x, old_tile, old_attr;
+    uint8_t y, x, tile, attr;
+} Wl2OamEvent;
+
 typedef struct {
     uint32_t rom_offset, hits, first_frame, last_frame;
     uint32_t cmp_lt, cmp_eq, cmp_gt, branch_checks, branch_taken;
@@ -36,6 +48,12 @@ static char wl2_trace_title[17];
 static int wl2_trace_pending_valid;
 static size_t wl2_trace_pending_slot;
 static uint16_t wl2_trace_pending_next_pc;
+static Wl2OamEvent wl2_oam_events[WL2_OAM_EVENT_SLOTS];
+static size_t wl2_oam_event_count;
+static uint32_t wl2_oam_events_dropped;
+static uint8_t wl2_oam_previous[0xA0];
+static int wl2_oam_previous_valid;
+static char wl2_oam_path[1200] = "pipeclean-wl2-oam-events.txt";
 
 static int wl2_trace_candidate_opcode(uint8_t op)
 {
@@ -270,13 +288,140 @@ void wide_wl2_trace_set_path(const char *path)
     const char *filename = wl2_trace_game == GAME_WARIO_LAND2_GBC
         ? "pipeclean-wl2-gbc-wide-trace.txt"
         : "pipeclean-wl2-gb-wide-trace.txt";
+    const char *oam_filename = wl2_trace_game == GAME_WARIO_LAND2_GBC
+        ? "pipeclean-wl2-gbc-oam-events.txt"
+        : "pipeclean-wl2-gb-oam-events.txt";
     snprintf(wl2_trace_path, sizeof wl2_trace_path, "%s%s", directory, filename);
+    snprintf(wl2_oam_path, sizeof wl2_oam_path, "%s%s", directory, oam_filename);
+}
+
+
+static int wl2_oam_region(uint8_t raw_y, uint8_t raw_x, int *screen_x, int *screen_y)
+{
+    int x = (int)raw_x;
+    int neg = wl2_trace_left > 8 ? 256 - (wl2_trace_left - 8) : 256;
+    if (x >= neg) x -= 256;
+    x = x - 8 + wl2_trace_left;
+    int y = (int)raw_y - 16;
+    if (screen_x) *screen_x = x;
+    if (screen_y) *screen_y = y;
+
+    /* These match the PPU's OAM coordinate transform. An object is logged
+       when it enters/leaves the rendered canvas or crosses a margin boundary. */
+    int total_w = 160 + wl2_trace_left + wl2_trace_right;
+    if (raw_y == 0 || raw_y >= 160 || x + 8 <= 0 || x >= total_w) return 0;
+    if (x < wl2_trace_left) return 1;                    /* left extension */
+    if (x + 8 > wl2_trace_left + 160) return 3;          /* right extension */
+    return 2;                                            /* native viewport */
+}
+
+static const char *wl2_oam_region_name(uint8_t region)
+{
+    switch (region) {
+    case 1: return "LEFT";
+    case 2: return "NATIVE";
+    case 3: return "RIGHT";
+    default: return "OFF";
+    }
+}
+
+void wide_wl2_trace_frame(const uint8_t *snapshot)
+{
+    if (!wide_wl2_trace_active || !snapshot) return;
+
+    const int color_release = wl2_trace_game == GAME_WARIO_LAND2_GBC;
+    uint16_t px_addr = color_release ? 0xD53Cu : 0xC53Cu;
+    uint16_t py_addr = color_release ? 0xD53Au : 0xC53Au;
+    uint16_t camx_addr = color_release ? 0xC660u : 0xD652u;
+    uint16_t camy_addr = color_release ? 0xC65Fu : 0xD651u;
+    uint16_t px = (uint16_t)(((uint16_t)rd8(px_addr) << 8) | rd8((uint16_t)(px_addr + 1u)));
+    uint16_t py = (uint16_t)(((uint16_t)rd8(py_addr) << 8) | rd8((uint16_t)(py_addr + 1u)));
+    uint8_t camx = rd8(camx_addr), camy = rd8(camy_addr);
+    uint8_t scx = rd8(0xFF43u), scy = rd8(0xFF42u);
+    uint32_t frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
+
+    for (unsigned i = 0; i < 40; i++) {
+        size_t base = i * 4u;
+        uint8_t y = snapshot[base], x = snapshot[base + 1u];
+        uint8_t tile = snapshot[base + 2u], attr = snapshot[base + 3u];
+        uint8_t old_y = wl2_oam_previous[base], old_x = wl2_oam_previous[base + 1u];
+        uint8_t old_tile = wl2_oam_previous[base + 2u], old_attr = wl2_oam_previous[base + 3u];
+        int sx = 0, sy = 0, old_sx = 0, old_sy = 0;
+        uint8_t to_region = (uint8_t)wl2_oam_region(y, x, &sx, &sy);
+        uint8_t from_region = wl2_oam_previous_valid
+            ? (uint8_t)wl2_oam_region(old_y, old_x, &old_sx, &old_sy) : 0;
+
+        /* Keep the log focused on visibility/activation transitions. Ordinary
+           tile animation doesn't count; large position jumps may mean a slot
+           was recycled for a newly activated object. */
+        int record = 0;
+        if (!wl2_oam_previous_valid) {
+            record = to_region != 0;
+        } else if (from_region != to_region) {
+            record = 1;
+        } else if (to_region != 0 &&
+                   (abs(sx - old_sx) > 8 || abs(sy - old_sy) > 8)) {
+            record = 1;
+        }
+        if (!record) continue;
+
+        if (wl2_oam_event_count >= WL2_OAM_EVENT_SLOTS) {
+            wl2_oam_events_dropped++;
+            continue;
+        }
+        Wl2OamEvent *e = &wl2_oam_events[wl2_oam_event_count++];
+        e->frame = frame;
+        e->px = px; e->py = py;
+        e->old_sx = (int16_t)old_sx; e->old_sy = (int16_t)old_sy;
+        e->sx = (int16_t)sx; e->sy = (int16_t)sy;
+        e->camx = camx; e->camy = camy; e->scx = scx; e->scy = scy;
+        e->sprite = (uint8_t)i;
+        e->from_region = from_region; e->to_region = to_region;
+        e->old_y = old_y; e->old_x = old_x; e->old_tile = old_tile; e->old_attr = old_attr;
+        e->y = y; e->x = x; e->tile = tile; e->attr = attr;
+    }
+    memcpy(wl2_oam_previous, snapshot, sizeof wl2_oam_previous);
+    wl2_oam_previous_valid = 1;
+}
+
+static void wl2_trace_write_oam_events(void)
+{
+    if (!wl2_oam_path[0]) return;
+    FILE *f = fopen(wl2_oam_path, "w");
+    if (!f) {
+        fprintf(stderr, "PipeClean: couldn't write Wario Land II OAM event trace at %s\\n", wl2_oam_path);
+        return;
+    }
+    fprintf(f, "PipeClean Wario Land II widescreen OAM visibility events v1\\n");
+    fprintf(f, "Game slot: %d  margins: left=%d right=%d  events: %zu  dropped: %u\\n",
+            wl2_trace_game, wl2_trace_left, wl2_trace_right, wl2_oam_event_count,
+            (unsigned)wl2_oam_events_dropped);
+    fprintf(f, "Regions: OFF=not rendered, LEFT/RIGHT=extra widescreen margins, NATIVE=original 160px viewport.\\n");
+    fprintf(f, "frame sprite from>to oldY oldX oldTile oldAttr newY newX newTile newAttr screenX screenY oldScreenX oldScreenY playerX playerY cameraX cameraY SCX SCY\\n");
+    for (size_t i = 0; i < wl2_oam_event_count; i++) {
+        const Wl2OamEvent *e = &wl2_oam_events[i];
+        fprintf(f, "%u %u %s>%s %02X %02X %02X %02X %02X %02X %02X %02X %d %d %d %d %04X %04X %02X %02X %02X %02X\\n",
+                (unsigned)e->frame, (unsigned)e->sprite,
+                wl2_oam_region_name(e->from_region), wl2_oam_region_name(e->to_region),
+                (unsigned)e->old_y, (unsigned)e->old_x, (unsigned)e->old_tile, (unsigned)e->old_attr,
+                (unsigned)e->y, (unsigned)e->x, (unsigned)e->tile, (unsigned)e->attr,
+                (int)e->sx, (int)e->sy, (int)e->old_sx, (int)e->old_sy,
+                (unsigned)e->px, (unsigned)e->py, (unsigned)e->camx, (unsigned)e->camy,
+                (unsigned)e->scx, (unsigned)e->scy);
+    }
+    fclose(f);
+    fprintf(stderr, "PipeClean: wrote Wario Land II OAM event trace (%zu events, %u dropped) to %s\\n",
+            wl2_oam_event_count, (unsigned)wl2_oam_events_dropped, wl2_oam_path);
+    wl2_oam_event_count = 0;
+    wl2_oam_events_dropped = 0;
+    wl2_oam_previous_valid = 0;
 }
 
 void wide_wl2_trace_finish(void)
 {
     wide_wl2_trace_active = 0;
     wl2_trace_pending_valid = 0;
+    wl2_trace_write_oam_events();
     if (!wl2_trace_count) return;
 
     Wl2TraceEntry *ordered[WL2_TRACE_SLOTS];
@@ -357,6 +502,10 @@ static void wl2_trace_begin(int game, int left, int right)
     wl2_trace_pending_valid = 0;
     memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
     wl2_trace_count = 0;
+    wl2_oam_event_count = 0;
+    wl2_oam_events_dropped = 0;
+    wl2_oam_previous_valid = 0;
+    memset(wl2_oam_previous, 0, sizeof wl2_oam_previous);
     wl2_trace_game = game;
     wl2_trace_left = left;
     wl2_trace_right = right;
