@@ -1485,32 +1485,30 @@ static void wl3_scan_runtime_hooks(size_t rom_size)
         }
     }
 
+    /* Edge-coordinate routines use wCameraSCX+1, while their vertical
+     * counterparts use wCameraSCY+1. Match the operand as well as the byte
+     * signature so the runtime hook never widens Y or shifts vertical rows. */
+    uint16_t camera_x_low_addr = wl3_camera_x_addr
+        ? (uint16_t)(wl3_camera_x_addr + 1u) : 0;
     for (size_t off = 0; off + 22u <= rom_size; ++off) {
         if ((off >> 14) != ((off + 21u) >> 14)) continue;
-        if (wl3_right_spawn_signature(rom + off) &&
+        const uint8_t *p = rom + off;
+        uint16_t address = (uint16_t)(p[1] | ((uint16_t)p[2] << 8));
+        if (wl3_right_spawn_signature(p) && address == camera_x_low_addr &&
             wl3_right_spawn_count < WL3_MAX_EDGE_HOOKS)
             wl3_right_spawn_adds[wl3_right_spawn_count++] = off + 12u;
     }
 
-    /* Func_9039 computes vertical-edge Y first, then horizontal-edge X using
-     * the same -$10 sequence. Only hook the second occurrence, otherwise a
-     * left widescreen setting would incorrectly shift vertical block rows. */
+    /* The same camera-minus-one-block sequence appears in vertical-edge
+     * setup (to derive X scan starts) and the horizontal left-edge setup.
+     * Only keep occurrences that explicitly load wCameraSCX+1, never SCY. */
     for (size_t off = 0; off + 20u <= rom_size; ++off) {
         if ((off >> 14) != ((off + 19u) >> 14)) continue;
-        if (!wl3_left_spawn_signature(rom + off)) continue;
-        size_t second_min = off + 24u;
-        size_t second_max = off + 100u;
-        if (second_max > rom_size) second_max = rom_size;
-        if ((off >> 14) != ((second_max - 1u) >> 14))
-            second_max = ((off >> 14) + 1u) << 14;
-        for (size_t q = second_min; q + 20u <= second_max; ++q) {
-            if ((q >> 14) != ((q + 19u) >> 14)) break;
-            if (wl3_left_spawn_signature(rom + q)) {
-                if (wl3_left_spawn_count < WL3_MAX_EDGE_HOOKS)
-                    wl3_left_spawn_adds[wl3_left_spawn_count++] = q + 12u;
-                break;
-            }
-        }
+        const uint8_t *p = rom + off;
+        uint16_t address = (uint16_t)(p[1] | ((uint16_t)p[2] << 8));
+        if (!wl3_left_spawn_signature(p) || address != camera_x_low_addr) continue;
+        if (wl3_left_spawn_count < WL3_MAX_EDGE_HOOKS)
+            wl3_left_spawn_adds[wl3_left_spawn_count++] = off + 12u;
     }
 
     for (size_t off = 0; off + 5u <= rom_size; ++off) {
@@ -1572,7 +1570,7 @@ int wide_intercept_wl3(uint8_t op)
             : (size_t)(cart_hi - rom) + (size_t)(cpu.pc - 0x4000u);
         if (off + 1u >= wl3_rom_size || rom[off] != 0xC6u || rom[off + 1u] != 0xA0u)
             return 0;
-        unsigned add = 160u + (unsigned)wl3_right_extra;
+        unsigned add = 160u + (unsigned)wl3_left_extra + (unsigned)wl3_right_extra;
         unsigned sum = (unsigned)cpu.a + add;
         cpu.f = (uint8_t)(((sum & 0xFFu) == 0 ? 0x80u : 0u) |
             ((((cpu.a & 0x0Fu) + (add & 0x0Fu)) > 0x0Fu) ? 0x20u : 0u) |
