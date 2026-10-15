@@ -150,6 +150,33 @@ int wide_wl2_block_tile(int table_set, int block, int part, uint8_t *tile)
     return 1;
 }
 
+/* Wario Land II GBC stores a parallel 16 KiB palette-ID bank at
+ * 0xF0000. Like the graphic metatile tables at 0x18000, it is arranged as
+ * 32 sets of 0x200 bytes, each containing 128 blocks x four 8x8 components.
+ * These are the authoritative palette IDs for the extended world; unlike the
+ * 256px CGB attribute map in VRAM, they do not get recycled as the camera moves. */
+int wide_wl2_block_attr(int table_set, int block, int part, uint8_t *attr)
+{
+    if (!attr || table_set < 0 || table_set >= 32 ||
+        block < 0 || block >= 128 || part < 0 || part >= 4 ||
+        !wl2_profile_active || !rom ||
+        wl2_profile_game != GAME_WARIO_LAND2_GBC)
+        return 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (cart_info == NULL) return 0;
+#endif
+    const CartInfo *ci = cart_info();
+    if (!ci || ci->crc != 0x047BDF80u || ci->size != 0x200000u ||
+        (rom[0x143] & 0x80u) == 0)
+        return 0;
+    size_t offset = 0xF0000u + (size_t)table_set * 0x200u +
+                    (size_t)block * 4u + (size_t)part;
+    if (offset >= 0xF4000u || offset >= ci->size || rom[offset] > 7u)
+        return 0;
+    *attr = rom[offset];
+    return 1;
+}
+
 static int wl2_trace_candidate_opcode(uint8_t op)
 {
     return op == 0x19 || op == 0xC6 || op == 0xD6 || op == 0xFE ||
