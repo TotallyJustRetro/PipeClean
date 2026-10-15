@@ -2809,8 +2809,8 @@ static void tab_online(float x, float y)
 
 
 #if defined(__ANDROID__) || defined(PIPECLEAN_DEV_BUILD)
-/* Companion Deck layout editor: only SML1 and SML2 have live widgets today.
- * Rows for the other games stay visible so the editor can grow without a UI redesign. */
+/* Companion Deck layout editor. Wario built-ins have independent transform
+ * layers alongside user-added image decorations. */
 enum {
     DECK_PICK_BACKGROUND = 1, DECK_PICK_BUTTON_TEXTURE, DECK_PICK_ITEM_TEXTURE,
     DECK_PICK_DECORATION, DECK_PICK_SOUND_SAVE, DECK_PICK_SOUND_LOAD,
@@ -2875,6 +2875,27 @@ static int deck_game_ready(int game)
     return game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
            game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
            game == GAME_WARIO_LAND3_GBC || game == GAME_WARIO_LAND2_GBC;
+}
+#define DECK_WARIO_BUILTIN_SLOTS 4
+static int deck_editor_is_wario_game(int game)
+{
+    return game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
+           game == GAME_WARIO_LAND2_GBC;
+}
+static int deck_editor_first_decoration_slot(int game)
+{
+    return deck_editor_is_wario_game(game) ? DECK_WARIO_BUILTIN_SLOTS : 0;
+}
+static const char *deck_editor_element_label(int element)
+{
+    if (deck_editor_is_wario_game(companion_editor_game)) {
+        if (element == DECK_ELEM_DECORATION) return "Treasure Vault";
+        if (element == DECK_ELEM_DECORATION_2)
+            return companion_editor_game == GAME_WARIO_SML3 ? "Current Course" : "Picture Panel";
+        if (element == DECK_ELEM_DECORATION_3) return "Expedition Log";
+        if (element == DECK_ELEM_DECORATION_4) return "Gold Pile";
+    }
+    return (element >= 0 && element < N_DECK_ELEM) ? deck_element_names[element] : "Layer";
 }
 
 static void deck_layout_defaults(CompanionLayoutCfg *d)
@@ -2990,7 +3011,16 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
         else { *x=606; *y=136; *w=174; *h=242; }
         break;
     default:
-        if (element >= DECK_ELEM_DECORATION && element < N_DECK_ELEM) {
+        if (deck_editor_is_wario_game(companion_editor_game) &&
+            element >= DECK_ELEM_DECORATION && element <= DECK_ELEM_DECORATION_4) {
+            int slot = element - DECK_ELEM_DECORATION;
+            if (slot == 0) { *x=20; *y=78; *w=295; *h=138; }
+            else if (slot == 1 && companion_editor_game == GAME_WARIO_SML3) {
+                *x=485; *y=300; *w=295; *h=110;
+            } else if (slot == 1) { *x=485; *y=78; *w=295; *h=138; }
+            else if (slot == 2) { *x=20; *y=300; *w=295; *h=110; }
+            else { *x=32; *y=DECK_EDITOR_THOR_H-125; *w=736; *h=130; }
+        } else if (element >= DECK_ELEM_DECORATION && element < N_DECK_ELEM) {
             static const float bx[N_DECK_DECORATIONS]={280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
             static const float by[N_DECK_DECORATIONS]={150,78,78,295,218,218,95,285,135,135,410,410,35,35,190,190};
             static const float bw[N_DECK_DECORATIONS]={240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
@@ -3089,25 +3119,30 @@ static void deck_editor_preview_emblem(float cx,float cy,float size)
     ui_rect(cx-size*.07f,cy-size*.45f,size*.14f,size*.9f,RGBA(255,214,107,255));
     ui_rrect(cx-size*.12f,cy-size*.05f,size*.24f,size*.24f,size*.12f,RGBA(255,241,181,255));
 }
-static void deck_editor_preview_gold_pile(float x,float y,float w,float h)
+static void deck_editor_preview_gold_pile(CompanionLayoutCfg *d,float x,float y,float w,float h)
 {
+    float rx,ry,rw,rh;
+    deck_editor_element_rect(d,DECK_ELEM_DECORATION_4,x,y,w,h,&rx,&ry,&rw,&rh);
     const int columns=39,center=columns/2;
     int drawn=0;
-    for(int row=0;row<10 && drawn<180;row++){
+    for(int row=0;row<14 && drawn<180;row++){
         for(int dist=0;dist<=center && drawn<180;dist++){
             for(int side=dist==0?0:-1;side<=1 && drawn<180;side+=2){
                 if(dist==0 && side==1)continue;
                 int col=center+side*dist;
                 if(col<0 || col>=columns)continue;
                 float norm=fabsf((float)(col-center)/(float)center);
-                int stack=4+(int)lroundf((1.f-norm)*12.f);
+                int wobble=((col*7+row*11)%5)-2;
+                int stack=3+(int)lroundf((1.f-norm)*10.f)+wobble;
+                if(stack<2)stack=2;
                 if(row>=stack)continue;
-                float cx=x+w*(72.f+col*17.3f)/800.f;
-                float cy=y+h*(418.f-row*7.f)/DECK_EDITOR_THOR_H;
-                float cw=w*18.f/800.f, ch=h*7.f/DECK_EDITOR_THOR_H;
-                ui_rrect(cx-cw*.5f,cy-ch*.5f,cw,ch,ch*.48f,RGBA(152,90,15,170));
-                ui_stroke(cx-cw*.5f,cy-ch*.5f,cw,ch,ch*.48f,.65f,RGBA(255,208,95,185));
-                ui_rect(cx-cw*.28f,cy-ch*.25f,cw*.25f,ch*.18f,RGBA(255,240,161,170));
+                float cx=rx+rw*(.055f+col*.0235f);
+                float coinw=rw*.028f, coinh=rh*.055f;
+                float cy=ry+rh-coinh*.55f-row*rh*.047f;
+                ui_rrect(cx-coinw*.5f+rw*.003f,cy-coinh*.35f,coinw,coinh,coinh*.48f,RGBA(78,42,7,115));
+                ui_rrect(cx-coinw*.5f,cy-coinh*.5f,coinw,coinh,coinh*.48f,RGBA(184,108,18,245));
+                ui_stroke(cx-coinw*.5f,cy-coinh*.5f,coinw,coinh,coinh*.48f,.65f,RGBA(255,211,96,235));
+                ui_rect(cx-coinw*.28f,cy-coinh*.25f,coinw*.25f,coinh*.16f,RGBA(255,244,172,220));
                 drawn++;
             }
         }
@@ -3152,24 +3187,28 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     ui_shadow(x,y,w,h,11,5,RGBA(0,0,0,110)); ui_rrect(x,y,w,h,10,RGBA(12,20,34,255));
     ui_vgrad(x+2,y+2,w-4,h-4,dr_mario?RGBA(218,239,237,255):game==GAME_SML?RGBA(52,87,62,255):game==GAME_SML2?RGBA(67,49,88,255):RGBA(72,52,30,255),RGBA(16,22,38,255));
     ui_clip(x+2,y+2,w-4,h-4); deck_editor_preview_asset(d,0,d->background_path,x+2,y+2,w-4,h-4);
-    if(wario || wario2) deck_editor_preview_gold_pile(x,y,w,h);
+    if(wario || wario2) deck_editor_preview_gold_pile(d,x,y,w,h);
 
-    if(wario){
-        float lx=x+w*20/800.f, ty=y+h*78/DECK_EDITOR_THOR_H;
-        float pw=w*295/800.f, ph=h*138/DECK_EDITOR_THOR_H;
-        deck_editor_preview_card(lx,ty,pw,ph,game,"TREASURE VAULT");
-        ui_text_fit(F_BOLD,5.0f,lx+pw*.045f,ty+ph*.34f,pw*.91f,RGBA(255,224,164,255),"00 / 15 TREASURES");
-        ui_rrect(lx+pw*.045f,ty+ph*.42f,pw*.91f,fmaxf(2.f,ph*.035f),2,RGBA(70,53,34,255));
-        for(int i=0;i<15;i++)ui_rrect(lx+pw*(.06f+i*.062f),ty+ph*.82f,pw*.025f,ph*.055f,3,RGBA(143,95,43,255));
-        deck_editor_preview_log(x+w*20/800.f,y+h*300/DECK_EDITOR_THOR_H,w*295/800.f,h*110/DECK_EDITOR_THOR_H,game,0);
-        deck_editor_preview_card(x+w*485/800.f,y+h*300/DECK_EDITOR_THOR_H,w*295/800.f,h*110/DECK_EDITOR_THOR_H,game,"CURRENT COURSE");
-        ui_text_fit(F_BOLD,7.0f,x+w*500/800.f,y+h*343/DECK_EDITOR_THOR_H,w*265/800.f,RGBA(255,200,87,255),"COURSE --");
-        ui_text_fit(F_REG,5.0f,x+w*500/800.f,y+h*366/DECK_EDITOR_THOR_H,w*265/800.f,RGBA(255,241,212,255),"COIN BANK -----");
-        ui_text_fit(F_REG,4.5f,x+w*500/800.f,y+h*388/DECK_EDITOR_THOR_H,w*265/800.f,RGBA(184,170,149,255),"COURSE IN PROGRESS");
-    } else if(wario2){
-        deck_editor_preview_collection(x+w*20/800.f,y+h*78/DECK_EDITOR_THOR_H,w*295/800.f,h*138/DECK_EDITOR_THOR_H,game,"TREASURE VAULT",0);
-        deck_editor_preview_collection(x+w*485/800.f,y+h*78/DECK_EDITOR_THOR_H,w*295/800.f,h*138/DECK_EDITOR_THOR_H,game,"PICTURE PANEL",1);
-        deck_editor_preview_log(x+w*20/800.f,y+h*300/DECK_EDITOR_THOR_H,w*295/800.f,h*110/DECK_EDITOR_THOR_H,game,1);
+    if(wario || wario2){
+        float vx,vy,vw,vh,ax,ay,aw,ah,lx,ly,lw,lh;
+        deck_editor_element_rect(d,DECK_ELEM_DECORATION,x,y,w,h,&vx,&vy,&vw,&vh);
+        if(wario){
+            deck_editor_preview_card(vx,vy,vw,vh,game,"TREASURE VAULT");
+            ui_text_fit(F_BOLD,5.0f,vx+vw*.045f,vy+vh*.34f,vw*.91f,RGBA(255,224,164,255),"00 / 15 TREASURES");
+            ui_rrect(vx+vw*.045f,vy+vh*.42f,vw*.91f,fmaxf(2.f,vh*.035f),2,RGBA(70,53,34,255));
+            for(int i=0;i<15;i++)ui_rrect(vx+vw*(.06f+i*.062f),vy+vh*.82f,vw*.025f,vh*.055f,3,RGBA(143,95,43,255));
+            deck_editor_element_rect(d,DECK_ELEM_DECORATION_2,x,y,w,h,&ax,&ay,&aw,&ah);
+            deck_editor_preview_card(ax,ay,aw,ah,game,"CURRENT COURSE");
+            ui_text_fit(F_BOLD,7.0f,ax+aw*.05f,ay+ah*.39f,aw*.9f,RGBA(255,200,87,255),"COURSE --");
+            ui_text_fit(F_REG,5.0f,ax+aw*.05f,ay+ah*.60f,aw*.9f,RGBA(255,241,212,255),"COIN BANK -----");
+            ui_text_fit(F_REG,4.5f,ax+aw*.05f,ay+ah*.81f,aw*.9f,RGBA(184,170,149,255),"COURSE IN PROGRESS");
+        } else {
+            deck_editor_preview_collection(vx,vy,vw,vh,game,"TREASURE VAULT",0);
+            deck_editor_element_rect(d,DECK_ELEM_DECORATION_2,x,y,w,h,&ax,&ay,&aw,&ah);
+            deck_editor_preview_collection(ax,ay,aw,ah,game,"PICTURE PANEL",1);
+        }
+        deck_editor_element_rect(d,DECK_ELEM_DECORATION_3,x,y,w,h,&lx,&ly,&lw,&lh);
+        deck_editor_preview_log(lx,ly,lw,lh,game,wario2);
     } else if(!dr_mario){
         deck_editor_preview_card(x+w*20/800.f,y+h*70/DECK_EDITOR_THOR_H,w*210/800.f,h*50/DECK_EDITOR_THOR_H,game,"LIVES");
         ui_text_fit(F_BOLD,6.5f,x+w*32/800.f,y+h*94/DECK_EDITOR_THOR_H,w*186/800.f,RGBA(250,240,220,255),"x 03");
@@ -3274,7 +3313,7 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         for(int slot=0;slot<10;slot++){float tile_w=(rw-18)/10.f,tx=rx+3+slot*(tile_w+1);
             ui_rrect(tx,ry+rh*.28f,tile_w,rh*.54f,2,slot==0?RGBA(86,180,200,190):RGBA(66,81,106,200));}
     }
-    for(int e=DECK_ELEM_DECORATION;e<N_DECK_ELEM;e++){
+    for(int e=DECK_ELEM_DECORATION+deck_editor_first_decoration_slot(game);e<N_DECK_ELEM;e++){
         int slot=e-DECK_ELEM_DECORATION;const char *asset=deck_decoration_path_const(d,slot);if(!asset[0])continue;
         float rx,ry,rw,rh;deck_editor_element_rect(d,e,x,y,w,h,&rx,&ry,&rw,&rh);
         deck_editor_preview_asset(d,deck_decoration_asset_index(slot),asset,rx,ry,rw,rh);
@@ -3309,9 +3348,15 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
     }
     int order[N_DECK_ELEM];
     int n = 0;
-    for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION; e--) {
+    for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION + deck_editor_first_decoration_slot(companion_editor_game); e--) {
         int slot = e - DECK_ELEM_DECORATION;
         if (deck_decoration_path_const(d, slot)[0]) order[n++] = e;
+    }
+    if (deck_editor_is_wario_game(companion_editor_game)) {
+        order[n++] = DECK_ELEM_DECORATION_4;
+        order[n++] = DECK_ELEM_DECORATION_3;
+        order[n++] = DECK_ELEM_DECORATION_2;
+        order[n++] = DECK_ELEM_DECORATION;
     }
     order[n++] = DECK_ELEM_STATUS;
     order[n++] = DECK_ELEM_ITEM;
@@ -3388,7 +3433,9 @@ static int companion_editor_selected_decoration_slot(void)
 {
     if (companion_editor_element < DECK_ELEM_DECORATION ||
         companion_editor_element >= N_DECK_ELEM) return -1;
-    return companion_editor_element - DECK_ELEM_DECORATION;
+    int slot = companion_editor_element - DECK_ELEM_DECORATION;
+    if (deck_editor_first_decoration_slot(companion_editor_game) > slot) return -1;
+    return slot;
 }
 
 static void deck_editor_remove_selected_decoration(void)
@@ -3415,8 +3462,9 @@ static void deck_editor_remove_selected_decoration(void)
 
 static void deck_editor_swap_decoration_layers(CompanionLayoutCfg *d, int a, int b)
 {
-    if (!d || a < 0 || b < 0 || a >= N_DECK_DECORATIONS ||
-        b >= N_DECK_DECORATIONS || a == b) return;
+    if (!d || a < deck_editor_first_decoration_slot(companion_editor_game) ||
+        b < deck_editor_first_decoration_slot(companion_editor_game) ||
+        a >= N_DECK_DECORATIONS || b >= N_DECK_DECORATIONS || a == b) return;
     char path_tmp[512];
     char *pa = deck_decoration_path(d, a);
     char *pb = deck_decoration_path(d, b);
@@ -3451,8 +3499,10 @@ static void deck_editor_swap_decoration_layers(CompanionLayoutCfg *d, int a, int
 static void deck_editor_move_decoration(int slot, int delta)
 {
     int other = slot + delta;
-    if (slot < 0 || slot >= N_DECK_DECORATIONS ||
-        other < 0 || other >= N_DECK_DECORATIONS) return;
+    if (slot < deck_editor_first_decoration_slot(companion_editor_game) ||
+        slot >= N_DECK_DECORATIONS ||
+        other < deck_editor_first_decoration_slot(companion_editor_game) ||
+        other >= N_DECK_DECORATIONS) return;
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
     deck_editor_snapshot();
     deck_editor_swap_decoration_layers(d, slot, other);
@@ -3471,7 +3521,7 @@ static void deck_editor_duplicate_decoration(int slot)
         return;
     }
     int target = -1;
-    for (int i = 0; i < N_DECK_DECORATIONS; i++) {
+    for (int i = deck_editor_first_decoration_slot(companion_editor_game); i < N_DECK_DECORATIONS; i++) {
         const char *candidate = deck_decoration_path_const(d, i);
         if (!candidate[0]) { target = i; break; }
     }
@@ -3507,7 +3557,7 @@ static void deck_editor_open_picker(int kind)
 {
     if (kind == DECK_PICK_DECORATION) {
         CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-        for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
+        for (int slot = deck_editor_first_decoration_slot(companion_editor_game); slot < N_DECK_DECORATIONS; slot++) {
             const char *path = deck_decoration_path_const(d, slot);
             if (!path[0]) {
                 companion_editor_pending_decoration_slot = slot;
@@ -3646,21 +3696,23 @@ static void deck_editor_layout(float x, float y)
                 "Select, move, reshape");
     /* Three compact columns prevent the element picker from colliding with
        the independent width/height controls below it. */
-    for (int e = 0; e <= DECK_ELEM_STATUS; e++) {
+    int layer_limit = deck_editor_is_wario_game(companion_editor_game)
+        ? DECK_ELEM_DECORATION_4 : DECK_ELEM_STATUS;
+    for (int e = 0; e <= layer_limit; e++) {
         int col = e % 3, row = e / 3;
         float by = y + 204 + row * 21.0f;
         if (ui_button(rx + col * 109, by, 105, 19,
-                      deck_element_names[e],
+                      deck_editor_element_label(e),
                       e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
             companion_editor_element = e;
     }
     int selected_decoration = companion_editor_selected_decoration_slot();
-    if (ui_button(rx + 218, y + 225, 105, 19, "Decoration",
+    if (ui_button(rx + 218, y + 267, 105, 19, "Decoration",
                   selected_decoration >= 0 ? B_PRIMARY : B_GHOST, 1)) {
         if (selected_decoration < 0) {
             CompanionLayoutCfg *layout = &settings.deck_layout[companion_editor_game];
             int first = -1;
-            for (int slot = 0; slot < N_DECK_DECORATIONS; slot++)
+            for (int slot = deck_editor_first_decoration_slot(companion_editor_game); slot < N_DECK_DECORATIONS; slot++)
                 if (deck_decoration_path_const(layout, slot)[0]) { first = slot; break; }
             companion_editor_element = DECK_ELEM_DECORATION + (first >= 0 ? first : 0);
         }
@@ -3879,7 +3931,7 @@ static void deck_editor_decorations(float x, float y)
     }
 
     int visible = 0;
-    for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
+    for (int slot = deck_editor_first_decoration_slot(companion_editor_game); slot < N_DECK_DECORATIONS; slot++) {
         const char *asset_path = deck_decoration_path_const(d, slot);
         if (!asset_path[0]) continue;
         float colx = x + 36 + (visible % 4) * 183.0f;
