@@ -1356,14 +1356,18 @@ static void wario_patch_dx_activation_operand(void)
  * hard-coding addresses for one banking/revision layout. The ROM is only read;
  * changes happen in the interpreter's live CPU state. */
 #define WL3_MAX_BOUND_HOOKS 16u
+#define WL3_MAX_WIDTH_HOOKS 16u
+#define WL3_MAX_LEFT_CANDIDATES 64u
 #define WL3_MAX_EDGE_HOOKS 16u
 #define WL3_MAX_LOOP_HOOKS 8u
 
 static int wl3_profile_active;
 static int wl3_left_extra, wl3_right_extra;
 static size_t wl3_rom_size;
-static size_t wl3_bound_starts[WL3_MAX_BOUND_HOOKS];
-static size_t wl3_bound_count;
+static size_t wl3_bound_left_hooks[WL3_MAX_BOUND_HOOKS];
+static size_t wl3_bound_left_count;
+static size_t wl3_bound_width_hooks[WL3_MAX_WIDTH_HOOKS];
+static size_t wl3_bound_width_count;
 static size_t wl3_right_spawn_adds[WL3_MAX_EDGE_HOOKS];
 static size_t wl3_right_spawn_count;
 static size_t wl3_left_spawn_adds[WL3_MAX_EDGE_HOOKS];
@@ -1386,17 +1390,15 @@ static int wl3_rom_offset_is_mapped(size_t off, uint16_t pc)
 
 static int wl3_bounds_signature(const uint8_t *p)
 {
-    /* CheckObjectOnScreen is used both for the ON_SCREEN flag and for actor
-     * lifetime/despawn. The two copies differ only in their initial object-X
-     * adjustment (24 or $6f); both end in ADD A,SCREEN_WIDTH_PX ($c6,$a0). */
+    /* Horizontal half of CheckObjectOnScreen and its later actor-despawn
+     * check. It loads wCameraSCX, then tests E + 24 (or E + $6f) against it.
+     * This is deliberately a local signature so bank/link-address shifts do
+     * not break detection. The width-add is found separately in the following
+     * control-flow window. */
     return p[0] == 0x21 && p[3] == 0x2A && p[4] == 0x6E && p[5] == 0x67 &&
            p[6] == 0x7B && p[7] == 0xC6 &&
            (p[8] == 0x18 || p[8] == 0x6F) && p[9] == 0x5F &&
-           p[10] == 0x30 && p[12] == 0x14 && p[13] == 0x28 &&
-           p[15] == 0x7A && p[16] == 0xBC && p[17] == 0x38 &&
-           p[19] == 0x20 && p[21] == 0x7B && p[22] == 0xBD &&
-           p[23] == 0x38 && p[25] == 0x28 && p[27] == 0x7D &&
-           p[28] == 0xC6 && p[29] == 0xA0;
+           p[10] == 0x30;
 }
 
 static int wl3_right_spawn_signature(const uint8_t *p)
@@ -1423,19 +1425,38 @@ static int wl3_left_spawn_signature(const uint8_t *p)
 
 static void wl3_scan_runtime_hooks(size_t rom_size)
 {
+    size_t left_candidates[WL3_MAX_LEFT_CANDIDATES];
+    size_t left_candidate_count = 0;
     wl3_rom_size = rom_size;
-    wl3_bound_count = 0;
-    wl3_right_spawn_count = 0;
-    wl3_left_spawn_count = 0;
-    wl3_col_loop_count = 0;
+    wl3_bound_left_count = wl3_bound_width_count = 0;
+    wl3_right_spawn_count = wl3_left_spawn_count = wl3_col_loop_count = 0;
     if (!rom || rom_size < 30u) return;
 
-    for (size_t off = 0; off + 30u <= rom_size; ++off) {
-        /* A fetched instruction sequence must live in a single 16 KiB bank. */
-        if ((off >> 14) != ((off + 29u) >> 14)) continue;
-        const uint8_t *p = rom + off;
-        if (wl3_bounds_signature(p) && wl3_bound_count < WL3_MAX_BOUND_HOOKS)
-            wl3_bound_starts[wl3_bound_count++] = off;
+    for (size_t off = 0; off + 11u <= rom_size; ++off) {
+        if ((off >> 14) != ((off + 10u) >> 14)) continue;
+        if (wl3_bounds_signature(rom + off) &&
+            left_candidate_count < WL3_MAX_LEFT_CANDIDATES)
+            left_candidates[left_candidate_count++] = off;
+    }
+
+    /* The game repeats the horizontal camera test for draw visibility and
+     * despawn. Its right-side width operand is in the same basic block chain,
+     * after the left-edge compare. Associate the nearest following 7D C6 A0
+     * with each signature, rather than assuming a fixed full-routine offset. */
+    for (size_t i = 0; i < left_candidate_count; ++i) {
+        size_t off = left_candidates[i];
+        if (wl3_bound_left_count < WL3_MAX_BOUND_HOOKS)
+            wl3_bound_left_hooks[wl3_bound_left_count++] = off + 6u;
+        size_t end = off + 128u;
+        if (end > rom_size) end = rom_size;
+        if ((off >> 14) != ((end - 1u) >> 14)) end = ((off >> 14) + 1u) << 14;
+        for (size_t q = off + 12u; q + 2u < end; ++q) {
+            if (rom[q] == 0x7Du && rom[q + 1u] == 0xC6u && rom[q + 2u] == 0xA0u) {
+                if (wl3_bound_width_count < WL3_MAX_WIDTH_HOOKS)
+                    wl3_bound_width_hooks[wl3_bound_width_count++] = q + 1u;
+                break;
+            }
+        }
     }
 
     for (size_t off = 0; off + 22u <= rom_size; ++off) {
@@ -1445,19 +1466,30 @@ static void wl3_scan_runtime_hooks(size_t rom_size)
             wl3_right_spawn_adds[wl3_right_spawn_count++] = off + 12u;
     }
 
+    /* Func_9039 computes vertical-edge Y first, then horizontal-edge X using
+     * the same -$10 sequence. Only hook the second occurrence, otherwise a
+     * left widescreen setting would incorrectly shift vertical block rows. */
     for (size_t off = 0; off + 20u <= rom_size; ++off) {
         if ((off >> 14) != ((off + 19u) >> 14)) continue;
-        if (wl3_left_spawn_signature(rom + off) &&
-            wl3_left_spawn_count < WL3_MAX_EDGE_HOOKS)
-            wl3_left_spawn_adds[wl3_left_spawn_count++] = off + 12u;
+        if (!wl3_left_spawn_signature(rom + off)) continue;
+        size_t second_min = off + 24u;
+        size_t second_max = off + 100u;
+        if (second_max > rom_size) second_max = rom_size;
+        if ((off >> 14) != ((second_max - 1u) >> 14))
+            second_max = ((off >> 14) + 1u) << 14;
+        for (size_t q = second_min; q + 20u <= second_max; ++q) {
+            if ((q >> 14) != ((q + 19u) >> 14)) break;
+            if (wl3_left_spawn_signature(rom + q)) {
+                if (wl3_left_spawn_count < WL3_MAX_EDGE_HOOKS)
+                    wl3_left_spawn_adds[wl3_left_spawn_count++] = q + 12u;
+                break;
+            }
+        }
     }
 
     for (size_t off = 0; off + 5u <= rom_size; ++off) {
         if ((off >> 14) != ((off + 4u) >> 14)) continue;
         const uint8_t *p = rom + off;
-        /* SpawnColEdgeObjects scans the horizontal object row. Add the
-         * extra 16-pixel columns instead of letting its fixed 13-step loop
-         * stop short of the widened viewport. */
         if (p[0] == 0x1E && p[1] == 0x0D && p[2] == 0xCB &&
             p[3] == 0x7E && p[4] == 0x28 &&
             wl3_col_loop_count < WL3_MAX_LOOP_HOOKS)
@@ -1467,19 +1499,15 @@ static void wl3_scan_runtime_hooks(size_t rom_size)
 
 static int wl3_pc_is_bound_left(uint16_t pc)
 {
-    for (size_t i = 0; i < wl3_bound_count; ++i) {
-        size_t off = wl3_bound_starts[i] + 6u;
-        if (wl3_rom_offset_is_mapped(off, pc)) return 1;
-    }
+    for (size_t i = 0; i < wl3_bound_left_count; ++i)
+        if (wl3_rom_offset_is_mapped(wl3_bound_left_hooks[i], pc)) return 1;
     return 0;
 }
 
 static int wl3_pc_is_bound_width(uint16_t pc)
 {
-    for (size_t i = 0; i < wl3_bound_count; ++i) {
-        size_t off = wl3_bound_starts[i] + 28u;
-        if (wl3_rom_offset_is_mapped(off, pc)) return 1;
-    }
+    for (size_t i = 0; i < wl3_bound_width_count; ++i)
+        if (wl3_rom_offset_is_mapped(wl3_bound_width_hooks[i], pc)) return 1;
     return 0;
 }
 
@@ -1518,7 +1546,7 @@ int wide_intercept_wl3(uint8_t op)
             : (size_t)(cart_hi - rom) + (size_t)(cpu.pc - 0x4000u);
         if (off + 1u >= wl3_rom_size || rom[off] != 0xC6u || rom[off + 1u] != 0xA0u)
             return 0;
-        unsigned add = 160u + (unsigned)wl3_left_extra + (unsigned)wl3_right_extra;
+        unsigned add = 160u + (unsigned)wl3_right_extra;
         unsigned sum = (unsigned)cpu.a + add;
         cpu.f = (uint8_t)(((sum & 0xFFu) == 0 ? 0x80u : 0u) |
             ((((cpu.a & 0x0Fu) + (add & 0x0Fu)) > 0x0Fu) ? 0x20u : 0u) |
@@ -1614,7 +1642,7 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
     wl3_profile_active = 0;
     wl3_left_extra = wl3_right_extra = 0;
     wl3_rom_size = 0;
-    wl3_bound_count = wl3_right_spawn_count = wl3_left_spawn_count = wl3_col_loop_count = 0;
+    wl3_bound_left_count = wl3_bound_width_count = wl3_right_spawn_count = wl3_left_spawn_count = wl3_col_loop_count = 0;
     if (l + r == 0) return 1;
     if (game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) {
         /* Distinguish the monochrome and Color cartridges before widening. */
