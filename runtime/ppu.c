@@ -48,6 +48,7 @@ static Wl2BlockVisual wl2_block_visuals[256];
 static Wl2BlockVisual wl2_frame_visuals[256];
 static uint8_t wl2_frame_seen[256], wl2_frame_conflict[256];
 static int wl2_frame_world_x0, wl2_frame_world_y0;
+static int wl2_frame_scx, wl2_frame_scy;
 static int wl2_cache_level = -1, wl2_cache_tref = -1, wl2_cache_cgb = -1;
 static uint16_t wario_frame_scroll_x, wario_frame_scroll_y;
 static int wario_cached_level = -1;
@@ -405,14 +406,19 @@ static int wl2_same_visual(const Wl2BlockVisual *a, const Wl2BlockVisual *b)
     return memcmp(a->tile, b->tile, sizeof a->tile) == 0;
 }
 
+static int wl2_scroll_delta(int current, int initial)
+{
+    int delta = current - initial;
+    if (delta > 128) delta -= 256;
+    if (delta < -128) delta += 256;
+    return delta;
+}
+
 static int wl2_align_origin(int world_origin, int ppu_scroll)
 {
     int low = world_origin % 256;
     if (low < 0) low += 256;
-    int delta = ppu_scroll - low;
-    if (delta > 128) delta -= 256;
-    if (delta < -128) delta += 256;
-    return world_origin + delta;
+    return world_origin + wl2_scroll_delta(ppu_scroll, low);
 }
 
 /* Learn a map-block's 2x2 graphic from the authentic native playfield.
@@ -495,6 +501,8 @@ static void wl2_prepare_frame(void)
 
     wl2_frame_world_x0 = world_x0;
     wl2_frame_world_y0 = world_y0;
+    wl2_frame_scx = scx;
+    wl2_frame_scy = scy;
     memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
     memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
 
@@ -526,12 +534,15 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
                                uint32_t *rgb, uint8_t *bgci, uint8_t *bgattr)
 {
     if (!wl2_wide_enabled || !wl2_frame_active || W <= GB_W) return;
-    int world_y = wl2_frame_world_y0 + y;
+    /* Some rooms update SCX/SCY during the frame. Follow those raster
+       changes just as the Wario Land margin renderer does. */
+    int world_y = wl2_frame_world_y0 + wl2_scroll_delta(scy, wl2_frame_scy) + y;
     if (world_y < 0 || world_y > 0xFFFF) return;
+    int scroll_x_delta = wl2_scroll_delta(scx, wl2_frame_scx);
 
     for (int X = 0; X < W; X++) {
         if (X >= L && X < L + GB_W) continue;
-        int world_x = wl2_frame_world_x0 + X - L;
+        int world_x = wl2_frame_world_x0 + scroll_x_delta + X - L;
         if (world_x < 0 || world_x > 0xFFFF) continue;
         uint8_t id;
         if (!wide_wl2_block_at || !wide_wl2_block_at(world_x, world_y, &id))
