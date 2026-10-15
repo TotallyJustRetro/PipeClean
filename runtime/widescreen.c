@@ -1758,8 +1758,19 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
             return 0;
         wl3_left_extra = l < 0 ? 0 : (l > 32 ? 32 : l);
         wl3_right_extra = r < 0 ? 0 : (r > 32 ? 32 : r);
-        wl3_profile_active = wl3_left_extra + wl3_right_extra > 0;
         wl3_scan_runtime_hooks(ci->size);
+        /* Do not advertise a ROM as supported unless the renderer and the
+         * object lifecycle hooks were all found. Otherwise the wider PPU
+         * would only expose recycled tilemap-ring content and recreate pop-in. */
+        if (!wl3_camera_x_addr || !wl3_room_tiles_addr ||
+            wl3_bound_left_count < 2 || wl3_bound_width_count < 2 ||
+            wl3_right_spawn_count == 0 || wl3_left_spawn_count == 0 ||
+            wl3_col_loop_count == 0) {
+            wl3_left_extra = wl3_right_extra = 0;
+            wl3_profile_active = 0;
+            return 0;
+        }
+        wl3_profile_active = wl3_left_extra + wl3_right_extra > 0;
         return 1;
     }
     if (game == GAME_WARIO_SML3) return wide_install_wario_sml3(wario_dx);
