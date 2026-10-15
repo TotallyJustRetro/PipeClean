@@ -3257,7 +3257,11 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
         deck_editor_element_rect(d, companion_editor_element, preview_x, preview_y,
                                  preview_w, preview_h, &sx, &sy, &sw, &sh);
         if (x >= sx && y >= sy && x < sx + sw && y < sy + sh) {
-            companion_editor_dragging = 1; companion_editor_resizing = 0;
+            int right_handle = x >= sx + sw - 30 && fabsf(y - (sy + sh * .5f)) <= 30;
+            int bottom_handle = y >= sy + sh - 30 && fabsf(x - (sx + sw * .5f)) <= 30;
+            int corner_handle = x >= sx + sw - 30 && y >= sy + sh - 30;
+            companion_editor_dragging = 1;
+            companion_editor_resizing = corner_handle ? 1 : right_handle ? 2 : bottom_handle ? 3 : 0;
             companion_editor_last_x = x; companion_editor_last_y = y;
             companion_editor_drag_residual_x = companion_editor_drag_residual_y = 0.f;
             deck_editor_snapshot(); return;
