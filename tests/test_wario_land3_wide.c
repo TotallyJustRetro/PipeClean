@@ -87,6 +87,7 @@ int main(void)
     const size_t spawn_right = 0x10200u;
     const size_t spawn_left = 0x10300u;
     const size_t spawn_left_vertical = 0x10340u;
+    const size_t spawn_left_y_only = 0x10380u;
     const size_t spawn_scan_loop = 0x10500u;
     int left = 0, right = 0;
 
@@ -108,6 +109,9 @@ int main(void)
     put_right_spawn_signature(spawn_right);
     put_left_spawn_signature(spawn_left);
     put_left_spawn_signature(spawn_left_vertical);
+    put_left_spawn_signature(spawn_left_y_only);
+    /* The matching shape using wCameraSCY+1 must not be widened as X. */
+    rom[spawn_left_y_only + 1u] = 0x2Fu; /* camera Y low byte at C22F */
     rom[spawn_scan_loop + 0] = 0x1Eu; /* LD E,$0d */
     rom[spawn_scan_loop + 1] = 0x0Du;
     rom[spawn_scan_loop + 2] = 0xCBu; /* BIT 7,[HL] */
@@ -160,7 +164,6 @@ int main(void)
 
     /* ADD A,$a0 is extended to the actual wider camera window. */
     cpu.pc = (uint16_t)(pc_for_rom_offset(check_visible) + 28u);
-    cpu.pc = (uint16_t)(pc_for_rom_offset(check_visible) + 28u);
     cpu.a = 0x10u; cpu.f = 0x40u; total_cycles = 0;
     if (wide_intercept_wl3(0xC6u) != 1 || cpu.a != 0xF0u ||
         cpu.pc != (uint16_t)(pc_for_rom_offset(check_visible) + 30u) ||
@@ -190,6 +193,13 @@ int main(void)
         ((unsigned)cpu.h << 8 | cpu.l) != 0x04D0u ||
         total_cycles != 8u)
         return fail(12, "left-edge object spawning should extend by 32px");
+
+    cpu.pc = (uint16_t)(pc_for_rom_offset(spawn_left_y_only) + 12u);
+    cpu.h = 0x05u; cpu.l = 0x00u; cpu.f = 0x80u; total_cycles = 0;
+    if (wide_intercept_wl3(0x19u) != 0 ||
+        ((unsigned)cpu.h << 8 | cpu.l) != 0x0500u ||
+        total_cycles != 0u)
+        return fail(20, "vertical camera rows must not receive a horizontal offset");
 
     /* Vertical-edge scans traverse horizontally, so include the additional
      * left/right block columns rather than stopping at the old 13-entry span. */
