@@ -635,6 +635,7 @@ static void wl2_prepare_frame(void)
     if (wl2_cache_level != level || wl2_cache_tref != (int)tref ||
         wl2_cache_cgb != cgb) {
         memset(wl2_block_visuals, 0, sizeof wl2_block_visuals);
+        memset(wl2_world_attrs, 0, sizeof wl2_world_attrs);
         wl2_metatile_set = -1;
         wl2_cache_level = level;
         wl2_cache_tref = (int)tref;
