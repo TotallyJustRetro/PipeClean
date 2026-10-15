@@ -8,6 +8,7 @@
 
 CPU cpu;
 uint8_t *rom;
+uint8_t *cart_ram;
 const uint8_t *cart_lo, *cart_hi;
 uint64_t total_cycles;
 int frame_count;
@@ -21,6 +22,7 @@ void hw_tick(int tcycles) { total_cycles += (uint64_t)tcycles; }
 static int fail(int code, const char *msg)
 {
     fprintf(stderr, "Wario Land II widescreen test failed: %s\n", msg);
+    free(cart_ram);
     free(rom);
     return code;
 }
@@ -41,6 +43,9 @@ int main(void)
     rom = (uint8_t *)calloc(0x100000u, 1);
     if (!rom) return 2;
     test_info.size = 0x100000u;
+    test_info.ram_bytes = 0x8000u;
+    cart_ram = (uint8_t *)calloc(0x8000u, 1);
+    if (!cart_ram) return fail(2, "couldn't allocate synthetic cartridge RAM");
 
     wide_dims_profile(GAME_WARIO_LAND2_GB, 0, 0, &l, &r);
     if (l != 0 || r != 0) return fail(3, "GB 0% should keep the native viewport");
@@ -61,6 +66,23 @@ int main(void)
         return fail(8, "valid GB cartridge header was rejected");
     if (rom_hash() != before)
         return fail(9, "GB profile unexpectedly modified the ROM image");
+
+    /* WL2's documented map address increments once per 16px block, with
+       256 entries per row; level data is in the linear cartridge-RAM domain. */
+    cart_ram[0x2000] = 0x42; /* world block (0,0) -> $A000 */
+    cart_ram[0x2001] = 0x43; /* world block (1,0) -> $A001 */
+    cart_ram[0x2100] = 0x44; /* world block (0,1) -> $A100 */
+    cart_ram[0x2010] = 0x45; /* world block (16,0) -> $A010 */
+    uint8_t block = 0;
+    if (!wide_wl2_block_at(5, 7, &block) || block != 0x42)
+        return fail(15, "WL2 world map lookup at block (0,0) failed");
+    if (!wide_wl2_block_at(21, 7, &block) || block != 0x43)
+        return fail(16, "WL2 world map lookup at block (1,0) failed");
+    if (!wide_wl2_block_at(5, 23, &block) || block != 0x44)
+        return fail(17, "WL2 world map lookup at block (0,1) failed");
+    if (!wide_wl2_block_at(261, 7, &block) || block != 0x45)
+        return fail(18, "WL2 world map lookup at block (16,0) failed");
+
     rom[0x143] = 0x80;
     if (wide_install_profile(GAME_WARIO_LAND2_GB, 32, 32, 0))
         return fail(10, "GB profile accepted a CGB-compatible cartridge");
@@ -78,6 +100,7 @@ int main(void)
     if (wide_install_profile(GAME_WARIO_LAND2_GBC, 32, 32, 0))
         return fail(14, "GBC profile accepted a monochrome cartridge");
 
+    free(cart_ram);
     free(rom);
     puts("Wario Land II GB/GBC widescreen profile checks passed");
     return 0;
