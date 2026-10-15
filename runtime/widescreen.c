@@ -98,13 +98,15 @@ int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
     if (address >= 0xA000u) {
         size_t offset = (size_t)address - 0x8000u;
         if (offset >= ci->ram_bytes) return 0;
-        *block = ram[offset];
+        /* The top bit is a map flag, not part of the 7-bit terrain ID.
+           Wario Land's compositor also normalizes map entries this way. */
+        *block = (uint8_t)(ram[offset] & 0x7Fu);
         return 1;
     }
 
     /* The documented mapping falls back to the normal bus for exceptional
        rooms whose swizzled address wraps below A000. */
-    *block = rd8(address);
+    *block = (uint8_t)(rd8(address) & 0x7Fu);
     return 1;
 }
 
