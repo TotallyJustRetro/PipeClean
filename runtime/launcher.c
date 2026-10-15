@@ -3093,9 +3093,9 @@ static void deck_editor_preview_gold_pile(float x,float y,float w,float h)
 {
     const int columns=39,center=columns/2;
     int drawn=0;
-    for(int row=0;row<8 && drawn<66;row++){
-        for(int dist=0;dist<=center && drawn<66;dist++){
-            for(int side=dist==0?0:-1;side<=1 && drawn<66;side+=2){
+    for(int row=0;row<10 && drawn<180;row++){
+        for(int dist=0;dist<=center && drawn<180;dist++){
+            for(int side=dist==0?0:-1;side<=1 && drawn<180;side+=2){
                 if(dist==0 && side==1)continue;
                 int col=center+side*dist;
                 if(col<0 || col>=columns)continue;
