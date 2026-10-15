@@ -438,6 +438,8 @@ static int wl2_same_visual(const Wl2BlockVisual *a, const Wl2BlockVisual *b)
  * completely visible 16x16 blocks. A partial block at the viewport edge is
  * still authoritative for its world coordinate; skipping it can cause its
  * expanded margin copy to switch palettes when the block fully scrolls in. */
+static void wl2_store_world_attr(int world_x, int world_y, uint8_t attr);
+
 static int wl2_floor8(int v)
 {
     return v >= 0 ? (v / 8) * 8 : -(((-v + 7) / 8) * 8);
