@@ -458,7 +458,20 @@ static void wl2_select_metatile_set(void)
             second_score = score[set];
         }
     }
-    if (best >= 0 && best_score >= 3 && best_score - second_score >= 2)
+    int equivalent_tie = best >= 0 && best_score == second_score;
+    if (equivalent_tie) {
+        size_t best_off = 0x18000u + (size_t)best * 0x200u;
+        for (int set = 0; set < 32; set++) {
+            if (set == best || score[set] != best_score) continue;
+            size_t other_off = 0x18000u + (size_t)set * 0x200u;
+            if (memcmp(rom + best_off, rom + other_off, 0x200u) != 0) {
+                equivalent_tie = 0;
+                break;
+            }
+        }
+    }
+    if (best >= 0 && best_score >= 3 &&
+        (best_score - second_score >= 2 || equivalent_tie))
         wl2_metatile_set = best;
 }
 
