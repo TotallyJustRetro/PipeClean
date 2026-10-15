@@ -55,6 +55,47 @@ static uint8_t wl2_oam_previous[0xA0];
 static int wl2_oam_previous_valid;
 static char wl2_oam_path[1200] = "pipeclean-wl2-oam-events.txt";
 
+/* Resolve a Wario Land II 16x16 world block using the game's nibble-swizzled
+ * room map. The map can occupy several cartridge-RAM banks, so read the same
+ * linear Cart RAM offset used by the game's RAM domain rather than whichever
+ * SRAM bank happens to be selected by the emulated CPU. */
+static uint8_t wl2_swap_nibbles(uint8_t v)
+{
+    return (uint8_t)((v << 4) | (v >> 4));
+}
+
+int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
+{
+    if (!wide_wl2_trace_active || !block || !rom || !cart_ram ||
+        (wl2_trace_game != GAME_WARIO_LAND2_GB &&
+         wl2_trace_game != GAME_WARIO_LAND2_GBC) ||
+        world_x < 0 || world_y < 0 || world_x > 0xFFFF || world_y > 0xFFFF)
+        return 0;
+
+    uint8_t hx = (uint8_t)((unsigned)world_x >> 8);
+    uint8_t hy = (uint8_t)((unsigned)world_y >> 8);
+    uint8_t lx = (uint8_t)world_x;
+    uint8_t ly = (uint8_t)world_y;
+    unsigned row = (unsigned)wl2_swap_nibbles((uint8_t)(hy & 0x0Fu)) +
+                   (unsigned)(wl2_swap_nibbles(ly) & 0x0Fu) + 0xA0u;
+    unsigned col = (unsigned)wl2_swap_nibbles((uint8_t)(hx & 0x0Fu)) +
+                   (unsigned)(wl2_swap_nibbles(lx) & 0x0Fu);
+    uint16_t address = (uint16_t)((((row & 0xFFu) << 8) | (col & 0xFFu)));
+
+    if (address >= 0xA000u) {
+        const CartInfo *ci = cart_info();
+        size_t offset = (size_t)address - 0x8000u;
+        if (!ci || offset >= ci->ram_bytes) return 0;
+        *block = cart_ram[offset];
+        return 1;
+    }
+
+    /* The documented mapping falls back to the normal bus for exceptional
+       rooms whose swizzled address wraps below A000. */
+    *block = rd8(address);
+    return 1;
+}
+
 static int wl2_trace_candidate_opcode(uint8_t op)
 {
     return op == 0x19 || op == 0xC6 || op == 0xD6 || op == 0xFE ||
