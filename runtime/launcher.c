@@ -308,6 +308,7 @@ int launcher_prepare(int g, char *err, size_t n)
     ppu_set_wario_sml3(g == GAME_WARIO_SML3 && wl + wr > 0 && wide_ready);
     ppu_set_wl2_wide((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) &&
                       wl + wr > 0 && wide_ready);
+    ppu_set_wl3_wide(g == GAME_WARIO_LAND3_GBC && wl + wr > 0 && wide_ready);
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
 }
