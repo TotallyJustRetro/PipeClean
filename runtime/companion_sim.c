@@ -56,7 +56,7 @@ static int wario_previous_treasure_mask = -1, wario_previous_stage = -1, wario_p
 static int wario_pile_game = -1, wario_pile_level_coins;
 static int wario_pile_previous_coins = -1, wario_pile_previous_stage = -1;
 static float wario_pile_displayed_coins;
-static Uint32 wario_pile_reset_started;
+static int wario_pile_resetting;
 static int wario_treasure_animation_id = -1;
 static Uint32 wario_treasure_animation_started;
 static int wario_treasure_animation_active;
@@ -180,12 +180,11 @@ static void companion_sim_reset_coin_pile(void)
     wario_pile_level_coins = 0;
     wario_pile_previous_coins = wario_pile_previous_stage = -1;
     wario_pile_displayed_coins = 0.f;
-    wario_pile_reset_started = SDL_GetTicks();
+    wario_pile_resetting = 0;
 }
 
 static void companion_sim_update_coin_pile(int game, int stage, int coin_reading)
 {
-    Uint32 now = SDL_GetTicks();
     if (game != GAME_WARIO_SML3 && !wario_land2_supported_game(game)) {
         companion_sim_reset_coin_pile();
         return;
@@ -195,18 +194,30 @@ static void companion_sim_update_coin_pile(int game, int stage, int coin_reading
         wario_pile_level_coins = 0;
         wario_pile_displayed_coins = 0.f;
         wario_pile_previous_coins = wario_pile_previous_stage = -1;
-        wario_pile_reset_started = now;
+        wario_pile_resetting = 0;
     }
-    if (stage < 0 || coin_reading < 0) {
+    if (stage < 0) {
+        wario_pile_previous_stage = -1;
+        wario_pile_previous_coins = -1;
+        return;
+    }
+    if (coin_reading < 0) {
+        wario_pile_previous_coins = -1;
+        return;
+    }
+    if (wario_pile_previous_stage < 0) {
         wario_pile_previous_stage = stage;
         wario_pile_previous_coins = coin_reading;
         return;
     }
-    if (wario_pile_previous_stage < 0 || wario_pile_previous_coins < 0 ||
-        stage != wario_pile_previous_stage) {
+    if (stage != wario_pile_previous_stage) {
         wario_pile_level_coins = 0;
-        wario_pile_reset_started = now;
+        wario_pile_resetting = 1;
         wario_pile_previous_stage = stage;
+        wario_pile_previous_coins = coin_reading;
+        return;
+    }
+    if (wario_pile_previous_coins < 0) {
         wario_pile_previous_coins = coin_reading;
         return;
     }
@@ -214,11 +225,7 @@ static void companion_sim_update_coin_pile(int game, int stage, int coin_reading
     if (delta > 0) {
         wario_pile_level_coins += delta;
         if (wario_pile_level_coins > 390) wario_pile_level_coins = 390;
-    } else if (delta < 0) {
-        wario_pile_level_coins += delta;
-        if (wario_pile_level_coins < 0) wario_pile_level_coins = 0;
     }
-    wario_pile_previous_stage = stage;
     wario_pile_previous_coins = coin_reading;
 }
 
@@ -1981,12 +1988,15 @@ static void thor_dr_mario(const Settings *s,int g)
 static void thor_gold_coin_pile(int game)
 {
     if (game != GAME_WARIO_SML3 && !wario_land2_supported_game(game)) return;
-    Uint32 now = SDL_GetTicks();
-    int target = now - wario_pile_reset_started < 560u ? 0 : wario_pile_level_coins;
+    int target = wario_pile_resetting ? 0 : wario_pile_level_coins;
     float difference = (float)target - wario_pile_displayed_coins;
     if (fabsf(difference) > 0.2f) {
         float step = fminf(9.f, fabsf(difference));
         wario_pile_displayed_coins += difference > 0.f ? step : -step;
+    }
+    if (wario_pile_resetting && wario_pile_displayed_coins <= 0.2f) {
+        wario_pile_displayed_coins = 0.f;
+        wario_pile_resetting = 0;
     }
     int visible = (int)lroundf(wario_pile_displayed_coins);
     if (visible < 1) return;
