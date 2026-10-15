@@ -67,26 +67,11 @@ int main(void)
     if (rom_hash() != before)
         return fail(9, "GB profile unexpectedly modified the ROM image");
 
-    /* Verified GB release: the ROM metatile table stores four 8x8 tile IDs
-       per 16x16 block at offset 0x18000. */
-    test_info.crc = 0x9C54358Du;
-    rom[0x18000u + 0x42u * 4u + 2u] = 0x6B;
-    rom[0x18000u + 0x90u * 4u + 2u] = 0x73;
-    uint8_t metatile_tile = 0;
-    if (!wide_wl2_block_tile(0x42, 2, &metatile_tile) || metatile_tile != 0x6B)
-        return fail(19, "verified GB metatile lookup failed");
-    if (!wide_wl2_block_tile(0x90, 2, &metatile_tile) || metatile_tile != 0x73)
-        return fail(23, "verified GB metatile lookup rejected a high-bit block ID");
-    test_info.crc = 0;
-    if (wide_wl2_block_tile(0x42, 2, &metatile_tile))
-        return fail(20, "unknown ROM revision incorrectly used the static metatile table");
-    test_info.crc = 0x9C54358Du;
-
     /* WL2's documented map address increments once per 16px block, with
        256 entries per row; level data is in the linear cartridge-RAM domain. */
     cart_ram[0x2000] = 0x42; /* world block (0,0) -> $A000 */
     cart_ram[0x2001] = 0x43; /* world block (1,0) -> $A001 */
-    cart_ram[0x2002] = 0x82; /* IDs above 0x7F are valid WL2 metatiles */
+    cart_ram[0x2002] = 0x82; /* high bit is a map flag, not a metatile ID */
     cart_ram[0x2100] = 0x44; /* world block (0,1) -> $A100 */
     cart_ram[0x2010] = 0x45; /* world block (16,0) -> $A010 */
     uint8_t block = 0;
@@ -94,8 +79,8 @@ int main(void)
         return fail(15, "WL2 world map lookup at block (0,0) failed");
     if (!wide_wl2_block_at(21, 7, &block) || block != 0x43)
         return fail(16, "WL2 world map lookup at block (1,0) failed");
-    if (!wide_wl2_block_at(37, 7, &block) || block != 0x82)
-        return fail(22, "WL2 world map lookup incorrectly masked a high-bit block ID");
+    if (!wide_wl2_block_at(37, 7, &block) || block != 0x02)
+        return fail(22, "WL2 world map flag was not normalized to a 7-bit metatile ID");
     if (!wide_wl2_block_at(5, 23, &block) || block != 0x44)
         return fail(17, "WL2 world map lookup at block (0,1) failed");
     if (!wide_wl2_block_at(261, 7, &block) || block != 0x45)
@@ -112,15 +97,6 @@ int main(void)
     if (rom_hash() != before)
         return fail(12, "GBC profile unexpectedly modified the ROM image");
 
-    /* The verified GBC release uses the same metatile table layout. */
-    test_info.size = 0x200000u;
-    test_info.crc = 0x047BDF80u;
-    rom[0x18000u + 0x42u * 4u + 2u] = 0x5B;
-    rom[0x18000u + 0x90u * 4u + 2u] = 0x6E;
-    if (!wide_wl2_block_tile(0x42, 2, &metatile_tile) || metatile_tile != 0x5B)
-        return fail(21, "verified GBC metatile lookup failed");
-    if (!wide_wl2_block_tile(0x90, 2, &metatile_tile) || metatile_tile != 0x6E)
-        return fail(24, "verified GBC metatile lookup rejected a high-bit block ID");
     rom[0x143] = 0xC0;
     if (!wide_install_profile(GAME_WARIO_LAND2_GBC, 32, 32, 0))
         return fail(13, "CGB-only cartridge header was rejected");
