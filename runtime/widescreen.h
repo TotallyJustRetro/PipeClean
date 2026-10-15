@@ -29,6 +29,14 @@ int wide_wl2_block_tile(int table_set, int block, int part, uint8_t *tile);
 int wide_wl2_block_attr(int table_set, int block, int part, uint8_t *attr);
 void wide_wl2_trace_finish(void);
 void wide_wl2_trace_set_path(const char *path);
+/* Wario Land 3 runtime observation; diagnostic only, no ROM patching. */
+extern int wide_wl3_trace_active;
+void wide_wl3_trace_begin(int left, int right);
+void wide_wl3_trace_instruction(uint16_t pc);
+void wide_wl3_trace_memory_write(uint16_t address, uint8_t old_value, uint8_t new_value);
+void wide_wl3_trace_frame(const uint8_t *oam_snapshot);
+void wide_wl3_trace_finish(void);
+void wide_wl3_trace_set_path(const char *path);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
 int wide_intercept_sml2(uint8_t op);
 /* Override SML2 enemy-spawn scan bounds at their verified bank-2 read sites. */
