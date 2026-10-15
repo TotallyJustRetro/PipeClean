@@ -921,7 +921,8 @@ static void wl3_prepare_frame(void)
             int world_x = native_x0 + sx;
             int world_y = native_y0 + sy;
             int map_result = wide_wl3_block_at(world_x, world_y, &block);
-            if (map_result != 1) return;
+            if (map_result == 0) return; /* Unknown map/data: fail closed. */
+            if (map_result < 0) continue; /* Outside the level is valid blank space. */
             int part = ((world_y & 8) ? 2 : 0) | ((world_x & 8) ? 1 : 0);
             if (!wide_wl3_block_tile((int)block, part, &expected_tile)) return;
             unsigned index = (unsigned)map_off +
@@ -953,7 +954,6 @@ static void wl3_render_margins(int y, int W, int L, uint8_t *out,
 {
     if (!wl3_wide_enabled || !wl3_frame_active || W <= GB_W) return;
     int world_y = wl3_frame_world_y0 + wl3_scroll_delta(scy, wl3_frame_scy) + y;
-    if (world_y < 0 || world_y >= 1536) return;
     int scroll_dx = wl3_scroll_delta(scx, wl3_frame_scx);
 
     for (int X = 0; X < W; ++X) {
