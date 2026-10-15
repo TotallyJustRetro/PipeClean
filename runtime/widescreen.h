@@ -25,6 +25,8 @@ void wide_wl2_trace_frame(const uint8_t *oam_snapshot);
 int wide_wl2_block_at(int world_x, int world_y, uint8_t *block);
 /* Read one tile ID from a verified ROM metatile table set (0-31). */
 int wide_wl2_block_tile(int table_set, int block, int part, uint8_t *tile);
+/* Read the parallel GBC palette-ID table for one metatile component. */
+int wide_wl2_block_attr(int table_set, int block, int part, uint8_t *attr);
 void wide_wl2_trace_finish(void);
 void wide_wl2_trace_set_path(const char *path);
 /* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
