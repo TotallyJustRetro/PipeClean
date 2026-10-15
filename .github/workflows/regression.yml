@@ -55,6 +55,13 @@ jobs:
             -o test_wario_land2_wide
           ./test_wario_land2_wide
 
+      - name: Build and run Wario Land 3 widescreen regression
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime \
+            tests/test_wario_land3_wide.c runtime/widescreen.c \
+            -o test_wario_land3_wide
+          ./test_wario_land3_wide
+
       - name: Build and run MBC1 mapper regression
         run: |
           gcc -std=c11 -Wall -Wextra -Iruntime \
@@ -186,7 +193,7 @@ jobs:
 
       - name: Build full runtime and test target
         run: |
-          cmake --build build-ci --target PipeClean test_companion_deck_state test_sml2_wide test_sml_wide test_wario_sml3_wide test_wario_land2_wide test_wario_event_state test_wario_land2_state test_cart_mbc1 test_recomp_guard --parallel 2
+          cmake --build build-ci --target PipeClean test_companion_deck_state test_sml2_wide test_sml_wide test_wario_sml3_wide test_wario_land2_wide test_wario_land3_wide test_wario_event_state test_wario_land2_state test_cart_mbc1 test_recomp_guard --parallel 2
           ctest --test-dir build-ci --output-on-failure
 
       - name: Smoke-test CGB STOP speed switching
