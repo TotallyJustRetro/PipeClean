@@ -10,6 +10,7 @@
  * Keep the WL2 map reader optional in those test binaries. */
 extern uint8_t *cart_ram __attribute__((weak));
 extern const CartInfo *cart_info(void) __attribute__((weak));
+extern uint8_t gb_wram_peek(size_t offset) __attribute__((weak));
 #endif
 
 /* The wider PPU can reveal areas outside the game's original actor window.
@@ -380,6 +381,18 @@ static const char *wl2_oam_region_name(uint8_t region)
     }
 }
 
+static uint8_t wl2_trace_read_ram(uint16_t address)
+{
+    /* The published WL2 RAM map lists addresses as offsets into the physical
+       WRAM domain. Reading Dxxx through rd8() uses the currently selected CGB
+       SVBK bank; the game can change SVBK before this frame snapshot. */
+#if defined(__GNUC__) || defined(__clang__)
+    if (gb_wram_peek && address >= 0xC000u && address < 0xE000u)
+        return gb_wram_peek((size_t)(address - 0xC000u));
+#endif
+    return rd8(address);
+}
+
 void wide_wl2_trace_frame(const uint8_t *snapshot)
 {
     if (!wide_wl2_trace_active || !snapshot) return;
@@ -389,9 +402,11 @@ void wide_wl2_trace_frame(const uint8_t *snapshot)
     uint16_t py_addr = color_release ? 0xD53Au : 0xC53Au;
     uint16_t camx_addr = color_release ? 0xC660u : 0xD652u;
     uint16_t camy_addr = color_release ? 0xC65Fu : 0xD651u;
-    uint16_t px = (uint16_t)(((uint16_t)rd8(px_addr) << 8) | rd8((uint16_t)(px_addr + 1u)));
-    uint16_t py = (uint16_t)(((uint16_t)rd8(py_addr) << 8) | rd8((uint16_t)(py_addr + 1u)));
-    uint8_t camx = rd8(camx_addr), camy = rd8(camy_addr);
+    uint16_t px = (uint16_t)(((uint16_t)wl2_trace_read_ram(px_addr) << 8) |
+                              wl2_trace_read_ram((uint16_t)(px_addr + 1u)));
+    uint16_t py = (uint16_t)(((uint16_t)wl2_trace_read_ram(py_addr) << 8) |
+                              wl2_trace_read_ram((uint16_t)(py_addr + 1u)));
+    uint8_t camx = wl2_trace_read_ram(camx_addr), camy = wl2_trace_read_ram(camy_addr);
     uint8_t scx = rd8(0xFF43u), scy = rd8(0xFF42u);
     uint32_t frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
 
