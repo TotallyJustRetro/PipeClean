@@ -16,7 +16,7 @@ typedef struct {
     uint16_t pc;
     uint16_t bc_min, bc_max, de_min, de_max, hl_min, hl_max;
     uint16_t px_min, px_max, py_min, py_max;
-    uint8_t opcode, byte1, byte2, code[8], operand, operand_min, operand_max;
+    uint8_t opcode, code[8], operand, operand_min, operand_max;
     uint8_t a, f, b, c, d, e, h, l, scx, scy, camx, camy;
     uint8_t a_min, a_max, scx_min, scx_max, scy_min, scy_max;
     uint8_t camx_min, camx_max, camy_min, camy_max;
@@ -53,17 +53,18 @@ static int wl2_trace_is_compare(uint8_t op)
 static int wl2_trace_conditional_branch(uint8_t op)
 {
     return op == 0x20 || op == 0x28 || op == 0x30 || op == 0x38 ||
-           op == 0xC0 || op == 0xC2 || op == 0xC8 || op == 0xCA ||
-           op == 0xD0 || op == 0xD2 || op == 0xD8 || op == 0xDA;
+           op == 0xC0 || op == 0xC2 || op == 0xC4 || op == 0xC8 ||
+           op == 0xCA || op == 0xCC || op == 0xD0 || op == 0xD2 ||
+           op == 0xD4 || op == 0xD8 || op == 0xDA || op == 0xDC;
 }
 
 static int wl2_trace_branch_taken(uint8_t op, uint8_t flags)
 {
     switch (op) {
-    case 0x20: case 0xC0: case 0xC2: return (flags & 0x80u) == 0; /* NZ */
-    case 0x28: case 0xC8: case 0xCA: return (flags & 0x80u) != 0; /* Z */
-    case 0x30: case 0xD0: case 0xD2: return (flags & 0x10u) == 0; /* NC */
-    case 0x38: case 0xD8: case 0xDA: return (flags & 0x10u) != 0; /* C */
+    case 0x20: case 0xC0: case 0xC2: case 0xC4: return (flags & 0x80u) == 0; /* NZ */
+    case 0x28: case 0xC8: case 0xCA: case 0xCC: return (flags & 0x80u) != 0; /* Z */
+    case 0x30: case 0xD0: case 0xD2: case 0xD4: return (flags & 0x10u) == 0; /* NC */
+    case 0x38: case 0xD8: case 0xDA: case 0xDC: return (flags & 0x10u) != 0; /* C */
     default: return 0;
     }
 }
@@ -220,8 +221,6 @@ void wide_wl2_trace_instruction(uint16_t pc)
 
     entry->hits++;
     entry->last_frame = frame;
-    entry->byte1 = off + 1u < wl2_trace_rom_size ? rom[off + 1u] : 0xFFu;
-    entry->byte2 = off + 2u < wl2_trace_rom_size ? rom[off + 2u] : 0xFFu;
     entry->operand = operand;
     entry->a = cpu.a; entry->f = cpu.f;
     entry->b = cpu.b; entry->c = cpu.c;
@@ -291,13 +290,13 @@ void wide_wl2_trace_finish(void)
         fprintf(stderr, "PipeClean: couldn't write Wario Land II widescreen trace at %s\n", wl2_trace_path);
         return;
     }
-    fprintf(f, "PipeClean Wario Land II widescreen instruction trace v2\n");
+    fprintf(f, "PipeClean Wario Land II widescreen instruction trace v3\n");
     fprintf(f, "Title: %s\nROM CRC32: %08X\nROM size: %zu bytes\nCGB flag: %02X\n",
             wl2_trace_title, wl2_trace_crc, wl2_trace_rom_size, wl2_trace_cgb_flag);
     fprintf(f, "Game slot: %d  margins: left=%d right=%d  unique sites: %zu\n",
             wl2_trace_game, wl2_trace_left, wl2_trace_right, used);
     fprintf(f, "A/X/Y/camera columns show min-max across all hits at a site; CMP relation counts "
-                "use unsigned A vs operand; branch taken/checks counts an adjacent JR/JP/RET cc.\n");
+                "use unsigned A vs operand; branch taken/checks counts an adjacent JR/JP/CALL/RET cc.\n");
     fprintf(f, "hits first last bank pc romoff op code8 operand A[min,max] O[min,max] "
                 "CMP[lt,eq,gt] BR[taken,checks] BC[min,max] DE[min,max] HL[min,max] "
                 "X[min,max] Y[min,max] SCX[min,max] SCY[min,max] CAMX[min,max] CAMY[min,max]\n");
