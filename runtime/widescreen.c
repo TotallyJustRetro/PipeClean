@@ -389,18 +389,18 @@ static void wl2_trace_write_oam_events(void)
     if (!wl2_oam_path[0]) return;
     FILE *f = fopen(wl2_oam_path, "w");
     if (!f) {
-        fprintf(stderr, "PipeClean: couldn't write Wario Land II OAM event trace at %s\\n", wl2_oam_path);
+        fprintf(stderr, "PipeClean: couldn't write Wario Land II OAM event trace at %s\n", wl2_oam_path);
         return;
     }
-    fprintf(f, "PipeClean Wario Land II widescreen OAM visibility events v1\\n");
-    fprintf(f, "Game slot: %d  margins: left=%d right=%d  events: %zu  dropped: %u\\n",
+    fprintf(f, "PipeClean Wario Land II widescreen OAM visibility events v1\n");
+    fprintf(f, "Game slot: %d  margins: left=%d right=%d  events: %zu  dropped: %u\n",
             wl2_trace_game, wl2_trace_left, wl2_trace_right, wl2_oam_event_count,
             (unsigned)wl2_oam_events_dropped);
-    fprintf(f, "Regions: OFF=not rendered, LEFT/RIGHT=extra widescreen margins, NATIVE=original 160px viewport.\\n");
-    fprintf(f, "frame sprite from>to oldY oldX oldTile oldAttr newY newX newTile newAttr screenX screenY oldScreenX oldScreenY playerX playerY cameraX cameraY SCX SCY\\n");
+    fprintf(f, "Regions: OFF=not rendered, LEFT/RIGHT=extra widescreen margins, NATIVE=original 160px viewport.\n");
+    fprintf(f, "frame sprite from>to oldY oldX oldTile oldAttr newY newX newTile newAttr screenX screenY oldScreenX oldScreenY playerX playerY cameraX cameraY SCX SCY\n");
     for (size_t i = 0; i < wl2_oam_event_count; i++) {
         const Wl2OamEvent *e = &wl2_oam_events[i];
-        fprintf(f, "%u %u %s>%s %02X %02X %02X %02X %02X %02X %02X %02X %d %d %d %d %04X %04X %02X %02X %02X %02X\\n",
+        fprintf(f, "%u %u %s>%s %02X %02X %02X %02X %02X %02X %02X %02X %d %d %d %d %04X %04X %02X %02X %02X %02X\n",
                 (unsigned)e->frame, (unsigned)e->sprite,
                 wl2_oam_region_name(e->from_region), wl2_oam_region_name(e->to_region),
                 (unsigned)e->old_y, (unsigned)e->old_x, (unsigned)e->old_tile, (unsigned)e->old_attr,
@@ -410,7 +410,7 @@ static void wl2_trace_write_oam_events(void)
                 (unsigned)e->scx, (unsigned)e->scy);
     }
     fclose(f);
-    fprintf(stderr, "PipeClean: wrote Wario Land II OAM event trace (%zu events, %u dropped) to %s\\n",
+    fprintf(stderr, "PipeClean: wrote Wario Land II OAM event trace (%zu events, %u dropped) to %s\n",
             wl2_oam_event_count, (unsigned)wl2_oam_events_dropped, wl2_oam_path);
     wl2_oam_event_count = 0;
     wl2_oam_events_dropped = 0;
