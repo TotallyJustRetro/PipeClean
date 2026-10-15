@@ -21,6 +21,7 @@ extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
 extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
+extern void wide_wl3_trace_frame(const uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_tile(int, int, int, uint8_t *) __attribute__((weak));
 extern int wide_wl2_block_attr(int, int, int, uint8_t *) __attribute__((weak));
@@ -972,6 +973,7 @@ static void render_line(int y)
         /* Sample after the VBlank routine, when OAM and game RAM have been
            updated for the image now about to be rendered. */
         if (wide_wl2_trace_frame) wide_wl2_trace_frame(oam);
+        if (wide_wl3_trace_frame) wide_wl3_trace_frame(oam);
     }
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
