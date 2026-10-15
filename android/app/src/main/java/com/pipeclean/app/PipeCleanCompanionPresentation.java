@@ -1581,7 +1581,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawDrMarioMetric(c, 474, 354, 210, 78, "SPEED", drMarioSpeedText(), 19f);
             c.restore();
 
-            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
+            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 507f);
             boolean idle = game < 0;
             button(c, 20, 455, 320, 48, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
             button(c, 360, 455, 320, 48, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
@@ -1715,12 +1715,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
             text(c, "LIVE TRACKING READY", 374, 317, 7.5f, muted());
             drawExpeditionLog(c, 20, 340, 660, 88, 4);
 
-            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
-            button(c, 20, 445, 320, 48, "SAVE", "SNAPSHOT", SAVE, false);
-            button(c, 360, 445, 320, 48, "LOAD", "RESTORE", LOAD, false);
-            button(c, 20, 501, 320, 48, paused ? "RESUME" : "PAUSE",
+            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 507f);
+            button(c, 20, 455, 320, 48, "SAVE", "SNAPSHOT", SAVE, false);
+            button(c, 360, 455, 320, 48, "LOAD", "RESTORE", LOAD, false);
+            button(c, 20, 511, 320, 48, paused ? "RESUME" : "PAUSE",
                 paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
-            button(c, 360, 501, 320, 48, "REWIND", "HOLD TO REWIND", REWIND, true);
+            button(c, 360, 511, 320, 48, "REWIND", "HOLD TO REWIND", REWIND, true);
             c.restore();
 
             c.save(); applyLayoutTransform(c, 3, 700f, 800f, 350f, 750f);
@@ -1927,7 +1927,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawExpeditionLog(c, 20, 363, 660, 76, 3);
 
             boolean idle = game < 0;
-            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
+            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 507f);
             button(c, 20, 455, 320, 48, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
             button(c, 360, 455, 320, 48, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
             button(c, 20, 511, 320, 48, idle ? "PAUSE" : paused ? "RESUME" : "PAUSE",
@@ -2093,7 +2093,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
             boolean idle = game < 0;
             c.save();
-            applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
+            applyLayoutTransform(c, 2, 700f, 800f, 350f, 507f);
             button(c, 20, 455, 320, 48, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
             button(c, 360, 455, 320, 48, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
             button(c, 20, 511, 320, 48, idle ? "PAUSE" : paused ? "RESUME" : "PAUSE",
@@ -2463,7 +2463,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 int selected = timelineHit(point[0], point[1], 14, 704, 672, 92, true);
                 if (selected != 0) return selected;
                 point[0] = x; point[1] = y;
-                inverseLayoutPoint(point, 2, true, 350f, 480f);
+                inverseLayoutPoint(point, 2, true, 350f, 507f);
                 if (inside(point[0], point[1], 20, 455, 320, 48)) return SAVE;
                 if (inside(point[0], point[1], 360, 455, 320, 48)) return LOAD;
                 if (inside(point[0], point[1], 20, 511, 320, 48)) return PAUSE;
