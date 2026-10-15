@@ -5,6 +5,13 @@
 #include "gb.h"
 #include "cart.h"
 
+#if defined(__GNUC__) || defined(__clang__)
+/* Standalone widescreen regression tests compile this file without cart.c.
+ * Keep the WL2 map reader optional in those test binaries. */
+extern uint8_t *cart_ram __attribute__((weak));
+extern const CartInfo *cart_info(void) __attribute__((weak));
+#endif
+
 /* The wider PPU can reveal areas outside the game's original actor window.
  * Trace executed comparison sites while widescreen is enabled, recording
  * value ranges and conditional branches. This is diagnostics only: it never
@@ -66,11 +73,17 @@ static uint8_t wl2_swap_nibbles(uint8_t v)
 
 int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
 {
-    if (!wide_wl2_trace_active || !block || !rom || !cart_ram ||
+    if (!wide_wl2_trace_active || !block || !rom ||
         (wl2_trace_game != GAME_WARIO_LAND2_GB &&
          wl2_trace_game != GAME_WARIO_LAND2_GBC) ||
         world_x < 0 || world_y < 0 || world_x > 0xFFFF || world_y > 0xFFFF)
         return 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (&cart_ram == NULL || cart_info == NULL) return 0;
+#endif
+    uint8_t *ram = cart_ram;
+    const CartInfo *ci = cart_info();
+    if (!ram || !ci) return 0;
 
     uint8_t hx = (uint8_t)((unsigned)world_x >> 8);
     uint8_t hy = (uint8_t)((unsigned)world_y >> 8);
@@ -83,10 +96,9 @@ int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
     uint16_t address = (uint16_t)((((row & 0xFFu) << 8) | (col & 0xFFu)));
 
     if (address >= 0xA000u) {
-        const CartInfo *ci = cart_info();
         size_t offset = (size_t)address - 0x8000u;
-        if (!ci || offset >= ci->ram_bytes) return 0;
-        *block = cart_ram[offset];
+        if (offset >= ci->ram_bytes) return 0;
+        *block = ram[offset];
         return 1;
     }
 
