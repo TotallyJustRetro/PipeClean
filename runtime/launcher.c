@@ -3066,20 +3066,14 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     /* Background and all inserted artwork are fit-within by default; no asset is silently cropped. */
 
     for (int e = DECK_ELEM_DECORATION; e < N_DECK_ELEM; e++) {
-        float rx, ry, rw, rh;
-        deck_editor_element_rect(d, e, x, y, w, h, &rx, &ry, &rw, &rh);
         int slot = e - DECK_ELEM_DECORATION;
         const char *asset = deck_decoration_path_const(d, slot);
-        if (asset[0]) {
-            deck_editor_preview_asset(d, deck_decoration_asset_index(slot), asset, rx, ry, rw, rh);
-            if (e == companion_editor_element)
-                ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
-        } else {
-            ui_rrect(rx, ry, rw, rh, 5,
-                e == companion_editor_element ? RGBA(56, 135, 210, 135) : RGBA(69, 91, 124, 88));
-            ui_text_fit(F_BOLD, 7, rx + 4, ry + rh * .45f, rw - 8,
-                RGBA(210, 220, 240, 230), "EMPTY LAYER");
-        }
+        if (!asset[0]) continue;
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, e, x, y, w, h, &rx, &ry, &rw, &rh);
+        deck_editor_preview_asset(d, deck_decoration_asset_index(slot), asset, rx, ry, rw, rh);
+        if (e == companion_editor_element)
+            ui_stroke(rx, ry, rw, rh, 5, 1.5f, RGBA(108, 218, 255, 255));
     }
 
     /* Header layer: the selectable group includes title and both quick actions. */
@@ -3239,7 +3233,10 @@ static void deck_editor_begin_drag(float x, float y, float preview_x, float prev
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
     int order[N_DECK_ELEM];
     int n = 0;
-    for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION; e--) order[n++] = e;
+    for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION; e--) {
+        int slot = e - DECK_ELEM_DECORATION;
+        if (deck_decoration_path_const(d, slot)[0]) order[n++] = e;
+    }
     order[n++] = DECK_ELEM_STATUS;
     order[n++] = DECK_ELEM_ITEM;
     order[n++] = DECK_ELEM_CONTROLS;
@@ -3299,8 +3296,38 @@ static void deck_editor_open_decoration_picker(int slot)
 {
     if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
     companion_editor_pending_decoration_slot = slot;
+    companion_editor_element = DECK_ELEM_DECORATION + slot;
     deck_editor_snapshot();
     launcher_open_companion_layout_picker(DECK_PICK_DECORATION, companion_editor_game);
+}
+
+static int companion_editor_selected_decoration_slot(void)
+{
+    if (companion_editor_element < DECK_ELEM_DECORATION ||
+        companion_editor_element >= N_DECK_ELEM) return -1;
+    return companion_editor_element - DECK_ELEM_DECORATION;
+}
+
+static void deck_editor_remove_selected_decoration(void)
+{
+    int slot = companion_editor_selected_decoration_slot();
+    if (slot < 0 || companion_editor_game < 0 || companion_editor_game >= N_GAMES) {
+        launcher_toast("Select a decoration on the preview first.");
+        return;
+    }
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    char *path = deck_decoration_path(d, slot);
+    if (!path || !path[0]) {
+        launcher_toast("Select an existing decoration first.");
+        return;
+    }
+    deck_editor_snapshot();
+    path[0] = 0;
+    int asset_index = deck_decoration_asset_index(slot);
+    if (asset_index >= 0) d->asset_stretch[asset_index] = 0;
+    companion_editor_element = DECK_ELEM_DECORATION;
+    settings_save();
+    launcher_toast("Decoration removed.");
 }
 
 static void deck_editor_swap_decoration_layers(CompanionLayoutCfg *d, int a, int b)
@@ -3401,12 +3428,13 @@ static void deck_editor_open_picker(int kind)
             const char *path = deck_decoration_path_const(d, slot);
             if (!path[0]) {
                 companion_editor_pending_decoration_slot = slot;
+                companion_editor_element = DECK_ELEM_DECORATION + slot;
                 deck_editor_snapshot();
                 launcher_open_companion_layout_picker(kind, companion_editor_game);
                 return;
             }
         }
-        launcher_toast("All sixteen image layers are full. Remove a layer to add another.");
+        launcher_toast("All decoration slots are full. Remove one to add another.");
         return;
     }
     if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
@@ -3501,14 +3529,22 @@ static void deck_editor_layout(float x, float y)
             return;
         }
     }
-    if (ui_button(x + 580, y + 146, 176, 32, "+ Add image layer", B_NORMAL, 1)) {
+    if (ui_button(x + 548, y + 146, 102, 32, "Add Decoration", B_NORMAL, 1)) {
         deck_editor_open_picker(DECK_PICK_DECORATION);
+        return;
+    }
+    selected_decoration = companion_editor_selected_decoration_slot();
+    int can_remove_decoration = selected_decoration >= 0 &&
+        deck_decoration_path_const(d, selected_decoration)[0];
+    if (ui_button(x + 656, y + 146, 100, 32, "Remove", B_DANGER,
+                  can_remove_decoration)) {
+        deck_editor_remove_selected_decoration();
         return;
     }
 
     /* A larger landscape work surface makes hit targets usable with a finger,
        while the compact inspector keeps all scale and selection controls visible. */
-    float px = x + 36, py = y + 194, pw = 205, ph = 205 * (31.0f / 27.0f);
+    float px = x + 36, py = y + 194, pw = 280, ph = 280 * (27.0f / 31.0f);
     ui_rrect(px - 7, py - 7, pw + 14, ph + 14, 12, RGBA(7, 13, 24, 255));
     ui_stroke(px - 1, py - 1, pw + 2, ph + 2, 8, 1.0f, RGBA(66, 102, 148, 225));
     deck_editor_preview(d, px, py, pw, ph);
@@ -3519,21 +3555,32 @@ static void deck_editor_layout(float x, float y)
         deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
     if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
     ui_text_fit(F_BOLD, 8.2f, px, py + ph + 10, pw,
-                RGBA(112, 225, 255, 245), "27:31 PORTRAIT  •  FIT = NO CROP  •  DRAG HANDLES TO RESIZE");
+                RGBA(112, 225, 255, 245), "31:27 THOR  •  FIT = NO CROP  •  DRAG TO RESIZE");
 
-    float rx = x + 270;
+    float rx = x + 350;
     ui_text(F_BOLD, 10, rx, y + 190, C_TEXT, "LAYERS & TRANSFORM");
     ui_text_fit(F_REG, 8, rx + 148, y + 190, 180, C_MUTED,
                 "Select, move, reshape");
     /* Three compact columns prevent the element picker from colliding with
        the independent width/height controls below it. */
-    for (int e = 0; e < N_DECK_ELEM; e++) {
+    for (int e = 0; e <= DECK_ELEM_STATUS; e++) {
         int col = e % 3, row = e / 3;
         float by = y + 204 + row * 21.0f;
         if (ui_button(rx + col * 109, by, 105, 19,
                       deck_element_names[e],
                       e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
             companion_editor_element = e;
+    }
+    int selected_decoration = companion_editor_selected_decoration_slot();
+    if (ui_button(rx + 218, y + 225, 105, 19, "Decoration",
+                  selected_decoration >= 0 ? B_PRIMARY : B_GHOST, 1)) {
+        if (selected_decoration < 0) {
+            CompanionLayoutCfg *layout = &settings.deck_layout[companion_editor_game];
+            int first = -1;
+            for (int slot = 0; slot < N_DECK_DECORATIONS; slot++)
+                if (deck_decoration_path_const(layout, slot)[0]) { first = slot; break; }
+            companion_editor_element = DECK_ELEM_DECORATION + (first >= 0 ? first : 0);
+        }
     }
 
     int *scale_x = deck_element_scale(d, companion_editor_element);
@@ -3729,66 +3776,50 @@ static void deck_editor_assets(float x, float y)
 static void deck_editor_decorations(float x, float y)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
-    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "IMAGE LAYERS");
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "DECORATIONS");
     if (ui_button(x + 36, y + 107, 65, 30, "Back", B_GHOST, 1)) {
         companion_editor_page = 1;
         return;
     }
-    ui_text_wrap(F_REG, 9, x + 114, y + 110, 500, C_MUTED,
-        "16 independent layers. Fit keeps the full image; duplicate and move layers back/front. X removes.", 2);
-    if (ui_button(x + 638, y + 107, 126, 30, "＋ Add image layer", B_PRIMARY, 1)) {
+    ui_text_fit(F_REG, 9, x + 114, y + 114, 410, C_MUTED,
+        "Select an image below, then add another or remove the selected one.");
+    if (ui_button(x + 548, y + 107, 102, 30, "Add Decoration", B_PRIMARY, 1)) {
         deck_editor_open_picker(DECK_PICK_DECORATION);
         return;
     }
-
-    /* Two compact columns keep all 16 layer controls visible in the editor panel. */
-    for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
-        char *asset_path = deck_decoration_path(d, slot);
-        int asset_index = deck_decoration_asset_index(slot);
-        float colx = x + 36 + (slot / 8) * 366.0f;
-        float ry = y + 151 + (slot % 8) * 35.5f;
-        int selected = companion_editor_element == DECK_ELEM_DECORATION + slot;
-        ui_rrect(colx, ry, 360, 32, 6,
-                 selected ? RGBA(65, 130, 190, 46) : C_PANEL);
-        char label[24];
-        snprintf(label, sizeof label, "LAYER %02d", slot + 1);
-        ui_text(F_BOLD, 7.5f, colx + 7, ry + 4, selected ? C_ACCENT : C_TEXT, label);
-        ui_text_fit(F_REG, 6.5f, colx + 7, ry + 17, 75,
-                    asset_path[0] ? C_MUTED : C_DIM,
-                    asset_path[0] ? path_base(asset_path) : "EMPTY");
-        ui_rrect(colx + 86, ry + 4, 32, 24, 4, RGBA(7, 13, 24, 255));
-        ui_stroke(colx + 86, ry + 4, 32, 24, 4, 1.0f, RGBA(77, 111, 149, 180));
-        if (asset_path[0])
-            ui_image_file_fit(asset_path, colx + 88, ry + 5, 28, 22);
-        else
-            ui_text_c(F_BOLD, 6.2f, colx + 102, ry + 12, C_DIM, "＋");
-
-        int stretch = d->asset_stretch[asset_index];
-        if (ui_button(colx + 122, ry + 3, 64, 26,
-                      stretch ? "STRETCH" : "FIT", stretch ? B_PRIMARY : B_NORMAL, 1)) {
-            deck_editor_snapshot();
-            d->asset_stretch[asset_index] = !stretch;
-            settings_save();
-        }
-        if (ui_button(colx + 189, ry + 3, 52, 26, "Pick", B_GHOST, 1))
-            deck_editor_open_decoration_picker(slot);
-        if (ui_button(colx + 244, ry + 3, 27, 26, "Dup", B_GHOST, asset_path[0] != 0))
-            deck_editor_duplicate_decoration(slot);
-        if (ui_button(colx + 274, ry + 3, 24, 26, "←", B_GHOST, slot > 0))
-            deck_editor_move_decoration(slot, -1);
-        if (ui_button(colx + 301, ry + 3, 24, 26, "→", B_GHOST, slot + 1 < N_DECK_DECORATIONS))
-            deck_editor_move_decoration(slot, 1);
-        if (ui_button(colx + 328, ry + 3, 27, 26, "×", B_DANGER, asset_path[0] != 0)) {
-            deck_editor_snapshot();
-            asset_path[0] = 0;
-            d->asset_stretch[asset_index] = 0;
-            if (selected) companion_editor_element = DECK_ELEM_DECORATION;
-            settings_save();
-            launcher_toast("Image layer removed.");
-        }
-        if (ui_mouse.pressed && ui_hover(colx + 3, ry, 80, 32) && asset_path[0])
-            companion_editor_element = DECK_ELEM_DECORATION + slot;
+    int selected_slot = companion_editor_selected_decoration_slot();
+    int selected_exists = selected_slot >= 0 &&
+        deck_decoration_path_const(d, selected_slot)[0];
+    if (ui_button(x + 656, y + 107, 100, 30, "Remove", B_DANGER, selected_exists)) {
+        deck_editor_remove_selected_decoration();
+        return;
     }
+
+    int visible = 0;
+    for (int slot = 0; slot < N_DECK_DECORATIONS; slot++) {
+        const char *asset_path = deck_decoration_path_const(d, slot);
+        if (!asset_path[0]) continue;
+        float colx = x + 36 + (visible % 4) * 183.0f;
+        float ry = y + 151 + (visible / 4) * 65.0f;
+        int selected = selected_slot == slot;
+        ui_rrect(colx, ry, 174, 56, 7,
+                 selected ? RGBA(65, 130, 190, 68) : C_PANEL);
+        if (selected)
+            ui_stroke(colx, ry, 174, 56, 7, 1.2f, C_ACCENT);
+        ui_rrect(colx + 7, ry + 6, 42, 42, 5, RGBA(7, 13, 24, 255));
+        ui_stroke(colx + 7, ry + 6, 42, 42, 5, 0.8f, RGBA(77, 111, 149, 180));
+        ui_image_file_fit(asset_path, colx + 9, ry + 8, 38, 38);
+        ui_text_fit(F_BOLD, 8.2f, colx + 57, ry + 11, 109,
+                    selected ? C_ACCENT : C_TEXT, "DECORATION");
+        ui_text_fit(F_REG, 7.0f, colx + 57, ry + 31, 109, C_MUTED,
+                    path_base(asset_path));
+        if (ui_mouse.pressed && ui_hover(colx, ry, 174, 56))
+            companion_editor_element = DECK_ELEM_DECORATION + slot;
+        visible++;
+    }
+    if (visible == 0)
+        ui_text_wrap(F_REG, 10, x + 44, y + 190, 680, C_MUTED,
+                    "No decorations yet. Choose Add Decoration to place artwork on this deck.", 2);
 }
 
 static void deck_editor_draw(float x, float y)

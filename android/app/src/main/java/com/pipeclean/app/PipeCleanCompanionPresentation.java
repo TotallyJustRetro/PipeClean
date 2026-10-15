@@ -950,9 +950,20 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 drawLayoutImageContain(canvas, g, imageIndex, x, y, w, h);
         }
 
+        private boolean isThorAspect() {
+            float aspect = getWidth() / (float) Math.max(1, getHeight());
+            return aspect >= 1.0f && aspect <= 1.30f;
+        }
+
+        private boolean isThorCanvas(float w, float h) {
+            float aspect = w / Math.max(1f, h);
+            return aspect >= 1.0f && aspect <= 1.30f;
+        }
+
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0) return;
+            boolean thor = isThorCanvas(w, h);
             boolean portrait = h > w;
             final float[] bxLandscape = {280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
             final float[] byLandscape = {153,78,78,245,218,218,85,260,135,135,290,290,35,35,175,175};
@@ -962,12 +973,16 @@ final class PipeCleanCompanionPresentation extends Presentation {
             final float[] byPortrait = {245,118,118,340,330,330,160,375,230,230,435,435,60,60,280,280};
             final float[] bwPortrait = {240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
             final float[] bhPortrait = {100,120,120,120,92,92,86,86,70,70,70,70,65,65,74,74};
-            float[] bxBase = portrait ? bxPortrait : bxLandscape;
-            float[] byBase = portrait ? byPortrait : byLandscape;
-            float[] bwBase = portrait ? bwPortrait : bwLandscape;
-            float[] bhBase = portrait ? bhPortrait : bhLandscape;
-            float canvasW = portrait ? 700f : 800f;
-            float canvasH = portrait ? 800f : 450f;
+            final float[] bxThor = {280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
+            final float[] byThor = {150,78,78,295,218,218,95,285,135,135,410,410,35,35,190,190};
+            final float[] bwThor = {240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
+            final float[] bhThor = {135,115,115,115,90,90,84,84,68,68,68,68,64,64,72,72};
+            float[] bxBase = thor ? bxThor : portrait ? bxPortrait : bxLandscape;
+            float[] byBase = thor ? byThor : portrait ? byPortrait : byLandscape;
+            float[] bwBase = thor ? bwThor : portrait ? bwPortrait : bwLandscape;
+            float[] bhBase = thor ? bhThor : portrait ? bhPortrait : bhLandscape;
+            float canvasW = thor ? 800f : portrait ? 700f : 800f;
+            float canvasH = thor ? 800f * 27f / 31f : portrait ? 800f : 450f;
             for (int slot = 0; slot < LAYOUT_DECORATION_COUNT; slot++) {
                 int imageIndex = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
                 if (!hasLayoutImage(g, imageIndex)) continue;
@@ -1142,10 +1157,145 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private String paletteText() { return PALETTES[palette]; }
         private String filterText() { return FILTERS[filter]; }
 
+        private void drawThorHeader(Canvas c, float h) {
+            c.save();
+            applyLayoutTransform(c, 0, 800f, h, 400f, 34f);
+            headerPlate(c, 18, 7, 390, 49);
+            text(c, "PIPE CLEAN  •  " +
+                ((wario() || wario2()) ? "TREASURE EXPEDITION" : drMario() ? "MEDICAL DECK" : "POCKET QUEST"),
+                27, 22, 8.8f, accent());
+            textFit(c, title(), 26, 42, 372, 14, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 502, 16, 31, 31, "×", RESET_BACKGROUND);
+            button(c, 542, 12, 112, 39, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 662, 12, 120, 39, game >= 0 ? "CLOSE" : "DECK",
+                game >= 0 ? "GAME" : "LINKED", game >= 0 ? CLOSE_GAME : 0, false);
+            c.restore();
+        }
+
+        private void drawThorControls(Canvas c, float h) {
+            boolean idle = game < 0;
+            c.save();
+            applyLayoutTransform(c, 2, 800f, h, 400f, 449f);
+            float bx = 20f, by = 420f, bw = 184f, bh = 48f, gap = 8f;
+            button(c, bx, by, bw, bh, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
+            button(c, bx + bw + gap, by, bw, bh, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
+            button(c, bx + (bw + gap) * 2, by, bw, bh,
+                idle ? "PAUSE" : paused ? "RESUME" : "PAUSE",
+                idle ? "AVAILABLE IN GAME" : paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
+            button(c, bx + (bw + gap) * 3, by, bw, bh, "REWIND",
+                idle ? "AVAILABLE IN GAME" : "HOLD TO REWIND", REWIND, true);
+            c.restore();
+
+            c.save();
+            applyLayoutTransform(c, 3, 800f, h, 400f, 596f);
+            drawSaveTimeline(c, 20f, 510f, 760f, h - 520f, false);
+            c.restore();
+        }
+
+        private void drawThorDefault(Canvas c, float h) {
+            drawThorHeader(c, h);
+            if (game < 0) {
+                badge(c, 20, 70, 210, 50, "DECK STATUS", "LINKED");
+                badge(c, 244, 70, 320, 50, "NEXT STEP", "LAUNCH A GAME");
+                badge(c, 578, 70, 202, 50, "QUICK ACTIONS", "READY");
+            } else {
+                badge(c, 20, 70, 210, 50, "LIVES", String.format(Locale.US, "× %02d", lives));
+                badge(c, 244, 70, 320, 50, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
+                badge(c, 578, 70, 202, 50, "SESSION", paused ? "PAUSED" : "IN PLAY");
+            }
+
+            card(c, 20, 136, 174, 242, "RESERVE ITEM");
+            if (item > 0) {
+                textFit(c, itemName(item), 32, 181, 150, 11, accent());
+                text(c, "TAP TO USE", 32, 204, 8, muted());
+                textFit(c, actionHint(item), 32, 230, 150, 8, ink());
+            } else {
+                text(c, "NO ITEM STORED", 32, 184, 9, muted());
+                textFit(c, "Collect a power-up", 32, 207, 150, 8, ink());
+            }
+            c.save();
+            applyLayoutTransform(c, 1, 800f, h, 400f, 254f);
+            drawHeroItem(c, 400, 255, 96, item);
+            c.restore();
+
+            c.save();
+            applyLayoutTransform(c, 4, 800f, h, 690f, 255f);
+            card(c, 606, 136, 174, 242, game >= 0 ? "ADVENTURE STATUS" : "QUICK TIP");
+            if (game >= 0) {
+                text(c, "LIVES", 620, 183, 8, muted());
+                text(c, String.format(Locale.US, "× %02d", lives), 620, 204, 14, ink());
+                text(c, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", 620, 237, 7.3f, muted());
+                textFit(c, stageText(), 620, 258, 145, 11, accent());
+                textFit(c, paused ? "GAME PAUSED" : "PLAYING NOW", 620, 294, 145, 8, muted());
+            } else {
+                text(c, "SECOND SCREEN", 620, 183, 8, muted());
+                text(c, "CONNECTED", 620, 204, 12, ink());
+                textFit(c, "Launch a game to activate live information and controls.", 620, 235, 145, 8.5f, accent());
+            }
+            c.restore();
+            drawThorControls(c, h);
+        }
+
+        private void drawThorDrMario(Canvas c, float h) {
+            drawThorHeader(c, h);
+            c.save();
+            applyLayoutTransform(c, 1, 800f, h, 199f, 228f);
+            card(c, 20, 78, 358, 304, "NEXT CAPSULE");
+            drawMedicalCross(c, 344, 101, 14f, 0xFF159DAD);
+            drawDrMarioCapsule(c, 199, 226, 166, 70, drMarioCapsule);
+            text(c, drMarioCapsule >= 0 && drMarioCapsule <= 0x17 ?
+                "READY TO DROP" : "WAITING FOR PILL", 199, 318, 8.5f, muted(), true);
+            c.restore();
+
+            c.save();
+            applyLayoutTransform(c, 4, 800f, h, 590f, 230f);
+            card(c, 397, 78, 383, 91, "SCORE");
+            textFit(c, drMarioScoreText(), 416, 139, 344, 24f, accent());
+            drawDrMarioMetric(c, 397, 183, 184, 133, "VIRUS LEVEL", drMarioLevelText(), 19f);
+            drawDrMarioMetric(c, 594, 183, 186, 133, "SPEED", drMarioSpeedText(), 19f);
+            card(c, 397, 330, 383, 52, "SESSION");
+            textFit(c, paused ? "PAUSED — RESUME WHEN READY" : "CLINIC STATUS  •  LIVE", 412, 361, 350, 10, ink());
+            c.restore();
+            drawThorControls(c, h);
+        }
+
+        private void drawThorWario(Canvas c, float h) {
+            drawThorHeader(c, h);
+            drawWarioVault(c, 20, 77, 350, 160);
+            drawWarioEmblem(c, 400, 157, 58);
+            c.save();
+            applyLayoutTransform(c, 4, 800f, h, 600f, 157f);
+            drawWarioStatus(c, 430, 77, 350, 160);
+            c.restore();
+            drawExpeditionLog(c, 20, 255, 370, 143, 5);
+            card(c, 410, 255, 370, 143, "CURRENT COURSE");
+            textFit(c, stageText(), 428, 300, 330, 20, accent());
+            textFit(c, "COIN BANK  " + warioCoinsText(), 428, 330, 330, 11, ink());
+            textFit(c, "TREASURE EXPEDITION  •  " + (paused ? "PAUSED" : "IN PLAY"),
+                428, 362, 330, 9, muted());
+            drawThorControls(c, h);
+        }
+
+        private void drawThorWario2(Canvas c, float h) {
+            drawThorHeader(c, h);
+            drawWario2Grid(c, 20, 77, 365, 175, "TREASURE VAULT", wario2TreasureMask, false);
+            drawWario2Grid(c, 415, 77, 365, 175, "PICTURE PANEL", wario2PictureMask, true);
+            drawExpeditionLog(c, 20, 268, 365, 128, 5);
+            card(c, 415, 268, 365, 128, "ADVENTURE TRACKER");
+            textFit(c, stageText(), 431, 311, 330, 16, accent());
+            textFit(c, "COIN BANK  " + (warioCoins < 0 ? "------" :
+                String.format(Locale.US, "%06d", warioCoins)), 431, 342, 330, 10, ink());
+            textFit(c, "POCKET COINS  " + (warioHearts < 0 ? "----" :
+                String.format(Locale.US, "%04d", warioHearts)), 431, 366, 330, 9, muted());
+            drawThorControls(c, h);
+        }
+
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
-            boolean portrait = getHeight() > getWidth();
-            float w = portrait ? 700f : 800f, h = portrait ? 800f : 450f;
+            boolean thor = isThorAspect();
+            boolean portrait = !thor && getHeight() > getWidth();
+            float w = portrait ? 700f : 800f;
+            float h = thor ? 800f * 27f / 31f : portrait ? 800f : 450f;
             float scale = Math.min(getWidth() / w, getHeight() / h);
             boolean preview = layoutEditorPreview && layoutPreviewGame >= 0;
             int previousGame = game;
@@ -1161,7 +1311,13 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.scale(scale, scale);
             drawWallpaper(c, w, h);
             if (!dashboardMode) drawLayoutBackground(c, w, h);
-            if (dashboardMode) {
+            if (thor) {
+                if (dashboardMode) drawLauncherDashboardLandscape(c);
+                else if (wario()) drawThorWario(c, h);
+                else if (wario2()) drawThorWario2(c, h);
+                else if (drMario()) drawThorDrMario(c, h);
+                else drawThorDefault(c, h);
+            } else if (dashboardMode) {
                 if (portrait) drawLauncherDashboardPortrait(c); else drawLauncherDashboardLandscape(c);
             } else if (wario()) {
                 if (portrait) drawWarioPortrait(c); else drawWarioLandscape(c);
@@ -2438,8 +2594,9 @@ final class PipeCleanCompanionPresentation extends Presentation {
             int g = activeLayoutGame();
             if (g < 0) return;
             int base = element * 3;
+            boolean thor = isThorAspect();
             float referenceW = portrait ? 700f : 800f;
-            float referenceH = portrait ? 800f : 450f;
+            float referenceH = thor ? 800f * 27f / 31f : portrait ? 800f : 450f;
             float dx = layoutValues[g][base] * (referenceW / 800f);
             float dy = layoutValues[g][base + 1] * (referenceH / 450f);
             float scaleX = Math.max(0.25f, Math.min(2.5f, layoutValues[g][base + 2] / 100f));
@@ -2449,10 +2606,36 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private int hitTest(float x,float y) {
-            boolean portrait = getHeight() > getWidth();
+            boolean thor = isThorAspect();
+            boolean portrait = !thor && getHeight() > getWidth();
             if (layoutEditorPreview) return 0;
             if (dashboardMode) return dashboardHitTest(x, y, portrait);
             float[] point = new float[] {x, y};
+            if (thor) {
+                inverseLayoutPoint(point, 0, false, 400f, 34f);
+                float hx = point[0], hy = point[1];
+                if (inside(hx, hy, 542, 12, 112, 39)) return BACKGROUND;
+                if (inside(hx, hy, 662, 12, 120, 39)) return game >= 0 ? CLOSE_GAME : 0;
+                if (inside(hx, hy, 502, 16, 31, 31) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
+
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 3, false, 400f, 596f);
+                int thorSlot = timelineHit(point[0], point[1], 20f, 510f, 760f,
+                    (800f * 27f / 31f) - 520f, false);
+                if (thorSlot != 0) return thorSlot;
+
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 2, false, 400f, 449f);
+                if (inside(point[0], point[1], 20, 420, 184, 48)) return SAVE;
+                if (inside(point[0], point[1], 212, 420, 184, 48)) return LOAD;
+                if (inside(point[0], point[1], 404, 420, 184, 48)) return PAUSE;
+                if (inside(point[0], point[1], 596, 420, 184, 48)) return REWIND;
+
+                point[0] = x; point[1] = y;
+                inverseLayoutPoint(point, 1, false, 400f, 254f);
+                if (inside(point[0], point[1], 240, 130, 320, 270)) return ITEM_USE;
+                return 0;
+            }
             inverseLayoutPoint(point, 0, portrait, portrait ? 350f : 400f, portrait ? 30f : 31.5f);
             float hx = point[0], hy = point[1];
             if (portrait) {
@@ -2516,16 +2699,20 @@ final class PipeCleanCompanionPresentation extends Presentation {
             /* The editor manipulates the deck from the primary launcher; the
                secondary screen is a live preview, not a second control surface. */
             if (layoutEditorPreview) return true;
-            boolean portrait=getHeight()>getWidth();
-            float dw=portrait?700f:800f, dh=portrait?800f:450f;
-            float scale=Math.min(getWidth()/dw,getHeight()/dh);
+            boolean thor = isThorAspect();
+            boolean portrait = !thor && getHeight() > getWidth();
+            float dw = portrait ? 700f : 800f;
+            float dh = thor ? 800f * 27f / 31f : portrait ? 800f : 450f;
+            float scale = Math.min(getWidth() / dw, getHeight() / dh);
             float ox=(getWidth()-dw*scale)*0.5f, oy=(getHeight()-dh*scale)*0.5f;
             float x=(e.getX()-ox)/scale, y=(e.getY()-oy)/scale;
             int action = e.getActionMasked();
 
             if(action==MotionEvent.ACTION_DOWN) {
                 downAction=hitTest(x,y);
-                timelineTouchActive=!dashboardMode && isTimelinePoint(x,y,portrait);
+                timelineTouchActive = !dashboardMode && (thor
+                    ? inside(x, y, 20f, 524f, 760f, (800f * 27f / 31f) - 534f)
+                    : isTimelinePoint(x, y, portrait));
                 timelineMoved=false;
                 if(timelineTouchActive) {
                     timelineDownX=x;
@@ -2547,7 +2734,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if(Math.abs(dx)>=14f && Math.abs(dx)>=Math.abs(y-timelineDownY)*1.10f)
                     timelineMoved=true;
                 if(timelineMoved) {
-                    float step=portrait?45f:78f;
+                    float step = portrait ? 45f : thor ? 95f : 78f;
                     timelineDragFocus=clampFocus(timelineStartFocus-dx/step);
                     downAction=0;
                     invalidate();
