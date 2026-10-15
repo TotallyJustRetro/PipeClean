@@ -14,7 +14,7 @@ const GameDef games[N_GAMES] = {
     {"sml2",       "Super Mario Land 2",    "6 Golden Coins.",                                                 "MARIOLAND2",       0,           0, 0xE8B23A, 700, 49, 33,  0, 0, 0, 0},
     {"wario-sml3", "Wario Land: SML3",      "Wario's first adventure.",                "SUPERMARIOLAND3",  0,           0, 0xE4A144, 420, 33, 33,  0, 0, 0, 0},
     {"wario2-gb",  "Wario Land II (GB)",    "The monochrome Game Boy release.",       "WARIOLAND2",       0,           0, 0xC77B44, 420, 32, 32,  0, 0, 0, 0},
-    {"wario3-gbc", "Wario Land 3 (GBC)",    "Wario's color-era adventure.",           "WARIOLAND3",       0,           0, 0x58B5C9, 500,  0,  0,  0, 0, 0, 0},
+    {"wario3-gbc", "Wario Land 3 (GBC)",    "Wario's color-era adventure.",           "WARIOLAND3",       0,           0, 0x58B5C9, 500, 32, 32,  0, 0, 0, 0},
     {"wario2-gbc", "Wario Land II (GBC)",  "The Game Boy Color release.",             "CGBWARIOLAND2",    0,           0, 0x8A80D4, 420, 32, 32,  0, 0, 0, 0},
 };
 
