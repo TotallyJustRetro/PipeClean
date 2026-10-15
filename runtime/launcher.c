@@ -2965,44 +2965,39 @@ static int *deck_element_scale_y(CompanionLayoutCfg *d, int element)
     }
 }
 
+#define DECK_EDITOR_THOR_H (800.0f * 27.0f / 31.0f)
+
 static void deck_editor_element_base(int element, float *x, float *y, float *w, float *h)
 {
-    /* Coordinates are the native Thor Companion Deck portrait canvas (700x800). */
+    /* The editor's design canvas mirrors the AYN Thor bottom screen (31:27). */
     switch (element) {
-    case DECK_ELEM_HEADER:    *x = 14;  *y = 7;   *w = 672; *h = 43;  break;
-    case DECK_ELEM_ITEM:      *x = 180; *y = 132; *w = 340; *h = 300; break;
-    case DECK_ELEM_CONTROLS:  *x = 20;  *y = 455; *w = 660; *h = 104; break;
-    case DECK_ELEM_TIMELINE:  *x = 14;  *y = 704; *w = 672; *h = 92;  break;
-    case DECK_ELEM_STATUS:    *x = 500; *y = 145; *w = 180; *h = 132; break;
-    case DECK_ELEM_DECORATION: *x = 230; *y = 245; *w = 240; *h = 100; break;
-    case DECK_ELEM_DECORATION_2: *x = 20; *y = 118; *w = 170; *h = 120; break;
-    case DECK_ELEM_DECORATION_3: *x = 510; *y = 118; *w = 170; *h = 120; break;
-    case DECK_ELEM_DECORATION_4: *x = 365; *y = 340; *w = 170; *h = 120; break;
-    case DECK_ELEM_DECORATION_5: *x = 25; *y = 330; *w = 140; *h = 92; break;
-    case DECK_ELEM_DECORATION_6: *x = 535; *y = 330; *w = 140; *h = 92; break;
-    case DECK_ELEM_DECORATION_7: *x = 190; *y = 160; *w = 122; *h = 86; break;
+    case DECK_ELEM_HEADER:    *x = 18;  *y = 7;   *w = 764; *h = 49; break;
+    case DECK_ELEM_ITEM:      *x = 300; *y = 155; *w = 200; *h = 200; break;
+    case DECK_ELEM_CONTROLS:  *x = 20;  *y = 420; *w = 760; *h = 48; break;
+    case DECK_ELEM_TIMELINE:  *x = 20;  *y = 510; *w = 760; *h = DECK_EDITOR_THOR_H - 510.0f; break;
+    case DECK_ELEM_STATUS:    *x = 606; *y = 136; *w = 174; *h = 242; break;
     default:
-        if (element >= DECK_ELEM_DECORATION_8 && element < N_DECK_ELEM) {
+        if (element >= DECK_ELEM_DECORATION && element < N_DECK_ELEM) {
             static const float bx[N_DECK_DECORATIONS] = {
-                230, 20, 510, 365, 25, 535, 190, 388,
-                22, 578, 210, 455, 30, 590, 325, 430
+                280, 20, 610, 315, 26, 634, 190, 488,
+                26, 675, 195, 565, 40, 695, 315, 495
             };
             static const float by[N_DECK_DECORATIONS] = {
-                245, 118, 118, 340, 330, 330, 160, 375,
-                230, 230, 435, 435, 60, 60, 280, 280
+                150, 78, 78, 295, 218, 218, 95, 285,
+                135, 135, 410, 410, 35, 35, 190, 190
             };
             static const float bw[N_DECK_DECORATIONS] = {
                 240, 170, 170, 170, 140, 140, 122, 122,
                 100, 100, 100, 100, 95, 95, 112, 112
             };
             static const float bh[N_DECK_DECORATIONS] = {
-                100, 120, 120, 120, 92, 92, 86, 86,
-                70, 70, 70, 70, 65, 65, 74, 74
+                135, 115, 115, 115, 90, 90, 84, 84,
+                68, 68, 68, 68, 64, 64, 72, 72
             };
             int slot = element - DECK_ELEM_DECORATION;
             *x = bx[slot]; *y = by[slot]; *w = bw[slot]; *h = bh[slot];
         } else {
-            *x = 430; *y = 280; *w = 112; *h = 74;
+            *x = 400; *y = 250; *w = 112; *h = 74;
         }
         break;
     }
@@ -3016,13 +3011,13 @@ static void deck_editor_element_rect(CompanionLayoutCfg *d, int element,
     deck_editor_element_base(element, &x, &y, &w, &h);
     float scale_x = (float)*deck_element_scale(d, element) / 100.0f;
     float scale_y = (float)*deck_element_scale_y(d, element) / 100.0f;
-    /* Runtime layout offsets remain stored in the original 800x450 normalized units. */
-    x += (float)*deck_element_x(d, element) * (700.0f / 800.0f);
-    y += (float)*deck_element_y(d, element) * (800.0f / 450.0f);
-    *rx = px + (x + w * 0.5f - w * scale_x * 0.5f) * (pw / 700.0f);
-    *ry = py + (y + h * 0.5f - h * scale_y * 0.5f) * (ph / 800.0f);
-    *rw = w * (pw / 700.0f) * scale_x;
-    *rh = h * (ph / 800.0f) * scale_y;
+    /* Stored offsets keep the runtime's historical 800x450 reference units. */
+    x += (float)*deck_element_x(d, element);
+    y += (float)*deck_element_y(d, element) * (DECK_EDITOR_THOR_H / 450.0f);
+    *rx = px + (x + w * 0.5f - w * scale_x * 0.5f) * (pw / 800.0f);
+    *ry = py + (y + h * 0.5f - h * scale_y * 0.5f) * (ph / DECK_EDITOR_THOR_H);
+    *rw = w * (pw / 800.0f) * scale_x;
+    *rh = h * (ph / DECK_EDITOR_THOR_H) * scale_y;
 }
 
 static const char *deck_editor_preview_asset_path(const CompanionLayoutCfg *d, int index)
@@ -3081,18 +3076,18 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     {
         float sx = (float)(d->header_scale > 0 ? d->header_scale : 100) / 100.f;
         float sy = (float)(d->header_scale_y > 0 ? d->header_scale_y : 100) / 100.f;
-        float dx = d->header_dx * (700.0f / 800.0f);
-        float dy = d->header_dy * (800.0f / 450.0f);
-        float hx = 350.f + (14.f - 350.f) * sx + dx;
-        float hy = 30.f + (7.f - 30.f) * sy + dy;
-        float hw = 400.f * sx, hh = 43.f * sy;
-        float rx = x + w * hx / 700.f, ry = y + h * hy / 800.f;
-        float rw = w * hw / 700.f, rh = h * hh / 800.f;
+        float dx = d->header_dx;
+        float dy = d->header_dy * (DECK_EDITOR_THOR_H / 450.0f);
+        float hx = 400.f + (18.f - 400.f) * sx + dx;
+        float hy = 34.f + (7.f - 34.f) * sy + dy;
+        float hw = 390.f * sx, hh = 49.f * sy;
+        float rx = x + w * hx / 800.f, ry = y + h * hy / DECK_EDITOR_THOR_H;
+        float rw = w * hw / 800.f, rh = h * hh / DECK_EDITOR_THOR_H;
         ui_rrect(rx, ry, rw, rh, 5, RGBA(28, 40, 58, 210));
         deck_editor_preview_asset(d, 15, d->header_texture_path, rx + 1, ry + 1, rw - 2, rh - 2);
-        float textX = x + w * (350.f + (20.f - 350.f) * sx + dx) / 700.f;
-        float topY = y + h * (30.f + (23.f - 30.f) * sy + dy) / 800.f;
-        float titleY = y + h * (30.f + (41.f - 30.f) * sy + dy) / 800.f;
+        float textX = x + w * (400.f + (27.f - 400.f) * sx + dx) / 800.f;
+        float topY = y + h * (34.f + (22.f - 34.f) * sy + dy) / DECK_EDITOR_THOR_H;
+        float titleY = y + h * (34.f + (42.f - 34.f) * sy + dy) / DECK_EDITOR_THOR_H;
         ui_text_fit(F_BOLD, 6.8f, textX, topY, rw - 14,
                     RGBA(127, 220, 236, 255), "PIPE CLEAN / POCKET QUEST");
         ui_text_fit(F_BOLD, 9, textX, titleY, rw - 14,
@@ -3112,33 +3107,33 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
     {
         float sx = (float)(d->header_scale > 0 ? d->header_scale : 100) / 100.f;
         float sy = (float)(d->header_scale_y > 0 ? d->header_scale_y : 100) / 100.f;
-        float bx = 442, by = 12, bw = 105, bh = 37;
-        bx = 350.f + (bx - 350.f) * sx + d->header_dx * (700.0f / 800.0f);
-        by = 30.f + (by - 30.f) * sy + d->header_dy * (800.0f / 450.0f);
+        float bx = 542, by = 12, bw = 112, bh = 39;
+        bx = 400.f + (bx - 400.f) * sx + d->header_dx;
+        by = 34.f + (by - 34.f) * sy + d->header_dy * (DECK_EDITOR_THOR_H / 450.0f);
         bw *= sx; bh *= sy;
         const char *path = d->button_texture_by_action[4][0]
             ? d->button_texture_by_action[4] : d->button_texture_path;
-        ui_rrect(x + w * bx / 700.f, y + h * by / 800.f,
+        ui_rrect(x + w * bx / 800.f, y + h * by / DECK_EDITOR_THOR_H,
                  w * bw / 700.f, h * bh / 800.f, 4, RGBA(34, 48, 67, 240));
         deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 28, path,
-            x + w * bx / 700.f + 1, y + h * by / 800.f + 1,
+            x + w * bx / 800.f + 1, y + h * by / DECK_EDITOR_THOR_H + 1,
             w * bw / 700.f - 2, h * bh / 800.f - 2);
-        ui_text_c(F_BOLD, 5.4f, x + w * (bx + bw * .5f) / 700.f,
-                  y + h * (by + bh * .43f) / 800.f, RGBA(246, 249, 255, 255), "BACKGROUND");
+        ui_text_c(F_BOLD, 5.4f, x + w * (bx + bw * .5f) / 800.f,
+                  y + h * (by + bh * .43f) / DECK_EDITOR_THOR_H, RGBA(246, 249, 255, 255), "BACKGROUND");
 
-        float cx = 555, cy = 12, cw = 121, ch = 37;
-        cx = 350.f + (cx - 350.f) * sx + d->header_dx * (700.0f / 800.0f);
-        cy = 30.f + (cy - 30.f) * sy + d->header_dy * (800.0f / 450.0f);
+        float cx = 662, cy = 12, cw = 120, ch = 39;
+        cx = 400.f + (cx - 400.f) * sx + d->header_dx;
+        cy = 34.f + (cy - 34.f) * sy + d->header_dy * (DECK_EDITOR_THOR_H / 450.0f);
         cw *= sx; ch *= sy;
         path = d->button_texture_by_action[5][0]
             ? d->button_texture_by_action[5] : d->button_texture_path;
-        ui_rrect(x + w * cx / 700.f, y + h * cy / 800.f,
+        ui_rrect(x + w * cx / 800.f, y + h * cy / DECK_EDITOR_THOR_H,
                  w * cw / 700.f, h * ch / 800.f, 4, RGBA(34, 48, 67, 240));
         deck_editor_preview_asset(d, path == d->button_texture_path ? 1 : 29, path,
-            x + w * cx / 700.f + 1, y + h * cy / 800.f + 1,
+            x + w * cx / 800.f + 1, y + h * cy / DECK_EDITOR_THOR_H + 1,
             w * cw / 700.f - 2, h * ch / 800.f - 2);
-        ui_text_c(F_BOLD, 5.4f, x + w * (cx + cw * .5f) / 700.f,
-                  y + h * (cy + ch * .43f) / 800.f, RGBA(246, 249, 255, 255), "CLOSE");
+        ui_text_c(F_BOLD, 5.4f, x + w * (cx + cw * .5f) / 800.f,
+                  y + h * (cy + ch * .43f) / DECK_EDITOR_THOR_H, RGBA(246, 249, 255, 255), "CLOSE");
     }
 
     /* Reserve item — use its exact assigned texture, or the legacy generic fallback. */
@@ -3185,9 +3180,9 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         static const char *labels[4] = {"SAVE", "LOAD", "PAUSE", "REWIND"};
         for (int b = 0; b < 4; b++) {
             int col = b % 2, row = b / 2;
-            float bw = rw * 0.5f - 3.f, bh = rh * 0.5f - 3.f;
-            float bx = rx + col * (rw * 0.5f + 1.f);
-            float by = ry + row * (rh * 0.5f + 1.f);
+            float bw = (rw - 18.f) / 4.f, bh = rh - 6.f;
+            float bx = rx + 3.f + b * (bw + 4.f);
+            float by = ry + 3.f;
             int texture_index = 17 + b;
             const char *custom = deck_editor_preview_asset_path(d, texture_index);
             if (!custom[0]) texture_index = 1, custom = d->button_texture_path;
@@ -3271,10 +3266,10 @@ static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
     if (companion_editor_resizing) {
         int *scale_x = deck_element_scale(d, companion_editor_element);
         int *scale_y = deck_element_scale_y(d, companion_editor_element);
-        if (companion_editor_resizing == 1 || companion_editor_resizing == 2)
-            *scale_x += (int)((dx / (preview_w / 700.0f)) * 0.35f);
+            if (companion_editor_resizing == 1 || companion_editor_resizing == 2)
+            *scale_x += (int)((dx / (preview_w / 800.0f)) * 0.35f);
         if (companion_editor_resizing == 1 || companion_editor_resizing == 3)
-            *scale_y += (int)((dy / (preview_h / 800.0f)) * 0.35f);
+            *scale_y += (int)((dy / (preview_h / DECK_EDITOR_THOR_H)) * 0.35f);
         if (*scale_x < 25) *scale_x = 25;
         if (*scale_x > 250) *scale_x = 250;
         if (*scale_y < 25) *scale_y = 25;
@@ -3545,7 +3540,7 @@ static void deck_editor_layout(float x, float y)
 
     /* A larger landscape work surface makes hit targets usable with a finger,
        while the compact inspector keeps all scale and selection controls visible. */
-    float px = x + 36, py = y + 194, pw = 280, ph = 280 * (27.0f / 31.0f);
+    float px = x + 36, py = y + 194, pw = 295, ph = 295 * (27.0f / 31.0f);
     ui_rrect(px - 7, py - 7, pw + 14, ph + 14, 12, RGBA(7, 13, 24, 255));
     ui_stroke(px - 1, py - 1, pw + 2, ph + 2, 8, 1.0f, RGBA(66, 102, 148, 225));
     deck_editor_preview(d, px, py, pw, ph);
