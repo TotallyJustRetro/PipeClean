@@ -53,6 +53,10 @@ static char wario_expedition_log[5][64];
 static int wario_expedition_log_count, wario_expedition_baseline;
 static int wario_previous_coins = -1, wario_previous_hearts = -1, wario_previous_power = -1;
 static int wario_previous_treasure_mask = -1, wario_previous_stage = -1, wario_previous_lives = -1;
+static int wario_pile_game = -1, wario_pile_level_coins;
+static int wario_pile_previous_coins = -1, wario_pile_previous_stage = -1;
+static float wario_pile_displayed_coins;
+static Uint32 wario_pile_reset_started;
 static int wario_treasure_animation_id = -1;
 static Uint32 wario_treasure_animation_started;
 static int wario_treasure_animation_active;
@@ -170,6 +174,54 @@ static void wario_log_push(const char *entry)
     if (wario_expedition_log_count < 5) wario_expedition_log_count++;
 }
 
+static void companion_sim_reset_coin_pile(void)
+{
+    wario_pile_game = -1;
+    wario_pile_level_coins = 0;
+    wario_pile_previous_coins = wario_pile_previous_stage = -1;
+    wario_pile_displayed_coins = 0.f;
+    wario_pile_reset_started = SDL_GetTicks();
+}
+
+static void companion_sim_update_coin_pile(int game, int stage, int coin_reading)
+{
+    Uint32 now = SDL_GetTicks();
+    if (game != GAME_WARIO_SML3 && !wario_land2_supported_game(game)) {
+        companion_sim_reset_coin_pile();
+        return;
+    }
+    if (wario_pile_game != game) {
+        wario_pile_game = game;
+        wario_pile_level_coins = 0;
+        wario_pile_displayed_coins = 0.f;
+        wario_pile_previous_coins = wario_pile_previous_stage = -1;
+        wario_pile_reset_started = now;
+    }
+    if (stage < 0 || coin_reading < 0) {
+        wario_pile_previous_stage = stage;
+        wario_pile_previous_coins = coin_reading;
+        return;
+    }
+    if (wario_pile_previous_stage < 0 || wario_pile_previous_coins < 0 ||
+        stage != wario_pile_previous_stage) {
+        wario_pile_level_coins = 0;
+        wario_pile_reset_started = now;
+        wario_pile_previous_stage = stage;
+        wario_pile_previous_coins = coin_reading;
+        return;
+    }
+    int delta = coin_reading - wario_pile_previous_coins;
+    if (delta > 0) {
+        wario_pile_level_coins += delta;
+        if (wario_pile_level_coins > 390) wario_pile_level_coins = 390;
+    } else if (delta < 0) {
+        wario_pile_level_coins += delta;
+        if (wario_pile_level_coins < 0) wario_pile_level_coins = 0;
+    }
+    wario_pile_previous_stage = stage;
+    wario_pile_previous_coins = coin_reading;
+}
+
 static void companion_sim_reset_wario_tracking(void)
 {
     wario_expedition_baseline = 0;
@@ -207,6 +259,7 @@ static void companion_sim_update_wario(int game, const Frame *frame)
     current_wario_treasure_mask =
         treasure_low != 0xFF && treasure_high != 0xFF
             ? ((int)treasure_low | ((int)treasure_high << 8)) : -1;
+    companion_sim_update_coin_pile(game, current_stage, current_wario_coins);
 
     if (!wario_expedition_baseline) {
         memset(wario_expedition_log, 0, sizeof wario_expedition_log);
@@ -321,12 +374,16 @@ static void companion_sim_update_wario2(int game, const Frame *frame)
 {
     if (!wario_land2_supported_game(game)) {
         companion_sim_reset_wario2_tracking();
+        if (game != GAME_WARIO_SML3) companion_sim_reset_coin_pile();
         return;
     }
     if (!frame) return;
     current_wario2_state = wario_land2_read_snapshot(game, gb_wram_peek);
     current_stage = current_wario2_state.stage;
     current_lives = -1;
+    companion_sim_update_coin_pile(game, current_stage,
+        current_wario2_state.overworld_coins >= 0
+            ? current_wario2_state.overworld_coins : current_wario2_state.bank_coins);
 
     if (!wario2_have_baseline) {
         wario2_log_push("EXPEDITION LINKED");
