@@ -3534,9 +3534,9 @@ static void deck_editor_layout(float x, float y)
         deck_editor_open_picker(DECK_PICK_DECORATION);
         return;
     }
-    selected_decoration = companion_editor_selected_decoration_slot();
-    int can_remove_decoration = selected_decoration >= 0 &&
-        deck_decoration_path_const(d, selected_decoration)[0];
+    int toolbar_selected_decoration = companion_editor_selected_decoration_slot();
+    int can_remove_decoration = toolbar_selected_decoration >= 0 &&
+        deck_decoration_path_const(d, toolbar_selected_decoration)[0];
     if (ui_button(x + 656, y + 146, 100, 32, "Remove", B_DANGER,
                   can_remove_decoration)) {
         deck_editor_remove_selected_decoration();
