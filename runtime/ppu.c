@@ -49,6 +49,11 @@ typedef struct {
 static Wl2BlockVisual wl2_block_visuals[256];
 static Wl2BlockVisual wl2_frame_visuals[256];
 static uint8_t wl2_frame_seen[256], wl2_frame_conflict[256];
+/* Speculative samples come from the live 256x256 VRAM tilemap ring outside
+ * the native viewport. Keep them separate so stale ring entries never
+ * override a confirmed in-viewport sample. */
+static Wl2BlockVisual wl2_ring_visuals[256];
+static uint8_t wl2_ring_seen[256], wl2_ring_conflict[256];
 static int wl2_frame_world_x0, wl2_frame_world_y0;
 static int wl2_frame_scx, wl2_frame_scy;
 static int wl2_cache_level = -1, wl2_cache_tref = -1, wl2_cache_cgb = -1;
@@ -63,6 +68,9 @@ static void wl2_clear_visual_cache(void)
     memset(wl2_frame_visuals, 0, sizeof wl2_frame_visuals);
     memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
     memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
+    memset(wl2_ring_visuals, 0, sizeof wl2_ring_visuals);
+    memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
+    memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
     wl2_frame_active = 0;
     wl2_cache_level = wl2_cache_tref = wl2_cache_cgb = -1;
 }
@@ -423,19 +431,26 @@ static int wl2_align_origin(int world_origin, int ppu_scroll)
     return world_origin + wl2_scroll_delta(ppu_scroll, low);
 }
 
-/* Learn a map-block's 2x2 graphic from the authentic native playfield.
- * If the same block ID displays two different patterns in a frame, do not
- * trust that ID for margin reconstruction. */
-static void wl2_learn_visible_block(int block_x, int block_y,
-                                    int screen_x, int screen_y,
-                                    int map_off)
+/* Learn a map-block's 2x2 graphic from the live VRAM map ring.
+ * Native-viewport samples are authoritative. Samples from the extra left/right
+ * area are speculative: they can prewarm block IDs before they enter view,
+ * but must never replace a confirmed pattern or make a confirmed ID ambiguous. */
+static void wl2_learn_block(int block_x, int block_y,
+                            int screen_x, int screen_y,
+                            int map_off, int speculative)
 {
-    if (!wide_wl2_block_at || screen_x < 0 || screen_x + 16 > GB_W ||
-        screen_y < 0 || screen_y + 16 > GB_H)
+    if (!wide_wl2_block_at || screen_y < 0 || screen_y + 16 > GB_H)
         return;
+    if (!speculative) {
+        if (screen_x < 0 || screen_x + 16 > GB_W) return;
+    } else {
+        if (screen_x < -ppu_xoff || screen_x + 16 > GB_W + wide_r) return;
+    }
 
     uint8_t id;
     if (!wide_wl2_block_at(block_x + 8, block_y + 8, &id)) return;
+    if (speculative && (wl2_frame_seen[id] || wl2_block_visuals[id].valid))
+        return;
 
     Wl2BlockVisual sample;
     memset(&sample, 0, sizeof sample);
@@ -453,13 +468,25 @@ static void wl2_learn_visible_block(int block_x, int block_y,
         }
     }
 
-    if (!wl2_frame_seen[id]) {
-        wl2_frame_seen[id] = 1;
-        wl2_frame_visuals[id] = sample;
-    } else if (!wl2_same_visual(&wl2_frame_visuals[id], &sample)) {
-        wl2_frame_conflict[id] = 1;
+    if (!speculative) {
+        if (!wl2_frame_seen[id]) {
+            wl2_frame_seen[id] = 1;
+            wl2_frame_visuals[id] = sample;
+        } else if (!wl2_same_visual(&wl2_frame_visuals[id], &sample)) {
+            wl2_frame_conflict[id] = 1;
+        } else {
+            memcpy(wl2_frame_visuals[id].attr, sample.attr, sizeof sample.attr);
+        }
+        return;
+    }
+
+    if (!wl2_ring_seen[id]) {
+        wl2_ring_seen[id] = 1;
+        wl2_ring_visuals[id] = sample;
+    } else if (!wl2_same_visual(&wl2_ring_visuals[id], &sample)) {
+        wl2_ring_conflict[id] = 1;
     } else {
-        memcpy(wl2_frame_visuals[id].attr, sample.attr, sizeof sample.attr);
+        memcpy(wl2_ring_visuals[id].attr, sample.attr, sizeof sample.attr);
     }
 }
 
@@ -521,17 +548,22 @@ static void wl2_prepare_frame(void)
     wl2_frame_scy = scy;
     memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
     memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
+    memset(wl2_ring_visuals, 0, sizeof wl2_ring_visuals);
+    memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
+    memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
 
     int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
-    int first_x = wl2_floor16(world_x0);
     int first_y = wl2_floor16(world_y0);
+    int first_native_x = wl2_floor16(world_x0);
+    /* Pass 1: learn from blocks fully inside the original 160px viewport.
+       These samples are trustworthy and may refresh the persistent cache. */
     for (int by = first_y; by < world_y0 + GB_H; by += 16) {
         int sy = by - world_y0;
         if (sy < 0 || sy + 16 > GB_H) continue;
-        for (int bx = first_x; bx < world_x0 + GB_W; bx += 16) {
+        for (int bx = first_native_x; bx < world_x0 + GB_W; bx += 16) {
             int sx = bx - world_x0;
             if (sx < 0 || sx + 16 > GB_W) continue;
-            wl2_learn_visible_block(bx, by, sx, sy, map_off);
+            wl2_learn_block(bx, by, sx, sy, map_off, 0);
         }
     }
 
@@ -540,6 +572,32 @@ static void wl2_prepare_frame(void)
             wl2_block_visuals[id].valid = 0;
         } else if (wl2_frame_seen[id]) {
             wl2_block_visuals[id] = wl2_frame_visuals[id];
+            wl2_block_visuals[id].valid = 1;
+        }
+    }
+
+    /* Pass 2: look ahead into the actual 256x256 hardware tilemap ring.
+       WL2 often has the next/previous room columns populated before they enter
+       the 160px viewport. Learn those block IDs early so the widescreen edge
+       doesn't wait for an entire 16x16 block to walk fully on-screen. */
+    int first_ring_x = wl2_floor16(world_x0 - ppu_xoff);
+    int ring_end_x = world_x0 + GB_W + wide_r;
+    for (int by = first_y; by < world_y0 + GB_H; by += 16) {
+        int sy = by - world_y0;
+        if (sy < 0 || sy + 16 > GB_H) continue;
+        for (int bx = first_ring_x; bx < ring_end_x; bx += 16) {
+            int sx = bx - world_x0;
+            if (sx >= 0 && sx + 16 <= GB_W) continue;
+            wl2_learn_block(bx, by, sx, sy, map_off, 1);
+        }
+    }
+
+    /* Only use an unambiguous speculative sample if we have not learned a
+       confirmed version of that block ID. A later native sample supersedes it. */
+    for (unsigned id = 0; id < 256; id++) {
+        if (!wl2_frame_seen[id] && !wl2_block_visuals[id].valid &&
+            wl2_ring_seen[id] && !wl2_ring_conflict[id]) {
+            wl2_block_visuals[id] = wl2_ring_visuals[id];
             wl2_block_visuals[id].valid = 1;
         }
     }
