@@ -64,6 +64,43 @@ int wide_wl2_block_attr(int table_set, int block, int part, uint8_t *attr)
     return 1;
 }
 
+
+static int wl3_test_active;
+static int wl3_test_camera_x = 16, wl3_test_camera_y;
+
+int wide_wl3_block_at(int world_x, int world_y, uint8_t *block)
+{
+    if (!wl3_test_active || !block) return 0;
+    if (world_x < 0 || world_y < 0 || world_x >= 2560 || world_y >= 1536)
+        return -1;
+    *block = 1;
+    return 1;
+}
+
+int wide_wl3_block_tile(int block, int part, uint8_t *tile)
+{
+    if (!wl3_test_active || block != 1 || part < 0 || part >= 4 || !tile)
+        return 0;
+    *tile = 1;
+    return 1;
+}
+
+int wide_wl3_block_attr(int block, int part, uint8_t *attr)
+{
+    if (!wl3_test_active || block != 1 || part < 0 || part >= 4 || !attr)
+        return 0;
+    *attr = 0;
+    return 1;
+}
+
+int wide_wl3_camera(int *camera_x, int *camera_y)
+{
+    if (!wl3_test_active || !camera_x || !camera_y) return 0;
+    *camera_x = wl3_test_camera_x;
+    *camera_y = wl3_test_camera_y;
+    return 1;
+}
+
 static void set_wl2_test_map(int stale_right, int special_visible_palette)
 {
     /* This synthetic room uses palette 2 normally. Columns 20-23 can be
@@ -233,5 +270,43 @@ int main(void)
     assert(ppu_rgb[0][192] == 0x00FF00u);
     wl2_test_active = 0;
     ppu_set_wl2_wide(0);
+
+    /* Wario Land 3 rebuilds both side margins from its 160x96 block map,
+       active room tile table and CGB attribute table. Validate a world origin
+       near the left boundary: the part outside the level stays blank, while
+       the in-level left and right margins show the expected tile. */
+    wl3_test_active = 1;
+    wl3_test_camera_x = 16;
+    wl3_test_camera_y = 0;
+    ppu_reset();
+    ppu_set_cgb_mode(1);
+    ppu_set_wide(32, 32, 0, 0, 0);
+    ppu_set_wl3_wide(1);
+    ppu_vram_bank_write(0);
+    for (int row = 0; row < 8; row++) {
+        ppu_vram_write((uint16_t)(0x0010 + row * 2), 0xFF);
+        ppu_vram_write((uint16_t)(0x0011 + row * 2), 0x00);
+    }
+    for (unsigned y = 0; y < 32; y++)
+        for (unsigned x = 0; x < 32; x++)
+            ppu_vram_write((uint16_t)(0x1800u + y * 32u + x), 1);
+    ppu_vram_bank_write(1);
+    for (unsigned y = 0; y < 32; y++)
+        for (unsigned x = 0; x < 32; x++)
+            ppu_vram_write((uint16_t)(0x1800u + y * 32u + x), 0);
+    ppu_vram_bank_write(0);
+    set_bg_color(0, 0x0000); /* outside-level background is black */
+    set_bg_color(1, 0x001F); /* block color 1 is red */
+    ppu_write(0x42, 0);
+    ppu_write(0x43, 16);
+    ppu_write(0x40, 0x91);
+    ppu_tick(252);
+    assert(ppu_w == 224 && ppu_xoff == 32);
+    assert(ppu_rgb[0][10] == 0x000000u); /* world X < 0 */
+    assert(ppu_rgb[0][20] == 0xFF0000u); /* reconstructed left margin */
+    assert(ppu_rgb[0][32] == 0xFF0000u); /* native picture remains intact */
+    assert(ppu_rgb[0][192] == 0xFF0000u); /* reconstructed right margin */
+    wl3_test_active = 0;
+    ppu_set_wl3_wide(0);
     return 0;
 }
