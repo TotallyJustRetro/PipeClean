@@ -713,6 +713,13 @@ void wide_dims_profile(int game, int pct, int wario_dx, int *l, int *r)
         *l = *r = margin;
         return;
     }
+    if (game == GAME_WARIO_LAND3_GBC) {
+        /* Start conservatively at 32 pixels per side; runtime traces will
+         * identify which level/object windows need game-specific treatment. */
+        int margin = (32 * pct + 50) / 100;
+        *l = *r = margin;
+        return;
+    }
     if (game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) {
         /* WL2 currently uses the emulator's generic scroll/tilemap margin
          * rendering. Keep the exposed extension inside the 256px BG ring;
@@ -1403,6 +1410,15 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
         wl2_profile_game = game;
         wl2_profile_active = 1;
         if (l + r > 0) wl2_trace_begin(game, l, r);
+        return 1;
+    }
+    if (game == GAME_WARIO_LAND3_GBC) {
+        /* Wario Land 3 is a CGB cartridge. This first pass widens the renderer
+         * without modifying ROM bytes; object activation/culling will be
+         * addressed from runtime traces rather than guessed offsets. */
+        const CartInfo *ci = cart_info ? cart_info() : NULL;
+        if (!rom || !ci || ci->size < 0x80000u || (rom[0x143] & 0x80u) == 0)
+            return 0;
         return 1;
     }
     if (game == GAME_WARIO_SML3) return wide_install_wario_sml3(wario_dx);
