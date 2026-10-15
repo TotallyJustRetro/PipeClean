@@ -70,9 +70,9 @@ static void set_wl2_test_map(int stale_right, int special_visible_palette)
     for (unsigned y = 0; y < 32; y++) {
         for (unsigned x = 0; x < 32; x++) {
             int stale = stale_right && x >= 20 && x < 24;
-            int special = special_visible_palette && x >= 4 && x < 6;
-            ppu_vram_write((uint16_t)(0x1800u + y * 32u + x),
-                           (uint8_t)(stale || special ? 1 : 2));
+            int special = special_visible_palette && x >= 20 && x < 24;
+            uint8_t attr = stale ? 1 : (special ? 3 : 2);
+            ppu_vram_write((uint16_t)(0x1800u + y * 32u + x), attr);
         }
     }
     ppu_vram_bank_write(0);
@@ -193,6 +193,7 @@ int main(void)
     ppu_vram_write(0x0021, 0x00);
     set_bg_color(5, 0x001F); /* palette 1 / color 1 = red */
     set_bg_color(9, 0x03E0); /* palette 2 / color 1 = green */
+    set_bg_color(13, 0x7C00); /* palette 3 / color 1 = blue */
     set_wl2_test_map(1, 0);
     ppu_write(0x42, 0);
     ppu_write(0x43, 0);
@@ -200,17 +201,18 @@ int main(void)
     ppu_tick(252);
     assert(ppu_rgb[0][192] == 0x00FF00u);
 
-    /* Bring world X=160 into the native viewport so its real palette is
-       remembered, then recycle that map-ring slot again. Also make a repeated
-       block ID visible with a different palette, proving the exact world
-       coordinate wins over the per-block fallback. */
+    /* Place world X=160 at the clipped right edge of the native viewport:
+       only five pixels of its 16px block are visible, so the old block learner
+       skipped it. Remember its unique palette, then recycle its ring slot with
+       a different tile/palette. The widened margin must retain blue instead
+       of briefly falling back to the repeated block's green palette. */
     set_wl2_test_map(0, 1);
-    ppu_write(0x43, 32);
+    ppu_write(0x43, 5);
     render_next_wl2_test_frame();
-    set_wl2_test_map(1, 1);
+    set_wl2_test_map(1, 0);
     ppu_write(0x43, 0);
     render_next_wl2_test_frame();
-    assert(ppu_rgb[0][192] == 0x00FF00u);
+    assert(ppu_rgb[0][192] == 0x0000FFu);
     wl2_test_active = 0;
     ppu_set_wl2_wide(0);
     return 0;
