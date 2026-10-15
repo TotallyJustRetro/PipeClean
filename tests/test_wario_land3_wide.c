@@ -8,19 +8,30 @@
 
 CPU cpu;
 uint8_t *rom;
+uint8_t *cart_ram;
+static uint8_t test_wram[0x8000];
 const uint8_t *cart_lo, *cart_hi;
 uint64_t total_cycles;
 int frame_count;
 
 static CartInfo test_info;
 const CartInfo *cart_info(void) { return &test_info; }
-uint8_t rd8(uint16_t a) { (void)a; return 0; }
+uint8_t rd8(uint16_t a)
+{
+    if (a >= 0xC000u && a < 0xE000u) return test_wram[a - 0xC000u];
+    return 0;
+}
+uint8_t gb_wram_peek(size_t offset)
+{
+    return offset < sizeof test_wram ? test_wram[offset] : 0xFFu;
+}
 void hw_tick(int tcycles) { total_cycles += (uint64_t)tcycles; }
 
 static int fail(int code, const char *message)
 {
     fprintf(stderr, "Wario Land 3 widescreen test failed: %s\n", message);
     free(rom);
+    free(cart_ram);
     return code;
 }
 
@@ -82,7 +93,10 @@ int main(void)
     rom = (uint8_t *)calloc(0x100000u, 1);
     if (!rom) return 2;
     test_info.size = 0x80000u;
+    test_info.ram_bytes = 0x8000u;
     test_info.cgb_flag = 0xC0u;
+    cart_ram = (uint8_t *)calloc(test_info.ram_bytes, 1);
+    if (!cart_ram) return fail(15, "test cart RAM allocation failed");
     rom[0x143] = 0xC0u;
     cart_lo = rom;
     cart_hi = rom + 0x10000u;
@@ -99,6 +113,16 @@ int main(void)
     rom[spawn_scan_loop + 2] = 0xCBu; /* BIT 7,[HL] */
     rom[spawn_scan_loop + 3] = 0x7Eu;
     rom[spawn_scan_loop + 4] = 0x28u; /* JR Z, ... */
+    /* Room-table load signature: LD DE,$C800; LD BC,$0200; CALL. */
+    rom[0x10600] = 0x11u; rom[0x10601] = 0x00u; rom[0x10602] = 0xC8u;
+    rom[0x10603] = 0x01u; rom[0x10604] = 0x00u; rom[0x10605] = 0x02u;
+    rom[0x10606] = 0xCDu; rom[0x10607] = 0x34u; rom[0x10608] = 0x12u;
+    /* Wario Land 3 level map: SRAM bank 1, row 1, column 2. */
+    cart_ram[0x2000u + 0x100u + 2u] = 0x85u;
+    test_wram[0x800u + 5u * 4u + 2u] = 0x57u; /* block 5, bottom-left */
+    test_wram[0x3300u + 5u * 4u + 2u] = 0xE7u; /* CGB palette + flags */
+    test_wram[0x22Eu] = 0x00u; test_wram[0x22Fu] = 0x10u; /* camera Y = 16 */
+    test_wram[0x230u] = 0x00u; test_wram[0x231u] = 0x20u; /* camera X = 32 */
 
     wide_dims_profile(GAME_WARIO_LAND3_GBC, 0, 0, &left, &right);
     if (left || right) return fail(3, "0% should preserve the native viewport");
@@ -112,6 +136,19 @@ int main(void)
         return fail(6, "CGB Wario Land 3 cartridge should accept the widescreen profile");
     if (rom_hash() != before)
         return fail(7, "installing widescreen unexpectedly modified the ROM");
+
+    uint8_t decoded = 0;
+    if (wide_wl3_block_at(32, 16, &decoded) != 1 || decoded != 5u)
+        return fail(15, "level SRAM map should return the seven-bit block ID");
+    if (wide_wl3_block_tile(5, 2, &decoded) != 1 || decoded != 0x57u)
+        return fail(16, "runtime room graphics table should supply the block tile");
+    if (wide_wl3_block_attr(5, 2, &decoded) != 1 || decoded != 0xE7u)
+        return fail(17, "bank-3 room attributes should supply the palette flags");
+    int camera_x = 0, camera_y = 0;
+    if (!wide_wl3_camera(&camera_x, &camera_y) || camera_x != 32 || camera_y != 16)
+        return fail(18, "camera words should be detected from the live object code");
+    if (wide_wl3_block_at(-1, 16, &decoded) != -1)
+        return fail(19, "negative map coordinates should be treated as outside the level");
 
     /* The left bound is shifted by the selected extension, while the current
      * LD A,E instruction still runs normally afterwards. */
@@ -169,6 +206,7 @@ int main(void)
         return fail(14, "monochrome cartridge should not activate the Wario Land 3 profile");
 
     free(rom);
-    puts("Wario Land 3 widescreen profile and object-bound checks passed");
+    free(cart_ram);
+    puts("Wario Land 3 widescreen profile, map, room table and object-bound checks passed");
     return 0;
 }
