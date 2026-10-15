@@ -16,7 +16,7 @@ typedef struct {
     uint16_t pc;
     uint16_t bc_min, bc_max, de_min, de_max, hl_min, hl_max;
     uint16_t px_min, px_max, py_min, py_max;
-    uint8_t opcode, byte1, byte2, operand, operand_min, operand_max;
+    uint8_t opcode, byte1, byte2, code[8], operand, operand_min, operand_max;
     uint8_t a, f, b, c, d, e, h, l, scx, scy, camx, camy;
     uint8_t a_min, a_max, scx_min, scx_max, scy_min, scy_max;
     uint8_t camx_min, camx_max, camy_min, camy_max;
@@ -150,6 +150,8 @@ void wide_wl2_trace_instruction(uint16_t pc)
             candidate->pc = pc;
             candidate->opcode = op;
             candidate->first_frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
+            for (unsigned i = 0; i < sizeof candidate->code; i++)
+                candidate->code[i] = off + i < wl2_trace_rom_size ? rom[off + i] : 0xFFu;
             wl2_trace_count++;
             entry = candidate;
             slot = candidate_slot;
@@ -296,18 +298,21 @@ void wide_wl2_trace_finish(void)
             wl2_trace_game, wl2_trace_left, wl2_trace_right, used);
     fprintf(f, "A/X/Y/camera columns show min-max across all hits at a site; CMP relation counts "
                 "use unsigned A vs operand; branch taken/checks counts an adjacent JR/JP/RET cc.\n");
-    fprintf(f, "hits first last bank pc romoff op b1 b2 operand A[min,max] O[min,max] "
+    fprintf(f, "hits first last bank pc romoff op code8 operand A[min,max] O[min,max] "
                 "CMP[lt,eq,gt] BR[taken,checks] BC[min,max] DE[min,max] HL[min,max] "
                 "X[min,max] Y[min,max] SCX[min,max] SCY[min,max] CAMX[min,max] CAMY[min,max]\n");
     for (size_t i = 0; i < used; i++) {
         const Wl2TraceEntry *e = ordered[i];
-        fprintf(f, "%u %u %u %u %04X %06X %02X %02X %02X %02X %02X-%02X %02X-%02X "
-                    "%u,%u,%u %u,%u %04X-%04X %04X-%04X %04X-%04X "
-                    "%04X-%04X %04X-%04X %02X-%02X %02X-%02X %02X-%02X %02X-%02X\n",
+        fprintf(f, "%u %u %u %u %04X %06X %02X ",
                 (unsigned)e->hits, (unsigned)e->first_frame, (unsigned)e->last_frame,
                 (unsigned)(e->rom_offset >> 14), (unsigned)e->pc, (unsigned)e->rom_offset,
-                (unsigned)e->opcode, (unsigned)e->byte1, (unsigned)e->byte2, (unsigned)e->operand,
-                (unsigned)e->a_min, (unsigned)e->a_max,
+                (unsigned)e->opcode);
+        for (unsigned byte = 0; byte < sizeof e->code; byte++)
+            fprintf(f, "%02X", (unsigned)e->code[byte]);
+        fprintf(f, " %02X %02X-%02X %02X-%02X %u,%u,%u %u,%u "
+                    "%04X-%04X %04X-%04X %04X-%04X "
+                    "%04X-%04X %04X-%04X %02X-%02X %02X-%02X %02X-%02X %02X-%02X\n",
+                (unsigned)e->operand, (unsigned)e->a_min, (unsigned)e->a_max,
                 (unsigned)e->operand_min, (unsigned)e->operand_max,
                 (unsigned)e->cmp_lt, (unsigned)e->cmp_eq, (unsigned)e->cmp_gt,
                 (unsigned)e->branch_taken, (unsigned)e->branch_checks,
