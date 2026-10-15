@@ -21,6 +21,7 @@ extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
 extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
 extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
+extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -38,10 +39,38 @@ int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
 static int wario_wide_enabled, wario_frame_active;
+static int wl2_wide_enabled, wl2_frame_active;
+typedef struct {
+    uint8_t tile[4], attr[4];
+    uint8_t valid;
+} Wl2BlockVisual;
+static Wl2BlockVisual wl2_block_visuals[256];
+static Wl2BlockVisual wl2_frame_visuals[256];
+static uint8_t wl2_frame_seen[256], wl2_frame_conflict[256];
+static int wl2_frame_world_x0, wl2_frame_world_y0;
+static int wl2_cache_level = -1, wl2_cache_tref = -1, wl2_cache_cgb = -1;
 static uint16_t wario_frame_scroll_x, wario_frame_scroll_y;
 static int wario_cached_level = -1;
 static uint8_t wario_block_attr[0x80][4], wario_block_known[0x80][4];
 static uint8_t wario_tile_attr[256], wario_tile_known[256];
+
+static void wl2_clear_visual_cache(void)
+{
+    memset(wl2_block_visuals, 0, sizeof wl2_block_visuals);
+    memset(wl2_frame_visuals, 0, sizeof wl2_frame_visuals);
+    memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
+    memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
+    wl2_frame_active = 0;
+    wl2_cache_level = wl2_cache_tref = wl2_cache_cgb = -1;
+}
+
+void ppu_set_wl2_wide(int enabled)
+{
+    int next = enabled != 0;
+    if (wl2_wide_enabled != next) wl2_clear_visual_cache();
+    wl2_wide_enabled = next;
+    if (!next) wl2_frame_active = 0;
+}
 
 void ppu_set_wario_sml3(int enabled)
 {
@@ -113,6 +142,7 @@ void ppu_reset(void)
     dot = 0; ly = 0; mode = 2; lcd_on = 1; stat_line = 0; wlc = 0; off_cycles = 0;
     frame_count = 0;
     wario_frame_active = 0;
+    wl2_clear_visual_cache();
     wario_cached_level = -1;
     memset(wario_block_known, 0, sizeof wario_block_known);
     memset(wario_tile_known, 0, sizeof wario_tile_known);
@@ -361,6 +391,165 @@ static void wario_render_margins(int y, int W, int L, uint8_t *out,
         ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
     }
 }
+
+static int wl2_floor16(int v)
+{
+    return v >= 0 ? (v / 16) * 16 : -(((-v + 15) / 16) * 16);
+}
+
+static int wl2_same_visual(const Wl2BlockVisual *a, const Wl2BlockVisual *b)
+{
+    return memcmp(a->tile, b->tile, sizeof a->tile) == 0 &&
+           memcmp(a->attr, b->attr, sizeof a->attr) == 0;
+}
+
+static int wl2_align_origin(int world_origin, int ppu_scroll)
+{
+    int low = world_origin % 256;
+    if (low < 0) low += 256;
+    int delta = ppu_scroll - low;
+    if (delta > 128) delta -= 256;
+    if (delta < -128) delta += 256;
+    return world_origin + delta;
+}
+
+/* Learn a map-block's 2x2 graphic from the authentic native playfield.
+ * If the same block ID displays two different patterns in a frame, do not
+ * trust that ID for margin reconstruction. */
+static void wl2_learn_visible_block(int block_x, int block_y,
+                                    int screen_x, int screen_y,
+                                    int map_off)
+{
+    if (!wide_wl2_block_at || screen_x < 0 || screen_x + 16 > GB_W ||
+        screen_y < 0 || screen_y + 16 > GB_H)
+        return;
+
+    uint8_t id;
+    if (!wide_wl2_block_at(block_x + 8, block_y + 8, &id)) return;
+
+    Wl2BlockVisual sample;
+    memset(&sample, 0, sizeof sample);
+    for (int row = 0; row < 2; row++) {
+        for (int col = 0; col < 2; col++) {
+            int sx = screen_x + col * 8;
+            int sy = screen_y + row * 8;
+            unsigned mx = (unsigned)(sx + scx) & 0xFFu;
+            unsigned my = (unsigned)(sy + scy) & 0xFFu;
+            unsigned index = (unsigned)map_off + ((my >> 3) & 31u) * 32u +
+                             ((mx >> 3) & 31u);
+            unsigned part = (unsigned)(row * 2 + col);
+            sample.tile[part] = vram[index];
+            sample.attr[part] = cgb_render_enabled ? vram_cgb1[index] : 0;
+        }
+    }
+
+    if (!wl2_frame_seen[id]) {
+        wl2_frame_seen[id] = 1;
+        wl2_frame_visuals[id] = sample;
+    } else if (!wl2_same_visual(&wl2_frame_visuals[id], &sample)) {
+        wl2_frame_conflict[id] = 1;
+    }
+}
+
+static void wl2_prepare_frame(void)
+{
+    wl2_frame_active = 0;
+    if (!wl2_wide_enabled || !rom || !cart_ram || !cart_info() ||
+        !wide_wl2_block_at || ppu_w <= GB_W)
+        return;
+
+    const int color_release = (rom[0x143] & 0x80u) != 0;
+    uint16_t px_addr = color_release ? 0xD53Cu : 0xC53Cu;
+    uint16_t py_addr = color_release ? 0xD53Au : 0xC53Au;
+    uint16_t camx_addr = color_release ? 0xC660u : 0xD652u;
+    uint16_t camy_addr = color_release ? 0xC65Fu : 0xD651u;
+    uint16_t tref_addr = color_release ? 0xC704u : 0xD6EBu;
+    uint16_t level_addr = color_release ? 0xD510u : 0xC510u;
+    int player_x = ((int)rd8(px_addr) << 8) | rd8((uint16_t)(px_addr + 1u));
+    int player_y = ((int)rd8(py_addr) << 8) | rd8((uint16_t)(py_addr + 1u));
+    int world_x0 = player_x - rd8(camx_addr);
+    int world_y0 = player_y - rd8(camy_addr);
+    world_x0 = wl2_align_origin(world_x0, scx);
+    world_y0 = wl2_align_origin(world_y0, scy);
+
+    uint16_t tref = (uint16_t)(((uint16_t)rd8(tref_addr) << 8) |
+                                rd8((uint16_t)(tref_addr + 1u)));
+    int level = rd8(level_addr);
+    int cgb = cgb_render_enabled != 0;
+    if (tref == 0 || tref == 0xFFFFu ||
+        world_x0 < -16 || world_x0 > 0x1000 ||
+        world_y0 < -16 || world_y0 > 0x1000)
+        return;
+
+    if (wl2_cache_level != level || wl2_cache_tref != (int)tref ||
+        wl2_cache_cgb != cgb) {
+        memset(wl2_block_visuals, 0, sizeof wl2_block_visuals);
+        wl2_cache_level = level;
+        wl2_cache_tref = (int)tref;
+        wl2_cache_cgb = cgb;
+    }
+
+    wl2_frame_world_x0 = world_x0;
+    wl2_frame_world_y0 = world_y0;
+    memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
+    memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
+
+    int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    int first_x = wl2_floor16(world_x0);
+    int first_y = wl2_floor16(world_y0);
+    for (int by = first_y; by < world_y0 + GB_H; by += 16) {
+        int sy = by - world_y0;
+        if (sy < 0 || sy + 16 > GB_H) continue;
+        for (int bx = first_x; bx < world_x0 + GB_W; bx += 16) {
+            int sx = bx - world_x0;
+            if (sx < 0 || sx + 16 > GB_W) continue;
+            wl2_learn_visible_block(bx, by, sx, sy, map_off);
+        }
+    }
+
+    for (unsigned id = 0; id < 256; id++) {
+        if (wl2_frame_conflict[id]) {
+            wl2_block_visuals[id].valid = 0;
+        } else if (wl2_frame_seen[id]) {
+            wl2_block_visuals[id] = wl2_frame_visuals[id];
+            wl2_block_visuals[id].valid = 1;
+        }
+    }
+    wl2_frame_active = 1;
+}
+
+static void wl2_render_margins(int y, int W, int L, uint8_t *out,
+                               uint32_t *rgb, uint8_t *bgci, uint8_t *bgattr)
+{
+    if (!wl2_wide_enabled || !wl2_frame_active || W <= GB_W) return;
+    int world_y = wl2_frame_world_y0 + y;
+    if (world_y < 0 || world_y > 0xFFFF) return;
+
+    for (int X = 0; X < W; X++) {
+        if (X >= L && X < L + GB_W) continue;
+        int world_x = wl2_frame_world_x0 + X - L;
+        if (world_x < 0 || world_x > 0xFFFF) continue;
+        uint8_t id;
+        if (!wide_wl2_block_at || !wide_wl2_block_at(world_x, world_y, &id))
+            continue;
+        const Wl2BlockVisual *visual = &wl2_block_visuals[id];
+        if (!visual->valid) continue;
+
+        unsigned part = ((world_y & 8) ? 2u : 0u) + ((world_x & 8) ? 1u : 0u);
+        int attr_out = 0, tile_id = 0;
+        int ci = tile_pixel_data(visual->tile[part], visual->attr[part],
+                                 world_x, world_y, &attr_out, &tile_id);
+        bgci[X] = (uint8_t)ci;
+        bgattr[X] = (uint8_t)attr_out;
+        out[X] = cgb_render_enabled ? (uint8_t)ci
+                                     : (uint8_t)((bgp >> (ci * 2)) & 3);
+        if (cgb_render_enabled)
+            rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr_out & 7), (unsigned)ci);
+        ppu_bgtile[y][X] = (uint16_t)tile_id;
+        ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+    }
+}
+
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
 uint8_t ppu_cgb_read(uint8_t r)
@@ -472,6 +661,7 @@ static void render_line(int y)
         if (wide_sml2_prepare_frame)
             wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
         wario_prepare_frame();
+        wl2_prepare_frame();
     }
     int sml2_margin_mode = 0;
     if (wide_on && ppu_w > GB_W && wide_sml2_world_origin) {
@@ -511,6 +701,8 @@ static void render_line(int y)
        its hardware tilemap ring otherwise repeats old columns and pops in. */
     if (wide_on && W > GB_W && wario_wide_enabled)
         wario_render_margins(y, W, L, out, rgb, bgci, bgattr);
+    if (wide_on && W > GB_W && wl2_wide_enabled)
+        wl2_render_margins(y, W, L, out, rgb, bgci, bgattr);
 
     /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
        only the margins from the live 16x16 block map, leaving the original
