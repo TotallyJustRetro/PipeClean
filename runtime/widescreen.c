@@ -102,15 +102,15 @@ int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
     if (address >= 0xA000u) {
         size_t offset = (size_t)address - 0x8000u;
         if (offset >= ci->ram_bytes) return 0;
-        /* The top bit is a map flag, not part of the 7-bit terrain ID.
-           Wario Land's compositor also normalizes map entries this way. */
-        *block = (uint8_t)(ram[offset] & 0x7Fu);
+        /* WL2's ROM metatile table has 256 four-tile entries; bit 7 is
+           part of the block ID here and must not be normalized away. */
+        *block = ram[offset];
         return 1;
     }
 
     /* The documented mapping falls back to the normal bus for exceptional
        rooms whose swizzled address wraps below A000. */
-    *block = (uint8_t)(rd8(address) & 0x7Fu);
+    *block = rd8(address);
     return 1;
 }
 
@@ -121,7 +121,7 @@ int wide_wl2_block_at(int world_x, int world_y, uint8_t *block)
  * intentional: unknown revisions keep the conservative learned-visual path. */
 int wide_wl2_block_tile(int block, int part, uint8_t *tile)
 {
-    if (!tile || block < 0 || block >= 128 || part < 0 || part >= 4 ||
+    if (!tile || block < 0 || block >= 256 || part < 0 || part >= 4 ||
         !wl2_profile_active || !rom)
         return 0;
 #if defined(__GNUC__) || defined(__clang__)
