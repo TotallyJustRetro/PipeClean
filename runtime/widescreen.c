@@ -1364,6 +1364,8 @@ static void wario_patch_dx_activation_operand(void)
 static int wl3_profile_active;
 static int wl3_left_extra, wl3_right_extra;
 static size_t wl3_rom_size;
+static uint16_t wl3_camera_x_addr;
+static uint16_t wl3_room_tiles_addr;
 static size_t wl3_bound_left_hooks[WL3_MAX_BOUND_HOOKS];
 static size_t wl3_bound_left_count;
 static size_t wl3_bound_width_hooks[WL3_MAX_WIDTH_HOOKS];
@@ -1428,15 +1430,39 @@ static void wl3_scan_runtime_hooks(size_t rom_size)
     size_t left_candidates[WL3_MAX_LEFT_CANDIDATES];
     size_t left_candidate_count = 0;
     wl3_rom_size = rom_size;
+    wl3_camera_x_addr = 0;
+    wl3_room_tiles_addr = 0;
     wl3_bound_left_count = wl3_bound_width_count = 0;
     wl3_right_spawn_count = wl3_left_spawn_count = wl3_col_loop_count = 0;
     if (!rom || rom_size < 30u) return;
 
     for (size_t off = 0; off + 11u <= rom_size; ++off) {
         if ((off >> 14) != ((off + 10u) >> 14)) continue;
-        if (wl3_bounds_signature(rom + off) &&
-            left_candidate_count < WL3_MAX_LEFT_CANDIDATES)
-            left_candidates[left_candidate_count++] = off;
+        const uint8_t *p = rom + off;
+        if (wl3_bounds_signature(p)) {
+            if (left_candidate_count < WL3_MAX_LEFT_CANDIDATES)
+                left_candidates[left_candidate_count++] = off;
+            /* LD HL,wCameraSCX. The game stores this coordinate high byte
+             * first, and its low byte tracks the hardware SCX register. */
+            uint16_t camera = (uint16_t)(p[1] | ((uint16_t)p[2] << 8));
+            if (!wl3_camera_x_addr && camera >= 0xC000u && camera < 0xD000u)
+                wl3_camera_x_addr = camera;
+        }
+    }
+
+    /* Func_298d loads the room-specific 0x200-byte 16x16-block -> 2x2-tile
+     * table with LD DE,wRoomBlockTiles; LD BC,$0200; CALL CopyHLToDE_BC.
+     * Detect its RAM destination from code instead of baking in a WRAM layout. */
+    for (size_t off = 0; off + 7u <= rom_size; ++off) {
+        if ((off >> 14) != ((off + 6u) >> 14)) continue;
+        const uint8_t *p = rom + off;
+        if (p[0] != 0x11u || p[3] != 0x01u || p[4] != 0x00u ||
+            p[5] != 0x02u || p[6] != 0xCDu) continue;
+        uint16_t dest = (uint16_t)(p[1] | ((uint16_t)p[2] << 8));
+        if (dest >= 0xC000u && dest + 0x200u <= 0xCC00u) {
+            wl3_room_tiles_addr = dest;
+            break;
+        }
     }
 
     /* The game repeats the horizontal camera test for draw visibility and
@@ -1588,6 +1614,71 @@ int wide_intercept_wl3(uint8_t op)
     return 0;
 }
 
+
+
+/* Wario Land 3 stores the level block map in SRAM banks 1-3, with 160
+ * sixteen-pixel blocks per row in a 256-byte stride. The top bit is a marker
+ * used by the game; the low seven bits index the active room's tile table. */
+int wide_wl3_block_at(int world_x, int world_y, uint8_t *block)
+{
+    if (!block) return 0;
+    if (!wl3_profile_active || !rom || world_x < 0 || world_y < 0)
+        return 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (&cart_ram == NULL || cart_info == NULL) return 0;
+#endif
+    uint8_t *ram = cart_ram;
+    const CartInfo *ci = cart_info();
+    if (!ram || !ci || ci->ram_bytes < 0x8000u) return 0;
+
+    unsigned col = (unsigned)world_x >> 4;
+    unsigned row = (unsigned)world_y >> 4;
+    if (col >= 160u || row >= 96u) return -1;
+
+    size_t offset = 0x2000u + (size_t)(row / 32u) * 0x2000u +
+                    (size_t)(row % 32u) * 0x100u + col;
+    if (offset >= ci->ram_bytes) return 0;
+    *block = (uint8_t)(ram[offset] & 0x7Fu);
+    return 1;
+}
+
+int wide_wl3_block_tile(int block, int part, uint8_t *tile)
+{
+    if (!tile || !wl3_profile_active || !wl3_room_tiles_addr ||
+        block < 0 || block >= 128 || part < 0 || part >= 4)
+        return 0;
+    uint16_t address = (uint16_t)(wl3_room_tiles_addr + block * 4 + part);
+    *tile = rd8(address);
+    return 1;
+}
+
+int wide_wl3_block_attr(int block, int part, uint8_t *attr)
+{
+    if (!attr || !wl3_profile_active || block < 0 || block >= 128 ||
+        part < 0 || part >= 4) return 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (gb_wram_peek == NULL) return 0;
+#endif
+    /* GFX RAM is physical WRAM bank 3; wRoomBlockAttributes follows 16
+     * eight-color palettes at D280, making its backing-store offset 0x3300. */
+    size_t offset = 0x3300u + (size_t)block * 4u + (size_t)part;
+    uint8_t value = gb_wram_peek(offset);
+    if (value == 0xFFu) return 0;
+    *attr = value;
+    return 1;
+}
+
+int wide_wl3_camera(int *camera_x, int *camera_y)
+{
+    if (!wl3_profile_active || !wl3_camera_x_addr ||
+        !camera_x || !camera_y) return 0;
+    uint16_t xaddr = wl3_camera_x_addr;
+    uint16_t yaddr = (uint16_t)(xaddr - 2u);
+    *camera_x = ((int)rd8(xaddr) << 8) | rd8((uint16_t)(xaddr + 1u));
+    *camera_y = ((int)rd8(yaddr) << 8) | rd8((uint16_t)(yaddr + 1u));
+    return 1;
+}
+
 static int wide_install_wario_sml3(int wario_dx)
 {
     static const uint8_t original_fov[] = {0xC6, 0x10, 0xFE, 0xD0};
@@ -1642,6 +1733,7 @@ int wide_install_profile(int game, int l, int r, int wario_dx)
     wl3_profile_active = 0;
     wl3_left_extra = wl3_right_extra = 0;
     wl3_rom_size = 0;
+    wl3_camera_x_addr = wl3_room_tiles_addr = 0;
     wl3_bound_left_count = wl3_bound_width_count = wl3_right_spawn_count = wl3_left_spawn_count = wl3_col_loop_count = 0;
     if (l + r == 0) return 1;
     if (game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) {
