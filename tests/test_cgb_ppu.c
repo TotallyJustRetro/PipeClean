@@ -54,6 +54,16 @@ int wide_wl2_block_tile(int table_set, int block, int part, uint8_t *tile)
     return 1;
 }
 
+int wide_wl2_block_attr(int table_set, int block, int part, uint8_t *attr)
+{
+    if (!wl2_test_active || !attr || table_set < 0 || table_set >= 32 ||
+        block < 0 || block >= 128 || part < 0 || part >= 4)
+        return 0;
+    /* Synthetic GBC ROM table: palette 2 is authoritative for these blocks. */
+    *attr = 2;
+    return 1;
+}
+
 static void set_wl2_test_map(int stale_right, int special_visible_palette)
 {
     /* This synthetic room uses palette 2 normally. Columns 20-23 can be
@@ -211,17 +221,16 @@ int main(void)
     assert(ppu_rgb[0][192] == 0x00FF00u);
 
     /* Place world X=160 at the clipped right edge of the native viewport:
-       only five pixels of its 16px block are visible, so the old block learner
-       skipped it. Remember its unique palette, then recycle its ring slot with
-       a different tile/palette. The widened margin must retain blue instead
-       of briefly falling back to the repeated block's green palette. */
+       only five pixels of its 16px block are visible. Even if that live map
+       slot uses another palette, the ROM's static per-metatile palette remains
+       the source of truth for this background block. */
     set_wl2_test_map(0, 1);
     ppu_write(0x43, 5);
     render_next_wl2_test_frame();
     set_wl2_test_map(1, 0);
     ppu_write(0x43, 0);
     render_next_wl2_test_frame();
-    assert(ppu_rgb[0][192] == 0x0000FFu);
+    assert(ppu_rgb[0][192] == 0x00FF00u);
     wl2_test_active = 0;
     ppu_set_wl2_wide(0);
     return 0;
