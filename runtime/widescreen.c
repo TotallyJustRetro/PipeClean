@@ -5,17 +5,21 @@
 #include "gb.h"
 #include "cart.h"
 
-/* Wario Land II's new viewport can reveal positions its original actor loader
- * never considered visible. Until the per-ROM bounds are mapped, collect a
- * compact runtime trace of executed comparison/arithmetic sites rather than
- * applying unverified ROM patches. It records instruction locations and CPU
- * context only; it never stores or changes ROM bytes. */
+/* The wider PPU can reveal areas outside the game's original actor window.
+ * Trace executed comparison sites while widescreen is enabled, recording
+ * value ranges and conditional branches. This is diagnostics only: it never
+ * modifies the ROM or CPU state. */
 #define WL2_TRACE_SLOTS 4096u
 typedef struct {
     uint32_t rom_offset, hits, first_frame, last_frame;
+    uint32_t cmp_lt, cmp_eq, cmp_gt, branch_checks, branch_taken;
     uint16_t pc;
-    uint8_t opcode, byte1, byte2, operand;
+    uint16_t bc_min, bc_max, de_min, de_max, hl_min, hl_max;
+    uint16_t px_min, px_max, py_min, py_max;
+    uint8_t opcode, byte1, byte2, operand, operand_min, operand_max;
     uint8_t a, f, b, c, d, e, h, l, scx, scy, camx, camy;
+    uint8_t a_min, a_max, scx_min, scx_max, scy_min, scy_max;
+    uint8_t camx_min, camx_max, camy_min, camy_max;
     int used;
 } Wl2TraceEntry;
 
@@ -29,6 +33,10 @@ static char wl2_trace_path[1200] = "pipeclean-wl2-wide-trace.txt";
 static size_t wl2_trace_rom_size;
 static uint8_t wl2_trace_cgb_flag;
 static char wl2_trace_title[17];
+static int wl2_trace_pending_valid;
+static size_t wl2_trace_pending_slot;
+static uint16_t wl2_trace_pending_next_pc;
+static uint8_t wl2_trace_pending_a, wl2_trace_pending_operand;
 
 static int wl2_trace_candidate_opcode(uint8_t op)
 {
@@ -36,6 +44,29 @@ static int wl2_trace_candidate_opcode(uint8_t op)
            (op >= 0x80 && op <= 0x87) ||
            (op >= 0x90 && op <= 0x97) ||
            (op >= 0xB8 && op <= 0xBF);
+}
+
+static int wl2_trace_is_compare(uint8_t op)
+{
+    return op == 0xFE || (op >= 0xB8 && op <= 0xBF);
+}
+
+static int wl2_trace_conditional_branch(uint8_t op)
+{
+    return op == 0x20 || op == 0x28 || op == 0x30 || op == 0x38 ||
+           op == 0xC0 || op == 0xC2 || op == 0xC8 || op == 0xCA ||
+           op == 0xD0 || op == 0xD2 || op == 0xD8 || op == 0xDA;
+}
+
+static int wl2_trace_branch_taken(uint8_t op, uint8_t flags)
+{
+    switch (op) {
+    case 0x20: case 0xC0: case 0xC2: return (flags & 0x80u) == 0; /* NZ */
+    case 0x28: case 0xC8: case 0xCA: return (flags & 0x80u) != 0; /* Z */
+    case 0x30: case 0xD0: case 0xD2: return (flags & 0x10u) == 0; /* NC */
+    case 0x38: case 0xD8: case 0xDA: return (flags & 0x10u) != 0; /* C */
+    default: return 0;
+    }
 }
 
 static int wl2_trace_rom_offset(uint16_t pc, size_t *offset)
@@ -64,20 +95,54 @@ static uint8_t wl2_trace_register_operand(uint8_t op)
     }
 }
 
+static void wl2_trace_u8_range(uint8_t v, uint8_t *lo, uint8_t *hi)
+{
+    if (v < *lo) *lo = v;
+    if (v > *hi) *hi = v;
+}
+
+static void wl2_trace_u16_range(uint16_t v, uint16_t *lo, uint16_t *hi)
+{
+    if (v < *lo) *lo = v;
+    if (v > *hi) *hi = v;
+}
+
 void wide_wl2_trace_instruction(uint16_t pc)
 {
-    if (!wide_wl2_trace_active || !rom) return;
-    size_t off;
-    if (!wl2_trace_rom_offset(pc, &off)) return;
+    if (!wide_wl2_trace_active || !rom) {
+        wl2_trace_pending_valid = 0;
+        return;
+    }
 
+    size_t off;
+    if (!wl2_trace_rom_offset(pc, &off)) {
+        wl2_trace_pending_valid = 0;
+        return;
+    }
     uint8_t op = rom[off];
+
+    /* When a compare is immediately followed by JR/JP/RET cc, the flags at
+       this hook still belong to that compare. Record the actual decision. */
+    if (wl2_trace_pending_valid) {
+        if (pc == wl2_trace_pending_next_pc && wl2_trace_conditional_branch(op) &&
+            wl2_trace_pending_slot < WL2_TRACE_SLOTS) {
+            Wl2TraceEntry *prior = &wl2_trace_entries[wl2_trace_pending_slot];
+            if (prior->used) {
+                prior->branch_checks++;
+                if (wl2_trace_branch_taken(op, cpu.f)) prior->branch_taken++;
+            }
+        }
+        wl2_trace_pending_valid = 0;
+    }
+
     if (!wl2_trace_candidate_opcode(op)) return;
 
     uint32_t hash = (uint32_t)(off ^ (off >> 11) ^ ((uint32_t)op * 2654435761u));
     size_t slot = (size_t)hash & (WL2_TRACE_SLOTS - 1u);
     Wl2TraceEntry *entry = NULL;
     for (size_t probe = 0; probe < WL2_TRACE_SLOTS; probe++) {
-        Wl2TraceEntry *candidate = &wl2_trace_entries[(slot + probe) & (WL2_TRACE_SLOTS - 1u)];
+        size_t candidate_slot = (slot + probe) & (WL2_TRACE_SLOTS - 1u);
+        Wl2TraceEntry *candidate = &wl2_trace_entries[candidate_slot];
         if (!candidate->used) {
             if (wl2_trace_count >= WL2_TRACE_SLOTS) return;
             memset(candidate, 0, sizeof *candidate);
@@ -88,38 +153,87 @@ void wide_wl2_trace_instruction(uint16_t pc)
             candidate->first_frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
             wl2_trace_count++;
             entry = candidate;
+            slot = candidate_slot;
             break;
         }
         if (candidate->rom_offset == off && candidate->opcode == op) {
             entry = candidate;
+            slot = candidate_slot;
             break;
         }
     }
     if (!entry) return;
 
+    uint8_t operand;
+    if (op == 0xFE || op == 0xC6 || op == 0xD6)
+        operand = off + 1u < wl2_trace_rom_size ? rom[off + 1u] : 0xFFu;
+    else if ((op >= 0x80 && op <= 0x87) ||
+             (op >= 0x90 && op <= 0x97) ||
+             (op >= 0xB8 && op <= 0xBF))
+        operand = wl2_trace_register_operand(op);
+    else
+        operand = cpu.e;
+
+    uint8_t scx = rd8(0xFF43u), scy = rd8(0xFF42u);
+    uint8_t camx = rd8(0xC660u), camy = rd8(0xC65Fu);
+    uint16_t bc = (uint16_t)(((uint16_t)cpu.b << 8) | cpu.c);
+    uint16_t de = (uint16_t)(((uint16_t)cpu.d << 8) | cpu.e);
+    uint16_t hl = (uint16_t)(((uint16_t)cpu.h << 8) | cpu.l);
+    /* Reverse-engineered navigation scripts identify D53C/D53A as the
+       big-endian world X/Y coordinates. Record ranges, not just the final
+       sample, so player movement and compare thresholds can be correlated. */
+    uint16_t px = (uint16_t)(((uint16_t)rd8(0xD53Cu) << 8) | rd8(0xD53Du));
+    uint16_t py = (uint16_t)(((uint16_t)rd8(0xD53Au) << 8) | rd8(0xD53Bu));
+
     uint32_t frame = frame_count < 0 ? 0u : (uint32_t)frame_count;
+    if (entry->hits == 0) {
+        entry->a_min = entry->a_max = cpu.a;
+        entry->operand_min = entry->operand_max = operand;
+        entry->bc_min = entry->bc_max = bc;
+        entry->de_min = entry->de_max = de;
+        entry->hl_min = entry->hl_max = hl;
+        entry->px_min = entry->px_max = px;
+        entry->py_min = entry->py_max = py;
+        entry->scx_min = entry->scx_max = scx;
+        entry->scy_min = entry->scy_max = scy;
+        entry->camx_min = entry->camx_max = camx;
+        entry->camy_min = entry->camy_max = camy;
+    } else {
+        wl2_trace_u8_range(cpu.a, &entry->a_min, &entry->a_max);
+        wl2_trace_u8_range(operand, &entry->operand_min, &entry->operand_max);
+        wl2_trace_u16_range(bc, &entry->bc_min, &entry->bc_max);
+        wl2_trace_u16_range(de, &entry->de_min, &entry->de_max);
+        wl2_trace_u16_range(hl, &entry->hl_min, &entry->hl_max);
+        wl2_trace_u16_range(px, &entry->px_min, &entry->px_max);
+        wl2_trace_u16_range(py, &entry->py_min, &entry->py_max);
+        wl2_trace_u8_range(scx, &entry->scx_min, &entry->scx_max);
+        wl2_trace_u8_range(scy, &entry->scy_min, &entry->scy_max);
+        wl2_trace_u8_range(camx, &entry->camx_min, &entry->camx_max);
+        wl2_trace_u8_range(camy, &entry->camy_min, &entry->camy_max);
+    }
+
     entry->hits++;
     entry->last_frame = frame;
     entry->byte1 = off + 1u < wl2_trace_rom_size ? rom[off + 1u] : 0xFFu;
     entry->byte2 = off + 2u < wl2_trace_rom_size ? rom[off + 2u] : 0xFFu;
-    if (op == 0xFE || op == 0xC6 || op == 0xD6) entry->operand = entry->byte1;
-    else if ((op >= 0x80 && op <= 0x87) ||
-             (op >= 0x90 && op <= 0x97) ||
-             (op >= 0xB8 && op <= 0xBF))
-        entry->operand = wl2_trace_register_operand(op);
-    else
-        entry->operand = (uint8_t)(((uint16_t)cpu.d << 8) | cpu.e);
-
+    entry->operand = operand;
     entry->a = cpu.a; entry->f = cpu.f;
     entry->b = cpu.b; entry->c = cpu.c;
     entry->d = cpu.d; entry->e = cpu.e;
     entry->h = cpu.h; entry->l = cpu.l;
-    entry->scx = rd8(0xFF43u);
-    entry->scy = rd8(0xFF42u);
-    /* TAS/navigation research lists these as WL2's camera-X/Y bytes. Keep
-       them as raw context values so the trace can confirm them per ROM. */
-    entry->camx = rd8(0xC660u);
-    entry->camy = rd8(0xC65Fu);
+    entry->scx = scx; entry->scy = scy;
+    entry->camx = camx; entry->camy = camy;
+
+    if (wl2_trace_is_compare(op)) {
+        if (cpu.a < operand) entry->cmp_lt++;
+        else if (cpu.a > operand) entry->cmp_gt++;
+        else entry->cmp_eq++;
+        wl2_trace_pending_valid = 1;
+        wl2_trace_pending_slot = slot;
+        wl2_trace_pending_next_pc = (uint16_t)(pc + (op == 0xFE ? 2u : 1u));
+        wl2_trace_pending_a = cpu.a;
+        wl2_trace_pending_operand = operand;
+    }
 }
 
 static int wl2_trace_hit_order(const void *a, const void *b)
@@ -159,6 +273,7 @@ void wide_wl2_trace_set_path(const char *path)
 void wide_wl2_trace_finish(void)
 {
     wide_wl2_trace_active = 0;
+    wl2_trace_pending_valid = 0;
     if (!wl2_trace_count) return;
 
     Wl2TraceEntry *ordered[WL2_TRACE_SLOTS];
@@ -172,27 +287,37 @@ void wide_wl2_trace_finish(void)
         fprintf(stderr, "PipeClean: couldn't write Wario Land II widescreen trace at %s\n", wl2_trace_path);
         return;
     }
-    fprintf(f, "PipeClean Wario Land II widescreen instruction trace\n");
+    fprintf(f, "PipeClean Wario Land II widescreen instruction trace v2\n");
     fprintf(f, "Title: %s\nROM CRC32: %08X\nROM size: %zu bytes\nCGB flag: %02X\n",
             wl2_trace_title, wl2_trace_crc, wl2_trace_rom_size, wl2_trace_cgb_flag);
     fprintf(f, "Game slot: %d  margins: left=%d right=%d  unique sites: %zu\n",
             wl2_trace_game, wl2_trace_left, wl2_trace_right, used);
-    fprintf(f, "Rows are executed CP/SUB/ADD candidates grouped by physical ROM offset and opcode.\n");
-    fprintf(f, "hits first_frame last_frame bank pc rom_offset op next1 next2 operand "
-                "A F BC DE HL SCX SCY camX camY\n");
+    fprintf(f, "A/X/Y/camera columns show min-max across all hits at a site; CMP relation counts "
+                "use unsigned A vs operand; branch taken/checks counts an adjacent JR/JP/RET cc.\n");
+    fprintf(f, "hits first last bank pc romoff op b1 b2 operand A[min,max] O[min,max] "
+                "CMP[lt,eq,gt] BR[taken,checks] BC[min,max] DE[min,max] HL[min,max] "
+                "X[min,max] Y[min,max] SCX[min,max] SCY[min,max] CAMX[min,max] CAMY[min,max]\n");
     for (size_t i = 0; i < used; i++) {
         const Wl2TraceEntry *e = ordered[i];
-        fprintf(f, "%u %u %u %u %04X %06X %02X %02X %02X %02X "
-                    "%02X %02X %02X%02X %02X%02X %02X%02X %02X %02X %02X %02X\n",
-                e->hits, e->first_frame, e->last_frame,
-                e->rom_offset >> 14, e->pc, e->rom_offset,
-                e->opcode, e->byte1, e->byte2, e->operand,
-                e->a, e->f, e->b, e->c, e->d, e->e, e->h, e->l,
-                e->scx, e->scy, e->camx, e->camy);
+        fprintf(f, "%u %u %u %u %04X %06X %02X %02X %02X %02X %02X-%02X %02X-%02X "
+                    "%u,%u,%u %u,%u %04X-%04X %04X-%04X %04X-%04X "
+                    "%04X-%04X %04X-%04X %02X-%02X %02X-%02X %02X-%02X %02X-%02X\n",
+                (unsigned)e->hits, (unsigned)e->first_frame, (unsigned)e->last_frame,
+                (unsigned)(e->rom_offset >> 14), (unsigned)e->pc, (unsigned)e->rom_offset,
+                (unsigned)e->opcode, (unsigned)e->byte1, (unsigned)e->byte2, (unsigned)e->operand,
+                (unsigned)e->a_min, (unsigned)e->a_max,
+                (unsigned)e->operand_min, (unsigned)e->operand_max,
+                (unsigned)e->cmp_lt, (unsigned)e->cmp_eq, (unsigned)e->cmp_gt,
+                (unsigned)e->branch_taken, (unsigned)e->branch_checks,
+                (unsigned)e->bc_min, (unsigned)e->bc_max, (unsigned)e->de_min, (unsigned)e->de_max,
+                (unsigned)e->hl_min, (unsigned)e->hl_max, (unsigned)e->px_min, (unsigned)e->px_max,
+                (unsigned)e->py_min, (unsigned)e->py_max, (unsigned)e->scx_min, (unsigned)e->scx_max,
+                (unsigned)e->scy_min, (unsigned)e->scy_max, (unsigned)e->camx_min, (unsigned)e->camx_max,
+                (unsigned)e->camy_min, (unsigned)e->camy_max);
     }
     fclose(f);
-    fprintf(stderr, "PipeClean: wrote Wario Land II widescreen trace (%zu sites) to "
-                    "%s\n", used, wl2_trace_path);
+    fprintf(stderr, "PipeClean: wrote Wario Land II widescreen trace (%zu sites) to %s\n",
+            used, wl2_trace_path);
     wl2_trace_count = 0;
     memset(wl2_trace_entries, 0, sizeof wl2_trace_entries);
 }
