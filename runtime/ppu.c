@@ -764,7 +764,6 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
                                      &static_block_tiles[p]))
                 have_static_block = 0;
         }
-        int have_static_tile = have_static_block;
         if (have_static_block) {
             tile = static_block_tiles[part];
         } else {
