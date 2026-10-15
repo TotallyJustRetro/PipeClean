@@ -953,19 +953,28 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private void drawLayoutDecoration(Canvas canvas, float w, float h) {
             int g = activeLayoutGame();
             if (g < 0) return;
-            /* Default boxes are authored in the same 800x450 coordinate space as the editor.
-               Every layer has its own starting box rather than stacking on the last fallback. */
-            final float[] bxBase = {280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
-            final float[] byBase = {153,78,78,245,218,218,85,260,135,135,290,290,35,35,175,175};
-            final float[] bwBase = {240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
-            final float[] bhBase = {144,120,120,120,92,92,86,86,70,70,70,70,65,65,74,74};
+            boolean portrait = h > w;
+            final float[] bxLandscape = {280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
+            final float[] byLandscape = {153,78,78,245,218,218,85,260,135,135,290,290,35,35,175,175};
+            final float[] bwLandscape = {240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
+            final float[] bhLandscape = {144,120,120,120,92,92,86,86,70,70,70,70,65,65,74,74};
+            final float[] bxPortrait = {230,20,510,365,25,535,190,388,22,578,210,455,30,590,325,430};
+            final float[] byPortrait = {245,118,118,340,330,330,160,375,230,230,435,435,60,60,280,280};
+            final float[] bwPortrait = {240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
+            final float[] bhPortrait = {100,120,120,120,92,92,86,86,70,70,70,70,65,65,74,74};
+            float[] bxBase = portrait ? bxPortrait : bxLandscape;
+            float[] byBase = portrait ? byPortrait : byLandscape;
+            float[] bwBase = portrait ? bwPortrait : bwLandscape;
+            float[] bhBase = portrait ? bhPortrait : bhLandscape;
+            float canvasW = portrait ? 700f : 800f;
+            float canvasH = portrait ? 800f : 450f;
             for (int slot = 0; slot < LAYOUT_DECORATION_COUNT; slot++) {
                 int imageIndex = slot == 0 ? 3 : slot <= 7 ? 20 + slot : 22 + slot;
                 if (!hasLayoutImage(g, imageIndex)) continue;
-                float bx = w * bxBase[slot] / 800f;
-                float by = h * byBase[slot] / 450f;
-                float bw = w * bwBase[slot] / 800f;
-                float bh = h * bhBase[slot] / 450f;
+                float bx = w * bxBase[slot] / canvasW;
+                float by = h * byBase[slot] / canvasH;
+                float bw = w * bwBase[slot] / canvasW;
+                float bh = h * bhBase[slot] / canvasH;
                 int element = 5 + slot;
                 canvas.save();
                 applyLayoutTransform(canvas, element, w, h, bx + bw * 0.5f, by + bh * 0.5f);
@@ -974,7 +983,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             }
         }
 
-        private void playLayoutSound(int soundIndex) {
+                private void playLayoutSound(int soundIndex) {
             int g = activeLayoutGame();
             if (g < 0 || layoutValues[g][15] == 0 ||
                 soundIndex < 0 || soundIndex >= LAYOUT_PATH_COUNT) return;
@@ -1136,7 +1145,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
             boolean portrait = getHeight() > getWidth();
-            float w = portrait ? 450f : 800f, h = portrait ? 800f : 450f;
+            float w = portrait ? 700f : 800f, h = portrait ? 800f : 450f;
             float scale = Math.min(getWidth() / w, getHeight() / h);
             boolean preview = layoutEditorPreview && layoutPreviewGame >= 0;
             int previousGame = game;
@@ -1351,45 +1360,46 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawLauncherDashboardPortrait(Canvas c) {
-            headerPlate(c, 14, 7, 250, 45);
+            headerPlate(c, 14, 7, 410, 45);
             text(c, "PIPE CLEAN  •  LIBRARY", 20, 23, 9, accent());
             text(c, "READY TO PLAY", 20, 42, 13, ink());
 
-            float previewH = 310f;
-            card(c, 16, 60, 418, previewH, "SELECTED GAME");
-            float imageBottom = 60 + previewH - 87f;
-            drawDashboardPreview(c, new RectF(28, 91, 422, imageBottom));
+            float previewH = 380f;
+            card(c, 16, 60, 668, previewH, "SELECTED GAME");
+            float imageBottom = 60 + previewH - 88f;
+            drawDashboardPreview(c, new RectF(30, 91, 670, imageBottom));
             float titleY = imageBottom + 17f;
-            textFit(c, dashboardGameName(dashboardGame), 29, titleY, 392, 13, ink());
+            textFit(c, dashboardGameName(dashboardGame), 31, titleY, 638, 13, ink());
             int played = dashboardGame >= 0 && dashboardGame < dashboardPlaySeconds.length
                 ? dashboardPlaySeconds[dashboardGame] : 0;
-            text(c, "TOTAL PLAY TIME", 29, titleY + 20, 7.5f, muted());
-            textFit(c, playTimeText(played), 29, titleY + 32, 392, 11, accent());
+            text(c, "TOTAL PLAY TIME", 31, titleY + 20, 7.5f, muted());
+            textFit(c, playTimeText(played), 31, titleY + 32, 638, 11, accent());
 
-            float recentY = 60 + previewH + 9f;
+            float recentY = 449f;
             float recentH = 800f - recentY - 14f;
-            card(c, 16, recentY, 418, recentH, "RECENTLY PLAYED");
+            card(c, 16, recentY, 668, recentH, "RECENTLY PLAYED");
             int rows = dashboardRecentCount();
             if (rows == 0) {
                 textFit(c, "Your recent games and play time will appear here.", 30,
-                    recentY + 50, 384, 11, muted());
+                    recentY + 50, 624, 11, muted());
             } else {
-                float rowH = dashboardDualScreen ? 26f : 68f;
+                float rowH = dashboardDualScreen ? 26f : 44f;
                 for (int i = 0; i < rows; i++) {
                     int id = dashboardRecentGames[i];
                     if (id < 0) continue;
                     float ry = recentY + 35 + i * rowH;
+                    if (ry + rowH - 3 > recentY + recentH - 6) break;
                     p.setColor(i == 0 ? 0x4038D69B : 0x30172237);
-                    c.drawRoundRect(27, ry, 423, ry + rowH - 3, 7, 7, p);
+                    c.drawRoundRect(27, ry, 673, ry + rowH - 3, 7, 7, p);
                     drawMiniStar(c, 40, ry + rowH * 0.5f, 5);
-                    textFit(c, dashboardGameName(id), 54, ry + 3, 355, 9, i == 0 ? accent() : ink());
+                    textFit(c, dashboardGameName(id), 54, ry + 3, 590, 9, i == 0 ? accent() : ink());
                     int secs = id < dashboardPlaySeconds.length ? dashboardPlaySeconds[id] : 0;
-                    textFit(c, playTimeText(secs), 54, ry + 15, 355, 7.5f, muted());
+                    textFit(c, playTimeText(secs), 54, ry + 15, 590, 7.5f, muted());
                 }
             }
         }
 
-        private void drawMusicNotification(Canvas c, boolean portrait, float w, float h) {
+                private void drawMusicNotification(Canvas c, boolean portrait, float w, float h) {
             if (!dashboardDualScreen || !musicNoticeAllowed || !musicNoticeVisible) return;
             long elapsed = Math.max(0L, SystemClock.uptimeMillis() - musicNoticeStartedAt);
             final long totalMs = 2750L;
@@ -1398,7 +1408,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 return;
             }
 
-            float width = portrait ? 414f : 368f;
+            float width = portrait ? 640f : 368f;
             float height = 58f;
             float targetX = portrait ? 18f : 18f;
             float y = h - height - 11f;
@@ -1548,36 +1558,44 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.save(); applyLayoutTransform(c,3,800f,450f,400f,406.5f); drawSaveTimeline(c,24,365,752,83,false); c.restore();
         }
         private void drawDrMarioPortrait(Canvas c) {
-            c.save(); applyLayoutTransform(c,0,450f,800f,225f,30f);
-            headerPlate(c,14,7,220,43);
-            text(c,"PIPE CLEAN  •  MEDICAL DECK",20,23,7.2f,accent());
-            text(c,"DR. MARIO",20,41,13,ink());
-            if (!wallpaperPath.isEmpty()) smallButton(c,238,16,20,27,"×",RESET_BACKGROUND);
-            button(c,262,12,87,37,"BACKGROUND","PNG / GIF",BACKGROUND,false);
-            button(c,355,12,75,37,"CLOSE","GAME",CLOSE_GAME,false);
+            c.save(); applyLayoutTransform(c, 0, 700f, 800f, 350f, 30f);
+            headerPlate(c, 14, 7, 400, 43);
+            text(c, "PIPE CLEAN  •  MEDICAL DECK", 20, 23, 8.2f, accent());
+            text(c, "DR. MARIO", 20, 41, 13, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 416, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 442, 12, 105, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 555, 12, 121, 37, "CLOSE", "GAME", CLOSE_GAME, false);
             c.restore();
-            c.save(); applyLayoutTransform(c,1,450f,800f,225f,280f);
-            card(c,18,103,414,218,"NEXT CAPSULE");
-            drawMedicalCross(c,400,127,14f,0xFF159DAD);
-            drawDrMarioCapsule(c,225,207,188,76,drMarioCapsule);
-            text(c,drMarioCapsule>=0&&drMarioCapsule<=0x17?"READY TO DROP":"WAITING FOR PILL",225,308,8f,muted(),true);
+
+            c.save(); applyLayoutTransform(c, 1, 700f, 800f, 350f, 238f);
+            card(c, 20, 104, 660, 235, "NEXT CAPSULE");
+            drawMedicalCross(c, 637, 128, 15f, 0xFF159DAD);
+            drawDrMarioCapsule(c, 350, 218, 188, 76, drMarioCapsule);
+            text(c, drMarioCapsule >= 0 && drMarioCapsule <= 0x17 ? "READY TO DROP" : "WAITING FOR PILL",
+                 350, 315, 9f, muted(), true);
             c.restore();
-            c.save(); applyLayoutTransform(c,4,450f,800f,225f,379f);
-            drawDrMarioMetric(c,16,331,132,105,"SCORE",drMarioScoreText(),14f);
-            drawDrMarioMetric(c,159,331,132,105,"VIRUS LEVEL",drMarioLevelText(),18f);
-            drawDrMarioMetric(c,302,331,132,105,"SPEED",drMarioSpeedText(),17f);
+
+            c.save(); applyLayoutTransform(c, 4, 700f, 800f, 350f, 394f);
+            drawDrMarioMetric(c, 16, 354, 210, 78, "SCORE", drMarioScoreText(), 18f);
+            drawDrMarioMetric(c, 245, 354, 210, 78, "VIRUS LEVEL", drMarioLevelText(), 20f);
+            drawDrMarioMetric(c, 474, 354, 210, 78, "SPEED", drMarioSpeedText(), 19f);
             c.restore();
-            c.save(); applyLayoutTransform(c,2,450f,800f,225f,552f);
-            boolean idle=game<0;
-            button(c,20,466,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
-            button(c,232,466,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
-            button(c,20,524,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,232,524,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
+
+            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
+            boolean idle = game < 0;
+            button(c, 20, 455, 320, 48, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
+            button(c, 360, 455, 320, 48, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
+            button(c, 20, 511, 320, 48, idle ? "PAUSE" : paused ? "RESUME" : "PAUSE",
+                idle ? "AVAILABLE IN GAME" : paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
+            button(c, 360, 511, 320, 48, "REWIND", idle ? "AVAILABLE IN GAME" : "HOLD TO REWIND", REWIND, true);
             c.restore();
-            c.save(); applyLayoutTransform(c,3,450f,800f,225f,750f); drawSaveTimeline(c,14,704,422,92,true); c.restore();
+
+            c.save(); applyLayoutTransform(c, 3, 700f, 800f, 350f, 750f);
+            drawSaveTimeline(c, 14, 704, 672, 92, true);
+            c.restore();
         }
 
-        private String warioCoinsText() {
+                private String warioCoinsText() {
             return warioCoins >= 0 ? String.format(Locale.US, "%05d", warioCoins) : "-----";
         }
 
@@ -1672,41 +1690,45 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawWario2Portrait(Canvas c) {
-            c.save();
-            headerPlate(c, 14, 7, 220, 43);
-            text(c, "PIPE CLEAN  •  STOLEN TREASURE", 20, 23, 7.5f, accent());
-            textFit(c, title(), 20, 41, 210, 12.5f, ink());
-            if (!wallpaperPath.isEmpty()) smallButton(c, 238, 16, 20, 27, "×", RESET_BACKGROUND);
-            button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
-            button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.save(); applyLayoutTransform(c, 0, 700f, 800f, 350f, 30f);
+            headerPlate(c, 14, 7, 400, 43);
+            text(c, "PIPE CLEAN  •  STOLEN TREASURE", 20, 23, 8.0f, accent());
+            textFit(c, title(), 20, 41, 385, 12.5f, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 416, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 442, 12, 105, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 555, 12, 121, 37, "CLOSE", "GAME", CLOSE_GAME, false);
             c.restore();
 
-            badge(c, 20, 55, 128, 47, "CURRENT STAGE", stageText());
-            badge(c, 158, 55, 272, 47, "TREASURES", wario2TreasureCount() + " / 50");
-            drawWario2Grid(c, 20, 111, 410, 132, "TREASURE VAULT", wario2TreasureMask, false);
-            drawWario2Grid(c, 20, 250, 410, 132, "PICTURE PANEL", wario2PictureMask, true);
+            badge(c, 20, 55, 205, 47, "CURRENT STAGE", stageText());
+            badge(c, 238, 55, 442, 47, "TREASURES", wario2TreasureCount() + " / 50");
 
-            card(c, 20, 391, 195, 63, "COINS");
+            drawWario2Grid(c, 20, 111, 320, 150, "TREASURE VAULT", wario2TreasureMask, false);
+            drawWario2Grid(c, 360, 111, 320, 150, "PICTURE PANEL", wario2PictureMask, true);
+
+            card(c, 20, 270, 320, 61, "COINS");
             text(c, "BANK  " + (warioCoins < 0 ? "------" : String.format(Locale.US, "%06d", warioCoins)),
-                 32, 425, 8, ink());
+                 32, 298, 8.5f, ink());
             text(c, "POCKET  " + (warioHearts < 0 ? "----" : String.format(Locale.US, "%04d", warioHearts)),
-                 32, 442, 8, muted());
-            card(c, 225, 391, 205, 63, "TRANSFORMATION");
-            text(c, "FORM NOT MAPPED", 238, 425, 8, accent());
-            text(c, "LIVE TRACKING READY", 238, 442, 7, muted());
-            drawExpeditionLog(c, 20, 462, 410, 78, 3);
+                 32, 317, 8, muted());
+            card(c, 360, 270, 320, 61, "TRANSFORMATION");
+            text(c, "FORM NOT MAPPED", 374, 298, 8.5f, accent());
+            text(c, "LIVE TRACKING READY", 374, 317, 7.5f, muted());
+            drawExpeditionLog(c, 20, 340, 660, 88, 4);
 
-            c.save(); applyLayoutTransform(c, 2, 450f, 800f, 225f, 625f);
-            button(c, 20, 556, 198, 47, "SAVE", "SNAPSHOT", SAVE, false);
-            button(c, 232, 556, 198, 47, "LOAD", "RESTORE", LOAD, false);
-            button(c, 20, 608, 198, 47, paused ? "RESUME" : "PAUSE",
+            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
+            button(c, 20, 445, 320, 48, "SAVE", "SNAPSHOT", SAVE, false);
+            button(c, 360, 445, 320, 48, "LOAD", "RESTORE", LOAD, false);
+            button(c, 20, 501, 320, 48, paused ? "RESUME" : "PAUSE",
                 paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
-            button(c, 232, 608, 198, 47, "REWIND", "HOLD TO REWIND", REWIND, true);
+            button(c, 360, 501, 320, 48, "REWIND", "HOLD TO REWIND", REWIND, true);
             c.restore();
-            c.save(); applyLayoutTransform(c, 3, 450f, 800f, 225f, 750f); drawSaveTimeline(c, 14, 704, 422, 92, true); c.restore();
+
+            c.save(); applyLayoutTransform(c, 3, 700f, 800f, 350f, 750f);
+            drawSaveTimeline(c, 14, 704, 672, 92, true);
+            c.restore();
         }
 
-        private void drawWario2Celebration(Canvas c, float w, float h) {
+                private void drawWario2Celebration(Canvas c, float w, float h) {
             if (!wario2AnimationActive) return;
             long elapsed = SystemClock.uptimeMillis() - wario2AnimationStart;
             if (elapsed >= TREASURE_ANIMATION_MS) {
@@ -1868,53 +1890,57 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawWarioPortrait(Canvas c) {
-            c.save();
-            headerPlate(c, 14, 7, 220, 43);
-            text(c, "PIPE CLEAN  •  EXPEDITION", 20, 23, 7.5f, accent());
-            textFit(c, title(), 20, 41, 210, 12.5f, ink());
-            if (!wallpaperPath.isEmpty()) smallButton(c, 238, 16, 20, 27, "×", RESET_BACKGROUND);
-            button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
-            button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.save(); applyLayoutTransform(c, 0, 700f, 800f, 350f, 30f);
+            headerPlate(c, 14, 7, 400, 43);
+            text(c, "PIPE CLEAN  •  TREASURE EXPEDITION", 20, 23, 8.2f, accent());
+            textFit(c, title(), 20, 41, 385, 12.5f, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 416, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 442, 12, 105, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 555, 12, 121, 37, "CLOSE", "GAME", CLOSE_GAME, false);
             c.restore();
 
-            badge(c, 20, 55, 128, 47, "LIVES",
+            badge(c, 20, 55, 205, 47, "LIVES",
                   lives >= 0 ? String.format(Locale.US, "× %02d", lives) : "× --");
-            badge(c, 158, 55, 272, 47, "CURRENT COURSE", stageText());
-            card(c, 20, 111, 410, 105, "TREASURE VAULT");
+            badge(c, 238, 55, 442, 47, "CURRENT COURSE", stageText());
+
+            card(c, 20, 111, 660, 96, "TREASURE VAULT");
             int count = warioTreasureCount();
-            text(c, (warioTreasureMask >= 0 ? count + " / 15 FOUND" : "-- / 15 FOUND"), 34, 151, 11, accent());
-            textFit(c, "TOTAL COINS  " + warioCoinsText(), 190, 151, 220, 9, ink());
-            float step = 23.2f, first = 34f, markY = 187f;
+            text(c, (warioTreasureMask >= 0 ? count + " / 15 FOUND" : "-- / 15 FOUND"), 34, 148, 11, accent());
+            textFit(c, "TOTAL COINS  " + warioCoinsText(), 205, 148, 450, 9.5f, ink());
+            float step = 42f, first = 42f, markY = 184f;
             for (int i = 0; i < 15; i++) {
                 boolean found = warioTreasureMask >= 0 && (warioTreasureMask & (1 << i)) != 0;
-                drawTreasureMark(c, first + step * i, markY, 6.3f, found);
+                drawTreasureMark(c, first + step * i, markY, 7f, found);
             }
 
             p.setColor(panel());
-            c.drawRoundRect(20, 223, 430, 268, 11, 11, p);
+            c.drawRoundRect(20, 216, 680, 265, 11, 11, p);
             p.setColor(edge()); p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.2f);
-            c.drawRoundRect(20.6f, 223.6f, 429.4f, 267.4f, 10, 10, p);
+            c.drawRoundRect(20.6f, 216.6f, 679.4f, 264.4f, 10, 10, p);
             p.setStyle(Paint.Style.FILL);
             text(c, "HEARTS  " + (warioHearts >= 0 ? String.format(Locale.US, "%02d", warioHearts) : "--"),
-                 32, 242, 8, ink());
-            text(c, "POWER  " + warioPowerName(warioPower), 32, 258, 8, accent());
-            textRight(c, "TIME LEFT  " + warioTimeText(), 418, 258, 8, ink());
+                 34, 236, 8.5f, ink());
+            text(c, "POWER  " + warioPowerName(warioPower), 34, 254, 8.5f, accent());
+            textRight(c, "TIME LEFT  " + warioTimeText(), 662, 254, 8.5f, ink());
 
-            drawWarioEmblem(c, 225, 322, 42);
-            drawExpeditionLog(c, 20, 370, 410, 83, 3);
+            drawWarioEmblem(c, 350, 318, 38);
+            drawExpeditionLog(c, 20, 363, 660, 76, 3);
 
             boolean idle = game < 0;
-            c.save(); applyLayoutTransform(c, 2, 450f, 800f, 225f, 552f);
-            button(c,20,466,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
-            button(c,232,466,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
-            button(c,20,524,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",
-                idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,232,524,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
+            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
+            button(c, 20, 455, 320, 48, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
+            button(c, 360, 455, 320, 48, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
+            button(c, 20, 511, 320, 48, idle ? "PAUSE" : paused ? "RESUME" : "PAUSE",
+                idle ? "AVAILABLE IN GAME" : paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
+            button(c, 360, 511, 320, 48, "REWIND", idle ? "AVAILABLE IN GAME" : "HOLD TO REWIND", REWIND, true);
             c.restore();
-            c.save(); applyLayoutTransform(c, 3, 450f, 800f, 225f, 750f); drawSaveTimeline(c, 14, 704, 422, 92, true); c.restore();
+
+            c.save(); applyLayoutTransform(c, 3, 700f, 800f, 350f, 750f);
+            drawSaveTimeline(c, 14, 704, 672, 92, true);
+            c.restore();
         }
 
-        private void drawTreasureCelebration(Canvas c, float w, float h) {
+                private void drawTreasureCelebration(Canvas c, float w, float h) {
             if (!treasureAnimationActive) return;
             long elapsed = SystemClock.uptimeMillis() - treasureAnimationStart;
             if (elapsed >= TREASURE_ANIMATION_MS) {
@@ -2021,48 +2047,67 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private void drawPortrait(Canvas c) {
             if (drMario()) { drawDrMarioPortrait(c); return; }
+            if (wario2()) { drawWario2Portrait(c); return; }
+            if (wario()) { drawWarioPortrait(c); return; }
+
             c.save();
-            applyLayoutTransform(c, 0, 450f, 800f, 225f, 30f);
-            headerPlate(c, 14, 7, 220, 43);
-            text(c, "PIPE CLEAN  •  POCKET QUEST", 20, 25, 10, accent());
-            text(c, title(), 20, 43, 13, ink());
-            if (!wallpaperPath.isEmpty()) smallButton(c, 238, 16, 20, 27, "×", RESET_BACKGROUND);
-            button(c, 262, 12, 87, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
-            if (game >= 0) button(c, 355, 12, 75, 37, "CLOSE", "GAME", CLOSE_GAME, false);
-            else button(c, 355, 12, 75, 37, "DECK", "LINKED", 0, false);
+            applyLayoutTransform(c, 0, 700f, 800f, 350f, 30f);
+            headerPlate(c, 14, 7, 400, 43);
+            text(c, "PIPE CLEAN  •  POCKET QUEST", 20, 23, 8.2f, accent());
+            textFit(c, title(), 20, 41, 385, 13, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 416, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 442, 12, 105, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            if (game >= 0) button(c, 555, 12, 121, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            else button(c, 555, 12, 121, 37, "DECK", "LINKED", 0, false);
             c.restore();
 
             if (game < 0) {
-                badge(c, 20, 55, 128, 47, "DECK STATUS", "LINKED");
-                badge(c, 158, 55, 272, 47, "NEXT STEP", "LAUNCH A GAME");
+                badge(c, 20, 55, 205, 47, "DECK STATUS", "LINKED");
+                badge(c, 238, 55, 442, 47, "NEXT STEP", "LAUNCH A GAME");
             } else {
-                badge(c, 20, 55, 128, 47, "LIVES", String.format(Locale.US, "× %02d", lives));
-                badge(c, 158, 55, 272, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
+                badge(c, 20, 55, 205, 47, "LIVES", String.format(Locale.US, "× %02d", lives));
+                badge(c, 238, 55, 442, 47, sml1() ? "WORLD / LEVEL" : "CURRENT STAGE", stageText());
             }
 
             c.save();
-            applyLayoutTransform(c, 1, 450f, 800f, 225f, 280f);
-            drawHeroItem(c, 225, 280, 146, item);
+            applyLayoutTransform(c, 1, 700f, 800f, 350f, 280f);
+            drawHeroItem(c, 350, 280, 132, item);
             c.restore();
 
-            // The save-state timeline is the single source of save-slot information.
+            if (game >= 0) {
+                card(c, 22, 143, 150, 134, "RESERVE ITEM");
+                textFit(c, itemName(item), 34, 183, 126, 10, accent());
+                text(c, "TAP TO USE", 34, 209, 8, muted());
+                card(c, 528, 143, 150, 134, "ADVENTURE");
+                text(c, "LIVES", 542, 181, 8, muted());
+                text(c, String.format(Locale.US, "× %02d", lives), 542, 202, 13, ink());
+                textFit(c, stageText(), 542, 230, 126, 9, accent());
+            } else {
+                card(c, 22, 143, 150, 134, "READY");
+                text(c, "SECOND", 34, 183, 8, muted());
+                text(c, "SCREEN", 34, 200, 8, muted());
+                card(c, 528, 143, 150, 134, "QUICK TIP");
+                textFit(c, "Launch a game", 540, 183, 126, 9, accent());
+                textFit(c, "to enable actions", 540, 202, 126, 8, muted());
+            }
+
             boolean idle = game < 0;
             c.save();
-            applyLayoutTransform(c, 2, 450f, 800f, 225f, 552f);
-            button(c,20,466,198,52,"SAVE",idle?"START A GAME FIRST":"SNAPSHOT",SAVE,false);
-            button(c,232,466,198,52,"LOAD",idle?"START A GAME FIRST":"RESTORE",LOAD,false);
-            button(c,20,524,198,52,idle?"PAUSE":paused?"RESUME":"PAUSE",
-                idle?"AVAILABLE IN GAME":paused?"CONTINUE":"HOLD GAME",PAUSE,false);
-            button(c,232,524,198,52,"REWIND",idle?"AVAILABLE IN GAME":"HOLD TO REWIND",REWIND,true);
+            applyLayoutTransform(c, 2, 700f, 800f, 350f, 480f);
+            button(c, 20, 455, 320, 48, "SAVE", idle ? "START A GAME FIRST" : "SNAPSHOT", SAVE, false);
+            button(c, 360, 455, 320, 48, "LOAD", idle ? "START A GAME FIRST" : "RESTORE", LOAD, false);
+            button(c, 20, 511, 320, 48, idle ? "PAUSE" : paused ? "RESUME" : "PAUSE",
+                idle ? "AVAILABLE IN GAME" : paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
+            button(c, 360, 511, 320, 48, "REWIND", idle ? "AVAILABLE IN GAME" : "HOLD TO REWIND", REWIND, true);
             c.restore();
 
             c.save();
-            applyLayoutTransform(c, 3, 450f, 800f, 225f, 750f);
-            drawSaveTimeline(c, 14, 704, 422, 92, true);
+            applyLayoutTransform(c, 3, 700f, 800f, 350f, 750f);
+            drawSaveTimeline(c, 14, 704, 672, 92, true);
             c.restore();
         }
 
-        private void drawHeroItem(Canvas c, float cx, float cy, float radius, int itemId) {
+                private void drawHeroItem(Canvas c, float cx, float cy, float radius, int itemId) {
             long now = SystemClock.uptimeMillis();
             float t = now / 1000f;
             float pulse = 1.0f + (float)Math.sin(t * 3.1f) * 0.025f;
@@ -2393,7 +2438,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             int g = activeLayoutGame();
             if (g < 0) return;
             int base = element * 3;
-            float referenceW = portrait ? 450f : 800f;
+            float referenceW = portrait ? 700f : 800f;
             float referenceH = portrait ? 800f : 450f;
             float dx = layoutValues[g][base] * (referenceW / 800f);
             float dy = layoutValues[g][base + 1] * (referenceH / 450f);
@@ -2407,25 +2452,25 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (layoutEditorPreview) return 0;
             if (dashboardMode) return dashboardHitTest(x, y, portrait);
             float[] point = new float[] {x, y};
-            inverseLayoutPoint(point, 0, portrait, portrait ? 225f : 400f, portrait ? 30f : 31.5f);
+            inverseLayoutPoint(point, 0, portrait, portrait ? 350f : 400f, portrait ? 30f : 31.5f);
             float hx = point[0], hy = point[1];
-            if(getHeight()>getWidth()) {
-                if(inside(hx,hy,238,16,20,27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
-                if(inside(hx,hy,262,12,87,37)) return BACKGROUND;
-                if(inside(hx,hy,355,12,75,37)) return CLOSE_GAME;
+            if (portrait) {
+                if (inside(hx, hy, 416, 16, 20, 27) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
+                if (inside(hx, hy, 442, 12, 105, 37)) return BACKGROUND;
+                if (inside(hx, hy, 555, 12, 121, 37)) return CLOSE_GAME;
                 point[0] = x; point[1] = y;
-                inverseLayoutPoint(point, 3, true, 225f, 750f);
-                int selected = timelineHit(point[0], point[1], 14, 704, 422, 92, true);
+                inverseLayoutPoint(point, 3, true, 350f, 750f);
+                int selected = timelineHit(point[0], point[1], 14, 704, 672, 92, true);
                 if (selected != 0) return selected;
                 point[0] = x; point[1] = y;
-                inverseLayoutPoint(point, 2, true, 225f, 552f);
-                if(inside(point[0],point[1],20,526,198,52)) return SAVE;
-                if(inside(point[0],point[1],232,526,198,52)) return LOAD;
-                if(inside(point[0],point[1],20,584,198,52)) return PAUSE;
-                if(inside(point[0],point[1],232,584,198,52)) return REWIND;
+                inverseLayoutPoint(point, 2, true, 350f, 480f);
+                if (inside(point[0], point[1], 20, 455, 320, 48)) return SAVE;
+                if (inside(point[0], point[1], 360, 455, 320, 48)) return LOAD;
+                if (inside(point[0], point[1], 20, 511, 320, 48)) return PAUSE;
+                if (inside(point[0], point[1], 360, 511, 320, 48)) return REWIND;
                 point[0] = x; point[1] = y;
-                inverseLayoutPoint(point, 1, true, 225f, 280f);
-                if(inside(point[0],point[1],52,101,346,360)) return ITEM_USE;
+                inverseLayoutPoint(point, 1, true, 350f, 280f);
+                if (inside(point[0], point[1], 200, 118, 300, 324)) return ITEM_USE;
             } else {
                 if(inside(hx,hy,552,17,34,34) && !wallpaperPath.isEmpty()) return RESET_BACKGROUND;
                 if(inside(hx,hy,593,13,105,42)) return BACKGROUND;
@@ -2447,7 +2492,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             return 0;
         }
 
-        private boolean inside(float x,float y,float rx,float ry,float rw,float rh) {
+                private boolean inside(float x,float y,float rx,float ry,float rw,float rh) {
             return x>=rx && x<rx+rw && y>=ry && y<ry+rh;
         }
 
@@ -2470,7 +2515,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                secondary screen is a live preview, not a second control surface. */
             if (layoutEditorPreview) return true;
             boolean portrait=getHeight()>getWidth();
-            float dw=portrait?450f:800f, dh=portrait?800f:450f;
+            float dw=portrait?700f:800f, dh=portrait?800f:450f;
             float scale=Math.min(getWidth()/dw,getHeight()/dh);
             float ox=(getWidth()-dw*scale)*0.5f, oy=(getHeight()-dh*scale)*0.5f;
             float x=(e.getX()-ox)/scale, y=(e.getY()-oy)/scale;
