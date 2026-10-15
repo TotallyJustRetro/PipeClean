@@ -634,18 +634,15 @@ static void wl2_render_margins(int y, int W, int L, uint8_t *out,
         uint8_t tile = wl2_read_wram(tile_address);
         uint8_t attr = 0;
         if (cgb_render_enabled) {
-            /* CGB attributes belong to each map placement. Only reuse the
-               live map-ring attribute when its tile agrees with this block's
-               tile definition; otherwise avoid applying an unrelated palette
-               or flip (the main viewport will provide the authoritative copy
-               once that area is loaded). */
-            unsigned mx = (unsigned)(X - L + scx) & 0xFFu;
-            unsigned my = (unsigned)(y + scy) & 0xFFu;
+            /* CGB attributes are placement-specific and live beside the
+               256x256 hardware map ring. Index them by the same world
+               coordinates used to resolve the block, as the SML2 compositor
+               does, rather than defaulting to palette 0 when tile IDs differ. */
             unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
-            unsigned map_index = map_off + ((my >> 3) & 31u) * 32u +
-                                 ((mx >> 3) & 31u);
-            if (vram[map_index] == tile)
-                attr = vram_cgb1[map_index];
+            unsigned map_index = map_off +
+                ((unsigned)(world_y >> 3) & 31u) * 32u +
+                ((unsigned)(world_x >> 3) & 31u);
+            attr = vram_cgb1[map_index];
         }
 
         int attr_out = 0, tile_id = 0;
