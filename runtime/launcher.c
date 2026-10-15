@@ -3092,19 +3092,30 @@ static void deck_editor_preview_emblem(float cx,float cy,float size)
 static void deck_editor_preview_collection(float x,float y,float w,float h,int game,const char *title,int pieces)
 {
     deck_editor_preview_card(x,y,w,h,game,title);
-    ui_text_fit(F_BOLD,5.3f,x+10,y+33,w-20,RGBA(255,224,164,255),pieces?"00 / 50 PICTURE PIECES":"00 / 50 TREASURES");
-    ui_rrect(x+10,y+43,w-20,4,2,RGBA(70,53,34,255));
-    float stepx=(w-24)/10.f,stepy=(h-57)/5.f;
-    for(int i=0;i<50;i++){float cx=x+12+stepx*((i%10)+.5f),cy=y+51+stepy*((i/10)+.5f);
-        if(pieces)ui_rrect(cx-2.1f,cy-2.1f,4.2f,4.2f,1,RGBA(119,94,64,220));
-        else ui_rrect(cx-2.2f,cy-2.2f,4.4f,4.4f,2.2f,RGBA(143,95,43,255));}
+    ui_text_fit(F_BOLD,5.0f,x+w*.035f,y+h*.20f,w*.93f,RGBA(255,224,164,255),
+                pieces?"00 / 50 PICTURE PIECES":"00 / 50 TREASURES");
+    ui_rrect(x+w*.035f,y+h*.29f,w*.93f,fmaxf(2.f,h*.035f),2,RGBA(70,53,34,255));
+    float stepx=w*.093f,stepy=h*.105f;
+    float dot=fmaxf(1.5f,fminf(w*.016f,h*.035f));
+    for(int i=0;i<50;i++){
+        float cx=x+w*.035f+stepx*((i%10)+.5f);
+        float cy=y+h*.39f+stepy*((i/10)+.5f);
+        if(pieces)ui_rrect(cx-dot*.5f,cy-dot*.5f,dot,dot,1,RGBA(119,94,64,220));
+        else ui_rrect(cx-dot*.5f,cy-dot*.5f,dot,dot,dot*.5f,RGBA(143,95,43,255));
+    }
 }
 static void deck_editor_preview_log(float x,float y,float w,float h,int game,int wario2)
 {
     deck_editor_preview_card(x,y,w,h,game,"EXPEDITION LOG");
     const char *rows[4]={wario2?"TREASURE VAULT READY":"COURSE ENTRY RECORDED",wario2?"PICTURE PANEL  00 / 50":"COIN BANK  SYNCED","SAVE STATE TIMELINE LINKED","CURRENT RUN MONITORED"};
-    for(int i=0;i<4;i++){float ry=y+38+i*21.f;ui_rrect(x+11,ry+2,4,4,2,i==0?RGBA(255,200,87,255):RGBA(184,170,149,255));
-        ui_text_fit(F_REG,5.2f,x+20,ry,w-30,i==0?RGBA(255,223,165,255):RGBA(190,186,176,255),rows[i]);}
+    float gap=h*.15f, row_y=y+h*.34f;
+    float dot=fmaxf(1.5f,fminf(w*.018f,h*.055f));
+    float font=fmaxf(3.8f,fminf(5.2f,h*.105f));
+    for(int i=0;i<4;i++){
+        float ry=row_y+i*gap;
+        ui_rrect(x+w*.04f,ry+2,dot,dot,dot*.5f,i==0?RGBA(255,200,87,255):RGBA(184,170,149,255));
+        ui_text_fit(F_REG,font,x+w*.11f,ry,w*.84f,i==0?RGBA(255,223,165,255):RGBA(190,186,176,255),rows[i]);
+    }
 }
 
 static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
