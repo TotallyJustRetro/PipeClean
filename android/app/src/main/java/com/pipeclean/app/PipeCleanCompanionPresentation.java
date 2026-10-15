@@ -185,6 +185,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private int drMarioScore = -1, drMarioLevel = -1, drMarioSpeed = -1, drMarioCapsule = 0xFF;
         private int warioCoins = -1, warioHearts = -1, warioPower = -1;
         private int warioTreasureMask = -1, warioTime = -1;
+        private int warioLevelCoins, previousWarioPileCoins = -1;
+        private int previousWarioPileStage = -1, previousWarioPileGame = -1;
+        private float warioPileDisplayedCoins;
+        private long warioPileResetStarted;
+        private static final long WARIO_PILE_RESET_MS = 560L;
+        private static final int WARIO_PILE_MAX_COINS = 390;
         private long wario2TreasureMask = -1L, wario2PictureMask = -1L;
         private long previousWario2TreasureMask = -1L, previousWario2PictureMask = -1L;
         private boolean wario2BaselineSet, wario2AnimationActive;
@@ -295,6 +301,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 ? (((long)drMarioLevel & 0x3FFFFL) << 32) | ((long)drMarioScore & 0xFFFFFFFFL) : -1L;
             this.wario2PictureMask = wl2 && drMarioCapsule >= 0
                 ? (((long)drMarioCapsule & 0x3FFFFL) << 32) | ((long)drMarioSpeed & 0xFFFFFFFFL) : -1L;
+            observeGoldPile();
             observeWarioState();
             this.slot = Math.max(0, Math.min(9, slot));
             if (animatedSlot < 0f) animatedSlot = this.slot;
@@ -303,6 +310,111 @@ final class PipeCleanCompanionPresentation extends Presentation {
             observeReserveItem(item);
             this.item = item;
             postInvalidate();
+        }
+
+        /*
+         * Keep the decorative pile course-local. Wario Land II exposes a separate
+         * pocket/overworld counter, while its bank total remains visible in the UI.
+         */
+        private int warioPileCoinReading() {
+            if (wario2() && warioHearts >= 0) return warioHearts;
+            return warioCoins;
+        }
+
+        private void observeGoldPile() {
+            if (!wario() && !wario2()) {
+                warioLevelCoins = 0;
+                warioPileDisplayedCoins = 0f;
+                previousWarioPileCoins = -1;
+                previousWarioPileStage = -1;
+                previousWarioPileGame = -1;
+                warioPileResetStarted = 0L;
+                return;
+            }
+
+            long now = SystemClock.uptimeMillis();
+            int reading = warioPileCoinReading();
+            if (previousWarioPileGame != game) {
+                previousWarioPileGame = game;
+                warioLevelCoins = 0;
+                warioPileDisplayedCoins = 0f;
+                previousWarioPileCoins = -1;
+                previousWarioPileStage = -1;
+                warioPileResetStarted = now;
+            }
+
+            if (stage < 0 || reading < 0) {
+                previousWarioPileStage = stage;
+                previousWarioPileCoins = reading;
+                return;
+            }
+            if (previousWarioPileStage < 0 || previousWarioPileCoins < 0 ||
+                stage != previousWarioPileStage) {
+                warioLevelCoins = 0;
+                warioPileResetStarted = now;
+                previousWarioPileStage = stage;
+                previousWarioPileCoins = reading;
+                postInvalidateOnAnimation();
+                return;
+            }
+
+            int delta = reading - previousWarioPileCoins;
+            if (delta > 0) warioLevelCoins = Math.min(WARIO_PILE_MAX_COINS, warioLevelCoins + delta);
+            else if (delta < 0) warioLevelCoins = Math.max(0, warioLevelCoins + delta);
+            previousWarioPileStage = stage;
+            previousWarioPileCoins = reading;
+            if (delta != 0) postInvalidateOnAnimation();
+        }
+
+        private void drawGoldCoinPile(Canvas c, float h) {
+            if (!wario() && !wario2()) return;
+            long now = SystemClock.uptimeMillis();
+            int target = layoutEditorPreview ? 54 :
+                (now - warioPileResetStarted < WARIO_PILE_RESET_MS ? 0 : warioLevelCoins);
+            float difference = target - warioPileDisplayedCoins;
+            if (Math.abs(difference) > 0.2f) {
+                float step = Math.min(9f, Math.abs(difference));
+                warioPileDisplayedCoins += Math.signum(difference) * step;
+                postInvalidateOnAnimation();
+            }
+
+            int visible = Math.max(0, Math.min(WARIO_PILE_MAX_COINS,
+                Math.round(warioPileDisplayedCoins)));
+            if (visible == 0) return;
+
+            final int columns = 39, center = columns / 2;
+            int drawn = 0;
+            c.save();
+            for (int row = 0; row < 16 && drawn < visible; row++) {
+                for (int distance = 0; distance <= center && drawn < visible; distance++) {
+                    for (int side = distance == 0 ? 0 : -1; side <= 1 && drawn < visible; side += 2) {
+                        if (distance == 0 && side == 1) continue;
+                        int column = center + side * distance;
+                        if (column < 0 || column >= columns) continue;
+                        float normalized = Math.abs(column - center) / (float) center;
+                        int columnHeight = 4 + Math.round((1f - normalized) * 12f);
+                        if (row >= columnHeight) continue;
+
+                        float cx = 72f + column * 17.3f;
+                        float cy = 418f - row * 7f;
+                        p.setStyle(Paint.Style.FILL);
+                        p.setColor(0x60200F00);
+                        c.drawRoundRect(cx - 9f, cy - 3.6f, cx + 9f, cy + 4.4f, 4f, 4f, p);
+                        p.setColor(0xD9985A10);
+                        c.drawRoundRect(cx - 9f, cy - 4f, cx + 9f, cy + 3.5f, 4f, 4f, p);
+                        p.setStyle(Paint.Style.STROKE);
+                        p.setStrokeWidth(0.9f);
+                        p.setColor(0xEFFFCA53);
+                        c.drawRoundRect(cx - 8.5f, cy - 3.5f, cx + 8.5f, cy + 3f, 3.5f, 3.5f, p);
+                        p.setStyle(Paint.Style.FILL);
+                        p.setColor(0xBFFFF0A0);
+                        c.drawRoundRect(cx - 5.7f, cy - 2.1f, cx - 0.9f, cy - 0.6f, 0.7f, 0.7f, p);
+                        drawn++;
+                    }
+                }
+            }
+            p.setStyle(Paint.Style.FILL);
+            c.restore();
         }
 
         private void observeReserveItem(int nextItem) {
@@ -504,6 +616,10 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drMarioCapsule = 0xFF;
             warioCoins = warioHearts = warioPower = warioTime = -1;
             warioTreasureMask = -1;
+            warioLevelCoins = 0;
+            warioPileDisplayedCoins = 0f;
+            previousWarioPileCoins = previousWarioPileStage = previousWarioPileGame = -1;
+            warioPileResetStarted = 0L;
             wario2TreasureMask = wario2PictureMask = -1L;
             wario2BaselineSet = false;
             wario2AnimationActive = false;
@@ -1260,33 +1376,45 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawThorWario(Canvas c, float h) {
+            drawGoldCoinPile(c, h);
             drawThorHeader(c, h);
-            drawWarioVault(c, 20, 77, 350, 160);
-            drawWarioEmblem(c, 400, 157, 58);
+            drawWarioVault(c, 20, 78, 295, 138);
             c.save();
-            applyLayoutTransform(c, 4, 800f, h, 600f, 157f);
-            drawWarioStatus(c, 430, 77, 350, 160);
+            applyLayoutTransform(c, 1, 800f, h, 400f, 258f);
+            drawWarioEmblem(c, 400, 258, 48);
             c.restore();
-            drawExpeditionLog(c, 20, 255, 370, 143, 5);
-            card(c, 410, 255, 370, 143, "CURRENT COURSE");
-            textFit(c, stageText(), 428, 300, 330, 20, accent());
-            textFit(c, "COIN BANK  " + warioCoinsText(), 428, 330, 330, 11, ink());
-            textFit(c, "TREASURE EXPEDITION  •  " + (paused ? "PAUSED" : "IN PLAY"),
-                428, 362, 330, 9, muted());
+            c.save();
+            applyLayoutTransform(c, 4, 800f, h, 633f, 147f);
+            drawWarioStatus(c, 485, 78, 295, 138);
+            c.restore();
+            drawExpeditionLog(c, 20, 300, 295, 110, 5);
+            card(c, 485, 300, 295, 110, "CURRENT COURSE");
+            textFit(c, stageText(), 500, 343, 265, 16, accent());
+            textFit(c, "COIN BANK  " + warioCoinsText(), 500, 366, 265, 9.5f, ink());
+            textFit(c, paused ? "EXPEDITION PAUSED" : "COURSE IN PROGRESS",
+                500, 388, 265, 8, muted());
             drawThorControls(c, h);
         }
 
         private void drawThorWario2(Canvas c, float h) {
+            drawGoldCoinPile(c, h);
             drawThorHeader(c, h);
-            drawWario2Grid(c, 20, 77, 365, 175, "TREASURE VAULT", wario2TreasureMask, false);
-            drawWario2Grid(c, 415, 77, 365, 175, "PICTURE PANEL", wario2PictureMask, true);
-            drawExpeditionLog(c, 20, 268, 365, 128, 5);
-            card(c, 415, 268, 365, 128, "ADVENTURE TRACKER");
-            textFit(c, stageText(), 431, 311, 330, 16, accent());
+            drawWario2Grid(c, 20, 78, 295, 138, "TREASURE VAULT", wario2TreasureMask, false);
+            c.save();
+            applyLayoutTransform(c, 1, 800f, h, 400f, 258f);
+            drawWarioEmblem(c, 400, 258, 46);
+            c.restore();
+            drawWario2Grid(c, 485, 78, 295, 138, "PICTURE PANEL", wario2PictureMask, true);
+            drawExpeditionLog(c, 20, 300, 295, 110, 5);
+            c.save();
+            applyLayoutTransform(c, 4, 800f, h, 633f, 355f);
+            card(c, 485, 300, 295, 110, "ADVENTURE TRACKER");
+            textFit(c, stageText(), 500, 343, 265, 16, accent());
             textFit(c, "COIN BANK  " + (warioCoins < 0 ? "------" :
-                String.format(Locale.US, "%06d", warioCoins)), 431, 342, 330, 10, ink());
+                String.format(Locale.US, "%06d", warioCoins)), 500, 366, 265, 9.5f, ink());
             textFit(c, "POCKET COINS  " + (warioHearts < 0 ? "----" :
-                String.format(Locale.US, "%04d", warioHearts)), 431, 366, 330, 9, muted());
+                String.format(Locale.US, "%04d", warioHearts)), 500, 388, 265, 8.5f, muted());
+            c.restore();
             drawThorControls(c, h);
         }
 
