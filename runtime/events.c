@@ -172,10 +172,15 @@ static int sml2_bcd_pair(uint8_t value)
 
 static int sml2_status_bar_visible(void)
 {
-    /* Tile 172 is the two fixed status labels. Scan the display vertically;
-       relying on y=138 missed the status bar when it was rendered elsewhere. */
+    /* Tile 172 is the two fixed status labels. Scan vertically and compensate
+       for the native Game Boy viewport's horizontal offset in widescreen mode. */
+    const int label_l = ppu_xoff + 8;
+    const int label_r = ppu_xoff + 48;
+    if (label_l < 0 || label_r < 0 ||
+        label_l >= GB_WMAX || label_r >= GB_WMAX)
+        return 0;
     for (int y = 0; y < GB_H; ++y)
-        if (ppu_bgtile[y][8] == 172 && ppu_bgtile[y][48] == 172)
+        if (ppu_bgtile[y][label_l] == 172 && ppu_bgtile[y][label_r] == 172)
             return 1;
     return 0;
 }
