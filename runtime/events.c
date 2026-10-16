@@ -415,6 +415,13 @@ static uint8_t sml2_actor_trace_source_logged[0x20][16];
  * Byte +2 changes after spawning, so it is excluded from the list fingerprint. */
 static uint32_t sml2_actor_trace_spawn_hash[0x20];
 static uint8_t sml2_actor_trace_spawn_hash_valid[0x20];
+/* Avoid repeating static ROM sprite lookup evidence for the same type/profile. */
+static uint8_t sml2_actor_trace_rom_type_seen[2][0x100];
+static void sml2_actor_trace_sprite_mapping(const char *kind, int mode, int level,
+                                            int slot, uint16_t record_addr,
+                                            uint16_t source_ref, uint8_t object_type,
+                                            int observed_db);
+static void sml2_actor_trace_dump_rom_level_lists(void);
 
 static void sml2_actor_trace_close(void)
 {
@@ -434,6 +441,7 @@ static void sml2_actor_trace_begin(void)
     memset(sml2_actor_trace_source_logged, 0, sizeof sml2_actor_trace_source_logged);
     memset(sml2_actor_trace_spawn_hash, 0, sizeof sml2_actor_trace_spawn_hash);
     memset(sml2_actor_trace_spawn_hash_valid, 0, sizeof sml2_actor_trace_spawn_hash_valid);
+    memset(sml2_actor_trace_rom_type_seen, 0, sizeof sml2_actor_trace_rom_type_seen);
     if (cur_game != GAME_SML2) return;
 
     const char *base = settings_dir();
@@ -446,18 +454,21 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_file = fopen(path, "w");
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
-            "PipeClean SML2 live sprite actor trace v5\n"
+            "PipeClean SML2 live sprite actor trace v6\n"
             "Each actor record is 0x20 bytes; the active marker is at record offset +8.\n"
             "Record bases begin at AD00; active markers begin at AD08.\n"
             "The source descriptor pointer is stored high-byte first at record offsets +6/+7.\n"
             "It points at descriptor byte +2; descriptor bytes are read from pointer - 2.\n"
-            "The AB06 level spawn list is logged only in active gameplay/pause/death modes.\n"
+            "All 32 course spawn lists are decoded from the ROM when the trace opens.\n"
+            "The live AB06 list is also logged in gameplay/pause/death modes.\n"
             "sprite_map rows decode the game ROM type-to-sprite and sprite-pointer tables.\n"
+            "rom_spawn rows store the ROM source address in record_addr; live actors use RAM.\n"
             "Raw type values and sprite indices are evidence, not species names.\n"
             "spawn frame level slot record_addr source_ref source_addr descriptor[00..05]\n"
             "actor frame level slot record_addr active source_ref field05 field0B record[00..1F]\n"
             "sprite_map kind frame mode level slot record_addr source_ref object_type lookup_id observed_db map_ptr pieces[y,x,tile,attr;...]\n");
     fflush(sml2_actor_trace_file);
+    sml2_actor_trace_dump_rom_level_lists();
 }
 
 static void sml2_actor_trace_spawn_table(int mode, int level)
@@ -520,6 +531,15 @@ static void sml2_actor_trace_sprite_mapping(const char *kind, int mode, int leve
     const uint8_t lookup_id = cart_rom_read_bank(2,
         (uint16_t)(type_table + object_type));
     const uint16_t pointer_table = (uint16_t)(level < 0x0A ? 0x40B1u : 0x4F11u);
+    const unsigned pointer_count = level < 0x0A ? 0xA8u : 0xE4u;
+    if (lookup_id >= pointer_count) {
+        fprintf(sml2_actor_trace_file,
+                "sprite_map kind=%s frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X object_type=%02X lookup_id=%02X observed_db=out_of_range map_ptr=---- pieces=unavailable\\n",
+                kind ? kind : "unknown", frame_count, mode, level, slot,
+                record_addr, source_ref, object_type, lookup_id);
+        fflush(sml2_actor_trace_file);
+        return;
+    }
     const uint16_t pointer_entry = (uint16_t)(pointer_table + (uint16_t)lookup_id * 2u);
     const uint8_t lo = cart_rom_read_bank(3, pointer_entry);
     const uint8_t hi = cart_rom_read_bank(3, (uint16_t)(pointer_entry + 1u));
@@ -558,6 +578,70 @@ static void sml2_actor_trace_sprite_mapping(const char *kind, int mode, int leve
     if (!terminated) fprintf(sml2_actor_trace_file, "%struncated", piece_count ? ";" : "");
     if (piece_count == 0 && terminated) fputs("empty", sml2_actor_trace_file);
     fputc('\n', sml2_actor_trace_file);
+    fflush(sml2_actor_trace_file);
+}
+
+/* The complete source placement lists are contiguous in bank 3. The table
+ * at CPU $6037 holds one bank-3 pointer per course; each entry is three bytes
+ * and 0xFF in byte zero terminates that course. Decode every list up front so
+ * species mapping does not require visiting each course manually. */
+static void sml2_actor_trace_dump_rom_level_lists(void)
+{
+    if (!sml2_actor_trace_file) return;
+
+    const uint16_t pointer_table = 0x6037u;
+    const unsigned max_entries = 128u;
+    for (int level = 0; level < 0x20; ++level) {
+        const uint16_t pointer_addr = (uint16_t)(pointer_table + (unsigned)level * 2u);
+        const uint8_t lo = cart_rom_read_bank(3, pointer_addr);
+        const uint8_t hi = cart_rom_read_bank(3, (uint16_t)(pointer_addr + 1u));
+        const uint16_t list_addr = (uint16_t)((uint16_t)lo | ((uint16_t)hi << 8));
+        if (list_addr < 0x4000u || list_addr >= 0x8000u) {
+            fprintf(sml2_actor_trace_file,
+                    "rom_spawn_list level=%02X pointer=%04X entries=0 status=invalid_pointer\\n",
+                    level, list_addr);
+            continue;
+        }
+
+        unsigned count = 0;
+        int terminated = 0;
+        for (unsigned i = 0; i < max_entries; ++i) {
+            const unsigned raw_addr = (unsigned)list_addr + i * 3u;
+            if (raw_addr + 2u >= 0x8000u) break;
+            const uint8_t a = cart_rom_read_bank(3, (uint16_t)raw_addr);
+            if (a == 0xFFu) {
+                terminated = 1;
+                break;
+            }
+            ++count;
+        }
+
+        fprintf(sml2_actor_trace_file,
+                "rom_spawn_list level=%02X pointer=%04X entries=%u terminated=%d\\n",
+                level, list_addr, count, terminated);
+        for (unsigned i = 0; i < count; ++i) {
+            const uint16_t raw_addr = (uint16_t)(list_addr + i * 3u);
+            const uint8_t a = cart_rom_read_bank(3, raw_addr);
+            const uint8_t b = cart_rom_read_bank(3, (uint16_t)(raw_addr + 1u));
+            const uint8_t d = cart_rom_read_bank(3, (uint16_t)(raw_addr + 2u));
+            const uint8_t object_type = (uint8_t)(
+                ((a & 0x10u) << 2) | ((a & 0xE0u) >> 2) | ((b & 0xE0u) >> 5));
+            fprintf(sml2_actor_trace_file,
+                    "rom_spawn level=%02X index=%03u record_addr=%04X raw=%02X %02X %02X object_type=%02X\\n",
+                    level, i, raw_addr, a, b, d, object_type);
+
+            const unsigned profile = level < 0x0A ? 0u : 1u;
+            if (!sml2_actor_trace_rom_type_seen[profile][object_type]) {
+                sml2_actor_trace_rom_type_seen[profile][object_type] = 1;
+                sml2_actor_trace_sprite_mapping("rom_spawn", 0xFF, level, -1,
+                                                raw_addr, 0, object_type, -1);
+            }
+        }
+        if (!terminated)
+            fprintf(sml2_actor_trace_file,
+                    "rom_spawn_list_warning level=%02X pointer=%04X status=missing_terminator_or_limit\\n",
+                    level, list_addr);
+    }
     fflush(sml2_actor_trace_file);
 }
 
