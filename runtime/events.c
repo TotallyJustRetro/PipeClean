@@ -11,6 +11,7 @@
 #include "events.h"
 #include "museum.h"
 #include "wario_event_state.h"
+#include "sml2_museum_state.h"
 #include "wario_land2_state.h"
 #include "wario_land3_state.h"
 #include "gb.h"
@@ -151,40 +152,106 @@ static void on_trigger(int ch, const uint8_t *r)
     if (events_log) fprintf(stderr, "[apu] frame %d ch%d  %02X %02X %02X %02X %02X\n", frame_count, ch + 1, r[0], r[1], r[2], r[3], r[4]);
 }
 
-/* ---- Super Mario Land 2: read the status bar -------------------------------------------------
- * The bar is drawn with digit tiles numbered 128 + digit, so the counters can be read from the
- * tile map (immune to palette fades). A change only counts after it has been stable for 3 frames. */
-typedef struct { int lives, coins, kills; } Hud;
-static Hud hud_committed, hud_cand;
-static int hud_have, hud_cnt;
+/* ---- Super Mario Land 2 Museum observations ----------------------------------------------
+ * SML2 keeps these counters/state flags in cartridge RAM. Use those values
+ * rather than parsing the status bar at one hard-coded screen row: the bar's
+ * vertical position can vary with the game's background/window layer. */
+static Sml2MuseumTracker sml2_museum_tracker;
 
-static int digits(int y, int x0, int n)
+static uint8_t sml2_ram_read(uint16_t address)
 {
-    int v = 0;
-    for (int i = 0; i < n; i++) {
-        int t = ppu_bgtile[y][x0 + i * 8];
-        if (t < 128 || t > 137) return -1;
-        v = v * 10 + (t - 128);
-    }
-    return v;
+    return cart_ram ? cart_ram[address & 0x1FFFu] : 0xFF;
 }
 
-static void hud_frame(void)
+static int sml2_bcd_pair(uint8_t value)
 {
-    const int y = 138;
-    if (ppu_bgtile[y][8] != 172 || ppu_bgtile[y][48] != 172) { hud_cnt = 0; return; }   /* status bar not on screen */
-    Hud h = {digits(y, 16, 2), digits(y, 56, 3), digits(y, 104, 2)};
-    if (h.lives < 0 || h.coins < 0 || h.kills < 0) { hud_cnt = 0; return; }
-    if (hud_cnt && h.lives == hud_cand.lives && h.coins == hud_cand.coins && h.kills == hud_cand.kills) hud_cnt++;
-    else { hud_cand = h; hud_cnt = 1; }
-    if (hud_cnt != 3) return;
-    if (hud_have) {
-        if (hud_cand.coins > hud_committed.coins) fire(0);
-        if (hud_cand.kills > hud_committed.kills) fire(1);
-        if (hud_cand.lives < hud_committed.lives) fire(2);
-        if (hud_cand.lives > hud_committed.lives) fire(3);
+    const int tens = (value >> 4) & 0x0F;
+    const int ones = value & 0x0F;
+    return tens <= 9 && ones <= 9 ? tens * 10 + ones : -1;
+}
+
+static int sml2_status_bar_visible(void)
+{
+    /* Tile 172 is the two fixed status labels. Scan the display vertically;
+       relying on y=138 missed the status bar when it was rendered elsewhere. */
+    for (int y = 0; y < GB_H; ++y)
+        if (ppu_bgtile[y][8] == 172 && ppu_bgtile[y][48] == 172)
+            return 1;
+    return 0;
+}
+
+static int sml2_museum_snapshot_read(Sml2MuseumSnapshot *snapshot)
+{
+    if (!snapshot || !cart_ram || !sml2_status_bar_visible()) return 0;
+
+    const uint8_t coins_low = sml2_ram_read(0xA262);
+    const uint8_t coins_high = sml2_ram_read(0xA263);
+    const int coin_pair = sml2_bcd_pair(coins_low);
+    const int coin_hundreds = coins_high & 0x0F;
+    const int lives = sml2_bcd_pair(sml2_ram_read(0xA22C));
+    const int kills = sml2_bcd_pair(sml2_ram_read(0xA28D));
+    const uint8_t powerup = sml2_ram_read(0xA216);
+    const uint8_t level = sml2_ram_read(0xA269);
+    const uint8_t star_low = sml2_ram_read(0xA271);
+    const uint8_t star_high = sml2_ram_read(0xA272);
+    const uint8_t ending_raw = sml2_ram_read(0xA2D5);
+
+    if (coin_pair < 0 || coin_hundreds > 9 || lives < 0 || kills < 0 ||
+        powerup > 0x0F || level > 0x1F || ending_raw > 1)
+        return 0;
+
+    memset(snapshot, 0, sizeof *snapshot);
+    snapshot->valid = 1;
+    snapshot->gameplay = 1;
+    snapshot->coins = coin_hundreds * 100 + coin_pair;
+    snapshot->enemy_kills = kills;
+    snapshot->lives = lives;
+    snapshot->powerup = powerup;
+    snapshot->star_active = star_low != 0 && (star_high & 0x04) != 0;
+    snapshot->level = level;
+    snapshot->ending_flag = ending_raw == 1;
+    /* The six secret courses use level IDs 19..1E; reaching one is a reliable
+       secret-course discovery. Level 1F is the final castle course. */
+    snapshot->secret_exit_seen = level >= 0x19 && level <= 0x1E;
+    return 1;
+}
+
+static void sml2_museum_discover(uint32_t discoveries)
+{
+    if (discoveries & SML2_MUSEUM_COIN) fire(0);
+    if (discoveries & SML2_MUSEUM_ENEMY) fire(1);
+    if (discoveries & SML2_MUSEUM_LIFE_LOST) fire(2);
+    if (discoveries & SML2_MUSEUM_EXTRA_LIFE) fire(3);
+    if (discoveries & SML2_MUSEUM_MUSHROOM)
+        (void)museum_discover_entry(GAME_SML2, "mushroom");
+    if (discoveries & SML2_MUSEUM_MAGIC_CARROT)
+        (void)museum_discover_entry(GAME_SML2, "magic_carrot");
+    if (discoveries & SML2_MUSEUM_FIRE_FLOWER)
+        (void)museum_discover_entry(GAME_SML2, "fire_flower");
+    if (discoveries & SML2_MUSEUM_SUPER_STAR)
+        (void)museum_discover_entry(GAME_SML2, "starman");
+    if (discoveries & SML2_MUSEUM_GOLDEN_COINS)
+        (void)museum_discover_entry(GAME_SML2, "golden_coins");
+    if (discoveries & SML2_MUSEUM_ZONE_GUARDIANS)
+        (void)museum_discover_entry(GAME_SML2, "zone_bosses");
+    if (discoveries & SML2_MUSEUM_WARIO)
+        (void)museum_discover_entry(GAME_SML2, "wario");
+    if (discoveries & SML2_MUSEUM_SECRET_EXIT)
+        (void)museum_discover_entry(GAME_SML2, "secret_exit");
+    if (discoveries & SML2_MUSEUM_CASTLE_CLEARED)
+        (void)museum_discover_entry(GAME_SML2, "castle_cleared");
+}
+
+static void sml2_museum_live_frame(void)
+{
+    if (cur_game != GAME_SML2 || rom_loaded_game() != GAME_SML2) {
+        sml2_museum_tracker.have_previous = 0;
+        return;
     }
-    hud_committed = hud_cand; hud_have = 1;
+    Sml2MuseumSnapshot snapshot;
+    if (!sml2_museum_snapshot_read(&snapshot)) return;
+    const uint32_t found = sml2_museum_tracker_update(&sml2_museum_tracker, &snapshot);
+    if (found) sml2_museum_discover(found);
 }
 
 /* Wario Land SML3 stores its expedition counters in cartridge RAM. */
@@ -326,7 +393,7 @@ static SmlMuseumObject sml_museum_previous[10];
 void events_begin(void)
 {
     cur_game = rom_loaded_game();
-    qr = qw = 0; tap_frames = 0; hud_have = 0; hud_cnt = 0;
+    qr = qw = 0; tap_frames = 0; memset(&sml2_museum_tracker, 0, sizeof sml2_museum_tracker);
     wario_event_tracker.have_previous = 0;
     wario2_event_tracker.have_previous = 0;
     wario3_event_tracker.have_previous = 0;
@@ -348,14 +415,14 @@ void events_end(void)
     wario_event_tracker.have_previous = 0;
     wario2_event_tracker.have_previous = 0;
     wario3_event_tracker.have_previous = 0;
+    memset(&sml2_museum_tracker, 0, sizeof sml2_museum_tracker);
 }
 
 void events_state_reset(void)
 {
     /* HUD/event observations are frontend history, not saved game state. */
     qr = qw = 0;
-    hud_have = 0;
-    hud_cnt = 0;
+    memset(&sml2_museum_tracker, 0, sizeof sml2_museum_tracker);
     tap_frames = 0;
     wario_event_tracker.have_previous = 0;
     wario2_event_tracker.have_previous = 0;
@@ -531,7 +598,7 @@ void events_frame(void)
 {
     static int16_t tb[2048 * 2];
     if (cur_game == GAME_SML) museum_sml_live_frame();
-    if (cur_game == GAME_SML2) hud_frame();
+    if (cur_game == GAME_SML2) sml2_museum_live_frame();
     else if (cur_game == GAME_WARIO_SML3) wario_event_frame();
     else if (cur_game == GAME_WARIO_LAND3_GBC) wario3_event_frame();
     else if (wario_land2_supported_game(cur_game)) wario2_event_frame();
