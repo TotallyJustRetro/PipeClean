@@ -2653,6 +2653,54 @@ final class PipeCleanCompanionPresentation extends Presentation {
             postInvalidateOnAnimation();
         }
 
+        private void drawWario3Celebration(Canvas c, float w, float h) {
+            if (!wario3KeyAnimationActive || wario3KeyAnimationId < 0 ||
+                wario3KeyAnimationId >= WARIO3_KEY_NAMES.length) return;
+            long elapsed = SystemClock.uptimeMillis() - wario3KeyAnimationStart;
+            if (elapsed >= TREASURE_ANIMATION_MS) {
+                wario3KeyAnimationActive = false;
+                return;
+            }
+            float phase = Math.max(0f, Math.min(1f, elapsed / (float)TREASURE_ANIMATION_MS));
+            float cx = w * 0.5f, cy = h * (h > w ? 0.32f : 0.34f);
+            int keyColor = wario3KeyColor(wario3KeyAnimationId);
+            int alpha = Math.max(0, Math.min(176, (int)((1f - phase) * 176f)));
+            p.setStyle(Paint.Style.STROKE);
+            for (int i = 0; i < 3; i++) {
+                p.setStrokeWidth(2.7f - i * 0.55f);
+                p.setColor((Math.max(0, alpha - i * 28) << 24) | (keyColor & 0x00FFFFFF));
+                c.drawCircle(cx, cy, 26f + phase * (90f + i * 18f), p);
+            }
+            p.setStyle(Paint.Style.FILL);
+            float bannerW = Math.min(w - 28f, h > w ? 340f : 370f);
+            float bannerY = cy + (h > w ? 72f : 69f);
+            p.setColor(0xE82B2115);
+            c.drawRoundRect(cx - bannerW * 0.5f, bannerY,
+                cx + bannerW * 0.5f, bannerY + 56f, 13f, 13f, p);
+            p.setColor(0xFFFFD66B);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(1.8f);
+            c.drawRoundRect(cx - bannerW * 0.5f, bannerY,
+                cx + bannerW * 0.5f, bannerY + 56f, 13f, 13f, p);
+            p.setStyle(Paint.Style.FILL);
+            drawWario3Key(c, cx - bannerW * 0.31f, bannerY + 28f, 39f,
+                wario3KeyAnimationId, true);
+            text(c, WARIO3_KEY_NAMES[wario3KeyAnimationId] + " KEY FOUND!",
+                cx + bannerW * 0.08f, bannerY + 24f, 10f, 0xFFFFEBA5, true);
+            text(c, "THE MATCHING TREASURE CHEST CAN NOW OPEN",
+                cx + bannerW * 0.08f, bannerY + 40f, 6.2f, 0xFFF7E9D0, true);
+            for (int i = 0; i < 14; i++) {
+                double a = (Math.PI * 2.0 * i / 14.0) + phase * 1.25;
+                float distance = 34f + phase * 72f + (i % 3) * 8f;
+                float sx = cx + (float)Math.cos(a) * distance;
+                float sy = cy + (float)Math.sin(a) * distance;
+                float size = Math.max(1.5f, 4.4f * (1f - phase));
+                rect(c, sx - size * 0.5f, sy - size * 0.5f, size, size,
+                    (i % 3 == 0) ? 0xFFFFF3C5 : keyColor);
+            }
+            postInvalidateOnAnimation();
+        }
+
         private void drawLandscape(Canvas c) {
             if (drMario()) { drawDrMarioLandscape(c); return; }
             c.save();
