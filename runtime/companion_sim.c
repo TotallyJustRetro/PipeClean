@@ -601,7 +601,9 @@ static void companion_sim_update_wario3(int game, const Frame *frame)
         int next_music = current_wario3_music_coins & 0xFF;
         if ((next_music & old_music) == old_music) {
             int gained_music = next_music & ~old_music;
-            int amount = __builtin_popcount((unsigned)gained_music);
+            int amount = 0;
+            for (unsigned bits = (unsigned)gained_music; bits; bits >>= 1)
+                amount += (int)(bits & 1u);
             if (amount == 1) wario3_log_push("MUSIC COIN FOUND");
             else if (amount > 1) {
                 char entry[64];
@@ -2341,6 +2343,9 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
     if (wario_land2_supported_game(game) && next_playing &&
         (!was_playing || previous_game != game))
         companion_sim_reset_wario2_tracking();
+    if (game == GAME_WARIO_LAND3_GBC && next_playing &&
+        (!was_playing || previous_game != GAME_WARIO_LAND3_GBC))
+        companion_sim_reset_wario3_tracking();
 
     current_game = game;
     current_paused = paused;
@@ -2394,6 +2399,12 @@ void companion_sim_set_state(int game, const Frame *frame, int paused, int selec
         companion_sim_update_wario2(game, frame);
     } else if (!next_playing || !wario_land2_supported_game(game)) {
         companion_sim_reset_wario2_tracking();
+    }
+
+    if (game == GAME_WARIO_LAND3_GBC && next_playing && frame) {
+        companion_sim_update_wario3(game, frame);
+    } else if (!next_playing || game != GAME_WARIO_LAND3_GBC) {
+        companion_sim_reset_wario3_tracking();
     }
 }
 
