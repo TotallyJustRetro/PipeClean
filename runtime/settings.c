@@ -173,7 +173,7 @@ void game_cfg_defaults(GameCfg *c, int game)
     int wario_game = game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
                      game == GAME_WARIO_LAND3_GBC || game == GAME_WARIO_LAND2_GBC;
     c->ds_ev_speaker = !wario_game ? 0 :
-        ((game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) ? 0x0F : 0x7F);
+        ((game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) ? 0x1F : 0x7F);
     c->ds_fx_version = 1;
     controls_defaults(c);
 }
