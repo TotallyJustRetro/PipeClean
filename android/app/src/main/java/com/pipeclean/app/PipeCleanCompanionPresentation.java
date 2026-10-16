@@ -1588,6 +1588,27 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drawThorControls(c, h);
         }
 
+        private void drawThorWario3(Canvas c, float h) {
+            drawThorWarioBuiltInPile(c, h);
+            drawThorHeader(c, h);
+            c.save(); applyLayoutTransform(c, 5, 800f, h, 167.5f, 147f);
+            drawWario3Vault(c, 20, 78, 295, 138);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 1, 800f, h, 400f, 258f);
+            drawWarioEmblem(c, 400, 258, 46);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 6, 800f, h, 632.5f, 147f);
+            drawWario3KeyRing(c, 485, 78, 295, 138);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 7, 800f, h, 167.5f, 355f);
+            drawExpeditionLog(c, 20, 300, 295, 110, 5);
+            c.restore();
+            c.save(); applyLayoutTransform(c, 4, 800f, h, 633f, 355f);
+            drawWario3Status(c, 485, 300, 295, 110);
+            c.restore();
+            drawThorControls(c, h);
+        }
+
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
             boolean thor = isThorAspect();
@@ -1613,6 +1634,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if (dashboardMode) drawLauncherDashboardLandscape(c);
                 else if (wario()) drawThorWario(c, h);
                 else if (wario2()) drawThorWario2(c, h);
+                else if (wario3()) drawThorWario3(c, h);
                 else if (drMario()) drawThorDrMario(c, h);
                 else drawThorDefault(c, h);
             } else if (dashboardMode) {
@@ -1621,11 +1643,14 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 if (portrait) drawWarioPortrait(c); else drawWarioLandscape(c);
             } else if (wario2()) {
                 if (portrait) drawWario2Portrait(c); else drawWario2Landscape(c);
+            } else if (wario3()) {
+                if (portrait) drawWario3Portrait(c); else drawWario3Landscape(c);
             } else {
                 if (portrait) drawPortrait(c); else drawLandscape(c);
             }
             if (!dashboardMode && wario()) drawTreasureCelebration(c, w, h);
             if (!dashboardMode && wario2()) drawWario2Celebration(c, w, h);
+            if (!dashboardMode && wario3()) drawWario3Celebration(c, w, h);
             drawLayoutDecoration(c, w, h);
             drawMusicNotification(c, portrait, w, h);
             drawCornerGems(c, w, h);
@@ -2268,6 +2293,34 @@ final class PipeCleanCompanionPresentation extends Presentation {
             c.save(); applyLayoutTransform(c, 3, 800f, 450f, 400f, 406.5f); drawSaveTimeline(c, 24, 365, 752, 83, false); c.restore();
         }
 
+        private void drawWario3Landscape(Canvas c) {
+            c.save();
+            headerPlate(c, 18, 7, 265, 49);
+            text(c, "PIPE CLEAN  •  FOUR KEYS", 26, 23, 8.4f, accent());
+            textFit(c, title(), 25, 43, 260, 15, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 552, 17, 34, 34, "×", RESET_BACKGROUND);
+            button(c, 593, 13, 105, 42, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 704, 13, 72, 42, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.restore();
+
+            drawWario3Vault(c, 20, 70, 230, 133);
+            drawWarioEmblem(c, 400, 139, 44);
+            drawWario3KeyRing(c, 550, 70, 230, 133);
+
+            drawExpeditionLog(c, 20, 213, 230, 94, 4);
+            card(c, 260, 213, 260, 94, "COURSE TRACKER");
+            textFit(c, stageText() + "  •  " + (world < 0 ? "TIME UNKNOWN" : world == 1 ? "NIGHT" : "DAY"),
+                276, 257, 226, 12, accent());
+            text(c, "COINS  " + (warioCoins < 0 ? "---" :
+                String.format(Locale.US, "%03d", warioCoins)), 276, 277, 8, ink());
+            text(c, "MUSIC COINS  " + (wario3MusicCoins < 0 ? "-- / 8" :
+                wario3MusicCoinCount() + " / 8"), 276, 294, 8, muted());
+            drawWario3Status(c, 530, 213, 250, 94);
+
+            c.save(); applyLayoutTransform(c, 2, 800f, 450f, 400f, 343f); drawDockLandscape(c); c.restore();
+            c.save(); applyLayoutTransform(c, 3, 800f, 450f, 400f, 406.5f); drawSaveTimeline(c, 24, 365, 752, 83, false); c.restore();
+        }
+
         private void drawWario2Portrait(Canvas c) {
             c.save(); applyLayoutTransform(c, 0, 700f, 800f, 350f, 30f);
             headerPlate(c, 14, 7, 400, 43);
@@ -2292,6 +2345,45 @@ final class PipeCleanCompanionPresentation extends Presentation {
             card(c, 360, 270, 320, 61, "TRANSFORMATION");
             text(c, "FORM NOT MAPPED", 374, 298, 8.5f, accent());
             text(c, "LIVE TRACKING READY", 374, 317, 7.5f, muted());
+            drawExpeditionLog(c, 20, 340, 660, 88, 4);
+
+            c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 507f);
+            button(c, 20, 455, 320, 48, "SAVE", "SNAPSHOT", SAVE, false);
+            button(c, 360, 455, 320, 48, "LOAD", "RESTORE", LOAD, false);
+            button(c, 20, 511, 320, 48, paused ? "RESUME" : "PAUSE",
+                paused ? "CONTINUE" : "HOLD GAME", PAUSE, false);
+            button(c, 360, 511, 320, 48, "REWIND", "HOLD TO REWIND", REWIND, true);
+            c.restore();
+
+            c.save(); applyLayoutTransform(c, 3, 700f, 800f, 350f, 750f);
+            drawSaveTimeline(c, 14, 704, 672, 92, true);
+            c.restore();
+        }
+
+        private void drawWario3Portrait(Canvas c) {
+            c.save(); applyLayoutTransform(c, 0, 700f, 800f, 350f, 30f);
+            headerPlate(c, 14, 7, 400, 43);
+            text(c, "PIPE CLEAN  •  FOUR KEYS", 20, 23, 8.0f, accent());
+            textFit(c, title(), 20, 41, 385, 12.5f, ink());
+            if (!wallpaperPath.isEmpty()) smallButton(c, 416, 16, 20, 27, "×", RESET_BACKGROUND);
+            button(c, 442, 12, 105, 37, "BACKGROUND", "PNG / GIF", BACKGROUND, false);
+            button(c, 555, 12, 121, 37, "CLOSE", "GAME", CLOSE_GAME, false);
+            c.restore();
+
+            badge(c, 20, 55, 205, 47, "CURRENT COURSE", stageText());
+            badge(c, 238, 55, 442, 47, "TREASURES", wario3TreasureCount < 0 ? "-- / 100" :
+                wario3TreasureCount + " / 100");
+
+            drawWario3Vault(c, 20, 111, 320, 150);
+            drawWario3KeyRing(c, 360, 111, 320, 150);
+
+            card(c, 20, 270, 320, 61, "COURSE STATS");
+            text(c, "COINS  " + (warioCoins < 0 ? "---" :
+                String.format(Locale.US, "%03d", warioCoins)), 32, 298, 8.5f, ink());
+            text(c, "MUSIC COINS  " + (wario3MusicCoins < 0 ? "-- / 8" :
+                wario3MusicCoinCount() + " / 8"), 32, 317, 8, muted());
+
+            drawWario3Status(c, 360, 270, 320, 61);
             drawExpeditionLog(c, 20, 340, 660, 88, 4);
 
             c.save(); applyLayoutTransform(c, 2, 700f, 800f, 350f, 507f);
