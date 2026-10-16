@@ -176,6 +176,11 @@ static int sml2_museum_snapshot_read(Sml2MuseumSnapshot *snapshot)
 {
     if (!snapshot || !cart_ram) return 0;
 
+    /* Match the modes recognized by the SML2 live compositor. The external
+       RAM can retain plausible old counters on title/loading screens. */
+    const uint8_t mode = rd8(0xFF9Bu);
+    if (mode != 0x04u && mode != 0x08u && mode != 0x09u) return 0;
+
     const uint8_t coins_low = sml2_ram_read(0xA262);
     const uint8_t coins_high = sml2_ram_read(0xA263);
     const int coin_pair = sml2_bcd_pair(coins_low);
@@ -433,6 +438,9 @@ static void sml2_actor_trace_frame(void)
     if (!sml2_actor_trace_file || cur_game != GAME_SML2 ||
         rom_loaded_game() != GAME_SML2 || !cart_ram)
         return;
+
+    const uint8_t mode = rd8(0xFF9Bu);
+    if (mode != 0x04u && mode != 0x08u && mode != 0x09u) return;
 
     const uint8_t level = rd8(0xA269);
     if (level > 0x1F) return;
