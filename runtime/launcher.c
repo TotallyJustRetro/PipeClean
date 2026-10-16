@@ -51,6 +51,8 @@ static int cap_kind, cap_btn, cap_slot;  /* 1 key, 2 pad, 3 shortcut key, 4 shor
 static char toast_msg[200];
 static float toast_t;
 static int click_id;
+static char museum_live_notice[160];
+static float museum_live_notice_age = -1.0f;
 static float save_timer;
 static int loaded_pack_game = -1, pack_n;
 static char loaded_pack_path[512];
@@ -249,6 +251,77 @@ static SDL_Texture *state_thumb_get(int g, int slot)
 }
 
 void launcher_toast(const char *m) { snprintf(toast_msg, sizeof toast_msg, "%s", m); toast_t = 3.0f; }
+
+void launcher_museum_notification_draw(float dt)
+{
+    const float slide_in = 0.34f;
+    const float hold = 2.25f;
+    const float slide_out = 0.42f;
+    const float total = slide_in + hold + slide_out;
+    if (!settings.museum_discovery_notifications) {
+        museum_live_notice[0] = 0;
+        museum_live_notice_age = -1.0f;
+        return;
+    }
+    if (museum_live_notice_age < 0.0f) {
+        if (!museum_take_notification(museum_live_notice, sizeof museum_live_notice))
+            return;
+        museum_live_notice_age = 0.0f;
+    } else {
+        museum_live_notice_age += dt > 0.0f ? dt : 0.0f;
+    }
+    if (museum_live_notice_age >= total) {
+        museum_live_notice[0] = 0;
+        museum_live_notice_age = -1.0f;
+        return;
+    }
+
+    const float view_x = ui_view_x0(), view_y = ui_view_y0();
+    const float view_w = ui_view_w();
+    float w = view_w - 32.0f;
+    if (w > 360.0f) w = 360.0f;
+    if (w < 220.0f) w = 220.0f;
+    const float h = 78.0f;
+    const float y = view_y + 18.0f;
+    const float target_x = view_x + view_w - w - 16.0f;
+    float slide = 0.0f, alpha = 1.0f;
+    if (museum_live_notice_age < slide_in) {
+        float t = museum_live_notice_age / slide_in;
+        slide = 1.0f - t;
+        slide = slide * slide * slide;
+        alpha = 0.18f + 0.82f * t;
+    } else if (museum_live_notice_age > slide_in + hold) {
+        float t = (museum_live_notice_age - slide_in - hold) / slide_out;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        slide = t * t * t;
+        alpha = 1.0f - t;
+    }
+    const float x = target_x + slide * (w + 22.0f);
+    const int a = (int)(255.0f * alpha);
+    const char *name = museum_live_notice;
+    if (strncmp(name, "New discovery: ", 15) == 0) name += 15;
+
+    ui_shadow(x, y, w, h, 12.0f, 9.0f, RGBA(0, 0, 0, (int)(100.0f * alpha)));
+    ui_rrect(x, y, w, h, 12.0f, HEXA(0x24180F, a));
+    ui_stroke(x, y, w, h, 12.0f, 2.0f, HEXA(0xE3AD50, a));
+    ui_rrect(x + 7.0f, y + 8.0f, 4.0f, h - 16.0f, 2.0f, HEXA(0xF2C467, a));
+
+    const float badge_x = x + 31.0f, badge_y = y + h * 0.5f;
+    ui_rrect(badge_x - 19.0f, badge_y - 19.0f, 38.0f, 38.0f,
+             19.0f, HEXA(0xD99B35, a));
+    ui_stroke(badge_x - 19.0f, badge_y - 19.0f, 38.0f, 38.0f, 19.0f, 2.0f,
+              HEXA(0xFFE1A0, a));
+    ui_line(badge_x, badge_y - 10.0f, badge_x, badge_y + 10.0f, 2.0f, HEXA(0x563017, a));
+    ui_line(badge_x - 10.0f, badge_y, badge_x + 10.0f, badge_y, 2.0f, HEXA(0x563017, a));
+    ui_rrect(badge_x - 2.0f, badge_y - 2.0f, 4.0f, 4.0f, 2.0f, HEXA(0xFFF0C8, a));
+
+    const float tx = x + 61.0f, tw = w - 76.0f;
+    ui_text(F_BOLD, 10.0f, tx, y + 11.0f, HEXA(0xF2C467, a), "MUSEUM DISCOVERY");
+    ui_text_fit(F_BOLD, 16.0f, tx, y + 29.0f, tw, HEXA(0xFFF4DB, a), name);
+    ui_text_fit(F_REG, 10.0f, tx, y + 53.0f, tw, HEXA(0xCBB99F, a),
+                "Added to your field guide");
+}
 
 /* ------------------------------------------------------------------ ROM / preview plumbing */
 static void rom_check(int g)
