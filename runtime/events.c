@@ -237,8 +237,6 @@ static void sml2_museum_discover(uint32_t discoveries)
         (void)museum_discover_entry(GAME_SML2, "starman");
     if (discoveries & SML2_MUSEUM_GOLDEN_COINS)
         (void)museum_discover_entry(GAME_SML2, "golden_coins");
-    if (discoveries & SML2_MUSEUM_ZONE_GUARDIANS)
-        (void)museum_discover_entry(GAME_SML2, "zone_bosses");
     if (discoveries & SML2_MUSEUM_WARIO)
         (void)museum_discover_entry(GAME_SML2, "wario");
     if (discoveries & SML2_MUSEUM_SECRET_EXIT)
