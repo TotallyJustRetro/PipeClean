@@ -93,6 +93,7 @@ typedef struct {
     int ds_rumble;                      /* 0..100 strength */
     int ds_speaker_vol;                 /* 0..100 */
     int ds_ev_led, ds_ev_rumble, ds_ev_speaker;     /* bitmasks over the game's events */
+    int ds_fx_version;                  /* one-time migration for Wario controller effects */
 } GameCfg;
 
 typedef struct {
