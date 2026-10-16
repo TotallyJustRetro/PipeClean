@@ -293,7 +293,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             dashboardMode = false;
             this.game = game;
             boolean wl2 = game == 4 || game == 6;
-            this.lives = (game == 3 || wl2) && lives < 0 ? -1 : Math.max(0, Math.min(99, lives));
+            this.lives = (game == 3 || game == 5 || wl2) && lives < 0 ? -1 : Math.max(0, Math.min(99, lives));
             this.stage = stage;
             this.world = world;
             this.paused = paused;
@@ -338,7 +338,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void observeGoldPile() {
-            if (!wario() && !wario2()) {
+            if (!wario() && !wario2() && !wario3()) {
                 warioLevelCoins = 0;
                 warioPileDisplayedCoins = 0f;
                 warioPileResetting = false;
@@ -393,7 +393,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
         private void drawGoldCoinPile(Canvas c, float h) {
-            if (!wario() && !wario2()) return;
+            if (!wario() && !wario2() && !wario3()) return;
             long now = SystemClock.uptimeMillis();
             int target = layoutEditorPreview ? 180 : (warioPileResetting ? 0 : warioLevelCoins);
             float difference = target - warioPileDisplayedCoins;
@@ -1267,14 +1267,16 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private boolean drMario() { return game == 0; }
         private boolean sml1() { return game == 1; }
         private boolean sml2() { return game == 2; }
-        private boolean wario() { return game == 3 || game == 5; }
+        private boolean wario() { return game == 3; }
+        private boolean wario3() { return game == 5; }
         private boolean wario2() { return game == 4 || game == 6; }
-        private int bg() { return drMario() ? 0xFFF0F7F7 : sml1() ? 0xFFB8D991 : sml2() ? 0xFF25152F : (wario() || wario2()) ? 0xFF211A13 : 0xFF172337; }
-        private int panel() { return drMario() ? 0xF8FFFFFF : sml1() ? 0xF0F0F5D5 : sml2() ? 0xEE352342 : (wario() || wario2()) ? 0xEE36302A : 0xEE24354C; }
-        private int accent() { return drMario() ? 0xFF159DAD : sml1() ? 0xFF397C30 : sml2() ? 0xFFFFCA5B : (wario() || wario2()) ? 0xFFFFC857 : 0xFF6EE5EF; }
-        private int ink() { return drMario() ? 0xFF173849 : sml1() ? 0xFF253C20 : sml2() ? 0xFFFFF0D2 : (wario() || wario2()) ? 0xFFFFF1D4 : 0xFFEAF5FF; }
-        private int muted() { return drMario() ? 0xFF627F8B : sml1() ? 0xFF57764D : sml2() ? 0xFFD1B7D5 : (wario() || wario2()) ? 0xFFB8AA95 : 0xFFAFC3DD; }
-        private int edge() { return drMario() ? 0xFF8BCACC : sml1() ? 0xFF80A951 : sml2() ? 0xFFAD7B41 : (wario() || wario2()) ? 0xFFBD8537 : 0xFF577D9D; }
+        private boolean warioFamily() { return wario() || wario3() || wario2(); }
+        private int bg() { return drMario() ? 0xFFF0F7F7 : sml1() ? 0xFFB8D991 : sml2() ? 0xFF25152F : warioFamily() ? 0xFF211A13 : 0xFF172337; }
+        private int panel() { return drMario() ? 0xF8FFFFFF : sml1() ? 0xF0F0F5D5 : sml2() ? 0xEE352342 : warioFamily() ? 0xEE36302A : 0xEE24354C; }
+        private int accent() { return drMario() ? 0xFF159DAD : sml1() ? 0xFF397C30 : sml2() ? 0xFFFFCA5B : warioFamily() ? 0xFFFFC857 : 0xFF6EE5EF; }
+        private int ink() { return drMario() ? 0xFF173849 : sml1() ? 0xFF253C20 : sml2() ? 0xFFFFF0D2 : warioFamily() ? 0xFFFFF1D4 : 0xFFEAF5FF; }
+        private int muted() { return drMario() ? 0xFF627F8B : sml1() ? 0xFF57764D : sml2() ? 0xFFD1B7D5 : warioFamily() ? 0xFFB8AA95 : 0xFFAFC3DD; }
+        private int edge() { return drMario() ? 0xFF8BCACC : sml1() ? 0xFF80A951 : sml2() ? 0xFFAD7B41 : warioFamily() ? 0xFFBD8537 : 0xFF577D9D; }
         private int gold() { return 0xFFFFD66B; }
         private int goldDark() { return 0xFFAC6B22; }
 
@@ -1283,6 +1285,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             if (sml1()) return "SUPER MARIO LAND";
             if (sml2()) return "6 GOLDEN COINS";
             if (wario()) return "WARIO LAND: SUPER MARIO LAND 3";
+            if (wario3()) return "WARIO LAND 3 // FOUR KEYS";
             if (wario2()) return "WARIO LAND II // STOLEN TREASURE";
             return "PIPECLEAN // READY";
         }
@@ -1293,6 +1296,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
                 return String.format(Locale.US, "%d - %d", world, stage);
             if (sml2()) return String.format(Locale.US, "STAGE %02d", stage);
             if (wario()) return String.format(Locale.US, "COURSE %02X", stage & 0xFF);
+            if (wario3()) return String.format(Locale.US, "COURSE %02d", stage);
             if (wario2()) return String.format(Locale.US, "STAGE %02X", stage & 0xFF);
             return "—";
         }
@@ -1328,7 +1332,7 @@ final class PipeCleanCompanionPresentation extends Presentation {
             applyLayoutTransform(c, 0, 800f, h, 400f, 34f);
             headerPlate(c, 18, 7, 390, 49);
             text(c, "PIPE CLEAN  •  " +
-                (wario2() ? "STOLEN TREASURE" : wario() ? "TREASURE EXPEDITION" : drMario() ? "MEDICAL DECK" : "POCKET QUEST"),
+                (wario2() ? "STOLEN TREASURE" : wario3() ? "FOUR KEYS" : wario() ? "TREASURE EXPEDITION" : drMario() ? "MEDICAL DECK" : "POCKET QUEST"),
                 27, 22, 8.8f, accent());
             textFit(c, title(), 26, 42, 372, 14, ink());
             if (!wallpaperPath.isEmpty()) smallButton(c, 502, 16, 31, 31, "×", RESET_BACKGROUND);
