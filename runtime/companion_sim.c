@@ -2437,13 +2437,77 @@ static void thor_wario2(const Settings *s,int g)
     draw_text_fit((int)tx,(int)ty,(int)(265*thor_element_scale_x(d,4)),1,184,170,149,pocket);
     thor_controls(s,g);thor_decorations(s,g);draw_wario2_celebration();
 }
+static void thor_wario3(const Settings *s, int g)
+{
+    const CompanionLayoutCfg *d = &s->deck_layout[g];
+    thor_scene(s, g);
+    thor_gold_coin_pile(d, g);
+    thor_header(s, g);
+
+    float vx=20, vy=78, vw=295, vh=138;
+    transform_box(d, 5, 167.5f, 147, &vx, &vy, &vw, &vh);
+    draw_wario3_vault(s, (int)vx, (int)vy, (int)vw, (int)vh, g);
+
+    float ex=350, ey=208, ew=100, eh=100;
+    transform_box(d, 1, 400, 258, &ex, &ey, &ew, &eh);
+    draw_wario_emblem_at((int)(ex + ew * .5f), (int)(ey + eh * .5f),
+                         (int)(fminf(ew, eh) * .46f));
+
+    float kx=485, ky=78, kw=295, kh=138;
+    transform_box(d, 6, 632.5f, 147, &kx, &ky, &kw, &kh);
+    draw_wario3_key_ring(s, (int)kx, (int)ky, (int)kw, (int)kh, g);
+
+    float lx=20, ly=300, lw=295, lh=110;
+    transform_box(d, 7, 167.5f, 355, &lx, &ly, &lw, &lh);
+    draw_wario3_log(s, (int)lx, (int)ly, (int)lw, (int)lh, g);
+
+    float sx=485, sy=300, sw=295, sh=110;
+    transform_box(d, 4, 633, 355, &sx, &sy, &sw, &sh);
+    draw_wario3_status(s, (int)sx, (int)sy, (int)sw, (int)sh, g);
+
+    thor_controls(s, g);
+    thor_decorations(s, g);
+    draw_wario3_celebration();
+}
+
+static void draw_wario3_companion(const Settings *s, int game)
+{
+    draw_android_scenery(game);
+    draw_asset_image(s, game, 0, 0, 0, 800, 450);
+    draw_android_header(s, 18, 7, 265, 49, game);
+    draw_text_fit(26, 23, 250, 1, 255, 200, 87, "PIPE CLEAN  •  FOUR KEYS");
+    draw_text_fit(25, 43, 260, 2, 255, 241, 212, "WARIO LAND 3 // FOUR KEYS");
+    draw_tiny_button(s, 593, 13, 105, 42, game, "BACKGROUND", "PNG / GIF", SIM_BACKGROUND);
+    draw_tiny_button(s, 704, 13, 72, 42, game, "CLOSE", "GAME", SIM_CLOSE_GAME);
+
+    draw_wario3_vault(s, 20, 70, 230, 133, game);
+    draw_wario_emblem();
+    draw_wario3_key_ring(s, 550, 70, 230, 133, game);
+    draw_wario3_log(s, 20, 213, 230, 94, game);
+    draw_wario3_status(s, 260, 213, 520, 94, game);
+
+    const int action_ids[4] = {SIM_SAVE, SIM_LOAD, SIM_PAUSE, SIM_REWIND};
+    const char *labels[4] = {"SAVE", "LOAD", current_paused ? "RESUME" : "PAUSE", "REWIND"};
+    const char *subs[4] = {"SNAPSHOT", "RESTORE", current_paused ? "CONTINUE" : "HOLD GAME", "HOLD TO REWIND"};
+    for (int i = 0; i < 4; i++)
+        draw_action_button(s, game, action_ids[i], 94 + i * 153, 320,
+            i == 3 ? 153 : 145, 42, labels[i], subs[i], i == 3);
+    draw_slot_timeline(s, game);
+    draw_wario3_celebration();
+    SDL_RenderPresent(deck_renderer);
+}
+
 static void draw_companion(const Settings *s)
 {
     int g=current_game>=0&&current_game<N_GAMES?current_game:-1;
     int preview=simulator_layout_preview_enabled();
     if(!companion_deck_should_show_game_view(g,current_playing,preview)){int selected=g;if(selected<0||selected>=N_GAMES)selected=launcher_current_game();thor_dashboard(s,selected);draw_vinyl_notification(s);SDL_RenderPresent(deck_renderer);return;}
     if(g<0||g>=N_GAMES)g=GAME_SML;
-    if(g==GAME_DRMARIO)thor_dr_mario(s,g);else if(g==GAME_WARIO_SML3)thor_wario(s,g);else if(wario_land2_supported_game(g))thor_wario2(s,g);else thor_default(s,g);
+    if(g==GAME_DRMARIO)thor_dr_mario(s,g);
+    else if(g==GAME_WARIO_SML3)thor_wario(s,g);
+    else if(g==GAME_WARIO_LAND3_GBC)thor_wario3(s,g);
+    else if(wario_land2_supported_game(g))thor_wario2(s,g);
+    else thor_default(s,g);
     draw_vinyl_notification(s);SDL_RenderPresent(deck_renderer);
 }
 
