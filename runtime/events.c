@@ -438,8 +438,9 @@ static void sml2_actor_trace_frame(void)
     if (level > 0x1F) return;
 
     for (int slot = 0; slot < 16; ++slot) {
-        const uint16_t base = (uint16_t)(0xAD00u + (unsigned)slot * 0x20u);
-        const uint8_t active = rd8((uint16_t)(base + 8u));
+        const uint16_t base = (uint16_t)(0xAD08u + (unsigned)slot * 0x20u);
+        /* The game's scheduler starts at AD08 and advances by 0x20 bytes. */
+        const uint8_t active = rd8(base);
         if (!active) continue;
 
         const uint8_t sprite_type = rd8((uint16_t)(base + 5u));
