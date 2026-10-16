@@ -21,6 +21,7 @@
 #include "cart.h"
 #include "emu.h"
 #include "wario_land2_state.h"
+#include "wario_land3_state.h"
 #include "netplay.h"
 #include "render.h"
 #include "bgimg.h"
@@ -318,16 +319,18 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
     if (!env || !activity) return;
     jclass cls = (*env)->GetObjectClass(env, activity);
     if (!cls) return;
-    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIIIIIIIIIIII)V");
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIIIIIIIIIIIIIII)V");
     if (method) {
         int lives = 0, stage = -1, world = -1;
         int wario_coins = -1, wario_hearts = -1, wario_power = -1;
         int wario_treasures = -1, wario_time = -1;
         int wl2_treasure_lo = -1, wl2_treasure_hi = -1;
         int wl2_picture_lo = -1, wl2_picture_hi = -1;
+        int wl3_key_mask = -1, wl3_music_coin_mask = -1, wl3_scene = -1;
         int dual_screen = settings.launcher_dual_screen &&
             (game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
-             game == GAME_WARIO_SML3 || wario_land2_supported_game(game));
+             game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND3_GBC ||
+             wario_land2_supported_game(game));
         if (frame && (game == GAME_SML || game == GAME_SML2)) {
             uint8_t bcd = frame->p1_lives;
             int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
@@ -350,6 +353,30 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
                 wario_treasures = treasure_low | (treasure_high << 8);
             wario_coins = wario_read_companion_coins();
             wario_time = wario_read_companion_time();
+        }
+        if (frame && game == GAME_WARIO_LAND3_GBC) {
+            int scene = gb_wram_peek(0x009B); /* C09B: current scene */
+            int course = gb_wram_peek(0x0A06); /* CA06: active course */
+            int keys = gb_wram_peek(0x0A5B); /* CA5B: four course keys */
+            int music_coins = gb_wram_peek(0x0A5C); /* CA5C: eight music coins */
+            int treasure_count = wario_land3_read_counter3(
+                gb_wram_peek(0x0A39), gb_wram_peek(0x0A3A));
+            int valid_course = scene <= 0x0E && course != 0xFF;
+
+            lives = -1;
+            stage = course == 0xFF ? -1 : course;
+            world = (gb_wram_peek(0x0A3B) == 0xFF) ? -1 :
+                    (gb_wram_peek(0x0A3B) & 0x01); /* 0=day, 1=night */
+            wario_coins = wario_land3_read_counter3(
+                gb_wram_peek(0x0A04), gb_wram_peek(0x0A05));
+            wario_hearts = -1;
+            wario_power = -1;
+            wario_treasures = treasure_count >= 0 && treasure_count <= 100
+                ? treasure_count : -1;
+            wario_time = -1;
+            wl3_key_mask = valid_course && keys != 0xFF ? (keys & 0x0F) : -1;
+            wl3_music_coin_mask = valid_course ? (music_coins & 0xFF) : -1;
+            wl3_scene = scene <= 0x0E ? scene : -1;
         }
         if (frame && wario_land2_supported_game(game)) {
             WarioLand2Snapshot w2 = wario_land2_read_snapshot(game, gb_wram_peek);
@@ -379,7 +406,8 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             (jint)(wario_land2_supported_game(game) ? wl2_picture_hi :
                    (frame && game == GAME_DRMARIO ? frame->dr_mario_capsule : 0xFF)),
             (jint)wario_coins, (jint)wario_hearts, (jint)wario_power,
-            (jint)wario_treasures, (jint)wario_time);
+            (jint)wario_treasures, (jint)wario_time,
+            (jint)wl3_key_mask, (jint)wl3_music_coin_mask, (jint)wl3_scene);
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 
         /* Send save-state paths, not pixel buffers. Java caches thumbnails and
