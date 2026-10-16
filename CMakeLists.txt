@@ -148,6 +148,10 @@ target_include_directories(test_collectible_museum PRIVATE runtime)
 target_link_libraries(test_collectible_museum PRIVATE SDL2::SDL2)
 add_test(NAME collectible_museum COMMAND test_collectible_museum)
 
+add_executable(test_sml2_museum_state tests/test_sml2_museum_state.c)
+target_include_directories(test_sml2_museum_state PRIVATE runtime)
+add_test(NAME sml2_museum_state COMMAND test_sml2_museum_state)
+
 add_executable(test_sml2_wide tests/test_sml2_wide.c runtime/widescreen.c)
 target_include_directories(test_sml2_wide PRIVATE runtime)
 add_test(NAME sml2_widescreen COMMAND test_sml2_wide)
