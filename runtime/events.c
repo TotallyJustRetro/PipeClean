@@ -15,6 +15,7 @@
 #include "wario_land2_state.h"
 #include "wario_land3_state.h"
 #include "gb.h"
+#include "cart.h"
 #include "rom.h"
 #include "audio.h"
 #include "settings.h"
