@@ -71,8 +71,8 @@ int main(void)
 
     /* The 99 -> 00 enemy counter wrap is still a valid enemy encounter. */
     memset(&tracker, 0, sizeof tracker);
-    s = snapshot(0, 0, 3, 0, 0, 4, 0, 0);
-    assert(sml2_museum_tracker_update(&tracker, &s) == 0);
+    s = snapshot(0, 99, 3, 0, 0, 4, 0, 0);
+    assert(sml2_museum_tracker_update(&tracker, &s) & SML2_MUSEUM_ENEMY);
     s = snapshot(0, 0, 3, 0, 0, 4, 0, 0);
     assert(sml2_museum_tracker_update(&tracker, &s) & SML2_MUSEUM_ENEMY);
 
