@@ -28,7 +28,6 @@ enum {
     SML2_MUSEUM_FIRE_FLOWER   = 1u << 6,
     SML2_MUSEUM_SUPER_STAR    = 1u << 7,
     SML2_MUSEUM_GOLDEN_COINS  = 1u << 8,
-    SML2_MUSEUM_ZONE_GUARDIANS= 1u << 9,
     SML2_MUSEUM_WARIO         = 1u << 10,
     SML2_MUSEUM_SECRET_EXIT   = 1u << 11,
     SML2_MUSEUM_CASTLE_CLEARED= 1u << 12
@@ -57,10 +56,11 @@ static inline int sml2_museum_is_secret_level(int level)
 
 static inline uint32_t sml2_museum_final_area_discoveries(int level)
 {
-    /* Level ID 1F is the final castle course. Access requires the six coins,
-     * so reaching it also confirms the player has encountered the zone guards. */
+    /* The final castle opens only after the six Golden Coins are collected.
+     * Wario's catalogue record is marked when this finale is reached; individual
+     * zone-guardian records must still wait for their own encounter detectors. */
     return level == 0x1F
-        ? (SML2_MUSEUM_GOLDEN_COINS | SML2_MUSEUM_ZONE_GUARDIANS | SML2_MUSEUM_WARIO)
+        ? (SML2_MUSEUM_GOLDEN_COINS | SML2_MUSEUM_WARIO)
         : 0;
 }
 
