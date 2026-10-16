@@ -222,6 +222,22 @@ static void wario3_event_frame(void)
             if (wario_land3_key_collected(key_mask_raw, key))
                 (void)museum_discover_entry(cur_game, key_ids[key]);
     }
+    /* CEE3 stores the last collected treasure slot. The Museum uses the
+       reference list's 001..100 sequence; only trust it alongside a validated
+       increase in the game treasure total, to avoid false unlocks from stale RAM. */
+    if (wario_land3_snapshot_valid(&snapshot) &&
+        wario3_event_tracker.have_previous &&
+        snapshot.treasures > wario3_event_tracker.previous.treasures) {
+        const uint8_t last_slot = gb_wram_peek(0x0EE3); /* CEE3 */
+        if (last_slot < 100) {
+            char museum_id[40];
+            snprintf(museum_id, sizeof museum_id, "wl3_treasure_%03u",
+                     (unsigned)last_slot + 1u);
+            (void)museum_discover_entry(cur_game, museum_id);
+        } else if (events_log) {
+            fprintf(stderr, "[museum] ignored invalid WL3 treasure slot %02X\n", last_slot);
+        }
+    }
     uint32_t events = wario_land3_tracker_update(&wario3_event_tracker, &snapshot);
     for (int ev = 0; ev < WARIO_LAND3_EVENT_COUNT; ++ev)
         if (events & WARIO_LAND3_EVENT_MASK(ev)) fire(ev);
@@ -280,7 +296,7 @@ static void wario_event_frame(void)
         return;
     }
 
-    museum_sync_flags(cur_game, "wario1_treasure", (uint64_t)(unsigned)snapshot.treasure_mask, 16);
+    museum_sync_flags(cur_game, "wario1_treasure", (uint64_t)(unsigned)snapshot.treasure_mask, 15);
     uint32_t events = wario_event_tracker_update(&wario_event_tracker, &snapshot);
     for (int ev = 0; ev < WARIO_EVENT_COUNT; ++ev)
         if (events & WARIO_EVENT_MASK(ev)) fire(ev);
