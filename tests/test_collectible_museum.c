@@ -52,6 +52,11 @@ int main(void)
                                          sprite_path, sizeof sprite_path));
     }
 
+    {
+        const MuseumEntry *e = museum_catalog_entry(GAME_DRMARIO, 2);
+        assert(e && !strcmp(e->name, "Pills cleared"));
+    }
+
     assert(museum_discover_entry(GAME_SML, "coin") == 1);
     assert(museum_discover_entry(GAME_SML, "coin") == 0);
     museum_observe_event(GAME_SML, "power");
