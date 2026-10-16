@@ -64,10 +64,10 @@ int main(void)
     assert(museum_is_discovered(GAME_WARIO_SML3, "wario1_treasure_01"));
     assert(museum_is_discovered(GAME_WARIO_SML3, "wario1_treasure_05"));
 
-    assert(museum_catalog_count(GAME_WARIO_SML3) == 20);
-    assert(museum_catalog_count(GAME_WARIO_LAND2_GB) == 104);
-    assert(museum_catalog_count(GAME_WARIO_LAND2_GBC) == 104);
-    assert(museum_catalog_count(GAME_WARIO_LAND3_GBC) == 109);
+    assert(museum_catalog_count(GAME_WARIO_SML3) == 19);
+    assert(museum_catalog_count(GAME_WARIO_LAND2_GB) == 103);
+    assert(museum_catalog_count(GAME_WARIO_LAND2_GBC) == 103);
+    assert(museum_catalog_count(GAME_WARIO_LAND3_GBC) == 110);
     {
         int found_treasure = 0;
         for (int i = 0; i < museum_catalog_count(GAME_WARIO_LAND3_GBC); ++i) {
