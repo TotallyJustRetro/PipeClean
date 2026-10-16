@@ -32,6 +32,9 @@ int museum_catalog_count(int game);
 const MuseumEntry *museum_catalog_entry(int game, int index);
 int museum_is_discovered(int game, const char *entry_id);
 int museum_discover_entry(int game, const char *entry_id);
+/* Resolves a local per-game sprite PNG only when the file exists. Assets are
+ * never bundled; callers must also require a valid matching ROM before draw. */
+int museum_sprite_asset_path(int game, const char *entry_id, char *out, size_t out_size);
 void museum_observe_event(int game, const char *event_id);
 void museum_sync_flags(int game, const char *id_prefix, uint64_t flags, int count);
 int museum_discovered_count(int game);
