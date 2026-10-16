@@ -22,6 +22,9 @@ enum {
     WARIO_LAND3_EVENT_HEART,
     WARIO_LAND3_EVENT_EXTRA_LIFE,
     WARIO_LAND3_EVENT_LIFE_LOST,
+    WARIO_LAND3_EVENT_COURSE_ENTERED,
+    WARIO_LAND3_EVENT_KEY_OBTAINED,
+    WARIO_LAND3_EVENT_COURSE_RESULTS,
     WARIO_LAND3_EVENT_COUNT
 };
 
@@ -80,6 +83,16 @@ static inline uint32_t wario_land3_tracker_update(WarioLand3Tracker *tracker,
 
     const WarioLand3Snapshot old = tracker->previous;
     uint32_t events = 0;
+
+    /* Wario Land 3 exposes these three transitions explicitly:
+     * scene 2 = course, scene 8 = key acquisition, scene 3 = course results.
+     * Returning from scene 8 to scene 2 is not another course entry. */
+    if (current->scene == 2 && old.scene != 2 && old.scene != 8)
+        events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_COURSE_ENTERED);
+    if (current->scene == 8 && old.scene != 8)
+        events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_KEY_OBTAINED);
+    if (current->scene == 3 && old.scene != 3)
+        events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_COURSE_RESULTS);
 
     /* Scene C: Game Over, which is only possible in the Rudy encounter. */
     if (current->scene == 12 && old.scene != 12)
