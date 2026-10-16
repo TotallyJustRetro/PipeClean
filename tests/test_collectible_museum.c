@@ -122,6 +122,12 @@ int main(void)
     assert(museum_discover_entry(GAME_SML, "coin") == 1);
     assert(museum_discover_entry(GAME_SML, "coin") == 0);
     assert(museum_take_notification(notice, sizeof notice) == 0);
+    /* The shared kill counter unlocks only the generic tally; it must not
+       falsely unlock whichever species happened to be killed. */
+    museum_observe_event(GAME_SML2, "enemy");
+    assert(museum_is_discovered(GAME_SML2, "enemy_tally"));
+    assert(!museum_is_discovered(GAME_SML2, "sml2_goomba"));
+    assert(!museum_is_discovered(GAME_SML2, "sml2_ant"));
     museum_observe_event(GAME_SML, "power");
     assert(museum_is_discovered(GAME_SML, "coin"));
     assert(museum_is_discovered(GAME_SML, "sml_goombo"));
