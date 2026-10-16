@@ -432,7 +432,7 @@ void events_end(void)
 
 void events_state_reset(void)
 {
-    /* HUD/event observations are frontend history, not saved game state. */
+    /* Event observations are frontend history, not saved game state. */
     qr = qw = 0;
     memset(&sml2_museum_tracker, 0, sizeof sml2_museum_tracker);
     tap_frames = 0;
