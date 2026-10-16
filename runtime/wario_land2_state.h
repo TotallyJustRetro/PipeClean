@@ -76,8 +76,9 @@ enum {
     WARIO_LAND2_EVENT_TREASURE = 0,
     WARIO_LAND2_EVENT_PICTURE,
     WARIO_LAND2_EVENT_COIN,
-    WARIO_LAND2_EVENT_STAGE,
+    WARIO_LAND2_EVENT_COURSE_ENTERED,
     WARIO_LAND2_EVENT_COIN_LOSS,
+    WARIO_LAND2_EVENT_COURSE_RESULTS,
     WARIO_LAND2_EVENT_COUNT
 };
 
@@ -122,17 +123,24 @@ static inline uint32_t wario_land2_tracker_update(WarioLand2EventTracker *tracke
         return 0;
     }
 
-    if ((new_treasures & ~old_treasures) != 0)
+    const int new_treasure_reward = (new_treasures & ~old_treasures) != 0;
+    const int new_picture_reward = (new_pictures & ~old_pictures) != 0;
+    if (new_treasure_reward)
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_TREASURE);
-    if ((new_pictures & ~old_pictures) != 0)
+    if (new_picture_reward)
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_PICTURE);
+    /* WL2 exposes these two reward flags reliably, but not a separate
+       course-results scene byte in our current runtime map. Treat the
+       end-of-course reward reveal as the observable results event. */
+    if (new_treasure_reward || new_picture_reward)
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_RESULTS);
 
     if (current->bank_coins > old.bank_coins ||
         current->overworld_coins > old.overworld_coins)
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN);
 
     if (current->stage != old.stage)
-        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_STAGE);
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_ENTERED);
     else if (current->bank_coins < old.bank_coins ||
              current->overworld_coins < old.overworld_coins)
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN_LOSS);
