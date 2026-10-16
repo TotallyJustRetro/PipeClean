@@ -352,8 +352,7 @@ static const SmlMuseumDef sml_museum_defs[] = {
     {"sml_pipe_fist", "Pipe Fist", "Fists punch out of pipes in pairs, alternating their strikes. Time a run or jump between punches; touching a fist is dangerous.", MUSEUM_CATEGORY_ENEMY},
     {"sml_king_totomesu", "King Totomesu", "The Birabuto Kingdom boss is a giant fire-breathing Gao. Defeat it with five Superballs or reach the switch behind it.", MUSEUM_CATEGORY_ENEMY},
     {"sml_pompon_flower", "Pompon Flower", "A walking flower that releases toxic pollen. Avoid the drifting pollen; a stomp or two Superballs can defeat it.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_fly", "Fly", "A hopping insect enemy that bounces along the ground. Stomp it or hit it twice with Superballs.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_kumo", "Kumo", "A hairy spider found in Easton Kingdom. It hops toward Mario like a Fly; some Kumos drop down from above when they appear. Stomp one or hit it twice with Superballs.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_fly", "Fly / Kumo", "A hopping enemy that appears as a Fly in early areas and as Kumo, a hairy spider, in Easton Kingdom. They bounce toward Mario and can be defeated by a stomp or two Superballs.", MUSEUM_CATEGORY_ENEMY},
     {"sml_honen", "Honen", "An undead fish that leaps vertically out of the water. Unlike many enemies, Honen can be defeated with any attack.", MUSEUM_CATEGORY_ENEMY},
     {"sml_mekabon", "Mekabon", "A squat robot that throws its head at Mario. Stomping the head breaks it temporarily, but it can regrow; attack the headless body to finish the robot.", MUSEUM_CATEGORY_ENEMY},
     {"sml_dragonzamasu", "Dragonzamasu", "The Muda Kingdom boss is a giant fire-breathing Yurarin Boo. It swims up and down and shoots fireballs; defeat it with twenty Marine Pop torpedoes or by hitting the switch behind it.", MUSEUM_CATEGORY_ENEMY},
@@ -361,7 +360,7 @@ static const SmlMuseumDef sml_museum_defs[] = {
     {"sml_yurarin", "Yurarin", "A seahorse enemy that swims horizontally or diagonally through underwater stages. The Marine Pop defeats it with two torpedoes.", MUSEUM_CATEGORY_ENEMY},
     {"sml_yurarin_boo", "Yurarin Boo", "A fire-breathing seahorse that moves vertically and shoots fireballs toward Mario. Defeat it with a stomp or two Marine Pop torpedoes.", MUSEUM_CATEGORY_ENEMY},
     {"sml_suu", "Suu", "A striped spider that descends from the ceiling on a thread. Watch overhead spaces; a stomp or two Superballs can defeat it.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_gunion", "Gunion", "An octopus enemy in the underwater stages. Three Marine Pop torpedo hits defeat it, but it then splits into two fireballs that target Mario.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_gunion", "Gunion", "An octopus enemy in the underwater stages. Two Marine Pop torpedoes split it into two fireballs that home in on Mario, so be careful before taking the shot.", MUSEUM_CATEGORY_ENEMY},
     {"sml_torion", "Torion", "A fish that appears in schools of three and swims through Muda Kingdom's underwater stages. One Marine Pop torpedo defeats it.", MUSEUM_CATEGORY_ENEMY},
     {"sml_tokotoko", "Tokotoko", "A stone-head enemy that shuffles quickly across the ground. Avoid its charge with a jump or defeat it with a stomp or Superball.", MUSEUM_CATEGORY_ENEMY},
     {"sml_hiyoihoi", "Hiyoihoi", "The Easton Kingdom boss hurls Ganchan boulders at Mario. Defeat it with ten Superballs or use a boulder to reach the switch behind it.", MUSEUM_CATEGORY_ENEMY},
@@ -552,7 +551,7 @@ const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *categor
     switch (type) {
     case 0x00: case 0x01: id = "sml_goombo"; break;
     case 0x02: id = "sml_piranha"; break;
-    case 0x33: case 0x47: id = "sml_ganchan"; break; /* Normal and single boulders. */
+    case 0x47: id = "sml_ganchan"; break; /* Actual single boulder; 0x33 is its setup/transition slot. */
     case 0x04: id = "sml_bombshell_koopa"; break;
     case 0x05: id = "sml_nokobon_bomb"; break;
     case 0x06: id = "sml_pipe_fist"; break;
@@ -563,7 +562,7 @@ const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *categor
     case 0x16: case 0x17: case 0x18: id = "sml_mekabon"; break;
     case 0x1A: id = "sml_dragonzamasu"; break;
     case 0x1D: id = "sml_yurarin"; break;
-    case 0x20: id = "sml_kumo"; break; /* Floating Kumo variant in the object table. */
+    case 0x20: id = "sml_gunion"; break;
     case 0x24: id = "sml_yurarin_boo"; break;
     case 0x25: id = "sml_suu"; break;
     case 0x29: cat = MUSEUM_CATEGORY_ITEM; id = "sml_mushroom"; break;
