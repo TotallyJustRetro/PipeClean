@@ -56,12 +56,9 @@ static inline int sml2_museum_is_secret_level(int level)
 
 static inline uint32_t sml2_museum_final_area_discoveries(int level)
 {
-    /* The final castle opens only after the six Golden Coins are collected.
-     * Wario's catalogue record is marked when this finale is reached; individual
-     * zone-guardian records must still wait for their own encounter detectors. */
-    return level == 0x1F
-        ? (SML2_MUSEUM_GOLDEN_COINS | SML2_MUSEUM_WARIO)
-        : 0;
+    /* Reaching the castle proves the six-coin route is open, not that Mario has
+     * met Wario. The boss record must wait for the live species detector. */
+    return level == 0x1F ? SML2_MUSEUM_GOLDEN_COINS : 0;
 }
 
 static inline uint32_t sml2_museum_tracker_update(Sml2MuseumTracker *tracker,
