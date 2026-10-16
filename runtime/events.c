@@ -1,5 +1,13 @@
 #include <SDL.h>
+#include <SDL_image.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
+#if defined(_WIN32)
+#include <direct.h>
+#endif
 #include "events.h"
 #include "museum.h"
 #include "wario_event_state.h"
@@ -307,6 +315,14 @@ static void wario_event_frame(void)
         if (events & WARIO_EVENT_MASK(ev)) fire(ev);
 }
 
+typedef struct {
+    int active;
+    uint8_t type, x, y;
+    MuseumCategory category;
+    char id[40];
+} SmlMuseumObject;
+static SmlMuseumObject sml_museum_previous[10];
+
 void events_begin(void)
 {
     cur_game = rom_loaded_game();
@@ -314,6 +330,7 @@ void events_begin(void)
     wario_event_tracker.have_previous = 0;
     wario2_event_tracker.have_previous = 0;
     wario3_event_tracker.have_previous = 0;
+    memset(sml_museum_previous, 0, sizeof sml_museum_previous);
     apu_set_tap_mask(0);
     apu_set_trigger_hook(on_trigger);
     rules = NULL; n_rules = 0;
@@ -346,9 +363,144 @@ void events_state_reset(void)
     apu_set_tap_mask(0);
 }
 
+static int museum_make_dir(const char *path)
+{
+#if defined(_WIN32)
+    if (_mkdir(path) == 0 || errno == EEXIST) return 1;
+#else
+    if (mkdir(path, 0700) == 0 || errno == EEXIST) return 1;
+#endif
+    return 0;
+}
+
+static int museum_sml_asset_output(const char *entry_id, char *out, size_t cap)
+{
+    char root[1200], game_dir[1200];
+    const char *base = settings_dir();
+    if (!base || !base[0] || !entry_id || !entry_id[0]) return 0;
+    size_t len = strlen(base);
+    const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
+    int n = snprintf(root, sizeof root, "%s%spipeclean-museum-assets", base, sep);
+    if (n < 0 || (size_t)n >= sizeof root || !museum_make_dir(root)) return 0;
+    n = snprintf(game_dir, sizeof game_dir, "%s/%s", root, games[GAME_SML].id);
+    if (n < 0 || (size_t)n >= sizeof game_dir || !museum_make_dir(game_dir)) return 0;
+    n = snprintf(out, cap, "%s/%s.png", game_dir, entry_id);
+    return n >= 0 && (size_t)n < cap;
+}
+
+/* Save the sprite pixels PipeClean just rendered. No image data is bundled;
+ * the PNG is generated locally from the active cartridge's visible graphics. */
+static int museum_sml_capture_sprite(const char *entry_id, uint8_t object_x, uint8_t object_y)
+{
+    if (!entry_id || rom_loaded_game() != GAME_SML) return 0;
+    char existing[1200], path[1200];
+    if (museum_sprite_asset_path(GAME_SML, entry_id, existing, sizeof existing)) return 1;
+    if (!museum_sml_asset_output(entry_id, path, sizeof path)) return 0;
+
+    const int object_left = (int)object_x - 8;
+    const int object_top = (int)object_y - 16;
+    int min_x = GB_W, min_y = GB_H, max_x = -1, max_y = -1;
+    /* SML reserves OAM entries 20-39 for the 10 live object slots. Merge the
+       nearby 8x8 pieces into one metasprite crop. */
+    for (int i = 20; i < 40; ++i) {
+        uint8_t oy = oam[i * 4], ox = oam[i * 4 + 1];
+        if (!oy || !ox || oy == 0xFF || ox == 0xFF) continue;
+        int sy = (int)oy - 16, sx = (int)ox - 8;
+        if (abs(sx - object_left) > 24 || abs(sy - object_top) > 24) continue;
+        if (sx < min_x) min_x = sx;
+        if (sy < min_y) min_y = sy;
+        if (sx + 7 > max_x) max_x = sx + 7;
+        if (sy + 7 > max_y) max_y = sy + 7;
+    }
+    if (max_x < min_x || max_y < min_y) return 0;
+    if (min_x > object_left - 1) min_x = object_left - 1;
+    if (min_y > object_top - 1) min_y = object_top - 1;
+    if (max_x < object_left + 8) max_x = object_left + 8;
+    if (max_y < object_top + 8) max_y = object_top + 8;
+    if (min_x < 0) min_x = 0;
+    if (min_y < 0) min_y = 0;
+    if (max_x >= GB_W) max_x = GB_W - 1;
+    if (max_y >= GB_H) max_y = GB_H - 1;
+    if (max_x - min_x + 1 > 64) { min_x = object_left - 20; max_x = min_x + 63; }
+    if (max_y - min_y + 1 > 64) { min_y = object_top - 20; max_y = min_y + 63; }
+    if (min_x < 0) { max_x -= min_x; min_x = 0; }
+    if (min_y < 0) { max_y -= min_y; min_y = 0; }
+    if (max_x >= GB_W) max_x = GB_W - 1;
+    if (max_y >= GB_H) max_y = GB_H - 1;
+    const int width = max_x - min_x + 1, height = max_y - min_y + 1;
+    if (width < 8 || height < 8 || width > 64 || height > 64) return 0;
+
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
+    if (!surface) return 0;
+    int palette_idx = settings.g[GAME_SML].palette;
+    if (palette_idx < 0 || palette_idx >= n_palettes) palette_idx = 0;
+    const Palette *palette = &palettes[palette_idx];
+    int opaque = 0;
+    for (int y = 0; y < height; ++y) {
+        Uint32 *row = (Uint32 *)((Uint8 *)surface->pixels + y * surface->pitch);
+        for (int x = 0; x < width; ++x) {
+            int sx = min_x + x + ppu_xoff, sy = min_y + y;
+            if (sx < 0 || sx >= ppu_w || sx >= GB_WMAX ||
+                !ppu_layer[sy][sx] || ppu_sprtile[sy][sx] == 0xFFFF) {
+                row[x] = SDL_MapRGBA(surface->format, 0, 0, 0, 0);
+                continue;
+            }
+            uint8_t layer = ppu_layer[sy][sx];
+            uint32_t rgb = ppu_cgb_mode_enabled() ? ppu_rgb[sy][sx] :
+                (layer == 2 ? palette->ob1[ppu_shade[sy][sx] & 3u] :
+                              palette->ob0[ppu_shade[sy][sx] & 3u]);
+            row[x] = SDL_MapRGBA(surface->format, (Uint8)(rgb >> 16),
+                                 (Uint8)(rgb >> 8), (Uint8)rgb, 255);
+            opaque++;
+        }
+    }
+    int ok = opaque >= 6 && IMG_SavePNG(surface, path) == 0;
+    SDL_FreeSurface(surface);
+    return ok;
+}
+
+static void museum_sml_live_frame(void)
+{
+    if (cur_game != GAME_SML || rom_loaded_game() != GAME_SML) {
+        memset(sml_museum_previous, 0, sizeof sml_museum_previous);
+        return;
+    }
+    SmlMuseumObject current[10];
+    memset(current, 0, sizeof current);
+    const int player_x = rd8(0xC202), player_y = rd8(0xC201);
+    for (int slot = 0; slot < 10; ++slot) {
+        const size_t base = 0x1100u + (size_t)slot * 0x10u; /* D100-D190 */
+        const uint8_t raw_type = gb_wram_peek(base);
+        if (raw_type == 0xFF) continue;
+        MuseumCategory category;
+        const char *id = museum_sml_object_entry_id(raw_type, &category);
+        if (!id) continue;
+        const uint8_t y = gb_wram_peek(base + 2u), x = gb_wram_peek(base + 3u);
+        if (x >= 0xE0 || y >= 0xC0 || x == 0 || y == 0) continue;
+
+        SmlMuseumObject *obj = &current[slot];
+        obj->active = 1; obj->type = raw_type; obj->x = x; obj->y = y; obj->category = category;
+        snprintf(obj->id, sizeof obj->id, "%s", id);
+        if (category == MUSEUM_CATEGORY_ENEMY)
+            (void)museum_discover_entry(GAME_SML, id);
+        /* Cache art while visible. Items remain locked until picked up. */
+        (void)museum_sml_capture_sprite(id, x, y);
+    }
+    for (int slot = 0; slot < 10; ++slot) {
+        const SmlMuseumObject *old = &sml_museum_previous[slot];
+        const SmlMuseumObject *now = &current[slot];
+        if (!old->active || old->category != MUSEUM_CATEGORY_ITEM) continue;
+        if (now->active && !strcmp(old->id, now->id)) continue;
+        if (abs(player_x - (int)old->x) <= 24 && abs(player_y - (int)old->y) <= 28)
+            (void)museum_discover_entry(GAME_SML, old->id);
+    }
+    memcpy(sml_museum_previous, current, sizeof current);
+}
+
 void events_frame(void)
 {
     static int16_t tb[2048 * 2];
+    if (cur_game == GAME_SML) museum_sml_live_frame();
     if (cur_game == GAME_SML2) hud_frame();
     else if (cur_game == GAME_WARIO_SML3) wario_event_frame();
     else if (cur_game == GAME_WARIO_LAND3_GBC) wario3_event_frame();

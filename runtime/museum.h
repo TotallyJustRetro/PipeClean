@@ -30,6 +30,7 @@ typedef struct {
 void museum_init(void);
 void museum_set_storage_path(const char *path); /* Also used by isolated tests. */
 int museum_catalog_count(int game);
+const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *category);
 const MuseumEntry *museum_catalog_entry(int game, int index);
 int museum_is_discovered(int game, const char *entry_id);
 int museum_discover_entry(int game, const char *entry_id);

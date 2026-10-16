@@ -1,38 +1,26 @@
 # PipeClean Collectible Museum
 
-The Museum is a shared, per-game collection in the launcher. It is designed to give every game the same browser, categories, discovery count, and local persistence while leaving the entries and detection rules game-specific.
+The Museum is a shared collection browser with the same layout and discovery rules across games. Each entry has a readable in-app field note, a game-specific identity, and a collection state. Wiki and disassembly research is used to write the descriptions and identify game object IDs; players see the description itself, not a link-only entry.
 
-## Player-facing behavior
+## Discovery and artwork
 
-- Discoveries are saved immediately to `pipeclean-museum.txt` in PipeClean's settings directory.
-- Progress is namespaced by the exact game ID, so Game Boy and Game Boy Color versions don't mix their museum progress.
-- Categories include enemies, items, treasures, stages, milestones, and characters. The current catalog only claims a discovery when an existing event signal or a validated cartridge flag can support it.
-- Each entry links to a game reference page. Descriptions should be concise summaries, with the reference link shown beside them.
-- When a valid ROM is configured for the selected game and the entry has already been discovered, PipeClean may display a matching local sprite image. Without a valid ROM, the sprite is hidden and a neutral original category icon is shown.
+- Discoveries are saved to `pipeclean-museum.txt` in PipeClean's settings directory, separately by game ID.
+- A supported object's identity comes from the active game's state. Super Mario Land uses its live object table, so a Chibibo/Goombo record is distinct from a Bombshell Koopa, Ganchan, Piranha Plant, and the other mapped species.
+- When a mapped Super Mario Land object is visible, PipeClean crops its real sprite pixels from the frame the emulator has just rendered and writes the PNG to the user's local cache. Enemies enter the collection when recognized. Item sprites can be cached while visible; item entries unlock when the object disappears close to Mario, which is an inferred pickup signal and should be validated in gameplay.
+- Captured assets are private local files at `<settings directory>/pipeclean-museum-assets/<game-id>/<entry-id>.png`. No copyrighted sprites or ROMs are included in PipeClean's repository or releases.
+- The UI only displays a captured sprite when the matching game ROM is configured and the entry has been discovered. Uncollected entries retain their mystery-slot art, while their researched description remains readable in the detail pane.
+- A sprite is not fabricated when the capture fails. The entry displays the Museum's neutral placeholder until PipeClean has usable pixels.
 
-## Local sprite assets
+## Current coverage
 
-Copyrighted sprite art is not distributed with PipeClean. If a user supplies or extracts artwork for a game they have configured, the Museum looks for a PNG at:
+- **Super Mario Land:** mapped object IDs for the enemies, hazards, boss objects, mushroom, heart, star and Superball Flower; sprite capture is performed from the active rendered frame. Coins still use the game event/counter signal and need a separate reliable coin-art capture path.
+- **Super Mario Land 2 and Dr. Mario:** current event-based catalogue entries and in-app descriptions. Dedicated per-species live-sprite extraction is not yet implemented.
+- **Wario Land: Super Mario Land 3:** 15 treasure records (A–O), with course/value notes and live collection flags.
+- **Wario Land II (GB/GBC):** 50 treasure flags and 50 picture-panel flags per version. Treasure notes describe the matching-key/chest collection; picture panels come from the number-matching mini-game.
+- **Wario Land 3:** 100 named treasure records with level/chest locations and purpose notes where documented, plus key-colour entries. Exact WL3 sprite capture from its game objects remains future work.
 
-```text
-<settings directory>/pipeclean-museum-assets/<game-id>/<entry-id>.png
-```
+## ROM gate and cache format
 
-Use the exact IDs from `museum_catalog_entry()`, such as `wl3_treasure_001`. The game ID is the `games[].id` value in `runtime/rom.c`. The renderer requires both a valid configured ROM for that game and a discovered entry before it draws the local artwork. The asset file remains on the user's device and is not checked into the repository.
+The Museum never downloads or ships game sprites. To render a discovered specimen's image, it requires both (1) a valid configured ROM for that entry's game and (2) a matching local PNG generated from visible game graphics. Captures are made only during the active matching ROM's emulation. This avoids leaking extracted assets into builds while letting a player's own ROM power their personal Museum.
 
-This is currently a local-art lookup convention, not an automatic sprite extractor or downloader. Extracting the correct enemy/item sprite from the ROM, and mapping it reliably to the proper catalog entry, needs game-specific work and gameplay validation.
-
-## Current tracking coverage
-
-- **Dr. Mario:** generic capsule, virus, and clearing events.
-- **Super Mario Land:** generic coin, power-up, block, stomp/enemy, and life events.
-- **Super Mario Land 2:** coins, defeated-enemy counter, life and extra-life transitions.
-- **Wario Land: Super Mario Land 3:** coin/power events plus individual treasure bits.
-- **Wario Land II GB / GBC:** 50 treasure bits and 50 picture-panel bits per game version, plus coin/stage/results events.
-- **Wario Land 3:** course/key/results event signals, coin/power/treasure changes, four key-colour entries, and a 100-item treasure catalog.
-
-Enemy detections in the Mario games currently unlock a general enemy/virus entry, not every enemy species. Most Wario enemy species and several per-item Mario variants need dedicated per-game object detectors before they can safely unlock individual entries. Wario Land 3's raw last-collected treasure slot also needs confirmation with real-ROM gameplay before the numbered mapping can be considered fully verified.
-
-## References
-
-The catalog includes links to the corresponding MarioWiki pages. The Wario Land 3 treasure names and chest/level notes use a public treasure reference list and should be checked against gameplay before being treated as authoritative data.
+Descriptions summarize game behavior in original wording, using the corresponding MarioWiki / Wario Land reference pages and the Super Mario Land disassembly as sources for object IDs.

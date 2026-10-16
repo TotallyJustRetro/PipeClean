@@ -57,10 +57,27 @@ int main(void)
         assert(e && !strcmp(e->name, "Pills cleared"));
     }
 
+    assert(museum_catalog_count(GAME_SML) == 41);
+    {
+        MuseumCategory category = MUSEUM_CATEGORY_ALL;
+        const MuseumEntry *goombo = museum_catalog_entry(GAME_SML, 0);
+        assert(goombo && !strcmp(goombo->id, "sml_goombo"));
+        assert(strstr(goombo->description, "ledges"));
+        assert(!strcmp(museum_sml_object_entry_id(0x00, &category), "sml_goombo"));
+        assert(category == MUSEUM_CATEGORY_ENEMY);
+        assert(!strcmp(museum_sml_object_entry_id(0x80, &category), "sml_goombo"));
+        assert(!strcmp(museum_sml_object_entry_id(0x04, &category), "sml_bombshell_koopa"));
+        assert(!strcmp(museum_sml_object_entry_id(0x29, &category), "sml_mushroom"));
+        assert(category == MUSEUM_CATEGORY_ITEM);
+        assert(museum_sml_object_entry_id(0x7E, &category) == NULL);
+    }
+
+    assert(museum_discover_entry(GAME_SML, "sml_goombo") == 1);
     assert(museum_discover_entry(GAME_SML, "coin") == 1);
     assert(museum_discover_entry(GAME_SML, "coin") == 0);
     museum_observe_event(GAME_SML, "power");
     assert(museum_is_discovered(GAME_SML, "coin"));
+    assert(museum_is_discovered(GAME_SML, "sml_goombo"));
     assert(museum_is_discovered(GAME_SML, "power_up"));
     assert(!museum_is_discovered(GAME_SML2, "coin"));
 

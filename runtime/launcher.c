@@ -4542,33 +4542,23 @@ static void tab_museum(float x, float y)
     museum_draw_entry_art(museum_game, selected, x + 13, body_y + 39, 108, 108,
                           selected_found);
     const float info_x = x + 132;
-    if (selected_found) {
+    if (selected) {
         ui_text_fit(F_BOLD, 18, info_x, body_y + 42, left_w - 153,
                     HEX(0x25170E), selected->name);
-        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "SPECIMEN RECORDED");
-        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 1 / 1");
+        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E),
+                selected_found ? "SPECIMEN RECORDED" : "NOT DISCOVERED");
+        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C),
+                selected_found ? "Found: 1 / 1" : "Found: 0 / 1");
         ui_text(F_REG, 10, info_x, body_y + 101, HEX(0x65452F),
-                rs[museum_game].ok ? "Cartridge: ready" : "Add this game's ROM for artwork");
-    } else {
-        ui_text_fit(F_BOLD, 18, info_x, body_y + 43, left_w - 153,
-                    HEX(0x25170E), "UNDISCOVERED");
-        ui_text(F_BOLD, 11, info_x, body_y + 68, HEX(0x75401E), "CLASSIFIED ENTRY");
-        ui_text(F_REG, 11, info_x, body_y + 87, HEX(0x3B291C), "Found: 0 / 1");
-        ui_text_wrap(F_REG, 10, info_x, body_y + 104, left_w - 153, HEX(0x65452F),
-                     "Play this game to add the specimen to your collection.", 1.0f);
+                rs[museum_game].ok ? "Cartridge: ready" : "Add this game's ROM for sprite capture");
     }
 
     ui_line(x + 13, body_y + 156, x + left_w - 13, body_y + 156, 2, HEX(0xB87C3A));
     ui_text(F_BOLD, 12, x + 15, body_y + 164, HEX(0x5F2E16),
-            selected_found ? "FIELD NOTES" : "RESEARCH NOTES");
-    if (selected && selected_found) {
+            "FIELD NOTES");
+    if (selected) {
         ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
                      HEX(0x33251A), selected->description, 1.15f);
-    } else {
-        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
-                     HEX(0x65452F),
-                     "This record stays hidden until the game confirms the discovery. Wiki research is shown here as readable notes, never as a link-only entry.",
-                     1.15f);
     }
 
     ui_line(x + 13, body_y + 268, x + left_w - 13, body_y + 268, 1, HEX(0xC79A62));
