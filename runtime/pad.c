@@ -121,6 +121,15 @@ void pad_init(void)
     sync_initialized = 0;
     rescan();
     pad_sync_assignments();
+    /* If a DualSense is already connected when PipeClean starts, open its
+       audio endpoint now so event speaker effects work without first visiting
+       the DualSense settings page. */
+    for (int i = 0; i < n_pads; i++) {
+        if (pad_is_dualsense(i)) {
+            (void)audio_pad_open();
+            break;
+        }
+    }
 }
 
 void pad_shutdown(void)
@@ -138,8 +147,14 @@ void pad_event(const SDL_Event *e)
         remember_assigned_instances();
         rescan();
         pad_sync_assignments();
-        if (e->type == SDL_CONTROLLERDEVICEADDED && pad_is_dualsense(0) + pad_is_dualsense(1) > 0)
-            audio_pad_open();
+        if (e->type == SDL_CONTROLLERDEVICEADDED) {
+            for (int i = 0; i < n_pads; i++) {
+                if (pad_is_dualsense(i)) {
+                    (void)audio_pad_open();
+                    break;
+                }
+            }
+        }
     }
 }
 
