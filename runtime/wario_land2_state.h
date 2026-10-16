@@ -19,6 +19,7 @@ typedef struct {
     int overworld_coins;
     uint64_t treasures;
     uint64_t picture_panels;
+    int render_mode; /* D6D8: 4/10 dispatch the game's end-of-course code */
 } WarioLand2Snapshot;
 
 static inline int wario_land2_supported_game(int game)
@@ -69,6 +70,10 @@ static inline WarioLand2Snapshot wario_land2_read_snapshot(int game, WarioLand2P
     s.overworld_coins = wario_land2_read_bcd(game, peek, 0x0E, 2);
     s.treasures = wario_land2_read_flags(game, peek, 0x04);
     s.picture_panels = wario_land2_read_flags(game, peek, 0x13);
+    /* The top-level dispatcher uses D6D8=4 and D6D8=10 to call ROM
+       routines at 0x4C000/0x4C008, the game's end-of-course UI handler. */
+    s.render_mode = peek && wario_land2_supported_game(game)
+        ? (int)peek(0x16D8u) : -1;
     return s;
 }
 
@@ -87,6 +92,7 @@ enum {
 typedef struct {
     WarioLand2Snapshot previous;
     int have_previous;
+    int course_results_latched;
 } WarioLand2EventTracker;
 
 /* Return a bitmask so one snapshot can deliver several real events. Coin
@@ -98,14 +104,20 @@ static inline uint32_t wario_land2_tracker_update(WarioLand2EventTracker *tracke
                                                   const WarioLand2Snapshot *current)
 {
     if (!tracker || !current || current->stage < 0 ||
-        current->bank_coins < 0 || current->overworld_coins < 0) {
-        if (tracker) tracker->have_previous = 0;
+        current->bank_coins < 0 || current->overworld_coins < 0 ||
+        current->render_mode < 0 || current->render_mode > 0x13) {
+        if (tracker) {
+            tracker->have_previous = 0;
+            tracker->course_results_latched = 0;
+        }
         return 0;
     }
 
     if (!tracker->have_previous) {
         tracker->previous = *current;
         tracker->have_previous = 1;
+        tracker->course_results_latched =
+            current->render_mode == 4 || current->render_mode == 10;
         return 0;
     }
 
@@ -129,21 +141,27 @@ static inline uint32_t wario_land2_tracker_update(WarioLand2EventTracker *tracke
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_TREASURE);
     if (new_picture_reward)
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_PICTURE);
-    /* WL2 exposes these two reward flags reliably, but not a separate
-       course-results scene byte in our current runtime map. Treat the
-       end-of-course reward reveal as the observable results event. */
-    if (new_treasure_reward || new_picture_reward)
-        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_RESULTS);
 
     if (current->bank_coins > old.bank_coins ||
         current->overworld_coins > old.overworld_coins)
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN);
 
-    if (current->stage != old.stage)
+    if (current->stage != old.stage) {
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_ENTERED);
-    else if (current->bank_coins < old.bank_coins ||
-             current->overworld_coins < old.overworld_coins)
+        tracker->course_results_latched = 0;
+    } else if (current->bank_coins < old.bank_coins ||
+               current->overworld_coins < old.overworld_coins) {
         events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN_LOSS);
+    }
+
+    const int is_results_mode = current->render_mode == 4 || current->render_mode == 10;
+    const int was_results_mode = old.render_mode == 4 || old.render_mode == 10;
+    if (is_results_mode && !was_results_mode && !tracker->course_results_latched) {
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_RESULTS);
+        tracker->course_results_latched = 1;
+    } else if (is_results_mode) {
+        tracker->course_results_latched = 1;
+    }
 
     tracker->previous = *current;
     return events;
