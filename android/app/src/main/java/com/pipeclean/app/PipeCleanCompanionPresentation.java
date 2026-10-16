@@ -2118,41 +2118,46 @@ final class PipeCleanCompanionPresentation extends Presentation {
            darkened just like the greyed-out icons in the pause menu. */
         private void drawWario3Key(Canvas c, float cx, float cy, float size,
                                    int key, boolean found) {
-            float ringX = cx - size * 0.22f;
-            float ringY = cy;
+            /* Tall, narrow key shape inspired by the game's key silhouettes,
+               rebuilt from simple geometry instead of using the original sprite. */
+            float ringY = cy - size * 0.23f;
+            float outer = size * 0.22f;
             int color = found ? wario3KeyColor(key) : 0xFF57534D;
             int outline = found ? 0xFF241B15 : 0xFF302D29;
             p.setStyle(Paint.Style.FILL);
             p.setColor(outline);
-            c.drawCircle(ringX, ringY, size * 0.29f, p);
+            c.drawCircle(cx, ringY, outer + size * 0.035f, p);
             p.setColor(color);
-            c.drawCircle(ringX, ringY, size * 0.23f, p);
+            c.drawCircle(cx, ringY, outer, p);
             p.setColor(panel());
-            c.drawCircle(ringX, ringY, size * 0.105f, p);
+            c.drawCircle(cx, ringY, size * 0.085f, p);
 
+            float shaftW = size * 0.13f;
             p.setColor(outline);
-            c.drawRoundRect(cx - size * 0.04f, cy - size * 0.095f,
-                cx + size * 0.40f, cy + size * 0.095f, size * 0.035f, size * 0.035f, p);
+            c.drawRoundRect(cx - shaftW * 0.5f - size * 0.025f, ringY + outer * 0.70f,
+                cx + shaftW * 0.5f + size * 0.025f, cy + size * 0.36f,
+                size * 0.03f, size * 0.03f, p);
             p.setColor(color);
-            c.drawRoundRect(cx - size * 0.06f, cy - size * 0.075f,
-                cx + size * 0.38f, cy + size * 0.055f, size * 0.025f, size * 0.025f, p);
+            c.drawRoundRect(cx - shaftW * 0.5f, ringY + outer * 0.74f,
+                cx + shaftW * 0.5f, cy + size * 0.33f,
+                size * 0.025f, size * 0.025f, p);
+
+            /* Two teeth make the stem unmistakably key-shaped at small sizes. */
             p.setColor(outline);
-            c.drawRect(cx + size * 0.17f, cy + size * 0.025f,
-                cx + size * 0.25f, cy + size * 0.22f, p);
-            c.drawRect(cx + size * 0.30f, cy + size * 0.025f,
-                cx + size * 0.38f, cy + size * 0.17f, p);
+            c.drawRect(cx - size * 0.02f, cy + size * 0.12f,
+                cx + size * 0.22f, cy + size * 0.20f, p);
+            c.drawRect(cx - size * 0.02f, cy + size * 0.24f,
+                cx + size * 0.16f, cy + size * 0.32f, p);
             p.setColor(color);
-            c.drawRect(cx + size * 0.19f, cy + size * 0.02f,
-                cx + size * 0.23f, cy + size * 0.17f, p);
-            c.drawRect(cx + size * 0.32f, cy + size * 0.02f,
-                cx + size * 0.36f, cy + size * 0.13f, p);
+            c.drawRect(cx - size * 0.005f, cy + size * 0.135f,
+                cx + size * 0.19f, cy + size * 0.17f, p);
+            c.drawRect(cx - size * 0.005f, cy + size * 0.255f,
+                cx + size * 0.13f, cy + size * 0.29f, p);
             if (found) {
                 p.setColor(0xD8FFFFFF);
-                c.drawRoundRect(ringX - size * 0.105f, ringY - size * 0.15f,
-                    ringX - size * 0.035f, ringY - size * 0.08f,
+                c.drawRoundRect(cx - size * 0.105f, ringY - size * 0.13f,
+                    cx - size * 0.035f, ringY - size * 0.06f,
                     size * 0.025f, size * 0.025f, p);
-                c.drawRoundRect(cx + size * 0.01f, cy - size * 0.055f,
-                    cx + size * 0.12f, cy - size * 0.018f, size * 0.02f, size * 0.02f, p);
             }
         }
 
