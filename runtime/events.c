@@ -59,7 +59,7 @@ static const EventDef wario2_defs[] = {
  * rare Game Over scene. */
 static const EventDef wario3_defs[] = {
     {"power",    "Power-up",                "Gain a permanent Wario ability",                         0, 0, 1, 0xB58AFF, 300, 75},
-    {"damage",   "Damage",                 "Wario enters a temporary status effect",                 0, 0, 3, 0xFF3D4F, 340, 85},
+    {"damage",   "Damage",                 "Wario enters a temporary status effect",                 0, 0, 2, 0xFF3D4F, 340, 85},
     {"treasure", "Treasure found",         "A course treasure is added to the collection",            0, 0, 4, 0xFFD34A, 500, 100},
     {"coin",     "Coin collected",         "The coin total increases during a course",                0, 0, 0, 0xFFD23C, 90, 40},
     {"heart",    "Heart restored",       "Wario returns to normal after a status effect (WL3 has no heart meter)", 0, 0, 5, 0x6CFF8C, 160, 55},
