@@ -24,3 +24,7 @@ The Museum is a shared collection browser with the same layout and discovery rul
 The Museum never downloads or ships game sprites. To render a discovered specimen's image, it requires both (1) a valid configured ROM for that entry's game and (2) a matching local PNG generated from visible game graphics. Captures are made only during the active matching ROM's emulation. This avoids leaking extracted assets into builds while letting a player's own ROM power their personal Museum.
 
 Descriptions summarize game behavior in original wording, using the corresponding MarioWiki / Wario Land reference pages and the Super Mario Land disassembly as sources for object IDs.
+
+
+### Wario Land 3 description source
+The catalogue uses the game's 100 treasure records with a short in-app explanation of each ability, world-map change, or collection-only item. Descriptions were written from the [MarioWiki treasure list](https://www.mariowiki.com/Wario_Land_III#Treasures) and cross-checked against the [Wario Land 3 treasure guide](https://www.warioland3.com/treasures.html).

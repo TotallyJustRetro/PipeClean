@@ -117,8 +117,20 @@ int main(void)
                 assert(strstr(e->description, "N1 Out of the Woods"));
                 found_treasure = 1;
             }
+            if (!strcmp(e->id, "wl3_treasure_018")) {
+                assert(!strcmp(e->name, "Magic Wand"));
+                assert(strstr(e->description, "Blue Book"));
+            }
+            if (!strcmp(e->id, "wl3_treasure_021")) {
+                assert(!strcmp(e->name, "Trident"));
+                assert(strstr(e->description, "required treasure"));
+            }
             if (!strcmp(e->id, "wl3_treasure_100")) {
-                assert(!strcmp(e->name, "Gloom"));
+                assert(!strcmp(e->name, "Earthen Figure"));
+                assert(strstr(e->description, "100-treasure collection"));
+            }
+            if (!strcmp(e->id, "wl3_treasure_100")) {
+                assert(!strcmp(e->name, "Earthen Figure"));
                 found_treasure = 2;
             }
         }

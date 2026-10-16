@@ -59,160 +59,211 @@ static void add_numbered(int game, const char *prefix, const char *label,
 typedef struct { const char *name; const char *level; const char *chest; } Wl3TreasureDef;
 static const Wl3TreasureDef wl3_treasures[100] = {
     {"Axe","N1 Out of the Woods","Gray"},
-    {"Blue Tablet Half","N2 The Peaceful Village","Gray"},
-    {"Green Tablet Half","N3 The Vast Plain","Gray"},
+    {"Blue Tablet","N2 The Peaceful Village","Gray"},
+    {"Green Tablet","N3 The Vast Plain","Gray"},
     {"Top Half of Scroll","W1 Desert Ruins","Gray"},
     {"Bottom Half of Scroll","W1 Desert Ruins","Red"},
-    {"Blue Overalls","W2 The Volcano's Base","Gray"},
+    {"Lead Overalls","W2 The Volcano's Base","Gray"},
     {"Jar","N1 Out of the Woods","Red"},
-    {"Screw","W3 The Pool of Rain","Gray"},
-    {"Cog","W4 A Town in Chaos","Gray"},
-    {"First Music Box","S1 The Grasslands","Gray"},
-    {"Seed","S2 The Big Bridge","Gray"},
-    {"Red Skull","N3 The Vast Plain","Green"},
-    {"Blue Skull","W3 The Pool of Rain","Red"},
-    {"Flippers","S3 Tower of Revival","Gray"},
-    {"Paper Fan","W3 The Pool of Rain","Green"},
+    {"First Gear for Machine","W3 The Pool of Rain","Gray"},
+    {"Second Gear for Machine","W4 A Town in Chaos","Gray"},
+    {"Yellow Music Box","S1 The Grasslands","Gray"},
+    {"Magic Seeds","S2 The Big Bridge","Gray"},
+    {"Skull Ring (red)","N3 The Vast Plain","Green"},
+    {"Skull Ring (blue)","W3 The Pool of Rain","Red"},
+    {"Swimming Flippers","S3 Tower of Revival","Gray"},
+    {"Ornamental Fan","W3 The Pool of Rain","Green"},
     {"Flute","E1 The Stagnant Swamp","Gray"},
-    {"Ice Spellbook","N2 The Peaceful Village","Red"},
-    {"Lightning Wand","S1 The Grasslands","Green"},
-    {"Spike Helmet","E2 The Frigid Sea","Gray"},
-    {"Second Music Box","W4 A Town in Chaos","Red"},
-    {"Lightning Wand","N4 Bank of the Wild River","Gray"},
-    {"Lightning Spellbook","N5 The Tidal Coast","Gray"},
-    {"Red Glove","S4 The Steep Canyon","Gray"},
-    {"Foot Weight","N5 The Tidal Coast","Red"},
-    {"Leaf","W2 The Volcano's Base","Blue"},
-    {"Conch","S4 The Steep Canyon","Red"},
-    {"Pinecone","E1 The Stagnant Swamp","Red"},
-    {"Left Blue Snake Eye","W6 The West Crater","Gray"},
-    {"Right Blue Snake Eye","E4 The Colossal Hole","Gray"},
-    {"Garlic","S3 Tower of Revival","Red"},
-    {"Third Music Box","N6 Sea Turtle Rock","Gray"},
-    {"Water Wand","S5 Cave of Flames","Gray"},
+    {"Blue Book","N2 The Peaceful Village","Red"},
+    {"Magic Wand","S1 The Grasslands","Green"},
+    {"Head Smash Helmet","E2 The Frigid Sea","Gray"},
+    {"Blue Music Box","W4 A Town in Chaos","Red"},
+    {"Trident","N4 Bank of the Wild River","Gray"},
+    {"Yellow Book","N5 The Tidal Coast","Gray"},
+    {"Grab Glove","S4 The Steep Canyon","Gray"},
+    {"Foot of Stone","N5 The Tidal Coast","Red"},
+    {"Tusk (blue)","W2 The Volcano's Base","Blue"},
+    {"Tusk (red)","S4 The Steep Canyon","Red"},
+    {"Green Flower","E1 The Stagnant Swamp","Red"},
+    {"Right Glass Eye","W6 The West Crater","Gray"},
+    {"Left Glass Eye","E4 The Colossal Hole","Gray"},
+    {"Super Smash","S3 Tower of Revival","Red"},
+    {"Green Music Box","N6 Sea Turtle Rock","Gray"},
+    {"Scepter","S5 Cave of Flames","Gray"},
     {"Lantern","S2 The Big Bridge","Blue"},
-    {"Lantern Fire","E2 The Frigid Sea","Green"},
-    {"Red Overalls","E3 Castle of Illusions","Gray"},
-    {"Left Half of Sun Stone","N6 Sea Turtle Rock","Green"},
-    {"Right Half of Sun Stone","W1 Desert Ruins","Blue"},
-    {"Winged Boot","E4 The Colossal Hole","Green"},
-    {"Fourth Music Box","E1 The Stagnant Swamp","Green"},
-    {"Detonator","W5 Beneath the Waves","Gray"},
-    {"Sack","S5 Cave of Flames","Green"},
-    {"Whirlwind","E1 The Stagnant Swamp","Blue"},
-    {"Super Flippers","N1 Out of the Woods","Green"},
-    {"Little Knitter","N4 Bank of the Wild River","Green"},
-    {"Map","S3 Tower of Revival","Green"},
-    {"Brown Glove","E6 The East Crater","Gray"},
-    {"Sand","E3 Castle of Illusions","Green"},
-    {"Fifth Music Box","N1 Out of the Woods","Blue"},
-    {"Blue Crayon","N3 The Vast Plain","Red"},
-    {"Wheels","S1 The Grasslands","Red"},
-    {"Blue Bracelet","W2 The Volcano's Base","Red"},
-    {"Cyan Crayon","S2 The Big Bridge","Red"},
-    {"Chalice","N2 The Peaceful Village","Green"},
+    {"Magical Flame","E2 The Frigid Sea","Green"},
+    {"Super Jump Slam Overalls","E3 Castle of Illusions","Gray"},
+    {"Top Half of Sun Medallion","N6 Sea Turtle Rock","Green"},
+    {"Bottom Half of Sun Medallion","W1 Desert Ruins","Blue"},
+    {"High Jump Boots","E4 The Colossal Hole","Green"},
+    {"Red Music Box","E1 The Stagnant Swamp","Green"},
+    {"Explosive Plunger Box","W5 Beneath the Waves","Gray"},
+    {"Pouch","S5 Cave of Flames","Green"},
+    {"Eye of the Storm","E1 The Stagnant Swamp","Blue"},
+    {"Prince Frog's Glove","N1 Out of the Woods","Green"},
+    {"Statue","N4 Bank of the Wild River","Green"},
+    {"Treasure Map","S3 Tower of Revival","Green"},
+    {"Super Grab Gloves","E6 The East Crater","Gray"},
+    {"Gold Magic","E3 Castle of Illusions","Green"},
+    {"Gold Music Box","N1 Out of the Woods","Blue"},
+    {"Crayon (blue)","N3 The Vast Plain","Red"},
+    {"Truck Wheel","S1 The Grasslands","Red"},
+    {"Blue Gem","W2 The Volcano's Base","Red"},
+    {"Crayon (cyan)","S2 The Big Bridge","Red"},
+    {"Goblet","N2 The Peaceful Village","Green"},
     {"Crown","W2 The Volcano's Base","Green"},
-    {"Pink Crayon","W1 Desert Ruins","Green"},
+    {"Crayon (pink)","W1 Desert Ruins","Green"},
     {"Teapot","E2 The Frigid Sea","Red"},
-    {"Pokémon Pikachu","S2 The Big Bridge","Green"},
+    {"Pocket Pet","S2 The Big Bridge","Green"},
     {"Magnifying Glass","N4 Bank of the Wild River","Red"},
-    {"Pump","E4 The Colossal Hole","Red"},
-    {"Toy Rocket","N4 Bank of the Wild River","Blue"},
-    {"Yellow Crayon","W3 The Pool of Rain","Blue"},
+    {"Air-Pump","E4 The Colossal Hole","Red"},
+    {"Rocket","N4 Bank of the Wild River","Blue"},
+    {"Crayon (yellow)","W3 The Pool of Rain","Blue"},
     {"Saber","W6 The West Crater","Red"},
-    {"Day/Night Tablet","N2 The Peaceful Village","Blue"},
+    {"Day or Night Spell","N2 The Peaceful Village","Blue"},
     {"UFO","E2 The Frigid Sea","Blue"},
     {"Torch","E3 Castle of Illusions","Red"},
-    {"Pocket Mirror","E7 Forest of Fear","Gray"},
-    {"Valve","E5 The Warped Void","Gray"},
-    {"Remote Control","E7 Forest of Fear","Green"},
-    {"Brown Crayon","E5 The Warped Void","Red"},
-    {"Blood","E5 The Warped Void","Green"},
-    {"Red Keycard","E7 Forest of Fear","Red"},
-    {"Blue Keycard","E7 Forest of Fear","Blue"},
-    {"Heart","E5 The Warped Void","Blue"},
-    {"Toy Car","S5 Cave of Flames","Red"},
-    {"Toy Train","E4 The Colossal Hole","Blue"},
+    {"Warp Compact","E7 Forest of Fear","Gray"},
+    {"Mystery Handle","E5 The Warped Void","Gray"},
+    {"Warp Removal Apparatus","E7 Forest of Fear","Green"},
+    {"Crayon (brown)","E5 The Warped Void","Red"},
+    {"Demon's Blood","E5 The Warped Void","Green"},
+    {"Key Card (red)","E7 Forest of Fear","Red"},
+    {"Key Card (blue)","E7 Forest of Fear","Blue"},
+    {"Heart Crest","E5 The Warped Void","Blue"},
+    {"Minicar","S5 Cave of Flames","Red"},
+    {"Locomotive","E4 The Colossal Hole","Blue"},
     {"Telephone","S4 The Steep Canyon","Green"},
-    {"Red Crayon","W5 Beneath the Waves","Red"},
-    {"Mechanical Fan","N5 The Tidal Coast","Green"},
-    {"Fruit","W4 A Town in Chaos","Blue"},
-    {"Green Bracelet","N5 The Tidal Coast","Blue"},
-    {"Doll","S1 The Grasslands","Blue"},
-    {"Right Golden Snake Eye","W4 A Town in Chaos","Green"},
-    {"Left Golden Snake Eye","N6 Sea Turtle Rock","Red"},
-    {"Key","S3 Tower of Revival","Blue"},
-    {"Green Crayon","S6 Above the Clouds","Gray"},
-    {"Fire Extinguisher","S6 Above the Clouds","Red"},
-    {"Diamond","E6 The East Crater","Red"},
-    {"Box","W6 The West Crater","Green"},
-    {"Dust Spray","E3 Castle of Illusions","Blue"},
-    {"Spade","W6 The West Crater","Blue"},
-    {"Red Chemicals","W5 Beneath the Waves","Green"},
-    {"Blue Chemicals","S4 The Steep Canyon","Blue"},
-    {"Red Bracelet","N3 The Vast Plain","Blue"},
-    {"Club","W5 Beneath the Waves","Blue"},
+    {"Crayon (red)","W5 Beneath the Waves","Red"},
+    {"Electric Fan Propeller","N5 The Tidal Coast","Green"},
+    {"Sapling of Growth","W4 A Town in Chaos","Blue"},
+    {"Green Gem","N5 The Tidal Coast","Blue"},
+    {"Fighter Mannequin","S1 The Grasslands","Blue"},
+    {"Golden Left Eye","W4 A Town in Chaos","Green"},
+    {"Golden Right Eye","N6 Sea Turtle Rock","Red"},
+    {"Sky Key","S3 Tower of Revival","Blue"},
+    {"Crayon (green)","S6 Above the Clouds","Gray"},
+    {"Fire Drencher","S6 Above the Clouds","Red"},
+    {"Diamonds Crest","E6 The East Crater","Red"},
+    {"Castle Brick","W6 The West Crater","Green"},
+    {"Rust Spray","E3 Castle of Illusions","Blue"},
+    {"Spades Crest","W6 The West Crater","Blue"},
+    {"Red Chemical","W5 Beneath the Waves","Green"},
+    {"Blue Chemical","S4 The Steep Canyon","Blue"},
+    {"Red Gem","N3 The Vast Plain","Blue"},
+    {"Clubs Crest","W5 Beneath the Waves","Blue"},
     {"Scissors","S5 Cave of Flames","Blue"},
-    {"Drill","S6 Above the Clouds","Green"},
-    {"Infrared Goggles","E6 The East Crater","Green"},
-    {"Gong","N6 Sea Turtle Rock","Blue"},
-    {"Pickaxe","S6 Above the Clouds","Blue"},
-    {"Gloom","E6 The East Crater","Blue"}
+    {"Jackhammer","S6 Above the Clouds","Green"},
+    {"Night Vision Scope","E6 The East Crater","Green"},
+    {"Full Moon Gong","N6 Sea Turtle Rock","Blue"},
+    {"Pick-Axe","S6 Above the Clouds","Blue"},
+    {"Earthen Figure","E6 The East Crater","Blue"}
 };
 
 static const char *wl3_treasure_purpose(const char *name)
 {
     if (!name) return "A collectible from the four-chest treasure set.";
-    if (!strcmp(name,"Axe")) return "Cuts down the large tree and opens routes to The Peaceful Village and The Vast Plain.";
-    if (!strcmp(name,"Jar")) return "Summons a rain cloud that opens routes to The Pool of Rain and A Town in Chaos.";
-    if (!strcmp(name,"Blue Tablet Half") || !strcmp(name,"Green Tablet Half")) return "Pairs with the other tablet half to unlock the gate to Desert Ruins.";
-    if (!strcmp(name,"Top Half of Scroll") || !strcmp(name,"Bottom Half of Scroll")) return "Pairs with the other scroll half to calm the western storm and open The Volcano's Base.";
-    if (!strcmp(name,"Blue Overalls")) return "A power-granting outfit that improves Wario's dash and lets him break cracked blocks.";
-    if (!strcmp(name,"Screw")) return "A machine component whose discovery opens the route to The Grasslands.";
-    if (!strcmp(name,"Cog")) return "A machine component from A Town in Chaos, counted toward the 100 treasures.";
-    if (strstr(name,"Music Box")) return "One of five magical music boxes. Together they break the seal and unlock the final battle.";
-    if (!strcmp(name,"Seed")) return "Causes stalks to grow in other levels, revealing new routes.";
-    if (!strcmp(name,"Red Skull") || !strcmp(name,"Blue Skull")) return "The two skull rings together raise the Tower of Revival.";
-    if (!strcmp(name,"Flippers")) return "Lets Wario swim and dive, opening routes in The Pool of Rain and The Big Bridge.";
-    if (!strcmp(name,"Paper Fan")) return "Blows away mist and opens the route to The Stagnant Swamp.";
-    if (!strcmp(name,"Flute")) return "Summons snakes in The Peaceful Village, The Grasslands and The Volcano's Base.";
-    if (!strcmp(name,"Ice Spellbook") || !strcmp(name,"Lightning Spellbook") || !strcmp(name,"Lightning Wand")) return "A magic relic that combines with its partner to alter the world map and reveal new routes.";
-    if (!strcmp(name,"Spike Helmet")) return "Lets Wario break blocks by jumping into them from below.";
-    if (!strcmp(name,"Foot Weight")) return "Creates an earthquake, opens routes and drains water from The Stagnant Swamp.";
-    if (!strcmp(name,"Lantern")) return "Opens the route to Castle of Illusions.";
-    if (!strcmp(name,"Left Half of Sun Stone") || !strcmp(name,"Right Half of Sun Stone")) return "The two medallion halves end the eternal night on the eastern side and reveal new routes.";
-    if (!strcmp(name,"Detonator")) return "Sets off explosive blocks to clear blocked routes.";
-    if (!strcmp(name,"Map")) return "Reveals the hidden route to The East Crater.";
-    if (strstr(name,"Crayon")) return "One of seven crayons that recolour world-map scenery. Finding all seven unlocks the Golf mini-game.";
-    if (!strcmp(name,"Day/Night Tablet")) return "Lets Wario switch between day and night on the world map.";
-    if (!strcmp(name,"Magnifying Glass")) return "Shows which treasures Wario has already collected without entering a stage.";
-    if (!strcmp(name,"Pocket Mirror")) return "Reveals the route to The Warped Void.";
-    if (!strcmp(name,"Blood")) return "Causes zombies to appear in Forest of Fear and reveals a new route.";
-    if (!strcmp(name,"Red Keycard") || !strcmp(name,"Blue Keycard")) return "Part of a pair of keycards needed to open a sealed area in The Warped Void.";
-    if (!strcmp(name,"Key")) return "Unlocks the door at the top of the Tower of Revival and opens Above the Clouds.";
-    if (!strcmp(name,"Torch")) return "Lights the route to Forest of Fear and opens a passage between regions.";
-    if (!strcmp(name,"Infrared Goggles")) return "Lets Wario see in dark areas and discover hidden paths.";
-    if (!strcmp(name,"Drill")) return "A digging tool that opens a path through rock.";
-    if (!strcmp(name,"Pickaxe")) return "Opens a new passage in The East Crater.";
-    if (!strcmp(name,"Gong")) return "Summons the moon above the clouds and reveals a route through the level.";
-    if (!strcmp(name,"Scissors")) return "Cuts a balloon obstacle to open a new route.";
-    if (!strcmp(name,"Fire Extinguisher")) return "Puts out flames that block routes through the crater levels.";
-    if (!strcmp(name,"Magic Seeds")) return "Grows stalks in The Vast Plain, The Pool of Rain and The Grasslands.";
-    if (!strcmp(name,"Trident")) return "A collectible relic from Bank of the Wild River, counted toward complete collection.";
-    if (!strcmp(name,"Blue Chemicals") || !strcmp(name,"Red Chemicals")) return "A chemical treasure used to move heavy blocks when its matching chemical is found.";
-    if (!strcmp(name,"Mechanical Fan")) return "A fan component that creates air currents and opens new paths.";
-    if (!strcmp(name,"Left Blue Snake Eye") || !strcmp(name,"Right Blue Snake Eye")) return "Pairs with the other blue eye to open the blue snake door in the Tower of Revival.";
-    if (!strcmp(name,"Left Golden Snake Eye") || !strcmp(name,"Right Golden Snake Eye") || !strcmp(name,"Golden Left Eye"))
-        return "Pairs with the other golden eye to open the golden snake door in the Tower of Revival.";
-    if (!strcmp(name,"Valve")) return "A mechanism-related treasure from The Warped Void, counted toward complete collection.";
-    if (!strcmp(name,"Remote Control")) return "A gadget recovered from Forest of Fear, counted toward the full treasure collection.";
-    if (!strcmp(name,"Green Flower")) return "A special flower treasure from The Stagnant Swamp, part of the 100-item set.";
-    if (!strcmp(name,"Pouch")) return "A treasure pouch recovered from Cave of Flames, counted toward complete collection.";
-    if (!strcmp(name,"Chalice") || !strcmp(name,"Crown") || !strcmp(name,"Teapot") || !strcmp(name,"Pokémon Pikachu") ||
-        !strcmp(name,"Toy Car") || !strcmp(name,"Toy Train") || !strcmp(name,"Telephone") ||
-        !strcmp(name,"Saber") || !strcmp(name,"Club") || !strcmp(name,"Spade"))
-        return "A keepsake treasure with no separate ability, but it counts toward the full 100-item collection.";
-    return "A collectible treasure recovered from this chest. It counts toward the complete set of 100 treasures.";
+    if (!strcmp(name, "Axe")) return "Cuts down the large tree on the north side of the world map, opening the paths to The Peaceful Village and The Vast Plain.";
+    if (!strcmp(name, "Blue Tablet")) return "Pairs with the Green Tablet to unlock the hill gate and open the route to Desert Ruins.";
+    if (!strcmp(name, "Green Tablet")) return "Pairs with the Blue Tablet to unlock the hill gate and open the route to Desert Ruins.";
+    if (!strcmp(name, "Top Half of Scroll")) return "Pairs with the Bottom Half of Scroll to calm the western storm and open The Volcano's Base.";
+    if (!strcmp(name, "Bottom Half of Scroll")) return "Pairs with the Top Half of Scroll to calm the western storm and open The Volcano's Base.";
+    if (!strcmp(name, "Lead Overalls")) return "Gives Wario the Smash Attack, which breaks cracked blocks and defeats enemies. It opens routes that require this stronger attack.";
+    if (!strcmp(name, "Jar")) return "Summons a rain storm that opens the paths to The Pool of Rain and A Town in Chaos.";
+    if (!strcmp(name, "First Gear for Machine")) return "One of two machine gears. Together they repair the elevator at The Pool of Rain and open the path to The Grasslands.";
+    if (!strcmp(name, "Second Gear for Machine")) return "One of two machine gears. Together they repair the elevator at The Pool of Rain and open the path to The Grasslands.";
+    if (!strcmp(name, "Yellow Music Box")) return "The first of five music boxes. It opens the route to The Big Bridge; all five together unlock the final battle in The Temple.";
+    if (!strcmp(name, "Magic Seeds")) return "Makes stalks grow in The Vast Plain, The Pool of Rain, and The Grasslands, opening new paths.";
+    if (!strcmp(name, "Skull Ring (red)")) return "Pairs with the blue Skull Ring to raise the Tower of Revival from underground.";
+    if (!strcmp(name, "Skull Ring (blue)")) return "Pairs with the red Skull Ring to raise the Tower of Revival from underground.";
+    if (!strcmp(name, "Swimming Flippers")) return "Lets Wario swim and dive underwater, opening routes in The Pool of Rain and The Big Bridge.";
+    if (!strcmp(name, "Ornamental Fan")) return "Blows away the mist south of the world map and opens the route to The Stagnant Swamp.";
+    if (!strcmp(name, "Flute")) return "Summons snakes in The Peaceful Village, The Grasslands, and The Volcano's Base, opening treasure routes.";
+    if (!strcmp(name, "Blue Book")) return "Pairs with the Magic Wand to freeze the water on the east side of the map and open The Frigid Sea.";
+    if (!strcmp(name, "Magic Wand")) return "Pairs with the Blue Book to freeze the water on the east side of the map and open The Frigid Sea.";
+    if (!strcmp(name, "Head Smash Helmet")) return "Lets Wario break cracked and solid blocks by jumping into them from below.";
+    if (!strcmp(name, "Blue Music Box")) return "The second of five music boxes. It opens the paths to Bank of the Wild River and The Tidal Coast; all five unlock the final battle.";
+    if (!strcmp(name, "Trident")) return "A required treasure from Bank of the Wild River. The reference does not list a separate world-map effect, but it counts toward the story's treasure requirements.";
+    if (!strcmp(name, "Yellow Book")) return "Pairs with the Lightning Wand to create a lightning storm, striking rocks and opening the route to The Steep Canyon.";
+    if (!strcmp(name, "Grab Glove")) return "Lets Wario lift and throw small objects and enemies, opening routes blocked by movable objects.";
+    if (!strcmp(name, "Foot of Stone")) return "Creates an earthquake that breaks boulder-blocked paths in The Volcano's Base and The Steep Canyon, and lowers water in The Stagnant Swamp.";
+    if (!strcmp(name, "Tusk (blue)")) return "Pairs with the red Tusk to trigger volcanic eruptions, opening paths to The West Crater and The Colossal Hole.";
+    if (!strcmp(name, "Tusk (red)")) return "Pairs with the blue Tusk to trigger volcanic eruptions, opening paths to The West Crater and The Colossal Hole.";
+    if (!strcmp(name, "Green Flower")) return "A required treasure from The Stagnant Swamp. Its separate world-map effect is not specified in the reference, but it contributes to story completion.";
+    if (!strcmp(name, "Right Glass Eye")) return "Pairs with the Left Glass Eye to open the blue snake door in the Tower of Revival.";
+    if (!strcmp(name, "Left Glass Eye")) return "Pairs with the Right Glass Eye to open the blue snake door in the Tower of Revival.";
+    if (!strcmp(name, "Super Smash")) return "Upgrades Wario's Dash Attack, letting him break solid blocks and access new paths. It also improves his ability to smash blocks with his head.";
+    if (!strcmp(name, "Green Music Box")) return "The third of five music boxes. It opens the route to Cave of Flames; all five unlock the final battle.";
+    if (!strcmp(name, "Scepter")) return "Purifies murky water in The Big Bridge, The Frigid Sea, and Sea Turtle Rocks, opening new paths.";
+    if (!strcmp(name, "Lantern")) return "Pairs with the Magical Flame to reveal Castle of Illusions on the east side of the world map.";
+    if (!strcmp(name, "Magical Flame")) return "Pairs with the Lantern to reveal Castle of Illusions on the east side of the world map.";
+    if (!strcmp(name, "Super Jump Slam Overalls")) return "Strengthens Wario's Smash Attack so it can break solid blocks and stun enemies, opening new routes.";
+    if (!strcmp(name, "Top Half of Sun Medallion")) return "Pairs with the Bottom Half of Sun Medallion to end the eternal night on the eastern side of the world, opening daytime routes.";
+    if (!strcmp(name, "Bottom Half of Sun Medallion")) return "Pairs with the Top Half of Sun Medallion to end the eternal night on the eastern side of the world, opening daytime routes.";
+    if (!strcmp(name, "High Jump Boots")) return "Lets Wario jump higher by holding Up while jumping, and bounce to greater heights from enemies.";
+    if (!strcmp(name, "Red Music Box")) return "The fourth of five music boxes. It opens the route to Beneath the Waves; all five unlock the final battle.";
+    if (!strcmp(name, "Explosive Plunger Box")) return "Detonates bombs attached to wooden logs in several levels, opening routes through Cave of Flames, The Stagnant Swamp, and The Colossal Hole.";
+    if (!strcmp(name, "Pouch")) return "A required treasure from Cave of Flames. The reference doesn't list a separate world-map effect, but it contributes to the treasure set needed for completion.";
+    if (!strcmp(name, "Eye of the Storm")) return "Causes leaves to fall in Out of the Woods, opening a hidden path inside the large tree.";
+    if (!strcmp(name, "Prince Frog's Glove")) return "Lets Wario swim faster and push against strong currents, opening new routes in Bank of the Wild River, The Steep Canyon, and Beneath the Waves.";
+    if (!strcmp(name, "Statue")) return "Creates climbable wire/chain sections in Tower of Revival and The Tidal Coast, opening new paths.";
+    if (!strcmp(name, "Treasure Map")) return "Reveals a hidden route through the mountains and opens The East Crater.";
+    if (!strcmp(name, "Super Grab Gloves")) return "Lets Wario lift heavy enemies, opening routes that require moving them.";
+    if (!strcmp(name, "Gold Magic")) return "Opens the large tree in Out of the Woods, creating a new path inside.";
+    if (!strcmp(name, "Gold Music Box")) return "The fifth of five music boxes. Together, the five boxes break the seal and unlock the final battle in The Temple.";
+    if (!strcmp(name, "Crayon (blue)")) return "Colors the bushes on the hill between the north and west sides of the map. All seven crayons unlock the Golf mini-game.";
+    if (!strcmp(name, "Truck Wheel")) return "Makes the carts in The Volcano's Base operational, opening a new path.";
+    if (!strcmp(name, "Blue Gem")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Crayon (cyan)")) return "Colors the sky on the hill between the north and west sides of the map. All seven crayons unlock the Golf mini-game.";
+    if (!strcmp(name, "Goblet")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Crown")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Crayon (pink)")) return "Colors the building on the hill between the north and west sides of the map. All seven crayons unlock the Golf mini-game.";
+    if (!strcmp(name, "Teapot")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Pocket Pet")) return "A keepsake that resembles a pocket-sized electronic pet. It has no separate ability but counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Magnifying Glass")) return "Lets Wario check which treasures he has already collected on the current level tile without entering the level.";
+    if (!strcmp(name, "Air-Pump")) return "Raises blocks of ice in Bank of the Wild River and The Pool of Rain, opening access to their blue chests.";
+    if (!strcmp(name, "Rocket")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Crayon (yellow)")) return "Colors the sign on the hill between the north and west sides of the map. All seven crayons unlock the Golf mini-game.";
+    if (!strcmp(name, "Saber")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Day or Night Spell")) return "Lets Wario switch between day and night on the world map.";
+    if (!strcmp(name, "UFO")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Torch")) return "Opens the path to Forest of Fear and connects the eastern region with the northern region.";
+    if (!strcmp(name, "Warp Compact")) return "Makes The Warped Void appear on the east side of the world map.";
+    if (!strcmp(name, "Mystery Handle")) return "Raises a warp pipe from the ground in Forest of Fear, opening a new path.";
+    if (!strcmp(name, "Warp Removal Apparatus")) return "Makes dimensional rifts in The Warped Void disappear, opening new paths.";
+    if (!strcmp(name, "Crayon (brown)")) return "Colors the ground and tree trunks on the hill between the north and west sides of the map. All seven crayons unlock the Golf mini-game.";
+    if (!strcmp(name, "Demon's Blood")) return "Causes zombies to emerge in an area of Forest of Fear, opening a new path.";
+    if (!strcmp(name, "Key Card (red)")) return "Pairs with the blue Key Card to release the trapped Para-Goom in The Warped Void and open a new path.";
+    if (!strcmp(name, "Key Card (blue)")) return "Pairs with the red Key Card to release the trapped Para-Goom in The Warped Void and open a new path.";
+    if (!strcmp(name, "Heart Crest")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Minicar")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Locomotive")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Telephone")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Crayon (red)")) return "Colors the door on the hill between the north and west sides of the map. All seven crayons unlock the Golf mini-game.";
+    if (!strcmp(name, "Electric Fan Propeller")) return "Creates air currents in A Town in Chaos when the wind switch is activated, opening access to its blue treasure.";
+    if (!strcmp(name, "Sapling of Growth")) return "Makes the little octopi grow in The Tidal Coast and Beneath the Waves, opening routes to their chests.";
+    if (!strcmp(name, "Green Gem")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Fighter Mannequin")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Golden Left Eye")) return "Pairs with the Golden Right Eye to open the golden snake door in the Tower of Revival.";
+    if (!strcmp(name, "Golden Right Eye")) return "Pairs with the Golden Left Eye to open the golden snake door in the Tower of Revival.";
+    if (!strcmp(name, "Sky Key")) return "Unlocks the door at the top of the Tower of Revival and opens Above the Clouds.";
+    if (!strcmp(name, "Crayon (green)")) return "Colors the trees and grass on the hill between the north and west sides of the map. All seven crayons unlock the Golf mini-game.";
+    if (!strcmp(name, "Fire Drencher")) return "Extinguishes flames in The West Crater and The East Crater, opening new paths.";
+    if (!strcmp(name, "Diamonds Crest")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Castle Brick")) return "Fills gaps in Castle of Illusions and opens a new path.";
+    if (!strcmp(name, "Rust Spray")) return "Rusts iron walls in The West Crater, The Steep Canyon, and Cave of Flames, making them breakable.";
+    if (!strcmp(name, "Spades Crest")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Red Chemical")) return "Pairs with the Blue Chemical to move heavy blocks in The Vast Plain and Beneath the Waves.";
+    if (!strcmp(name, "Blue Chemical")) return "Pairs with the Red Chemical to move heavy blocks in The Vast Plain and Beneath the Waves.";
+    if (!strcmp(name, "Red Gem")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Clubs Crest")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    if (!strcmp(name, "Scissors")) return "Cuts the balloon in Above the Clouds loose, opening a new path.";
+    if (!strcmp(name, "Jackhammer")) return "Drills through dirt blocking streams in The East Crater, opening access to its green treasure.";
+    if (!strcmp(name, "Night Vision Scope")) return "Illuminates a dark room in Sea Turtle Rocks, opening access to its blue treasure.";
+    if (!strcmp(name, "Full Moon Gong")) return "Summons the moon above the clouds, opening a new path in Above the Clouds.";
+    if (!strcmp(name, "Pick-Axe")) return "Opens a new area in The East Crater.";
+    if (!strcmp(name, "Earthen Figure")) return "A decorative collection treasure with no separate ability. It still counts toward the 100-treasure collection.";
+    return "A collectible treasure from this level. It counts toward the complete set of 100 treasures.";
 }
 
 static void add_wl3_treasures(void)
