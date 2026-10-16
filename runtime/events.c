@@ -470,13 +470,14 @@ static void sml2_actor_trace_frame(void)
         return;
     }
 
-    if (!sml2_museum_mode_is_active(mode)) {
-        if (diagnostic_tick)
-            fprintf(sml2_actor_trace_file,
-                    "diag frame=%d reason=inactive_mode mode=%02X level=%02X\n",
-                    frame_count, mode, level);
-        return;
-    }
+    /* The previous trace showed mode 0C, which production Museum logic does
+     * not treat as gameplay. In this developer-only trace, still inspect the
+     * actor table so we can determine whether records exist during that mode.
+     * Actor/spawn rows include the observed mode for later filtering. */
+    if (!sml2_museum_mode_is_active(mode) && diagnostic_tick)
+        fprintf(sml2_actor_trace_file,
+                "diag frame=%d reason=nonstandard_mode_scanning mode=%02X level=%02X\\n",
+                frame_count, mode, level);
 
     if (level > 0x1F) {
         if (diagnostic_tick)
@@ -534,8 +535,8 @@ static void sml2_actor_trace_frame(void)
                 for (unsigned i = 0; i < sizeof descriptor; ++i)
                     descriptor[i] = rd8((uint16_t)(source_addr + i));
                 fprintf(sml2_actor_trace_file,
-                        "spawn frame=%d level=%02X slot=%02d record_addr=%04X source_ref=%04X source_addr=%04X descriptor=",
-                        frame_count, level, slot, base, source_ref, source_addr);
+                        "spawn frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X source_addr=%04X descriptor=",
+                        frame_count, mode, level, slot, base, source_ref, source_addr);
                 for (unsigned i = 0; i < sizeof descriptor; ++i)
                     fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", descriptor[i]);
                 fputc('\n', sml2_actor_trace_file);
@@ -560,8 +561,8 @@ static void sml2_actor_trace_frame(void)
         *seen |= field_bit;
 
         fprintf(sml2_actor_trace_file,
-                "actor frame=%d level=%02X slot=%02d record_addr=%04X active=%02X source_ref=%04X field05=%02X field0B=%02X record=",
-                frame_count, level, slot, base, active, source_ref, field05, field0B);
+                "actor frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X active=%02X source_ref=%04X field05=%02X field0B=%02X record=",
+                frame_count, mode, level, slot, base, active, source_ref, field05, field0B);
         for (unsigned i = 0; i < 32; ++i)
             fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
         fputc('\n', sml2_actor_trace_file);
