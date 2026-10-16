@@ -388,12 +388,10 @@ typedef struct {
 static SmlMuseumObject sml_museum_previous[10];
 
 /* SML2 developer trace: the game's live sprite scheduler walks 16 records
- * beginning at AD08, one 0x20-byte record apart. The loop's first byte is
- * its active/state gate; +5 is the sprite-type key, and +11 is the mapping key.
- * Record bytes are logged to avoid guessing which fields are species identifiers.
- * These raw
- * keys are logged so the named Museum species map can be based on observed data,
- * rather than guessed from the generic enemy-kill counter or graphics alone. */
+ * beginning at AD08, one 0x20-byte record apart. The scheduler skips records
+ * whose first byte is zero; offsets +5 and +11 are also copied to FF D5/FF DB
+ * by the game and are logged as candidate sprite-type/mapping keys. Full records
+ * are included so we can verify the field meanings before mapping species IDs. */
 #if defined(PIPECLEAN_DEV_BUILD)
 static FILE *sml2_actor_trace_file;
 /* Bitset of observed animation mappings for each level and raw type. */
@@ -426,7 +424,7 @@ static void sml2_actor_trace_begin(void)
     fprintf(sml2_actor_trace_file,
             "PipeClean SML2 live sprite actor trace v1\n"
             "One line per (level, raw sprite-type key, mapping key); full records are included.\n"
-            "frame level slot slot_state sprite_type mapping x y record[00..1F]\n");
+            "frame level slot byte0 type_key map_key x y record[00..1F]\n");
     fflush(sml2_actor_trace_file);
 }
 
@@ -443,8 +441,8 @@ static void sml2_actor_trace_frame(void)
         const uint16_t base = (uint16_t)(0xAD08u + (unsigned)slot * 0x20u);
         /* The game's scheduler starts at AD08 and advances by 0x20 bytes. */
         const uint8_t active = rd8(base);
-        /* Zero is an empty slot; FF can be the disabled-RAM bus value. */
-        if (!active || active == 0xFFu) continue;
+        /* Match the game's empty-record check; the later all-FF check handles disabled RAM. */
+        if (!active) continue;
 
         const uint8_t sprite_type = rd8((uint16_t)(base + 5u));
         const uint8_t mapping = rd8((uint16_t)(base + 11u));
@@ -458,7 +456,7 @@ static void sml2_actor_trace_frame(void)
         const unsigned y = ((unsigned)rd8((uint16_t)(base + 3u)) << 8) |
                            rd8((uint16_t)(base + 4u));
         fprintf(sml2_actor_trace_file,
-                "frame=%d level=%02X slot=%02d slot_state=%02X sprite_type=%02X mapping=%02X x=%04X y=%04X record=",
+                "frame=%d level=%02X slot=%02d byte0=%02X type_key=%02X map_key=%02X x=%04X y=%04X record=",
                 frame_count, level, slot, active, sprite_type, mapping, x, y);
         for (unsigned i = 0; i < 32; ++i)
             fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
