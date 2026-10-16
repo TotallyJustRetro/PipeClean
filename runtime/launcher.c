@@ -37,6 +37,10 @@ static int museum_category = MUSEUM_CATEGORY_ALL;
 static int museum_filter_mode;
 static int museum_selected[N_GAMES];
 static float museum_scroll;
+static int museum_hacks_view;
+static int museum_hacks_filter;
+static int museum_hack_game = -1, museum_hack_index = -1;
+static float museum_hack_scroll;
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
 static char hack_msg[N_GAMES][256];
 static int hack_ok[N_GAMES];
@@ -4482,6 +4486,126 @@ static void museum_draw_entry_art(int game, const MuseumEntry *entry,
         ui_text_c(F_BOLD, 8, x + w * 0.5f, y + h * 0.57f, HEX(0x80502D), "NOT CAPTURED");
     }
 }
+ 
+static int museum_hack_visible(int g, int i)
+{
+    if (g < 0 || g >= N_GAMES || i < 0 || i >= settings.g[g].romhack_count ||
+        i >= MAX_ROMHACKS || !settings.g[g].romhacks[i].path[0]) return 0;
+    const int exists = file_exists(settings.g[g].romhacks[i].path);
+    return museum_hacks_filter == 1 ? exists :
+           museum_hacks_filter == 2 ? !exists : 1;
+}
+static int museum_hack_count(void)
+{
+    int n = 0;
+    for (int g = 0; g < N_GAMES; ++g) {
+        int count = settings.g[g].romhack_count;
+        if (count < 0) count = 0;
+        if (count > MAX_ROMHACKS) count = MAX_ROMHACKS;
+        for (int i = 0; i < count; ++i) if (museum_hack_visible(g, i)) n++;
+    }
+    return n;
+}
+static int museum_hack_at(int wanted, int *game, int *profile)
+{
+    int n = 0;
+    for (int g = 0; g < N_GAMES; ++g) {
+        int count = settings.g[g].romhack_count;
+        if (count < 0) count = 0;
+        if (count > MAX_ROMHACKS) count = MAX_ROMHACKS;
+        for (int i = 0; i < count; ++i) {
+            if (!museum_hack_visible(g, i)) continue;
+            if (n++ == wanted) { *game = g; *profile = i; return 1; }
+        }
+    }
+    return 0;
+}
+static void tab_museum_romhacks(float x, float y, float width)
+{
+    const float by = y + 63.0f, bh = 413.0f, lw = 390.0f;
+    const float rx = x + lw + 8.0f, rw = width - lw - 8.0f;
+    int count = museum_hack_count(), selected_row = -1, g = -1, i = -1;
+    for (int row = 0; row < count; ++row) {
+        int gg, ii;
+        if (museum_hack_at(row, &gg, &ii) && gg == museum_hack_game && ii == museum_hack_index)
+            selected_row = row;
+    }
+    if (selected_row < 0 && count) {
+        selected_row = 0;
+        museum_hack_at(0, &museum_hack_game, &museum_hack_index);
+    }
+
+    ui_rrect(x, by, width, bh, 9, HEX(0x302016));
+    ui_stroke(x, by, width, bh, 9, 2, HEX(0x0E0A08));
+    ui_rrect(x + 5, by + 5, lw - 10, bh - 10, 5, HEX(0xF2E5B7));
+    ui_rrect(x + 5, by + 5, lw - 10, 26, 4, HEX(0x84340F));
+    ui_text(F_BOLD, 12, x + 16, by + 10, HEX(0xFFF3D4), "ROM HACK PROFILES");
+    char count_text[40]; snprintf(count_text, sizeof count_text, "%d", count);
+    ui_text_r(F_BOLD, 11, x + lw - 16, by + 11, HEX(0xF4D19A), count_text);
+
+    const float lx = x + 11, ly = by + 39, lwidth = lw - 22, lheight = bh - 50;
+    const float row_h = 62, step = 67, content_h = count * step;
+    const float max_scroll = content_h > lheight ? content_h - lheight : 0;
+    if (ui_mouse.x >= lx && ui_mouse.x <= lx + lwidth &&
+        ui_mouse.y >= ly && ui_mouse.y <= ly + lheight && ui_mouse.wheel)
+        museum_hack_scroll -= ui_mouse.wheel * step;
+    if (museum_hack_scroll < 0) museum_hack_scroll = 0;
+    if (museum_hack_scroll > max_scroll) museum_hack_scroll = max_scroll;
+    ui_clip(lx, ly, lwidth, lheight);
+    for (int row = 0; row < count; ++row) {
+        if (!museum_hack_at(row, &g, &i)) continue;
+        const RomHackEntry *e = &settings.g[g].romhacks[i];
+        const float ry = ly + row * step - museum_hack_scroll;
+        if (ry + row_h < ly || ry > ly + lheight) continue;
+        if (ui_button(lx + 2, ry, lwidth - 4, row_h, "",
+                      row == selected_row ? B_PRIMARY : B_NORMAL, 1)) {
+            museum_hack_game = g; museum_hack_index = i; selected_row = row;
+        }
+        draw_romhack_thumb(g, i, lx + 7, ry + 5, 66, 52);
+        ui_text_fit(F_BOLD, 11, lx + 80, ry + 9, lwidth - 92, HEX(0x33251A),
+                    e->title[0] ? e->title : "Untitled ROM hack");
+        ui_text_fit(F_REG, 9, lx + 80, ry + 31, lwidth - 92, HEX(0x795A3B),
+                    games[g].name);
+        if (!file_exists(e->path))
+            ui_text(F_BOLD, 8, lx + 80, ry + 45, HEX(0x75401E), "FILE MISSING");
+    }
+    ui_unclip();
+
+    ui_rrect(rx, by + 5, rw - 5, bh - 10, 5, HEX(0xA75A2D));
+    ui_stroke(rx, by + 5, rw - 5, bh - 10, 5, 1, HEX(0x552713));
+    ui_rrect(rx + 5, by + 10, rw - 15, 26, 4, HEX(0x81320F));
+    ui_text(F_BOLD, 12, rx + 14, by + 15, HEX(0xFFF0D1), "PROFILE DETAILS");
+    if (!count) {
+        ui_text(F_BOLD, 15, rx + 18, by + 55, HEX(0xFFF0D1), "No ROM hacks registered");
+        ui_text_wrap(F_REG, 11, rx + 18, by + 86, rw - 42, HEX(0xF5D6B2),
+                     "Add a hack from Settings > ROM Hacks on any game's page. Profiles appear here without distributing ROMs or patches.",
+                     1.18f);
+    } else if (museum_hack_at(selected_row < 0 ? 0 : selected_row, &g, &i)) {
+        const RomHackEntry *e = &settings.g[g].romhacks[i];
+        const int exists = file_exists(e->path);
+        draw_romhack_thumb(g, i, rx + 16, by + 47, 144, 96);
+        ui_text_fit(F_BOLD, 15, rx + 173, by + 52, rw - 190, HEX(0xFFF0D1),
+                    e->title[0] ? e->title : "Untitled ROM hack");
+        ui_text_fit(F_REG, 11, rx + 173, by + 77, rw - 190, HEX(0xF5D6B2), games[g].name);
+        ui_text(F_BOLD, 10, rx + 173, by + 99, HEX(0xF6D19A),
+                exists ? "FILE AVAILABLE" : "FILE MISSING");
+        ui_line(rx + 15, by + 153, rx + rw - 16, by + 153, 1, HEX(0xD39C63));
+        ui_text(F_BOLD, 11, rx + 17, by + 163, HEX(0xFFF0D1), "PROFILE STATUS");
+        ui_text_wrap(F_REG, 10, rx + 17, by + 184, rw - 40, HEX(0xF5D6B2),
+                     settings.g[g].romhack_selected == i
+                         ? "This profile is selected for the next launch."
+                         : "Select this profile under Settings > ROM Hacks to launch it.",
+                     1.16f);
+        ui_text(F_BOLD, 10, rx + 17, by + 246, HEX(0xFFF0D1), "LOCAL FILE");
+        ui_text_fit(F_REG, 9, rx + 17, by + 265, rw - 40, HEX(0xF5D6B2), e->path);
+        ui_line(rx + 15, by + 292, rx + rw - 16, by + 292, 1, HEX(0xD39C63));
+        ui_text_wrap(F_REG, 10, rx + 17, by + 303, rw - 40, HEX(0xFFF0D1),
+                     "This view indexes your registered local profiles. Hack-specific collectible catalogs can be added when its changed content has been mapped.",
+                     1.14f);
+    }
+    ui_text_fit(F_REG, 10, x + 3, y + 485, width - 6, C_DIM,
+                "ROM hacks stay on your device · PipeClean does not bundle ROMs or patch files.");
+}
 
 static void tab_museum(float x, float y)
 {
@@ -4499,18 +4623,31 @@ static void tab_museum(float x, float y)
     };
     static const char *filter_labels[] = {"All Entries", "Collected", "Undiscovered"};
     const float width = 808.0f;
-    ui_accent = games[museum_game].accent;
-
-    /* Compact cartridge tabs; short names stay legible instead of clipping. */
+    ui_accent = museum_hacks_view ? 0xC77B44u : games[museum_game].accent;
     const float game_gap = 4.0f, game_h = 27.0f;
-    const float game_w = (width - game_gap * (N_GAMES - 1)) / (float)N_GAMES;
+    const float game_w = (width - game_gap * N_GAMES) / (float)(N_GAMES + 1);
     for (int g = 0; g < N_GAMES; ++g) {
         float bx = x + g * (game_w + game_gap);
-        if (ui_chip(bx, y, game_w, game_h, game_labels[g], g == museum_game)) {
-            museum_game = g;
-            museum_scroll = 0.0f;
+        if (ui_chip(bx, y, game_w, game_h, game_labels[g],
+                    !museum_hacks_view && g == museum_game)) {
+            museum_game = g; museum_hacks_view = 0; museum_scroll = 0.0f;
             museum_selected[g] = 0;
         }
+    }
+    const float hacks_x = x + N_GAMES * (game_w + game_gap);
+    if (ui_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view)) {
+        museum_hacks_view = 1; museum_hack_scroll = 0.0f;
+    }
+    if (museum_hacks_view) {
+        static const char *hack_filters[] = {"All Profiles", "File Available", "Missing File"};
+        for (int i = 0; i < 3; ++i) {
+            if (ui_chip(x + i * 136.0f, y + 31, 130, 25, hack_filters[i],
+                        museum_hacks_filter == i)) {
+                museum_hacks_filter = i; museum_hack_scroll = 0.0f;
+            }
+        }
+        tab_museum_romhacks(x, y, width);
+        return;
     }
 
     const float cat_gap = 4.0f;
@@ -4519,8 +4656,7 @@ static void tab_museum(float x, float y)
         float bx = x + i * (cat_w + cat_gap);
         if (ui_chip(bx, y + 31, cat_w, 25, category_labels[i],
                     museum_category == category_values[i])) {
-            museum_category = category_values[i];
-            museum_scroll = 0.0f;
+            museum_category = category_values[i]; museum_scroll = 0.0f;
         }
     }
 
