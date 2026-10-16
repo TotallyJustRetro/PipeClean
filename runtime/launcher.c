@@ -39,6 +39,8 @@ static int museum_selected[N_GAMES];
 static float museum_scroll;
 static int museum_hacks_view;
 static int museum_hacks_filter;
+static int museum_reset_confirm;
+static float museum_reset_confirm_until;
 static int museum_hack_game = -1, museum_hack_index = -1;
 static float museum_hack_scroll;
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
@@ -4712,11 +4714,13 @@ static void tab_museum(float x, float y)
                     !museum_hacks_view && g == museum_game)) {
             museum_game = g; museum_hacks_view = 0; museum_scroll = 0.0f;
             museum_selected[g] = 0;
+            museum_reset_confirm = 0;
         }
     }
     const float hacks_x = x + N_GAMES * (game_w + game_gap);
     if (ui_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view)) {
         museum_hacks_view = 1; museum_hack_scroll = 0.0f;
+        museum_reset_confirm = 0;
     }
     if (museum_hacks_view) {
         static const char *hack_filters[] = {"All Profiles", "File Available", "Missing File"};
@@ -4890,12 +4894,36 @@ static void tab_museum(float x, float y)
             ? "Museum discovery notifications enabled."
             : "Museum discovery notifications disabled.");
     }
-    ui_text_fit(F_REG, 10, x + 151, y + 486, width - 154, C_DIM,
+    ui_text_fit(F_REG, 10, x + 164, y + 486, 430, C_DIM,
                 settings.museum_discovery_notifications
-                    ? "New discoveries show a pop-up; progress always saves."
-                    : "Pop-ups off; discoveries still save automatically.");
+                    ? "Pop-ups appear over gameplay."
+                    : "Pop-ups off; progress still saves.");
+
+    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until)
+        museum_reset_confirm = 0;
+    if (ui_button(x + 606, y + 479, 192, 26,
+                  museum_reset_confirm ? "Confirm reset" : "Reset all discoveries",
+                  museum_reset_confirm ? B_DANGER : B_GHOST, 1)) {
+        if (!museum_reset_confirm) {
+            museum_reset_confirm = 1;
+            museum_reset_confirm_until = anim_clock + 4.0f;
+            launcher_toast("Press Confirm reset within 4 seconds to clear discoveries for every game.");
+        } else if (museum_clear_discoveries()) {
+            museum_reset_confirm = 0;
+            museum_category = MUSEUM_CATEGORY_ALL;
+            museum_filter_mode = 0;
+            museum_scroll = 0.0f;
+            for (int game = 0; game < N_GAMES; ++game)
+                museum_selected[game] = 0;
+            launcher_toast("All Museum discoveries cleared. Play again to start a fresh collection.");
+        } else {
+            museum_reset_confirm = 0;
+            launcher_toast(museum_last_storage_error()[0]
+                ? museum_last_storage_error() : "Couldn't reset Museum discoveries.");
+        }
+    }
     if (museum_last_storage_error()[0])
-        ui_text_fit(F_REG, 10, x + 3, y + 499, width - 6, C_ERR,
+        ui_text_fit(F_REG, 9, x + 3, y + 503, width - 6, C_ERR,
                     museum_last_storage_error());
 }
 
