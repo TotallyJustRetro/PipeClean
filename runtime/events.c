@@ -410,6 +410,11 @@ static uint8_t sml2_actor_trace_slot_active[16];
  * Log each source pointer independently from mutable animation keys. */
 static uint16_t sml2_actor_trace_source_ref[0x20][16];
 static uint8_t sml2_actor_trace_source_logged[0x20][16];
+/* The level loader expands all six-byte spawn descriptors at AB06. This lets
+ * diagnostics inspect the level's source list even when no live actor exists.
+ * Byte +2 changes after spawning, so it is excluded from the list fingerprint. */
+static uint32_t sml2_actor_trace_spawn_hash[0x20];
+static uint8_t sml2_actor_trace_spawn_hash_valid[0x20];
 
 static void sml2_actor_trace_close(void)
 {
@@ -427,6 +432,8 @@ static void sml2_actor_trace_begin(void)
     memset(sml2_actor_trace_slot_active, 0, sizeof sml2_actor_trace_slot_active);
     memset(sml2_actor_trace_source_ref, 0, sizeof sml2_actor_trace_source_ref);
     memset(sml2_actor_trace_source_logged, 0, sizeof sml2_actor_trace_source_logged);
+    memset(sml2_actor_trace_spawn_hash, 0, sizeof sml2_actor_trace_spawn_hash);
+    memset(sml2_actor_trace_spawn_hash_valid, 0, sizeof sml2_actor_trace_spawn_hash_valid);
     if (cur_game != GAME_SML2) return;
 
     const char *base = settings_dir();
@@ -447,6 +454,49 @@ static void sml2_actor_trace_begin(void)
             "Descriptor bytes and actor fields are diagnostic evidence, not assumed species IDs.\n"
             "spawn frame level slot record_addr source_ref source_addr descriptor[00..05]\n"
             "actor frame level slot record_addr active source_ref field05 field0B record[00..1F]\n");
+    fflush(sml2_actor_trace_file);
+}
+
+static void sml2_actor_trace_spawn_table(int mode, int level)
+{
+    if (!sml2_actor_trace_file || level < 0 || level >= 0x20) return;
+
+    const uint16_t start = 0xAB06u;
+    const unsigned max_entries = (0xACFFu - start + 1u) / 6u;
+    uint32_t hash = 2166136261u;
+    unsigned count = 0;
+
+    for (unsigned i = 0; i < max_entries; ++i) {
+        uint8_t d[6];
+        const uint16_t addr = (uint16_t)(start + i * 6u);
+        for (unsigned j = 0; j < 6; ++j)
+            d[j] = rd8((uint16_t)(addr + j));
+        if (d[0] == 0xFFu) break;
+        ++count;
+        for (unsigned j = 0; j < 6; ++j) {
+            if (j == 2) continue;
+            hash ^= d[j];
+            hash *= 16777619u;
+        }
+    }
+
+    if (sml2_actor_trace_spawn_hash_valid[level] &&
+        sml2_actor_trace_spawn_hash[level] == hash) return;
+    sml2_actor_trace_spawn_hash[level] = hash;
+    sml2_actor_trace_spawn_hash_valid[level] = 1;
+
+    fprintf(sml2_actor_trace_file,
+            "spawn_table frame=%d mode=%02X level=%02X base=AB06 entries=%u hash=%08X\n",
+            frame_count, mode, level, count, hash);
+    for (unsigned i = 0; i < count; ++i) {
+        const uint16_t addr = (uint16_t)(start + i * 6u);
+        fprintf(sml2_actor_trace_file,
+                "spawn_entry frame=%d mode=%02X level=%02X index=%02u addr=%04X descriptor=",
+                frame_count, mode, level, i, addr);
+        for (unsigned j = 0; j < 6; ++j)
+            fprintf(sml2_actor_trace_file, "%s%02X", j ? " " : "", rd8((uint16_t)(addr + j)));
+        fputc('\n', sml2_actor_trace_file);
+    }
     fflush(sml2_actor_trace_file);
 }
 
@@ -478,6 +528,9 @@ static void sml2_actor_trace_frame(void)
         fprintf(sml2_actor_trace_file,
                 "diag frame=%d reason=nonstandard_mode_scanning mode=%02X level=%02X\n",
                 frame_count, mode, level);
+
+    /* Capture the level's source descriptors even if its actor table is empty. */
+    sml2_actor_trace_spawn_table(mode, level);
 
     if (level > 0x1F) {
         if (diagnostic_tick)
