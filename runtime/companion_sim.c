@@ -6,6 +6,7 @@
 #include "games.h"
 #include "companion_deck_state.h"
 #include "wario_land2_state.h"
+#include "wario_land3_state.h"
 #include "emu.h"
 #include "cart.h"
 #include "launcher.h"
@@ -67,6 +68,15 @@ static int wario2_animation_id = -1;
 static Uint32 wario2_animation_started;
 static char wario2_expedition_log[5][64];
 static int wario2_expedition_log_count;
+static int current_wario3_keys = -1, current_wario3_music_coins = -1;
+static int current_wario3_scene = -1, current_wario3_treasures = -1;
+static int wario3_previous_keys = -1, wario3_previous_music_coins = -1;
+static int wario3_previous_scene = -1, wario3_previous_treasures = -1;
+static int wario3_previous_stage = -1, wario3_previous_coins = -1;
+static int wario3_have_baseline, wario3_animation_active, wario3_animation_id = -1;
+static Uint32 wario3_animation_started;
+static char wario3_expedition_log[5][64];
+static int wario3_expedition_log_count;
 enum { WARIO2_ANIM_TREASURE = 1, WARIO2_ANIM_PICTURE = 2 };
 enum { SIM_ITEM_ANIM_IDLE, SIM_ITEM_ANIM_ARRIVE, SIM_ITEM_ANIM_SEND_OFF };
 static int item_animation_kind, item_animation_item;
@@ -185,7 +195,8 @@ static void companion_sim_reset_coin_pile(void)
 
 static void companion_sim_update_coin_pile(int game, int stage, int coin_reading)
 {
-    if (game != GAME_WARIO_SML3 && !wario_land2_supported_game(game)) {
+    if (game != GAME_WARIO_SML3 && game != GAME_WARIO_LAND3_GBC &&
+        !wario_land2_supported_game(game)) {
         companion_sim_reset_coin_pile();
         return;
     }
@@ -463,6 +474,165 @@ static void companion_sim_update_wario2(int game, const Frame *frame)
         wario2_log_push("OVERWORLD COINS +");
 
     wario2_previous_state = current_wario2_state;
+}
+
+static void wario3_log_push(const char *entry)
+{
+    for (int i = 4; i > 0; i--)
+        memcpy(wario3_expedition_log[i], wario3_expedition_log[i - 1],
+               sizeof wario3_expedition_log[i]);
+    snprintf(wario3_expedition_log[0], sizeof wario3_expedition_log[0], "%s",
+             entry ? entry : "");
+    if (wario3_expedition_log_count < 5) wario3_expedition_log_count++;
+}
+
+static void companion_sim_reset_wario3_tracking(void)
+{
+    current_wario3_keys = current_wario3_music_coins = -1;
+    current_wario3_scene = current_wario3_treasures = -1;
+    wario3_previous_keys = wario3_previous_music_coins = -1;
+    wario3_previous_scene = wario3_previous_treasures = -1;
+    wario3_previous_stage = wario3_previous_coins = -1;
+    wario3_have_baseline = 0;
+    wario3_animation_active = 0;
+    wario3_animation_id = -1;
+    wario3_expedition_log_count = 0;
+    memset(wario3_expedition_log, 0, sizeof wario3_expedition_log);
+}
+
+static void companion_sim_update_wario3(int game, const Frame *frame)
+{
+    if (game != GAME_WARIO_LAND3_GBC) {
+        companion_sim_reset_wario3_tracking();
+        return;
+    }
+    if (!frame) return;
+
+    int scene = gb_wram_peek(0x009B);
+    int course = gb_wram_peek(0x0A06);
+    int raw_keys = gb_wram_peek(0x0A5B);
+    int raw_music = gb_wram_peek(0x0A5C);
+    int treasure_count = wario_land3_read_counter3(
+        gb_wram_peek(0x0A39), gb_wram_peek(0x0A3A));
+    int coins = wario_land3_read_counter3(
+        gb_wram_peek(0x0A04), gb_wram_peek(0x0A05));
+    int day_night = gb_wram_peek(0x0A3B);
+
+    current_stage = course == 0xFF ? -1 : course;
+    current_world = day_night == 0xFF ? -1 : (day_night & 1);
+    current_lives = -1;
+    current_wario_coins = coins;
+    current_wario_hearts = -1;
+    current_wario_power = -1;
+    current_wario_time = -1;
+    current_wario3_scene = scene <= 0x0E ? scene : -1;
+    int valid_scene = scene == 2 || scene == 3 || scene == 4 || scene == 8;
+    current_wario3_keys = valid_scene && course != 0xFF && raw_keys != 0xFF
+        ? raw_keys & 0x0F : -1;
+    current_wario3_music_coins = valid_scene && course != 0xFF
+        ? raw_music & 0xFF : -1;
+    current_wario3_treasures = treasure_count >= 0 && treasure_count <= 100
+        ? treasure_count : -1;
+    companion_sim_update_coin_pile(game, current_stage, current_wario_coins);
+
+    if (current_wario3_keys < 0 || current_wario3_music_coins < 0 ||
+        current_wario3_scene < 0) {
+        wario3_have_baseline = 0;
+        wario3_animation_active = 0;
+        return;
+    }
+    if (!wario3_have_baseline) {
+        memset(wario3_expedition_log, 0, sizeof wario3_expedition_log);
+        wario3_expedition_log_count = 0;
+        wario3_log_push("EXPEDITION LINKED");
+        if (current_stage >= 0 && current_wario3_scene == 2) {
+            char entry[64];
+            snprintf(entry, sizeof entry, "COURSE %02d ENTERED", current_stage);
+            wario3_log_push(entry);
+        }
+        wario3_previous_keys = current_wario3_keys;
+        wario3_previous_music_coins = current_wario3_music_coins;
+        wario3_previous_scene = current_wario3_scene;
+        wario3_previous_treasures = current_wario3_treasures;
+        wario3_previous_stage = current_stage;
+        wario3_previous_coins = current_wario_coins;
+        wario3_have_baseline = 1;
+        return;
+    }
+
+    int course_changed = current_stage >= 0 && wario3_previous_stage >= 0 &&
+        current_stage != wario3_previous_stage;
+    if (course_changed) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "COURSE %02d ENTERED", current_stage);
+        wario3_log_push(entry);
+        wario3_animation_active = 0;
+    } else if (current_wario3_scene == 2 && wario3_previous_scene == 1 &&
+               current_stage >= 0) {
+        char entry[64];
+        snprintf(entry, sizeof entry, "COURSE %02d ENTERED", current_stage);
+        wario3_log_push(entry);
+    }
+
+    if (!course_changed) {
+        int old_keys = wario3_previous_keys & 0x0F;
+        int next_keys = current_wario3_keys & 0x0F;
+        if ((next_keys & old_keys) != old_keys) {
+            /* Load/rewind: collection flags moved backward, so don't celebrate. */
+            wario3_animation_active = 0;
+        } else {
+            int gained = next_keys & ~old_keys;
+            if (gained) {
+                static const char *key_names[4] = {"GRAY", "RED", "GREEN", "BLUE"};
+                for (int k = 0; k < 4; k++) {
+                    if (gained & (1 << k)) {
+                        char entry[64];
+                        snprintf(entry, sizeof entry, "%s KEY FOUND", key_names[k]);
+                        wario3_log_push(entry);
+                        wario3_animation_id = k;
+                    }
+                }
+                wario3_animation_started = SDL_GetTicks();
+                wario3_animation_active = 1;
+            }
+        }
+
+        int old_music = wario3_previous_music_coins & 0xFF;
+        int next_music = current_wario3_music_coins & 0xFF;
+        if ((next_music & old_music) == old_music) {
+            int gained_music = next_music & ~old_music;
+            int amount = __builtin_popcount((unsigned)gained_music);
+            if (amount == 1) wario3_log_push("MUSIC COIN FOUND");
+            else if (amount > 1) {
+                char entry[64];
+                snprintf(entry, sizeof entry, "MUSIC COINS +%d", amount);
+                wario3_log_push(entry);
+            }
+        }
+
+        if (current_wario3_treasures >= 0 && wario3_previous_treasures >= 0 &&
+            current_wario3_treasures > wario3_previous_treasures) {
+            char entry[64];
+            snprintf(entry, sizeof entry, "TREASURES %02d / 100",
+                     current_wario3_treasures);
+            wario3_log_push(entry);
+        }
+        if (current_wario_coins >= 0 && wario3_previous_coins >= 0 &&
+            current_wario_coins / 10 > wario3_previous_coins / 10) {
+            char entry[64];
+            snprintf(entry, sizeof entry, "COINS %03d", current_wario_coins);
+            wario3_log_push(entry);
+        }
+    }
+    if (current_wario3_scene == 3 && wario3_previous_scene != 3)
+        wario3_log_push("COURSE RESULTS READY");
+
+    wario3_previous_keys = current_wario3_keys;
+    wario3_previous_music_coins = current_wario3_music_coins;
+    wario3_previous_scene = current_wario3_scene;
+    wario3_previous_treasures = current_wario3_treasures;
+    if (current_stage >= 0) wario3_previous_stage = current_stage;
+    if (current_wario_coins >= 0) wario3_previous_coins = current_wario_coins;
 }
 
 static void color(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
@@ -1992,7 +2162,8 @@ static void thor_dr_mario(const Settings *s,int g)
 }
 static void thor_gold_coin_pile(const CompanionLayoutCfg *d,int game)
 {
-    if (game != GAME_WARIO_SML3 && !wario_land2_supported_game(game)) return;
+    if (game != GAME_WARIO_SML3 && game != GAME_WARIO_LAND3_GBC &&
+        !wario_land2_supported_game(game)) return;
     int target = wario_pile_resetting ? 0 : wario_pile_level_coins;
     float difference = (float)target - wario_pile_displayed_coins;
     if (fabsf(difference) > 0.2f) {
