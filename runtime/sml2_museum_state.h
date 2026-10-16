@@ -49,6 +49,12 @@ static inline uint32_t sml2_museum_powerup_discovery(int powerup)
     return 0;
 }
 
+static inline int sml2_museum_is_secret_level(int level)
+{
+    /* The six secret courses occupy level IDs 19..1E; 1F is the final castle. */
+    return level >= 0x19 && level <= 0x1E;
+}
+
 static inline uint32_t sml2_museum_final_area_discoveries(int level)
 {
     /* Level ID 1F is the final castle course. Access requires the six coins,
