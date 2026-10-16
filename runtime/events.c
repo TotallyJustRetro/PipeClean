@@ -443,10 +443,12 @@ static void sml2_actor_trace_frame(void)
         const uint16_t base = (uint16_t)(0xAD08u + (unsigned)slot * 0x20u);
         /* The game's scheduler starts at AD08 and advances by 0x20 bytes. */
         const uint8_t active = rd8(base);
-        if (!active) continue;
+        /* Zero is an empty slot; FF can be the disabled-RAM bus value. */
+        if (!active || active == 0xFFu) continue;
 
         const uint8_t sprite_type = rd8((uint16_t)(base + 5u));
         const uint8_t mapping = rd8((uint16_t)(base + 11u));
+        if (sprite_type == 0xFFu && mapping == 0xFFu) continue;
         uint8_t *seen = &sml2_actor_trace_seen[level][sprite_type][mapping >> 3];
         const uint8_t mapping_bit = (uint8_t)(1u << (mapping & 7u));
         if (*seen & mapping_bit) continue;
