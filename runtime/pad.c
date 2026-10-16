@@ -135,8 +135,10 @@ void pad_init(void)
 void pad_shutdown(void)
 {
     for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
+    memset(pads, 0, sizeof pads);
     n_pads = 0;
     audio_pad_close();
+    SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
 }
 
 void pad_event(const SDL_Event *e)
