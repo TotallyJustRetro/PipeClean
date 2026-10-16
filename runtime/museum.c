@@ -344,53 +344,58 @@ static void add_wario_sml3_treasures(void)
 
 typedef struct { const char *id; const char *name; const char *description; MuseumCategory category; } SmlMuseumDef;
 static const SmlMuseumDef sml_museum_defs[] = {
-    {"sml_goombo", "Goombo (Chibibo)", "A mushroom-like Sarasaland enemy. It walks forward without turning at ledges, so it can wander off platforms. Stomping or a Superball defeats it.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_piranha", "Piranha Plant", "A plant that rises from a pipe into Mario's path. Watch its timing before crossing a pipe.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_ganchan", "Ganchan Boulder", "A rolling stone hazard. Some Ganchan can also act as moving platforms.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_bombshell_koopa", "Bombshell Koopa (Nokobon)", "A turtle whose shell is explosive. Stomping it triggers a blast, so keep clear after an attack.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_nokobon_bomb", "Nokobon Bomb", "The explosive shell released by a Bombshell Koopa. Its blast can hurt Mario if he stays nearby.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_pipe_fist", "Pipe Fist", "A punch thrown from a pipe that blocks Mario's route. Dash past between strikes.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_king_totomesu", "King Totomesu", "The lion-like boss of the Birabuto Kingdom. Watch its fireball timing to find an opening.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_pompon_flower", "Pompon Flower", "A flower enemy that releases drifting pollen. Keep moving rather than waiting in its path.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_fly", "Fly / Kumo", "A small flying enemy. Its stomped form uses another object ID, but belongs to the same specimen record.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_honen", "Honen", "A skeletal fish found in water. It patrols underwater routes and can obstruct narrow passages.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_mekabon", "Mekabon", "A robot enemy that can detach and throw its head. Watch both the body and its flying head.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_dragonzamasu", "Dragonzamasu", "A seahorse-like boss of the Muda Kingdom. Its attacks make the surrounding water dangerous to cross.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_yurarin", "Yurarin", "A seahorse enemy that swims through underwater stages. Avoid its path in narrow passages.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_yurarin_boo", "Yurarin Boo", "A jumping seahorse variant that attacks from the water and can surprise Mario near the surface.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_suu", "Suu", "A spider that descends into Mario's path. Watch overhead areas as you move through the stage.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_gunion", "Gunion", "A squid-like sea enemy encountered underwater. Nearby projectiles can make a direct swim unsafe.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_torion", "Torion", "A fish enemy encountered in water. Stay alert for it approaching from the side.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_tokotoko", "Tokotoko", "A running stone-head enemy found in Easton Kingdom. A well-timed jump can avoid its charge.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_hiyoihoi", "Hiyoihoi", "The stone-head boss of Easton Kingdom. It attacks by sending Ganchan boulders across the arena.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_batadon", "Batadon", "A flying stone-head enemy that approaches from the air. Watch its movement before jumping.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_gao", "Gao / Nyololin", "A lion-like fire-spitting enemy. Its defeated animation has its own object ID, but belongs to this specimen.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_bunbun", "Bunbun", "A bee enemy that drops arrows while hovering. Avoid standing below it for too long.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_pipe_cannon", "Pipe Cannon", "A cannon hazard that launches Gira projectiles across the stage. Check the firing lane before crossing.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_gira", "Gira / Bullet Biff", "A fast bullet-like projectile fired by a Pipe Cannon. Keep moving to avoid its path.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_rocketon", "Roketon", "An aircraft enemy from Chai Kingdom. Its attacks make it dangerous to linger in one spot.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_chicken", "Chicken", "A distinct live object in the cartridge's stage data. The Museum records the in-game specimen rather than a generic stomp.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_roto_disc", "Roto Disc", "A rotating disc hazard. Avoid its path rather than treating it as a normal enemy.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_reverse_piranha", "Headstand Piranha Plant", "An upside-down Piranha Plant variant. Its unusual placement changes how it threatens Mario.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_pionpi", "Pionpi", "An undead hopping enemy from Chai Kingdom. Its knocked-out state uses a different object ID.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_chikako", "Chikako", "A distinct enemy in Chai Kingdom. Its entry is tied to the cartridge's live object ID.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_tatanga", "Tatanga", "The alien antagonist and final boss of Super Mario Land. Mario fights Tatanga while piloting the Sky Pop.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_biokinton", "Biokinton", "A cloud-like boss associated with the final Chai Kingdom sequence. It has its own object type.", MUSEUM_CATEGORY_ENEMY},
-    {"sml_mushroom", "Super Mushroom", "Grows Small Mario into Super Mario. Super Mario can take one hit before returning to small form.", MUSEUM_CATEGORY_ITEM},
-    {"sml_heart", "Heart", "A collectible heart from Sarasaland. Its sprite is captured from the active game when it appears.", MUSEUM_CATEGORY_ITEM},
-    {"sml_star", "Star", "Grants a short burst of invincibility, allowing Mario to defeat most enemies by touching them.", MUSEUM_CATEGORY_ITEM},
-    {"sml_superball_flower", "Superball Flower", "Turns Mario into Superball Mario, who throws bouncing Superballs that defeat enemies and collect coins.", MUSEUM_CATEGORY_ITEM}
+    {"sml_goombo", "Goombo (Chibibo)", "A small Sarasaland enemy that walks straight ahead and can wander off ledges. A stomp or Superball defeats it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_piranha", "Piranha Plant", "Piranha Plants rise from pipes. Touching one from above hurts Mario; defeat them with Superballs. Standing next to or on a pipe keeps the plant from emerging.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_ganchan", "Ganchan Boulder", "A living boulder that bounces around and cannot be defeated. Mario can stand on one to cross gaps or avoid floor hazards; Hiyoihoi also throws them.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_bombshell_koopa", "Bombshell Koopa (Nokobon)", "A turtle with an explosive shell. Stomping it makes it retreat; the shell explodes shortly afterward. Superballs or a hit from below defeat it without triggering the blast.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_nokobon_bomb", "Nokobon Bomb", "The explosive shell left by a Bombshell Koopa. It detonates after a short delay, so move away before it explodes.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_pipe_fist", "Pipe Fist", "Fists punch out of pipes in pairs, alternating their strikes. Time a run or jump between punches; touching a fist is dangerous.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_king_totomesu", "King Totomesu", "The Birabuto Kingdom boss is a giant fire-breathing Gao. Defeat it with five Superballs or reach the switch behind it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_pompon_flower", "Pompon Flower", "A walking flower that releases toxic pollen. Avoid the drifting pollen; the flower can be stomped or hit with Superballs.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_fly", "Fly", "A hopping insect enemy that bounces along the ground. Stomp it or hit it twice with Superballs.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_kumo", "Kumo", "A hairy spider found in Easton Kingdom. It hops toward Mario like a Fly; some Kumos drop down from above when they appear. Stomp one or hit it twice with Superballs.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_honen", "Honen", "An undead fish that leaps vertically out of the water. Unlike many enemies, Honen can be defeated with any attack.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_mekabon", "Mekabon", "A squat robot that throws its head at Mario. Stomping the head breaks it temporarily, but it can regrow; attack the headless body to finish the robot.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_dragonzamasu", "Dragonzamasu", "The Muda Kingdom boss is a giant fire-breathing Yurarin Boo. It swims up and down and shoots fireballs; defeat it with Marine Pop torpedoes or by hitting the switch behind it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_tamao", "Tamao", "An egg-shaped creature that appears around Dragonzamasu. It bounces off walls and ceilings and hurts Mario on contact.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_yurarin", "Yurarin", "A seahorse enemy that swims horizontally or diagonally through underwater stages. The Marine Pop can defeat it with torpedoes.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_yurarin_boo", "Yurarin Boo", "A fire-breathing seahorse that moves vertically and shoots fireballs toward Mario. It can be stomped or defeated with Marine Pop torpedoes.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_suu", "Suu", "A striped spider that descends from the ceiling on a thread. Watch overhead spaces; a stomp or two Superballs can defeat it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_gunion", "Gunion", "An octopus enemy in the underwater stages. Three Marine Pop torpedo hits defeat it, but it then splits into two fireballs that target Mario.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_torion", "Torion", "A fish that appears in schools of three and swims through Muda Kingdom's underwater stages. The Marine Pop can defeat Torion with torpedoes.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_tokotoko", "Tokotoko", "A stone-head enemy that shuffles quickly across the ground. Avoid its charge with a jump or defeat it with a stomp or Superball.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_hiyoihoi", "Hiyoihoi", "The Easton Kingdom boss hurls Ganchan boulders at Mario. Defeat it with Superballs or use a boulder to reach the switch behind it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_batadon", "Batadon", "A winged stone head that bounces along the ground and chases Mario. A stomp or repeated Superballs can defeat it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_gao", "Gao / Nyololin", "Gao are lion-like sphinxes in Birabuto; Nyololin are snake-like enemies in Chai. Both spit fireballs toward Mario and can be beaten with a stomp or Superballs.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_bunbun", "Bunbun", "A flying bee that carries arrows. It pauses while flying to drop arrows that pass through terrain; stomp it or hit it with a Superball.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_pipe_cannon", "Pipe Cannon", "A cannon that rises from a pipe and fires Bullet Biffs at intervals, regardless of how close Mario is. Mario can safely stand on top of the cannon.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_gira", "Gira / Bullet Biff", "A bullet-like projectile fired by Pipe Cannons and Roketon. It flies horizontally across the screen and can be defeated by stomping it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_rocketon", "Roketon", "An enemy pilot working for Tatanga in the Sky Pop stage. Roketon fires Bullet Biffs backward as Mario flies past; shoot it down with a missile.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_chicken", "Chicken", "A helmeted bird released by Biokinton in the final airborne stage. Contact hurts Mario; the Sky Pop can shoot it down with missiles.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_roto_disc", "Roto Disc", "A ring of spinning flames that circles blocks in Chai Kingdom. Touching the flames costs Mario a life, so time your movement around them.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_reverse_piranha", "Headstand Piranha Plant", "An upside-down Piranha Plant that extends from overhead pipes. Unlike ordinary Piranha Plants, it cannot be kept inside its pipe by standing nearby.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_pionpi", "Pionpi", "An undead enemy that hops along the ground. A stomp only stuns it briefly; two Superball hits are needed to defeat it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_chikako", "Chikako", "A hovering electrical enemy in the Sky Pop stage. It takes ten missile hits to destroy, unless Mario touches it while invincible.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_tatanga", "Tatanga", "The alien who kidnapped Princess Daisy and the final boss. Fight him aboard the Sky Pop, avoid shots that split into three smaller projectiles, and fire missiles at his ship.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_biokinton", "Biokinton", "A bouncing cloud boss that releases Chickens at Mario. The Sky Pop must hit it with twenty missiles to defeat it.", MUSEUM_CATEGORY_ENEMY},
+    {"sml_mushroom", "Super Mushroom", "Turns Small Mario into Super Mario. Super Mario can break bricks and take one hit before shrinking back to Small Mario.", MUSEUM_CATEGORY_ITEM},
+    {"sml_heart", "1-Up Heart", "Grants Mario one extra life. It can emerge from a Mystery Block or brick and falls through the floor, so collect it before it disappears.", MUSEUM_CATEGORY_ITEM},
+    {"sml_star", "Star", "Makes Mario invincible for a short time. During the effect, touching most enemies defeats them.", MUSEUM_CATEGORY_ITEM},
+    {"sml_superball_flower", "Superball Flower", "Upgrades Super Mario into Superball Mario, who throws bouncing Superballs to defeat enemies and collect coins. Small Mario first becomes Super Mario when he picks up a Flower.", MUSEUM_CATEGORY_ITEM}
 };
 static void add_sml_catalog(void)
 {
     for (size_t i = 0; i < sizeof sml_museum_defs / sizeof sml_museum_defs[0]; ++i)
         add_entry(GAME_SML, sml_museum_defs[i].id, sml_museum_defs[i].name,
                   sml_museum_defs[i].category, sml_museum_defs[i].description, "");
-    add_entry(GAME_SML, "coin", "Coin", MUSEUM_CATEGORY_ITEM, "A coin collected in a stage. Coins increase Mario's counter.", "coin");
-    add_entry(GAME_SML, "enemy_defeated", "Unidentified enemy", MUSEUM_CATEGORY_ENEMY, "Fallback record for an enemy signal whose exact object ID could not be resolved.", "");
-    add_entry(GAME_SML, "power_up", "Unidentified power-up", MUSEUM_CATEGORY_ITEM, "Fallback record for a power-up signal when the live object type is not recognized.", "");
-    add_entry(GAME_SML, "block", "Mystery block", MUSEUM_CATEGORY_ITEM, "A block interaction was recorded. Blocks may contain coins or a power-up.", "bump");
-    add_entry(GAME_SML, "life_lost", "Life lost", MUSEUM_CATEGORY_MILESTONE, "Mario lost a life during the adventure.", "life");
+    add_entry(GAME_SML, "coin", "Coin", MUSEUM_CATEGORY_ITEM,
+              "Each coin adds 100 points; collecting 100 coins awards Mario an extra life.", "coin");
+    add_entry(GAME_SML, "power_up", "Power-up", MUSEUM_CATEGORY_ITEM,
+              "Mario gained a stronger form from a power-up. The named Mushroom, Superball Flower, and Star entries describe those items.", "power");
+    add_entry(GAME_SML, "block", "Mystery Block or Brick", MUSEUM_CATEGORY_ITEM,
+              "Blocks and bricks can hide coins or power-ups. Mario can hit them from below, and Super Mario can break bricks.", "bump");
+    add_entry(GAME_SML, "life_lost", "Life lost", MUSEUM_CATEGORY_MILESTONE,
+              "Small Mario loses a life when hit by an enemy or certain hazards. Powered-up Mario usually shrinks instead; after losing a life, Mario returns in Small form.", "life");
 }
 
 static void build_catalog(void)
@@ -547,32 +552,33 @@ const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *categor
     switch (type) {
     case 0x00: case 0x01: id = "sml_goombo"; break;
     case 0x02: id = "sml_piranha"; break;
-    case 0x47: id = "sml_ganchan"; break; /* actual Ganchan, not a spawn/helper slot */
+    case 0x33: case 0x47: id = "sml_ganchan"; break; /* Normal and single boulders. */
     case 0x04: id = "sml_bombshell_koopa"; break;
     case 0x05: id = "sml_nokobon_bomb"; break;
     case 0x06: id = "sml_pipe_fist"; break;
     case 0x08: id = "sml_king_totomesu"; break;
     case 0x09: id = "sml_pompon_flower"; break;
-    case 0x0E: case 0x0F: id = "sml_fly"; break;
+    case 0x0E: case 0x0F: id = "sml_fly"; break; /* 0x0F is its flattened state. */
     case 0x10: id = "sml_honen"; break;
     case 0x16: case 0x17: case 0x18: id = "sml_mekabon"; break;
     case 0x1A: id = "sml_dragonzamasu"; break;
     case 0x1D: id = "sml_yurarin"; break;
-    case 0x20: id = "sml_gunion"; break;
+    case 0x20: id = "sml_kumo"; break; /* Floating Kumo variant in the object table. */
     case 0x24: id = "sml_yurarin_boo"; break;
     case 0x25: id = "sml_suu"; break;
     case 0x29: cat = MUSEUM_CATEGORY_ITEM; id = "sml_mushroom"; break;
     case 0x2B: cat = MUSEUM_CATEGORY_ITEM; id = "sml_heart"; break;
+    case 0x2C: case 0x34: cat = MUSEUM_CATEGORY_ITEM; id = "sml_star"; break;
     case 0x2D: case 0x2E: cat = MUSEUM_CATEGORY_ITEM; id = "sml_superball_flower"; break;
-    case 0x30: id = "sml_torion"; break;
+    case 0x2F: case 0x30: id = "sml_torion"; break;
     case 0x31: id = "sml_tokotoko"; break;
     case 0x32: id = "sml_hiyoihoi"; break;
-    case 0x34: cat = MUSEUM_CATEGORY_ITEM; id = "sml_star"; break;
-    case 0x3C: case 0x3D: id = "sml_batadon"; break;
-    case 0x3F: id = "sml_gao"; break; /* 0x40 is shared by Gao/Tokotoko stomp states */
+    case 0x3C: id = "sml_batadon"; break;
+    case 0x3F: case 0x40: id = "sml_gao"; break; /* 0x40 is Gao's defeated state. */
     case 0x42: case 0x43: id = "sml_bunbun"; break;
+    case 0x48: id = "sml_tamao"; break;
     case 0x49: id = "sml_pipe_cannon"; break;
-    case 0x4B: id = "sml_gira"; break; /* exclude orientation/diagonal helper objects */
+    case 0x4A: case 0x4B: case 0x5A: id = "sml_gira"; break; /* High/low Bullet Biffs and Roketon's shot. */
     case 0x52: id = "sml_rocketon"; break;
     case 0x53: id = "sml_chicken"; break;
     case 0x54: id = "sml_roto_disc"; break;
@@ -580,7 +586,7 @@ const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *categor
     case 0x56: case 0x57: id = "sml_pionpi"; break;
     case 0x59: id = "sml_chikako"; break;
     case 0x5B: case 0x60: id = "sml_tatanga"; break;
-    case 0x61: id = "sml_biokinton"; break;
+    case 0x61: case 0x62: id = "sml_biokinton"; break;
     default: break;
     }
     if (category) *category = id ? cat : MUSEUM_CATEGORY_ALL;
@@ -705,6 +711,32 @@ const char *museum_category_name(MuseumCategory category)
     case MUSEUM_CATEGORY_CHARACTER: return "Characters";
     default: return "All";
     }
+}
+
+int museum_clear_discoveries(void)
+{
+    museum_init();
+    if (!storage_path[0]) {
+        snprintf(storage_error, sizeof storage_error, "Museum storage path is unavailable");
+        return 0;
+    }
+    FILE *f = fopen(storage_path, "w");
+    if (!f) {
+        snprintf(storage_error, sizeof storage_error,
+                 "Couldn't reset Museum progress: %.100s", storage_path);
+        return 0;
+    }
+    if (fclose(f) != 0) {
+        snprintf(storage_error, sizeof storage_error, "Couldn't finish resetting Museum progress");
+        return 0;
+    }
+
+    memset(discovered, 0, sizeof discovered);
+    SDL_AtomicLock(&discovery_notice_lock);
+    discovery_notice_head = discovery_notice_count = 0;
+    SDL_AtomicUnlock(&discovery_notice_lock);
+    storage_error[0] = 0;
+    return 1;
 }
 
 const char *museum_last_storage_error(void) { return storage_error; }
