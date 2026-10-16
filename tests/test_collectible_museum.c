@@ -128,6 +128,42 @@ int main(void)
     assert(museum_is_discovered(GAME_SML, "power_up"));
     assert(!museum_is_discovered(GAME_SML2, "coin"));
 
+    /* Every current SML2 Museum row has a live observation path in the
+       SML2 tracker or a generic event trigger; don't leave any catalogue row
+       as a permanent placeholder. */
+    {
+        static const struct { const char *id; const char *trigger; } expected[] = {
+            {"coin", "coin"},
+            {"enemy_defeated", "enemy"},
+            {"extra_life", "oneup"},
+            {"life_lost", "life"},
+            {"mushroom", ""},
+            {"fire_flower", ""},
+            {"magic_carrot", ""},
+            {"starman", ""},
+            {"golden_coins", ""},
+            {"wario", ""},
+            {"zone_bosses", ""},
+            {"secret_exit", ""},
+            {"castle_cleared", ""}
+        };
+        assert(museum_catalog_count(GAME_SML2) == (int)(sizeof expected / sizeof expected[0]));
+        for (int e = 0; e < (int)(sizeof expected / sizeof expected[0]); ++e) {
+            const MuseumEntry *entry = NULL;
+            for (int i = 0; i < museum_catalog_count(GAME_SML2); ++i) {
+                const MuseumEntry *candidate = museum_catalog_entry(GAME_SML2, i);
+                if (!strcmp(candidate->id, expected[e].id)) {
+                    entry = candidate;
+                    break;
+                }
+            }
+            assert(entry);
+            assert(!strcmp(entry->trigger_event, expected[e].trigger));
+            assert(entry->description[0]);
+            assert(!museum_is_discovered(GAME_SML2, expected[e].id));
+        }
+    }
+
     /* Wario Land II's actual collection flags unlock individual museum rows. */
     museum_sync_flags(GAME_WARIO_LAND2_GB, "wl2_treasure",
                       (UINT64_C(1) << 0) | (UINT64_C(1) << 4), 50);
