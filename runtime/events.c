@@ -462,7 +462,7 @@ static void sml2_actor_trace_frame(void)
     if (cur_game != GAME_SML2 || loaded_game != GAME_SML2 || !has_cart_ram) {
         if (diagnostic_tick)
             fprintf(sml2_actor_trace_file,
-                    "diag frame=%d reason=game_or_ram_guard cur_game=%d loaded_game=%d cart_ram=%d mode=%02X level=%02X\\n",
+                    "diag frame=%d reason=game_or_ram_guard cur_game=%d loaded_game=%d cart_ram=%d mode=%02X level=%02X\n",
                     frame_count, cur_game, loaded_game, has_cart_ram, mode, level);
         return;
     }
@@ -470,7 +470,7 @@ static void sml2_actor_trace_frame(void)
     if (!sml2_museum_mode_is_active(mode)) {
         if (diagnostic_tick)
             fprintf(sml2_actor_trace_file,
-                    "diag frame=%d reason=inactive_mode mode=%02X level=%02X\\n",
+                    "diag frame=%d reason=inactive_mode mode=%02X level=%02X\n",
                     frame_count, mode, level);
         return;
     }
@@ -478,7 +478,7 @@ static void sml2_actor_trace_frame(void)
     if (level > 0x1F) {
         if (diagnostic_tick)
             fprintf(sml2_actor_trace_file,
-                    "diag frame=%d reason=invalid_level mode=%02X level=%02X\\n",
+                    "diag frame=%d reason=invalid_level mode=%02X level=%02X\n",
                     frame_count, mode, level);
         return;
     }
@@ -490,7 +490,7 @@ static void sml2_actor_trace_frame(void)
             if (rd8(base) != 0) ++nonzero_slots;
         }
         fprintf(sml2_actor_trace_file,
-                "diag frame=%d reason=scanning mode=%02X level=%02X nonzero_slots=%u\\n",
+                "diag frame=%d reason=scanning mode=%02X level=%02X nonzero_slots=%u\n",
                 frame_count, mode, level, nonzero_slots);
         fflush(sml2_actor_trace_file);
     }
