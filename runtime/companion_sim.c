@@ -1975,6 +1975,184 @@ static void draw_wario2_celebration(void)
     }
 }
 
+static void draw_wario3_key_shape(int cx, int cy, int size, int key, int found)
+{
+    static const Uint8 colors[4][3] = {
+        {201, 209, 216}, {255, 98, 103}, {98, 215, 131}, {93, 159, 255}
+    };
+    Uint8 kr = found ? colors[key][0] : 87;
+    Uint8 kg = found ? colors[key][1] : 83;
+    Uint8 kb = found ? colors[key][2] : 77;
+    int ring = size / 3;
+    if (ring < 2) ring = 2;
+    fill_circle(cx - size / 4, cy, ring + 2, 36, 27, 21, 255);
+    fill_circle(cx - size / 4, cy, ring, kr, kg, kb, 255);
+    fill_circle(cx - size / 4, cy, ring / 2, 45, 35, 25, 255);
+    int shaft_x = cx - size / 12;
+    int shaft_y = cy - size / 10;
+    int shaft_w = (int)(size * 0.48f);
+    int shaft_h = (int)fmaxf(2.f, size * 0.19f);
+    fill_round_rect(shaft_x - 1, shaft_y - 1, shaft_w + 2, shaft_h + 2,
+                    2, 36, 27, 21, 255);
+    fill_round_rect(shaft_x, shaft_y, shaft_w, shaft_h, 2, kr, kg, kb, 255);
+    fill_round_rect(cx + (int)(size * .08f), cy + (int)(size * .04f),
+                    (int)fmaxf(2.f, size * .12f), (int)fmaxf(2.f, size * .18f),
+                    1, found ? kr : 48, found ? kg : 45, found ? kb : 41, 255);
+    fill_round_rect(cx + (int)(size * .27f), cy + (int)(size * .04f),
+                    (int)fmaxf(2.f, size * .12f), (int)fmaxf(2.f, size * .14f),
+                    1, found ? kr : 48, found ? kg : 45, found ? kb : 41, 255);
+    if (found)
+        fill_round_rect(cx - size / 3, cy - size / 3, (int)fmaxf(1.f,size*.10f),
+                        (int)fmaxf(1.f,size*.07f), 1, 255, 255, 245, 235);
+}
+
+static void draw_wario3_key_ring(const Settings *s, int x, int y, int w, int h, int game)
+{
+    draw_android_card(s, x, y, w, h, game, "THE FOUR KEYS");
+    if (current_wario3_keys < 0) {
+        draw_text_fit(x + 12, y + 49, w - 24, 1, 184, 170, 149,
+                      "ENTER A COURSE TO SCAN KEYS");
+        for (int key = 0; key < 4; key++) {
+            int step = (w - 24) / 4;
+            int cx = x + 12 + step * key + step / 2;
+            draw_wario3_key_shape(cx, y + h / 2 + 2, (int)fminf(23.f, step * .45f), key, 0);
+        }
+        return;
+    }
+    char summary[40];
+    int count = 0;
+    for (int key = 0; key < 4; key++)
+        if (current_wario3_keys & (1 << key)) count++;
+    snprintf(summary, sizeof summary, "%d / 4 COLLECTED", count);
+    draw_text_fit(x + 12, y + 40, w - 24, 1, 255, 214, 107, summary);
+    const char *names[4] = {"GRAY", "RED", "GREEN", "BLUE"};
+    static const Uint8 colors[4][3] = {
+        {201, 209, 216}, {255, 98, 103}, {98, 215, 131}, {93, 159, 255}
+    };
+    int step = (w - 24) / 4;
+    for (int key = 0; key < 4; key++) {
+        int found = (current_wario3_keys & (1 << key)) != 0;
+        int cx = x + 12 + step * key + step / 2;
+        draw_wario3_key_shape(cx, y + h / 2, (int)fminf(h < 100 ? 20.f : 29.f, step * .50f), key, found);
+        draw_text_fit(cx - step / 2, y + h - (h < 100 ? 5 : 21), step, 1,
+            found ? colors[key][0] : 160,
+            found ? colors[key][1] : 151,
+            found ? colors[key][2] : 139, names[key]);
+        if (h >= 100)
+            draw_text_fit(cx - step / 2, y + h - 8, step, 1,
+                found ? 255 : 119, found ? 241 : 112, found ? 212 : 104,
+                found ? "FOUND" : "MISSING");
+    }
+}
+
+static void draw_wario3_vault(const Settings *s, int x, int y, int w, int h, int game)
+{
+    draw_android_card(s, x, y, w, h, game, "TREASURE VAULT");
+    char label[48];
+    if (current_wario3_treasures < 0) snprintf(label, sizeof label, "-- / 100 TREASURES");
+    else snprintf(label, sizeof label, "%02d / 100 TREASURES", current_wario3_treasures);
+    draw_text_fit(x + 12, y + 41, w - 24, 1, 255, 224, 164, label);
+    fill_round_rect(x + 12, y + 48, w - 24, 5, 2, 57, 43, 28, 255);
+    if (current_wario3_treasures > 0)
+        fill_round_rect(x + 12, y + 48, (w - 24) * current_wario3_treasures / 100, 5,
+                        2, 255, 214, 107, 255);
+    int cols = 20, rows = 5;
+    int usable_w = w - 24;
+    int step_x = usable_w / cols;
+    int top = y + 60, usable_h = h - 67;
+    for (int i = 0; i < 100; i++) {
+        int col = i % cols, row = i / cols;
+        int cx = x + 12 + col * step_x;
+        int cy = top + row * usable_h / rows;
+        int found = current_wario3_treasures >= 0 && i < current_wario3_treasures;
+        fill_round_rect(cx + 1, cy, step_x > 2 ? step_x - 2 : 1, 3, 1,
+            found ? 255 : 73, found ? 214 : 58, found ? 107 : 42, 255);
+    }
+}
+
+static void draw_wario3_log(const Settings *s, int x, int y, int w, int h, int game)
+{
+    draw_android_card(s, x, y, w, h, game, "EXPEDITION LOG");
+    if (!wario3_expedition_log_count) {
+        draw_text_fit(x + 12, y + 49, w - 24, 1, 184, 170, 149, "NO EVENTS RECORDED YET");
+        return;
+    }
+    int rows = wario3_expedition_log_count < 4 ? wario3_expedition_log_count : 4;
+    for (int i = 0; i < rows; i++) {
+        int row_y = y + 47 + i * (h < 100 ? 11 : 12);
+        int key_event = strstr(wario3_expedition_log[i], "KEY FOUND") != NULL;
+        int treasure_event = strstr(wario3_expedition_log[i], "TREASURE") != NULL;
+        fill_circle(x + 15, row_y - 3, 2,
+            (key_event || treasure_event) ? 255 : 189,
+            (key_event || treasure_event) ? 200 : 133,
+            (key_event || treasure_event) ? 87 : 55, 255);
+        draw_text_fit(x + 23, row_y, w - 34, 1,
+            (key_event || treasure_event) ? 255 : (i == 0 ? 255 : 184),
+            (key_event || treasure_event) ? 200 : (i == 0 ? 241 : 170),
+            (key_event || treasure_event) ? 87 : (i == 0 ? 212 : 149),
+            wario3_expedition_log[i]);
+    }
+}
+
+static void draw_wario3_status(const Settings *s, int x, int y, int w, int h, int game)
+{
+    draw_android_card(s, x, y, w, h, game, "COURSE TRACKER");
+    char course[48], coins[48], music[48], status[48];
+    if (current_stage < 0) snprintf(course, sizeof course, "COURSE --");
+    else snprintf(course, sizeof course, "COURSE %02d  •  %s", current_stage, current_world == 1 ? "NIGHT" : "DAY");
+    if (current_wario_coins < 0) snprintf(coins, sizeof coins, "COINS ---");
+    else snprintf(coins, sizeof coins, "COINS %03d", current_wario_coins);
+    if (current_wario3_music_coins < 0) snprintf(music, sizeof music, "MUSIC COINS -- / 8");
+    else {
+        int bits = current_wario3_music_coins & 0xFF, count = 0;
+        for (; bits; bits &= bits - 1) count++;
+        snprintf(music, sizeof music, "MUSIC COINS %d / 8", count);
+    }
+    snprintf(status, sizeof status, "%s", current_paused ? "EXPEDITION PAUSED" :
+        current_wario3_scene == 3 ? "COURSE RESULTS" : "COURSE IN PROGRESS");
+    draw_text_fit(x + 12, y + 42, w - 24, 1, 255, 214, 107, course);
+    if (h < 100) {
+        draw_text_fit(x + 12, y + 58, w * .44f, 1, 255, 241, 212, coins);
+        draw_text_fit(x + w * .50f, y + 58, w * .46f, 1, 184, 170, 149, music);
+        draw_text_fit(x + 12, y + h - 4, w - 24, 1, 184, 170, 149, status);
+    } else {
+        draw_text_fit(x + 12, y + 61, w - 24, 1, 255, 241, 212, coins);
+        draw_text_fit(x + 12, y + 78, w - 24, 1, 184, 170, 149, music);
+        draw_text_fit(x + 12, y + h - 9, w - 24, 1, 184, 170, 149, status);
+    }
+}
+
+static void draw_wario3_celebration(void)
+{
+    if (!wario3_animation_active || wario3_animation_id < 0 || wario3_animation_id > 3) return;
+    Uint32 elapsed = SDL_GetTicks() - wario3_animation_started;
+    if (elapsed >= 1850) { wario3_animation_active = 0; return; }
+    float phase = elapsed / 1850.f;
+    static const Uint8 colors[4][3] = {
+        {201, 209, 216}, {255, 98, 103}, {98, 215, 131}, {93, 159, 255}
+    };
+    int kr=colors[wario3_animation_id][0],kg=colors[wario3_animation_id][1],kb=colors[wario3_animation_id][2];
+    int alpha = (int)((1.f - phase) * 175.f);
+    for (int i=0;i<3;i++)
+        outline_circle(400, 258, (int)(25 + phase * (88 + i * 17)),
+            kr,kg,kb,(Uint8)(alpha>255?255:alpha));
+    fill_round_rect(205, 310, 390, 54, 10, 43, 31, 17, 238);
+    outline_round_rect(205, 310, 390, 54, 10, kr, kg, kb, 255);
+    static const char *names[4]={"GRAY","RED","GREEN","BLUE"};
+    draw_wario3_key_shape(258,337,34,wario3_animation_id,1);
+    char label[48];
+    snprintf(label,sizeof label,"%s KEY FOUND!",names[wario3_animation_id]);
+    draw_text_fit(294,330,286,1,255,235,165,label);
+    draw_text_fit(294,347,286,1,247,233,208,"MATCHING TREASURE CHEST UNLOCKED");
+    for(int i=0;i<14;i++){
+        float a=6.2831853f*i/14.f+phase*1.25f;
+        int distance=(int)(34+phase*70+(i%3)*7);
+        int sx=400+(int)(cosf(a)*distance),sy=258+(int)(sinf(a)*distance);
+        int sz=(int)(4.f*(1.f-phase));if(sz<1)sz=1;
+        fill(sx-sz/2,sy-sz/2,sz,sz,kr,kg,kb,255);
+    }
+}
+
 static void draw_wario2_companion(const Settings *s, int game)
 {
     draw_android_scenery(game);
