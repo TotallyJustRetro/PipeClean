@@ -8,6 +8,8 @@ LauncherResult launcher_frame(float dt);
 void launcher_event(const SDL_Event *e);
 int  launcher_capturing(void);
 void launcher_toast(const char *msg);
+/* Draw queued Museum discoveries over the active gameplay frame. Call between ui_begin/ui_end. */
+void launcher_museum_notification_draw(float dt);
 void launcher_drop(const char *path);
 
 /* Android Companion Deck custom-layout bridge. Picker kinds are defined by the
