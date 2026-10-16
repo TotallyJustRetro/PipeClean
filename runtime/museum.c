@@ -385,15 +385,36 @@ static void build_catalog(void)
     /* Super Mario Land */
     add_sml_catalog();
 
-    /* Super Mario Land 2 */
+    /* Super Mario Land 2: the shared Museum catalogue uses Mario-style categories,
+       never the Wario-only treasure shelf. Generic event records are wired to
+       reliable counter signals; named specimens remain locked until their own
+       game-specific detection is available. */
     add_entry(GAME_SML2, "coin", "Coin", MUSEUM_CATEGORY_ITEM,
-              "A coin-counter increase was observed.", "coin");
-    add_entry(GAME_SML2, "enemy_defeated", "Enemy defeated", MUSEUM_CATEGORY_ENEMY,
-              "The defeated-enemy counter increased. This does not identify the species yet.", "enemy");
+              "A common coin found throughout Mario Land. Coins can be spent at the Game Boy's bonus-game house for chances to win extra lives and prizes.", "coin");
+    add_entry(GAME_SML2, "enemy_defeated", "Enemy encounter", MUSEUM_CATEGORY_ENEMY,
+              "Mario defeated an enemy. The current signal tracks the game's defeated-enemy counter, but does not yet identify the exact species.", "enemy");
     add_entry(GAME_SML2, "extra_life", "Extra life", MUSEUM_CATEGORY_ITEM,
-              "The life counter increased.", "oneup");
+              "An extra life was awarded. The game represents these rewards with hearts rather than the familiar green 1-Up Mushroom.", "oneup");
     add_entry(GAME_SML2, "life_lost", "Life lost", MUSEUM_CATEGORY_MILESTONE,
-              "The life counter decreased.", "life");
+              "Mario lost a life during the adventure. Ordinary stage progress remains, but the six Golden Coins must be reclaimed if a Game Over returns them to their guardians.", "life");
+    add_entry(GAME_SML2, "mushroom", "Super Mushroom", MUSEUM_CATEGORY_ITEM,
+              "Transforms Small Mario into Super Mario, allowing him to take one hit before shrinking back down.", "");
+    add_entry(GAME_SML2, "fire_flower", "Fire Flower", MUSEUM_CATEGORY_ITEM,
+              "Transforms Mario into Fire Mario, who can throw bouncing fireballs. In this Game Boy game, Fire Mario's cap has a distinctive feather.", "");
+    add_entry(GAME_SML2, "magic_carrot", "Magic Carrot", MUSEUM_CATEGORY_ITEM,
+              "Transforms Mario into Bunny Mario. His ears let him flutter and slow his descent, making it possible to reach otherwise difficult platforms.", "");
+    add_entry(GAME_SML2, "starman", "Super Star", MUSEUM_CATEGORY_ITEM,
+              "Grants temporary invincibility, letting Mario defeat most enemies by touching them.", "");
+    add_entry(GAME_SML2, "golden_coins", "Six Golden Coins", MUSEUM_CATEGORY_MILESTONE,
+              "Six unique coins are held by the guardians of Tree, Turtle, Macro, Pumpkin, Mario, and Space Zones. Recovering all six opens the way to Mario's castle.", "");
+    add_entry(GAME_SML2, "wario", "Wario", MUSEUM_CATEGORY_CHARACTER,
+              "Mario's rival has taken over Mario's castle. The final confrontation unfolds in three rounds, each with a different power-up form.", "");
+    add_entry(GAME_SML2, "zone_bosses", "Zone guardians", MUSEUM_CATEGORY_ENEMY,
+              "Each of the six main zones has a guardian protecting its Golden Coin, including Big Bird, the octopus, the Three Little Pigheads, Tatanga, the Sewer Rat, and the Witch.", "");
+    add_entry(GAME_SML2, "secret_exit", "Secret exit", MUSEUM_CATEGORY_STAGE,
+              "Some courses contain an alternate exit that opens a hidden course on the world map. Look for the star-marked goal door.", "");
+    add_entry(GAME_SML2, "castle_cleared", "Castle reclaimed", MUSEUM_CATEGORY_MILESTONE,
+              "Mario has defeated Wario and reclaimed his castle. This marks completion of the main adventure.", "");
 
     /* Wario Land: Super Mario Land 3. Individual treasure flags are available. */
     add_entry(GAME_WARIO_SML3, "coin", "Coin", MUSEUM_CATEGORY_ITEM,
