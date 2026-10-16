@@ -174,7 +174,7 @@ void game_cfg_defaults(GameCfg *c, int game)
                      game == GAME_WARIO_LAND3_GBC || game == GAME_WARIO_LAND2_GBC;
     c->ds_ev_speaker = !wario_game ? 0 :
         ((game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) ? 0x1F : 0x7F);
-    c->ds_fx_version = 1;
+    c->ds_fx_version = 2;
     controls_defaults(c);
 }
 
@@ -328,7 +328,7 @@ static int field_table(Field *t, int cap)
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
         GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
-        GI("fx_version", c->ds_fx_version, 0, 1);
+        GI("fx_version", c->ds_fx_version, 0, 2);
 
         CompanionLayoutCfg *d = &s->deck_layout[g];
         GI("deck_header_dx", d->header_dx, -400, 400); GI("deck_header_dy", d->header_dy, -400, 400); GI("deck_header_scale", d->header_scale, 25, 250); GI("deck_header_scale_y", d->header_scale_y, 25, 250);
@@ -451,17 +451,21 @@ void settings_load(void)
         }
     }
     fclose(f);
-    /* Previous builds saved ev_speaker=0 for Wario titles even though the
-       shared controller-speaker effects were ready. Turn on event alerts once
-       for those older configs; the persisted version marker preserves the
-       user's choices on later launches. */
+    /* Older Wario configs saved speaker events disabled. Initialize those
+       once, then add only the new Wario Land II coin-loss bit for version 2
+       so users' existing event toggles are preserved. */
     int wario_fx_migrated = 0;
     for (int g = GAME_WARIO_SML3; g < N_GAMES; g++) {
         GameCfg *c = &settings.g[g];
         if (!saw_wario_fx_version[g] || c->ds_fx_version < 1) {
             c->ds_ev_speaker = (g == GAME_WARIO_LAND2_GB ||
-                                g == GAME_WARIO_LAND2_GBC) ? 0x0F : 0x7F;
-            c->ds_fx_version = 1;
+                                g == GAME_WARIO_LAND2_GBC) ? 0x1F : 0x7F;
+            c->ds_fx_version = 2;
+            wario_fx_migrated = 1;
+        } else if (c->ds_fx_version < 2) {
+            if (g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
+                c->ds_ev_speaker |= 0x10;
+            c->ds_fx_version = 2;
             wario_fx_migrated = 1;
         }
     }
