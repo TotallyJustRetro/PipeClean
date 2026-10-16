@@ -4542,6 +4542,9 @@ static void tab_museum(float x, float y)
     museum_draw_entry_art(museum_game, selected, x + 13, body_y + 39, 108, 108,
                           selected_found);
     const float info_x = x + 132;
+    char provenance[120];
+    snprintf(provenance, sizeof provenance, "%s: %s",
+             selected_found ? "First seen" : "Game", games[museum_game].name);
     if (selected_found && selected) {
         ui_text_fit(F_BOLD, 18, info_x, body_y + 42, left_w - 153,
                     HEX(0x25170E), selected->name);
@@ -4549,6 +4552,7 @@ static void tab_museum(float x, float y)
         ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 1 / 1");
         ui_text(F_REG, 10, info_x, body_y + 101, HEX(0x65452F),
                 rs[museum_game].ok ? "Cartridge: ready" : "Add this game's ROM for sprite capture");
+        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
     } else {
         ui_text_fit(F_BOLD, 18, info_x, body_y + 43, left_w - 153,
                     HEX(0x25170E), "UNDISCOVERED");
@@ -4556,6 +4560,7 @@ static void tab_museum(float x, float y)
         ui_text(F_REG, 11, info_x, body_y + 87, HEX(0x3B291C), "Found: 0 / 1");
         ui_text_wrap(F_REG, 10, info_x, body_y + 104, left_w - 153, HEX(0x65452F),
                      "Encounter this specimen in the game to identify it and reveal its field notes.", 1.0f);
+        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
     }
 
     ui_line(x + 13, body_y + 156, x + left_w - 13, body_y + 156, 2, HEX(0xB87C3A));
