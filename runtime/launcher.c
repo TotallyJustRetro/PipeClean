@@ -868,7 +868,7 @@ static void sub_external_game(int g, float x, float y)
                  g == GAME_WARIO_SML3
                     ? "Wario Land: Super Mario Land 3 opens the Treasure Expedition Companion Deck when enabled. Controller events now include power-up, damage, treasure, coins, recovery, extra life, life lost, course entry, key pickup and course results."
                     : ((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
-                       ? "Both Wario Land II releases use the Stolen Treasure Companion Deck: all 50 treasures and picture panels, course-entry tracking, an expedition log, collection animations, and event-specific DualSense lightbar, rumble and speaker alerts. The course-results alert fires when its treasure or picture reward is revealed; Wario Land II has no key pickup mechanic."
+                       ? "Both Wario Land II releases use the Stolen Treasure Companion Deck: all 50 treasures and picture panels, course-entry and end-of-course-results tracking, an expedition log, collection animations, and event-specific DualSense lightbar, rumble and speaker alerts. Wario Land II has no key pickup mechanic."
                        : (g == GAME_WARIO_LAND3_GBC
                           ? "Wario Land 3 has ten live controller events, including power-up, damage/recovery, treasure, coins, story/game-over milestones, course entry, key obtained and the course-results screen. Events can trigger DualSense lightbar flashes, distinct rumble and speaker alerts; compatible other controllers can rumble."
                           : "This title runs in the separate gbrecomp player. PipeClean's in-runtime filters and save-state slots do not apply to this player.")), 5);
