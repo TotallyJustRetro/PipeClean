@@ -446,21 +446,25 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_file = fopen(path, "w");
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
-            "PipeClean SML2 live sprite actor trace v4\n"
+            "PipeClean SML2 live sprite actor trace v5\n"
             "Each actor record is 0x20 bytes; the active marker is at record offset +8.\n"
             "Record bases begin at AD00; active markers begin at AD08.\n"
             "The source descriptor pointer is stored high-byte first at record offsets +6/+7.\n"
             "It points at descriptor byte +2; descriptor bytes are read from pointer - 2.\n"
-            "The level spawn list at AB06 is dumped independently of active actors.\n"
-            "Descriptor bytes and actor fields are diagnostic evidence, not assumed species IDs.\n"
+            "The AB06 level spawn list is logged only in active gameplay/pause/death modes.\n"
+            "sprite_map rows decode the game ROM type-to-sprite and sprite-pointer tables.\n"
+            "Raw type values and sprite indices are evidence, not species names.\n"
             "spawn frame level slot record_addr source_ref source_addr descriptor[00..05]\n"
-            "actor frame level slot record_addr active source_ref field05 field0B record[00..1F]\n");
+            "actor frame level slot record_addr active source_ref field05 field0B record[00..1F]\n"
+            "sprite_map kind frame mode level slot record_addr source_ref object_type lookup_id observed_db map_ptr pieces[y,x,tile,attr;...]\n");
     fflush(sml2_actor_trace_file);
 }
 
 static void sml2_actor_trace_spawn_table(int mode, int level)
 {
-    if (!sml2_actor_trace_file || level < 0 || level >= 0x20) return;
+    /* $AB06 can contain stale or zeroed RAM during title/transition scenes. */
+    if (!sml2_actor_trace_file || level < 0 || level >= 0x20 ||
+        !sml2_museum_mode_is_active(mode)) return;
 
     const uint16_t start = 0xAB06u;
     const unsigned max_entries = (0xACFFu - start + 1u) / 6u;
@@ -501,6 +505,62 @@ static void sml2_actor_trace_spawn_table(int mode, int level)
     fflush(sml2_actor_trace_file);
 }
 
+/* Decode the ROM's object-type -> mapping-index -> sprite-piece chain.
+ * Fixed-bank reads avoid depending on the currently mapped CPU ROM bank. */
+static void sml2_actor_trace_sprite_mapping(const char *kind, int mode, int level,
+                                            int slot, uint16_t record_addr,
+                                            uint16_t source_ref, uint8_t object_type,
+                                            int observed_db)
+{
+    if (!sml2_actor_trace_file || level < 0 || level >= 0x20 ||
+        object_type == 0xFFu)
+        return;
+
+    const uint16_t type_table = (uint16_t)(level < 0x0A ? 0x4B61u : 0x4BC1u);
+    const uint8_t lookup_id = cart_rom_read_bank(2,
+        (uint16_t)(type_table + object_type));
+    const uint16_t pointer_table = (uint16_t)(level < 0x0A ? 0x40B1u : 0x4F11u);
+    const uint16_t pointer_entry = (uint16_t)(pointer_table + (uint16_t)lookup_id * 2u);
+    const uint8_t lo = cart_rom_read_bank(3, pointer_entry);
+    const uint8_t hi = cart_rom_read_bank(3, (uint16_t)(pointer_entry + 1u));
+    const uint16_t map_ptr = (uint16_t)((uint16_t)lo | ((uint16_t)hi << 8));
+
+    fprintf(sml2_actor_trace_file,
+            "sprite_map kind=%s frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X object_type=%02X lookup_id=%02X observed_db=",
+            kind ? kind : "unknown", frame_count, mode, level, slot,
+            record_addr, source_ref, object_type, lookup_id);
+    if (observed_db < 0) fputs("--", sml2_actor_trace_file);
+    else fprintf(sml2_actor_trace_file, "%02X", (unsigned)observed_db & 0xFFu);
+    fprintf(sml2_actor_trace_file, " map_ptr=%04X pieces=", map_ptr);
+
+    if (map_ptr < 0x4000u || map_ptr >= 0x8000u) {
+        fputs("unavailable\n", sml2_actor_trace_file);
+        fflush(sml2_actor_trace_file);
+        return;
+    }
+
+    int piece_count = 0;
+    int terminated = 0;
+    for (unsigned i = 0; i < 40; ++i) {
+        const unsigned raw_addr = (unsigned)map_ptr + i * 4u;
+        if (raw_addr + 3u >= 0x8000u) break;
+        uint8_t piece[4];
+        for (unsigned j = 0; j < 4; ++j)
+            piece[j] = cart_rom_read_bank(3, (uint16_t)(raw_addr + j));
+        if (piece[0] == 0x80u) {
+            terminated = 1;
+            break;
+        }
+        fprintf(sml2_actor_trace_file, "%s%02X,%02X,%02X,%02X",
+                piece_count ? ";" : "", piece[0], piece[1], piece[2], piece[3]);
+        ++piece_count;
+    }
+    if (!terminated) fprintf(sml2_actor_trace_file, "%struncated", piece_count ? ";" : "");
+    if (piece_count == 0 && terminated) fputs("empty", sml2_actor_trace_file);
+    fputc('\n', sml2_actor_trace_file);
+    fflush(sml2_actor_trace_file);
+}
+
 static void sml2_actor_trace_frame(void)
 {
     if (!sml2_actor_trace_file) return;
@@ -521,18 +581,6 @@ static void sml2_actor_trace_frame(void)
         return;
     }
 
-    /* The previous trace showed mode 0C, which production Museum logic does
-     * not treat as gameplay. In this developer-only trace, still inspect the
-     * actor table so we can determine whether records exist during that mode.
-     * Actor/spawn rows include the observed mode for later filtering. */
-    if (!sml2_museum_mode_is_active(mode) && diagnostic_tick)
-        fprintf(sml2_actor_trace_file,
-                "diag frame=%d reason=nonstandard_mode_scanning mode=%02X level=%02X\n",
-                frame_count, mode, level);
-
-    /* Capture the level's source descriptors even if its actor table is empty. */
-    sml2_actor_trace_spawn_table(mode, level);
-
     if (level > 0x1F) {
         if (diagnostic_tick)
             fprintf(sml2_actor_trace_file,
@@ -540,6 +588,18 @@ static void sml2_actor_trace_frame(void)
                     frame_count, mode, level);
         return;
     }
+
+    /* Avoid dumping stale/zeroed tables and actor RAM during title/transition
+     * modes. Gameplay captures showed reliable actor records in mode 04. */
+    if (!sml2_museum_mode_is_active(mode)) {
+        if (diagnostic_tick)
+            fprintf(sml2_actor_trace_file,
+                    "diag frame=%d reason=nonstandard_mode_ignored mode=%02X level=%02X\n",
+                    frame_count, mode, level);
+        return;
+    }
+
+    sml2_actor_trace_spawn_table(mode, level);
 
     if (diagnostic_tick) {
         unsigned nonzero_slots = 0;
@@ -606,6 +666,10 @@ static void sml2_actor_trace_frame(void)
                         "spawn frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X descriptor=unavailable\n",
                         frame_count, mode, level, slot, base, source_ref);
             }
+            if (source_ref >= 2u && source_is_entry) {
+                sml2_actor_trace_sprite_mapping("spawn", mode, level, slot, base,
+                                                source_ref, rd8((uint16_t)(source_addr + 5u)), -1);
+            }
             sml2_actor_trace_source_ref[level][slot] = source_ref;
             sml2_actor_trace_source_logged[level][slot] = 1;
             fflush(sml2_actor_trace_file);
@@ -627,6 +691,8 @@ static void sml2_actor_trace_frame(void)
         for (unsigned i = 0; i < 32; ++i)
             fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
         fputc('\n', sml2_actor_trace_file);
+        sml2_actor_trace_sprite_mapping("actor", mode, level, slot, base, source_ref,
+                                        field05, field0B);
         fflush(sml2_actor_trace_file);
     }
 }
