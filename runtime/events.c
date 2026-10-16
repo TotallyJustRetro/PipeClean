@@ -387,9 +387,88 @@ typedef struct {
 } SmlMuseumObject;
 static SmlMuseumObject sml_museum_previous[10];
 
+/* SML2 developer trace: the game's live sprite scheduler walks 16 records
+ * beginning at AD08, one 0x20-byte record apart. Each record is 16-byte aligned;
+ * byte +8 is the active/state flag, +5 is the sprite-type key used by the game's
+ * sprite lookup table, and +11 is the current mapping/animation key. These raw
+ * keys are logged so the named Museum species map can be based on observed data,
+ * rather than guessed from the generic enemy-kill counter or graphics alone. */
+#if defined(PIPECLEAN_DEV_BUILD)
+static FILE *sml2_actor_trace_file;
+static uint8_t sml2_actor_trace_seen[0x20][0x100];
+
+static void sml2_actor_trace_close(void)
+{
+    if (sml2_actor_trace_file) {
+        fflush(sml2_actor_trace_file);
+        fclose(sml2_actor_trace_file);
+        sml2_actor_trace_file = NULL;
+    }
+}
+
+static void sml2_actor_trace_begin(void)
+{
+    sml2_actor_trace_close();
+    memset(sml2_actor_trace_seen, 0, sizeof sml2_actor_trace_seen);
+    if (cur_game != GAME_SML2) return;
+
+    const char *base = settings_dir();
+    if (!base || !base[0]) return;
+    size_t len = strlen(base);
+    const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\\\')) ? "" : "/";
+    char path[1200];
+    int n = snprintf(path, sizeof path, "%s%spipeclean-sml2-actor-trace.txt", base, sep);
+    if (n < 0 || (size_t)n >= sizeof path) return;
+    sml2_actor_trace_file = fopen(path, "w");
+    if (!sml2_actor_trace_file) return;
+    fprintf(sml2_actor_trace_file,
+            "PipeClean SML2 live sprite actor trace v1\\n"
+            "One line per (level, raw sprite-type key); record bytes are included for mapping.\\n"
+            "frame level slot active sprite_type mapping x y record[00..0F]\\n");
+    fflush(sml2_actor_trace_file);
+}
+
+static void sml2_actor_trace_frame(void)
+{
+    if (!sml2_actor_trace_file || cur_game != GAME_SML2 ||
+        rom_loaded_game() != GAME_SML2 || !cart_ram)
+        return;
+
+    const uint8_t level = rd8(0xA269);
+    if (level > 0x1F) return;
+
+    for (int slot = 0; slot < 16; ++slot) {
+        const uint16_t base = (uint16_t)(0xAD00u + (unsigned)slot * 0x20u);
+        const uint8_t active = rd8((uint16_t)(base + 8u));
+        if (!active) continue;
+
+        const uint8_t sprite_type = rd8((uint16_t)(base + 5u));
+        if (sml2_actor_trace_seen[level][sprite_type]) continue;
+        sml2_actor_trace_seen[level][sprite_type] = 1;
+
+        const uint8_t mapping = rd8((uint16_t)(base + 11u));
+        const unsigned x = ((unsigned)rd8(base) << 8) | rd8((uint16_t)(base + 1u));
+        const unsigned y = ((unsigned)rd8((uint16_t)(base + 3u)) << 8) |
+                           rd8((uint16_t)(base + 4u));
+        fprintf(sml2_actor_trace_file,
+                "frame=%d level=%02X slot=%02d active=%02X sprite_type=%02X mapping=%02X x=%04X y=%04X record=",
+                frame_count, level, slot, active, sprite_type, mapping, x, y);
+        for (unsigned i = 0; i < 16; ++i)
+            fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
+        fputc('\\n', sml2_actor_trace_file);
+        fflush(sml2_actor_trace_file);
+    }
+}
+#else
+static void sml2_actor_trace_begin(void) { }
+static void sml2_actor_trace_close(void) { }
+static void sml2_actor_trace_frame(void) { }
+#endif
+
 void events_begin(void)
 {
     cur_game = rom_loaded_game();
+    sml2_actor_trace_begin();
     qr = qw = 0; tap_frames = 0; memset(&sml2_museum_tracker, 0, sizeof sml2_museum_tracker);
     wario_event_tracker.have_previous = 0;
     wario2_event_tracker.have_previous = 0;
@@ -406,6 +485,7 @@ void events_begin(void)
 
 void events_end(void)
 {
+    sml2_actor_trace_close();
     apu_set_trigger_hook(NULL);
     apu_set_tap_mask(0);
     gb_watch_set(NULL, 0, NULL);
@@ -595,7 +675,10 @@ void events_frame(void)
 {
     static int16_t tb[2048 * 2];
     if (cur_game == GAME_SML) museum_sml_live_frame();
-    if (cur_game == GAME_SML2) sml2_museum_live_frame();
+    if (cur_game == GAME_SML2) {
+        sml2_actor_trace_frame();
+        sml2_museum_live_frame();
+    }
     else if (cur_game == GAME_WARIO_SML3) wario_event_frame();
     else if (cur_game == GAME_WARIO_LAND3_GBC) wario3_event_frame();
     else if (wario_land2_supported_game(cur_game)) wario2_event_frame();
