@@ -37,27 +37,33 @@ static const EventDef sml2_defs[] = {
 };
 /* Wario Land SML3 shares these state values with its Companion Deck tracker. */
 static const EventDef wario_sml3_defs[] = {
-    {"treasure", "Treasure found",      "Recover a hidden treasure",       0, 0, 0, 0xFFD34A, 500, 100},
-    {"power",    "Power-up",            "Gain a Wario power form",         0, 0, 0, 0xB58AFF, 300, 75},
-    {"damage",   "Damage / power loss", "Take damage or lose a form",      0, 0, 0, 0xFF3D4F, 340, 85},
+    {"treasure", "Treasure found",      "Recover a hidden treasure",       0, 0, 4, 0xFFD34A, 500, 100},
+    {"power",    "Power-up",            "Gain a Wario power form",         0, 0, 1, 0xB58AFF, 300, 75},
+    {"damage",   "Damage / power loss", "Take damage or lose a form",      0, 0, 3, 0xFF3D4F, 340, 85},
     {"coin",     "Coin collected",      "Collect coins",                   0, 0, 0, 0xFFD23C, 70, 35},
-    {"heart",    "Heart restored",      "Recover health",                  0, 0, 0, 0x6CFF8C, 160, 55},
-    {"extra",    "Extra life",          "Gain an extra life",              0, 0, 0, 0x6CFF8C, 450, 90},
-    {"lost",     "Life lost",           "Lose a life",                     0, 0, 0, 0xFF3030, 650, 100},
+    {"heart",    "Heart restored",      "Recover health",                  0, 0, 1, 0x6CFF8C, 160, 55},
+    {"extra",    "Extra life",          "Gain an extra life",              0, 0, 4, 0x6CFF8C, 450, 90},
+    {"lost",     "Life lost",           "Lose a life",                     0, 0, 3, 0xFF3030, 650, 100},
 };
 static const EventDef wario2_defs[] = {
-    {"treasure", "Treasure found", "Recover one of the 50 treasures", 0, 0, 0, 0xFFD34A, 500, 100},
-    {"picture",  "Picture piece", "Find a piece for the picture panel", 0, 0, 0, 0xB58AFF, 380, 85},
+    {"treasure", "Treasure found", "Recover one of the 50 treasures", 0, 0, 4, 0xFFD34A, 500, 100},
+    {"picture",  "Picture piece", "Find a piece for the picture panel", 0, 0, 1, 0xB58AFF, 380, 85},
     {"coin",     "Coins collected", "Increase the coin bank", 0, 0, 0, 0xFFD23C, 90, 40},
-    {"stage",    "Stage changed", "Enter another stage", 0, 0, 0, 0x6CFF8C, 180, 55},
+    {"stage",    "Stage changed", "Enter another stage", 0, 0, 3, 0x6CFF8C, 180, 55},
 };
-/* Wario Land 3 scene transitions are stored in fixed WRAM at C09B/C09C.
- * We use the key-acquisition scene and end-of-course results screen instead
- * of guessing at undocumented item counters. */
+/* Wario Land 3 uses the same seven event slots as Wario Land: SML3.
+ * Two labels are explicit analogues: WL3 has no ordinary lives or heart
+ * meter, so recovery means returning from a temporary status effect, the
+ * extra-life slot marks the Rudy-defeated milestone, and life-lost marks its
+ * rare Game Over scene. */
 static const EventDef wario3_defs[] = {
-    {"level",   "Level entered",  "Enter a course from the overworld",       0, 0, 0, 0x4C8DFF, 150, 40},
-    {"key",     "Key obtained",   "Collect a course key",                    0, 0, 0, 0xB58AFF, 320, 70},
-    {"results", "Course results", "Reach the treasure and music-coin screen", 0, 0, 0, 0xFFD34A, 500, 95},
+    {"power",    "Power-up",                "Gain a permanent Wario ability",                         0, 0, 1, 0xB58AFF, 300, 75},
+    {"damage",   "Damage",                 "Wario enters a temporary status effect",                 0, 0, 3, 0xFF3D4F, 340, 85},
+    {"treasure", "Treasure found",         "A course treasure is added to the collection",            0, 0, 4, 0xFFD34A, 500, 100},
+    {"coin",     "Coin collected",         "The coin total increases during a course",                0, 0, 0, 0xFFD23C, 90, 40},
+    {"heart",    "Heart restored / recovery","Wario returns to normal after a status effect",          0, 0, 1, 0x6CFF8C, 160, 55},
+    {"extra",    "Extra life / milestone", "Rudy defeated (WL3 has no extra-life system)",            0, 0, 4, 0x6CFF8C, 450, 90},
+    {"lost",     "Life lost / Game Over",  "Enter WL3's rare Game Over scene",                        0, 0, 3, 0xFF3030, 650, 100},
 };
 typedef struct { const EventDef *defs; int n; } GameEvents;
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
@@ -198,13 +204,19 @@ static void wario2_event_frame(void)
 
 static void wario3_event_frame(void)
 {
-    /* C000-based fixed WRAM is exposed as offset 0; C09B/C09C are 0x09B/0x09C. */
+    /* C000-based fixed WRAM is exposed as offset 0. */
     WarioLand3Snapshot snapshot = {
-        (int)gb_wram_peek(0x009B),
-        (int)gb_wram_peek(0x009C)
+        (int)gb_wram_peek(0x009B), /* C09B: current scene */
+        (int)gb_wram_peek(0x009C), /* C09C: current operation */
+        wario_land3_read_counter3(gb_wram_peek(0x0A04), gb_wram_peek(0x0A05)),
+        wario_land3_read_counter3(gb_wram_peek(0x0A39), gb_wram_peek(0x0A3A)),
+        (int)gb_wram_peek(0x0A3C), /* CA3C: permanent power-up state */
+        (int)gb_wram_peek(0x0A8E), /* CA8E: temporary Wario status */
+        (int)gb_wram_peek(0x0A3D)  /* CA3D: completion flags */
     };
-    int event = wario_land3_tracker_update(&wario3_event_tracker, &snapshot);
-    if (event >= 0) fire(event);
+    uint32_t events = wario_land3_tracker_update(&wario3_event_tracker, &snapshot);
+    for (int ev = 0; ev < WARIO_LAND3_EVENT_COUNT; ++ev)
+        if (events & WARIO_LAND3_EVENT_MASK(ev)) fire(ev);
 }
 
 static uint8_t wario_ram_read(uint16_t address)
