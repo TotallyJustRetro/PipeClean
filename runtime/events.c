@@ -160,7 +160,9 @@ static Sml2MuseumTracker sml2_museum_tracker;
 
 static uint8_t sml2_ram_read(uint16_t address)
 {
-    return cart_ram ? cart_ram[address & 0x1FFFu] : 0xFF;
+    /* Read through the emulated bus so the active MBC RAM bank and RAM-enable
+       state are respected. Indexing cart_ram directly always reads bank zero. */
+    return cart_ram ? rd8(address) : 0xFF;
 }
 
 static int sml2_bcd_pair(uint8_t value)
@@ -170,24 +172,9 @@ static int sml2_bcd_pair(uint8_t value)
     return tens <= 9 && ones <= 9 ? tens * 10 + ones : -1;
 }
 
-static int sml2_status_bar_visible(void)
-{
-    /* Tile 172 is the two fixed status labels. Scan vertically and compensate
-       for the native Game Boy viewport's horizontal offset in widescreen mode. */
-    const int label_l = ppu_xoff + 8;
-    const int label_r = ppu_xoff + 48;
-    if (label_l < 0 || label_r < 0 ||
-        label_l >= GB_WMAX || label_r >= GB_WMAX)
-        return 0;
-    for (int y = 0; y < GB_H; ++y)
-        if (ppu_bgtile[y][label_l] == 172 && ppu_bgtile[y][label_r] == 172)
-            return 1;
-    return 0;
-}
-
 static int sml2_museum_snapshot_read(Sml2MuseumSnapshot *snapshot)
 {
-    if (!snapshot || !cart_ram || !sml2_status_bar_visible()) return 0;
+    if (!snapshot || !cart_ram) return 0;
 
     const uint8_t coins_low = sml2_ram_read(0xA262);
     const uint8_t coins_high = sml2_ram_read(0xA263);
