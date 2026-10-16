@@ -63,11 +63,12 @@ int main(void)
     assert(wario_land2_tracker_update(&events, &w) ==
            (WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN) |
             WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_TREASURE) |
-            WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_PICTURE)));
+            WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_PICTURE) |
+            WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_RESULTS)));
 
     w.stage = 4;
     assert(wario_land2_tracker_update(&events, &w) ==
-           WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_STAGE));
+           WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_ENTERED));
 
     /* A counter decrease on the same stage gets its own red/strong effect;
        it may be damage or coins spent in a minigame, so the UI calls it loss. */
