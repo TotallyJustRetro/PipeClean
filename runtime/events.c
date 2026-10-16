@@ -403,6 +403,12 @@ static FILE *sml2_actor_trace_file;
  * Slots can be reused for different enemies; clear a slot's set when it empties. */
 static uint8_t sml2_actor_trace_seen[0x20][16][0x100][0x20];
 static uint8_t sml2_actor_trace_slot_active[16];
+/* The live actor retains a pointer to its source spawn descriptor at +6/+7.
+ * The stored pointer addresses descriptor byte +2, which the game marks as
+ * spawned; descriptor byte +2 in the copy at actor +2 preserves the old value.
+ * Log each source pointer independently from mutable animation keys. */
+static uint16_t sml2_actor_trace_source_ref[0x20][16];
+static uint8_t sml2_actor_trace_source_logged[0x20][16];
 
 static void sml2_actor_trace_close(void)
 {
@@ -418,6 +424,8 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_close();
     memset(sml2_actor_trace_seen, 0, sizeof sml2_actor_trace_seen);
     memset(sml2_actor_trace_slot_active, 0, sizeof sml2_actor_trace_slot_active);
+    memset(sml2_actor_trace_source_ref, 0, sizeof sml2_actor_trace_source_ref);
+    memset(sml2_actor_trace_source_logged, 0, sizeof sml2_actor_trace_source_logged);
     if (cur_game != GAME_SML2) return;
 
     const char *base = settings_dir();
@@ -430,9 +438,12 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_file = fopen(path, "w");
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
-            "PipeClean SML2 live sprite actor trace v1\n"
-            "One line per (level, slot, sprite-table key, mapping key); full records are included.\n"
-            "frame level slot byte0 sprite_table_key map_key x y record[00..1F]\n");
+            "PipeClean SML2 live sprite actor trace v2\n"
+            "Spawn rows record the source descriptor pointer stored at actor offsets +6/+7.\n"
+            "That pointer addresses descriptor byte +2; descriptor bytes are read from pointer - 2.\n"
+            "Descriptor bytes are diagnostic evidence only; they are not assumed to be species IDs.\n"
+            "spawn frame level slot source_ref source_addr descriptor[00..05]\n"
+            "actor frame level slot source_ref byte0 sprite_table_key map_key x y record[00..1F]\n");
     fflush(sml2_actor_trace_file);
 }
 
@@ -457,9 +468,40 @@ static void sml2_actor_trace_frame(void)
             if (sml2_actor_trace_slot_active[slot]) {
                 memset(sml2_actor_trace_seen[level][slot], 0,
                        sizeof sml2_actor_trace_seen[level][slot]);
+                sml2_actor_trace_source_ref[level][slot] = 0;
+                sml2_actor_trace_source_logged[level][slot] = 0;
                 sml2_actor_trace_slot_active[slot] = 0;
             }
             continue;
+        }
+
+        const uint16_t source_ref = (uint16_t)(
+            ((uint16_t)rd8((uint16_t)(base + 6u)) << 8) |
+            rd8((uint16_t)(base + 7u)));
+        if (!sml2_actor_trace_source_logged[level][slot] ||
+            sml2_actor_trace_source_ref[level][slot] != source_ref) {
+            /* The game's spawn routine stores the address of source + 2 in
+             * actor bytes +6/+7, after copying the descriptor's six bytes.
+             * It then changes source[2] to 2 to prevent duplicate spawning. */
+            if (source_ref >= 0xA002u && source_ref <= 0xBFFCu) {
+                const uint16_t source_addr = (uint16_t)(source_ref - 2u);
+                uint8_t descriptor[6];
+                for (unsigned i = 0; i < sizeof descriptor; ++i)
+                    descriptor[i] = rd8((uint16_t)(source_addr + i));
+                fprintf(sml2_actor_trace_file,
+                        "spawn frame=%d level=%02X slot=%02d source_ref=%04X source_addr=%04X descriptor=",
+                        frame_count, level, slot, source_ref, source_addr);
+                for (unsigned i = 0; i < sizeof descriptor; ++i)
+                    fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", descriptor[i]);
+                fputc('\n', sml2_actor_trace_file);
+            } else {
+                fprintf(sml2_actor_trace_file,
+                        "spawn frame=%d level=%02X slot=%02d source_ref=%04X descriptor=unavailable\n",
+                        frame_count, level, slot, source_ref);
+            }
+            sml2_actor_trace_source_ref[level][slot] = source_ref;
+            sml2_actor_trace_source_logged[level][slot] = 1;
+            fflush(sml2_actor_trace_file);
         }
 
         const uint8_t sprite_type = rd8((uint16_t)(base + 5u));
@@ -476,8 +518,8 @@ static void sml2_actor_trace_frame(void)
         const unsigned y = ((unsigned)rd8((uint16_t)(base + 3u)) << 8) |
                            rd8((uint16_t)(base + 4u));
         fprintf(sml2_actor_trace_file,
-                "frame=%d level=%02X slot=%02d byte0=%02X sprite_table_key=%02X map_key=%02X x=%04X y=%04X record=",
-                frame_count, level, slot, active, sprite_type, mapping, x, y);
+                "actor frame=%d level=%02X slot=%02d source_ref=%04X byte0=%02X sprite_table_key=%02X map_key=%02X x=%04X y=%04X record=",
+                frame_count, level, slot, source_ref, active, sprite_type, mapping, x, y);
         for (unsigned i = 0; i < 32; ++i)
             fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
         fputc('\n', sml2_actor_trace_file);
