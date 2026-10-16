@@ -12,6 +12,7 @@ const GameDef games[N_GAMES] = {
     [GAME_WARIO_LAND2_GBC] = {.id = "wario2-gbc", .name = "Wario Land II (GBC)"}
 };
 
+Settings settings;
 const char *settings_dir(void) { return "./"; }
 
 #include <assert.h>
@@ -20,6 +21,7 @@ const char *settings_dir(void) { return "./"; }
 
 int main(void)
 {
+    settings.museum_discovery_notifications = 1;
     const char *path = "pipeclean-museum-test.txt";
     remove(path);
     museum_set_storage_path(path);
@@ -79,8 +81,14 @@ int main(void)
     }
 
     assert(museum_discover_entry(GAME_SML, "sml_goombo") == 1);
+    char notice[160];
+    assert(museum_take_notification(notice, sizeof notice) == 1);
+    assert(strstr(notice, "New discovery: ") == notice);
+    assert(museum_take_notification(notice, sizeof notice) == 0);
+    settings.museum_discovery_notifications = 0;
     assert(museum_discover_entry(GAME_SML, "coin") == 1);
     assert(museum_discover_entry(GAME_SML, "coin") == 0);
+    assert(museum_take_notification(notice, sizeof notice) == 0);
     museum_observe_event(GAME_SML, "power");
     assert(museum_is_discovered(GAME_SML, "coin"));
     assert(museum_is_discovered(GAME_SML, "sml_goombo"));
