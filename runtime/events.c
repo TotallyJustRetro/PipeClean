@@ -179,7 +179,7 @@ static int sml2_museum_snapshot_read(Sml2MuseumSnapshot *snapshot)
     /* Match the modes recognized by the SML2 live compositor. The external
        RAM can retain plausible old counters on title/loading screens. */
     const uint8_t mode = rd8(0xFF9Bu);
-    if (mode != 0x04u && mode != 0x08u && mode != 0x09u) return 0;
+    if (!sml2_museum_mode_is_active(mode)) return 0;
 
     const uint8_t coins_low = sml2_ram_read(0xA262);
     const uint8_t coins_high = sml2_ram_read(0xA263);
@@ -440,7 +440,7 @@ static void sml2_actor_trace_frame(void)
         return;
 
     const uint8_t mode = rd8(0xFF9Bu);
-    if (mode != 0x04u && mode != 0x08u && mode != 0x09u) return;
+    if (!sml2_museum_mode_is_active(mode)) return;
 
     const uint8_t level = rd8(0xA269);
     if (level > 0x1F) return;
