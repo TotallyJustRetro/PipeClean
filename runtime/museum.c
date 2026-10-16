@@ -571,7 +571,12 @@ int museum_sprite_asset_path(int game, const char *id, char *out, size_t out_siz
     if (!base || !base[0]) return 0;
     size_t len = strlen(base);
     const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
-    int n = snprintf(out, out_size, "%s%spipeclean-museum-assets/%s/%s.png",
+    int n;
+    if (game == GAME_SML)
+        n = snprintf(out, out_size, "%s%spipeclean-museum-assets/%s/%s.v2.png",
+                     base, sep, games[game].id, id);
+    else
+        n = snprintf(out, out_size, "%s%spipeclean-museum-assets/%s/%s.png",
                      base, sep, games[game].id, id);
     if (n < 0 || (size_t)n >= out_size) { out[0] = 0; return 0; }
 
