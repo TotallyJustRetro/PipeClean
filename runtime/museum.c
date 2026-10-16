@@ -56,6 +56,125 @@ static void add_numbered(int game, const char *prefix, const char *label,
     }
 }
 
+typedef struct { const char *name; const char *level; const char *chest; } Wl3TreasureDef;
+static const Wl3TreasureDef wl3_treasures[100] = {
+    {"Axe","N1 Out of the Woods","Gray"},
+    {"Blue Tablet Half","N2 The Peaceful Village","Gray"},
+    {"Green Tablet Half","N3 The Vast Plain","Gray"},
+    {"Top Half of Scroll","W1 Desert Ruins","Gray"},
+    {"Bottom Half of Scroll","W1 Desert Ruins","Red"},
+    {"Blue Overalls","W2 The Volcano's Base","Gray"},
+    {"Jar","N1 Out of the Woods","Red"},
+    {"Screw","W3 The Pool of Rain","Gray"},
+    {"Cog","W4 A Town in Chaos","Gray"},
+    {"First Music Box","S1 The Grasslands","Gray"},
+    {"Seed","S2 The Big Bridge","Gray"},
+    {"Red Skull","N3 The Vast Plain","Green"},
+    {"Blue Skull","W3 The Pool of Rain","Red"},
+    {"Flippers","S3 Tower of Revival","Gray"},
+    {"Paper Fan","W3 The Pool of Rain","Green"},
+    {"Flute","E1 The Stagnant Swamp","Gray"},
+    {"Ice Spellbook","N2 The Peaceful Village","Red"},
+    {"Lightning Wand","S1 The Grasslands","Green"},
+    {"Spike Helmet","E2 The Frigid Sea","Gray"},
+    {"Second Music Box","W4 A Town in Chaos","Red"},
+    {"Lightning Wand","N4 Bank of the Wild River","Gray"},
+    {"Lightning Spellbook","N5 The Tidal Coast","Gray"},
+    {"Red Glove","S4 The Steep Canyon","Gray"},
+    {"Foot Weight","N5 The Tidal Coast","Red"},
+    {"Leaf","W2 The Volcano's Base","Blue"},
+    {"Conch","S4 The Steep Canyon","Red"},
+    {"Pinecone","E1 The Stagnant Swamp","Red"},
+    {"Left Blue Snake Eye","W6 The West Crater","Gray"},
+    {"Right Blue Snake Eye","E4 The Colossal Hole","Gray"},
+    {"Garlic","S3 Tower of Revival","Red"},
+    {"Third Music Box","N6 Sea Turtle Rock","Gray"},
+    {"Water Wand","S5 Cave of Flames","Gray"},
+    {"Lantern","S2 The Big Bridge","Blue"},
+    {"Lantern Fire","E2 The Frigid Sea","Green"},
+    {"Red Overalls","E3 Castle of Illusions","Gray"},
+    {"Left Half of Sun Stone","N6 Sea Turtle Rock","Green"},
+    {"Right Half of Sun Stone","W1 Desert Ruins","Blue"},
+    {"Winged Boot","E4 The Colossal Hole","Green"},
+    {"Fourth Music Box","E1 The Stagnant Swamp","Green"},
+    {"Detonator","W5 Beneath the Waves","Gray"},
+    {"Sack","S5 Cave of Flames","Green"},
+    {"Whirlwind","E1 The Stagnant Swamp","Blue"},
+    {"Super Flippers","N1 Out of the Woods","Green"},
+    {"Little Knitter","N4 Bank of the Wild River","Green"},
+    {"Map","S3 Tower of Revival","Green"},
+    {"Brown Glove","E6 The East Crater","Gray"},
+    {"Sand","E3 Castle of Illusions","Green"},
+    {"Fifth Music Box","N1 Out of the Woods","Blue"},
+    {"Blue Crayon","N3 The Vast Plain","Red"},
+    {"Wheels","S1 The Grasslands","Red"},
+    {"Blue Bracelet","W2 The Volcano's Base","Red"},
+    {"Cyan Crayon","S2 The Big Bridge","Red"},
+    {"Chalice","N2 The Peaceful Village","Green"},
+    {"Crown","W2 The Volcano's Base","Green"},
+    {"Pink Crayon","W1 Desert Ruins","Green"},
+    {"Teapot","E2 The Frigid Sea","Red"},
+    {"Pikachu Doll","S2 The Big Bridge","Green"},
+    {"Magnifying Glass","N4 Bank of the Wild River","Red"},
+    {"Pump","E4 The Colossal Hole","Red"},
+    {"Toy Rocket","N4 Bank of the Wild River","Blue"},
+    {"Yellow Crayon","W3 The Pool of Rain","Blue"},
+    {"Saber","W6 The West Crater","Red"},
+    {"Day/Night Tablet","N2 The Peaceful Village","Blue"},
+    {"UFO","E2 The Frigid Sea","Blue"},
+    {"Torch","E3 Castle of Illusions","Red"},
+    {"Pocket Mirror","E7 Forest of Fear","Gray"},
+    {"Valve","E5 The Warped Void","Gray"},
+    {"Remote Control","E7 Forest of Fear","Green"},
+    {"Brown Crayon","E5 The Warped Void","Red"},
+    {"Blood","E5 The Warped Void","Green"},
+    {"Red Keycard","E7 Forest of Fear","Red"},
+    {"Blue Keycard","E7 Forest of Fear","Blue"},
+    {"Heart","E5 The Warped Void","Blue"},
+    {"Toy Car","S5 Cave of Flames","Red"},
+    {"Toy Train","E4 The Colossal Hole","Blue"},
+    {"Telephone","S4 The Steep Canyon","Green"},
+    {"Red Crayon","W5 Beneath the Waves","Red"},
+    {"Mechanical Fan","N5 The Tidal Coast","Green"},
+    {"Fruit","W4 A Town in Chaos","Blue"},
+    {"Green Bracelet","N5 The Tidal Coast","Blue"},
+    {"Doll","S1 The Grasslands","Blue"},
+    {"Right Golden Snake Eye","W4 A Town in Chaos","Green"},
+    {"Left Golden Snake Eye","N6 Sea Turtle Rock","Red"},
+    {"Key","S3 Tower of Revival","Blue"},
+    {"Green Crayon","S6 Above the Clouds","Gray"},
+    {"Fire Extinguisher","S6 Above the Clouds","Red"},
+    {"Diamond","E6 The East Crater","Red"},
+    {"Box","W6 The West Crater","Green"},
+    {"Dust Spray","E3 Castle of Illusions","Blue"},
+    {"Spade","W6 The West Crater","Blue"},
+    {"Red Chemicals","W5 Beneath the Waves","Green"},
+    {"Blue Chemicals","S4 The Steep Canyon","Blue"},
+    {"Red Bracelet","N3 The Vast Plain","Blue"},
+    {"Club","W5 Beneath the Waves","Blue"},
+    {"Scissors","S5 Cave of Flames","Blue"},
+    {"Drill","S6 Above the Clouds","Green"},
+    {"Infrared Goggles","E6 The East Crater","Green"},
+    {"Gong","N6 Sea Turtle Rock","Blue"},
+    {"Pickaxe","S6 Above the Clouds","Blue"},
+    {"Gloom","E6 The East Crater","Blue"}
+};
+
+static void add_wl3_treasures(void)
+{
+    for (int i = 0; i < 100; ++i) {
+        char id[40], description[200];
+        snprintf(id, sizeof id, "wl3_treasure_%03d", i + 1);
+        snprintf(description, sizeof description, "Found in %s, from the %s chest.",
+                 wl3_treasures[i].level, wl3_treasures[i].chest);
+        add_entry(GAME_WARIO_LAND3_GBC, id, wl3_treasures[i].name,
+                  MUSEUM_CATEGORY_TREASURE, description, "");
+        MuseumEntry *e = &catalog[GAME_WARIO_LAND3_GBC][catalog_count[GAME_WARIO_LAND3_GBC] - 1];
+        snprintf(e->source_url, sizeof e->source_url,
+                 "%s", "https://www.mariowiki.com/Wario_Land_III#Treasures");
+    }
+}
+
 static void build_catalog(void)
 {
     memset(catalog, 0, sizeof catalog);
@@ -97,7 +216,7 @@ static void build_catalog(void)
     add_entry(GAME_WARIO_SML3, "power_up", "Power-up", MUSEUM_CATEGORY_ITEM,
               "A Wario power-state change was observed; exact forms need their own mapping.", "power");
     add_numbered(GAME_WARIO_SML3, "wario1_treasure", "Treasure",
-                 MUSEUM_CATEGORY_TREASURE, "A treasure slot recorded in the cartridge's collection flags.", 16);
+                 MUSEUM_CATEGORY_TREASURE, "One of the game's 15 treasures, tracked by the cartridge's collection flags.", 15);
     add_entry(GAME_WARIO_SML3, "course", "Course", MUSEUM_CATEGORY_STAGE,
               "A course was entered.", "course");
     add_entry(GAME_WARIO_SML3, "course_results", "Course results", MUSEUM_CATEGORY_MILESTONE,
@@ -124,7 +243,8 @@ static void build_catalog(void)
     add_entry(GAME_WARIO_LAND3_GBC, "power_up", "Permanent ability", MUSEUM_CATEGORY_ITEM,
               "A permanent power-up state was observed.", "power");
     add_entry(GAME_WARIO_LAND3_GBC, "course_treasure", "Course treasure", MUSEUM_CATEGORY_TREASURE,
-              "The game's treasure total increased. Exact treasure identities require course-specific flags.", "treasure");
+              "A course treasure was added to the 100-item collection.", "treasure");
+    add_wl3_treasures();
     add_entry(GAME_WARIO_LAND3_GBC, "key", "Course key", MUSEUM_CATEGORY_TREASURE,
               "A course-key acquisition scene was observed.", "key");
     add_entry(GAME_WARIO_LAND3_GBC, "key_gray", "Gray Key", MUSEUM_CATEGORY_TREASURE,
