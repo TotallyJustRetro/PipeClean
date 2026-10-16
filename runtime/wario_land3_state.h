@@ -86,8 +86,9 @@ static inline uint32_t wario_land3_tracker_update(WarioLand3Tracker *tracker,
 
     /* Wario Land 3 exposes these three transitions explicitly:
      * scene 2 = course, scene 8 = key acquisition, scene 3 = course results.
-     * Returning from scene 8 to scene 2 is not another course entry. */
-    if (current->scene == 2 && old.scene != 2 && old.scene != 8)
+     * A course entry is the overworld-to-course transition only; resuming
+     * from pause (scene 4) or returning from scene 8 must not retrigger it. */
+    if (current->scene == 2 && old.scene == 1)
         events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_COURSE_ENTERED);
     if (current->scene == 8 && old.scene != 8)
         events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_KEY_OBTAINED);
