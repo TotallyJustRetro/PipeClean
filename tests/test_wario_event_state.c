@@ -134,6 +134,11 @@ int main(void)
     w.powerups = 2; /* leaving help state must not create a false alert */
     assert(wario_land3_tracker_update(&wl3, &w) == 0);
 
+    w.scene = 4; /* pause menu */
+    assert(wario_land3_tracker_update(&wl3, &w) == 0);
+    w.scene = 2; /* resuming from pause isn't a new course entry */
+    assert(wario_land3_tracker_update(&wl3, &w) == 0);
+
     w.scene = 8; /* key acquisition */
     assert(wario_land3_tracker_update(&wl3, &w) ==
            WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_KEY_OBTAINED));
