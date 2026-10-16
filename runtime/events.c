@@ -56,11 +56,10 @@ static const EventDef wario2_defs[] = {
     {"loss",     "Coins lost / wounded", "Coins dropped when Wario is hit or spent in a minigame", 0, 0, 2, 0xFF3D4F, 380, 90},
     {"results",  "Course results", "Reach the end-of-course results screen", 0, 0, 10, 0xFFD34A, 500, 95},
 };
-/* Wario Land 3 uses the same seven event slots as Wario Land: SML3.
- * Two labels are explicit analogues: WL3 has no ordinary lives or heart
- * meter, so recovery means returning from a temporary status effect, the
- * extra-life slot marks the Rudy-defeated milestone, and life-lost marks its
- * rare Game Over scene. */
+/* Wario Land 3 shares the seven general Wario effects and adds the three
+ * course-flow events. It has no ordinary lives or heart meter, so recovery
+ * means returning from a temporary status effect, the extra-life slot marks
+ * the Rudy-defeated milestone, and life-lost marks its rare Game Over scene. */
 static const EventDef wario3_defs[] = {
     {"power",    "Power-up",                "Gain a permanent Wario ability",                         0, 0, 1, 0xB58AFF, 300, 75},
     {"damage",   "Damage",                 "Wario enters a temporary status effect",                 0, 0, 2, 0xFF3D4F, 340, 85},
