@@ -61,10 +61,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
                      int slot, int palette, int filter, int item, int drMarioScore,
                      int drMarioLevel, int drMarioSpeed, int drMarioCapsule,
                      int warioCoins, int warioHearts, int warioPower,
-                     int warioTreasures, int warioTime) {
+                     int warioTreasures, int warioTime,
+                     int wario3Keys, int wario3MusicCoins, int wario3Scene) {
         deck.setState(game, lives, stage, world, paused, slot, palette, filter, item,
             drMarioScore, drMarioLevel, drMarioSpeed, drMarioCapsule,
-            warioCoins, warioHearts, warioPower, warioTreasures, warioTime);
+            warioCoins, warioHearts, warioPower, warioTreasures, warioTime,
+            wario3Keys, wario3MusicCoins, wario3Scene);
     }
 
     void showIdleState() { deck.showIdleState(); }
@@ -185,6 +187,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private int drMarioScore = -1, drMarioLevel = -1, drMarioSpeed = -1, drMarioCapsule = 0xFF;
         private int warioCoins = -1, warioHearts = -1, warioPower = -1;
         private int warioTreasureMask = -1, warioTime = -1;
+        private int wario3Keys = -1, wario3MusicCoins = -1, wario3Scene = -1;
+        private int wario3TreasureCount = -1;
         private int warioLevelCoins, previousWarioPileCoins = -1;
         private int previousWarioPileStage = -1, previousWarioPileGame = -1;
         private float warioPileDisplayedCoins;
@@ -196,6 +200,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
         private int wario2AnimationId = -1, wario2AnimationKind;
         private long wario2AnimationStart;
         private int previousWario2Stage = -1;
+        private boolean wario3BaselineSet, wario3KeyAnimationActive;
+        private int previousWario3Keys = -1, previousWario3MusicCoins = -1;
+        private int previousWario3TreasureCount = -1, previousWario3Stage = -1;
+        private int previousWario3Coins = -1, previousWario3Scene = -1;
+        private int wario3KeyAnimationId = -1;
+        private long wario3KeyAnimationStart;
         private final String[] expeditionLog = new String[5];
         private boolean warioBaselineSet, treasureAnimationActive;
         private int previousWarioCoins = -1, previousWarioHearts = -1, previousWarioPower = -1;
@@ -277,7 +287,8 @@ final class PipeCleanCompanionPresentation extends Presentation {
                       int slot, int palette, int filter, int item, int drMarioScore,
                       int drMarioLevel, int drMarioSpeed, int drMarioCapsule,
                       int warioCoins, int warioHearts, int warioPower,
-                      int warioTreasureMask, int warioTime) {
+                      int warioTreasureMask, int warioTime,
+                       int wario3Keys, int wario3MusicCoins, int wario3Scene) {
             layoutEditorPreview = false;
             dashboardMode = false;
             this.game = game;
@@ -296,12 +307,18 @@ final class PipeCleanCompanionPresentation extends Presentation {
             this.warioPower = warioPower >= 0 && warioPower <= 4 ? warioPower : -1;
             this.warioTreasureMask = game == 3 && warioTreasureMask >= 0 ? (warioTreasureMask & 0xFFFF) : -1;
             this.warioTime = warioTime >= 0 && warioTime <= 999 ? warioTime : -1;
+            this.wario3Keys = game == 5 && wario3Keys >= 0 ? (wario3Keys & 0x0F) : -1;
+            this.wario3MusicCoins = game == 5 && wario3MusicCoins >= 0 ? (wario3MusicCoins & 0xFF) : -1;
+            this.wario3Scene = game == 5 && wario3Scene >= 0 && wario3Scene <= 0x0E ? wario3Scene : -1;
+            this.wario3TreasureCount = game == 5 && warioTreasureMask >= 0 &&
+                warioTreasureMask <= 100 ? warioTreasureMask : -1;
             this.wario2TreasureMask = wl2 && drMarioLevel >= 0
                 ? (((long)drMarioLevel & 0x3FFFFL) << 32) | ((long)drMarioScore & 0xFFFFFFFFL) : -1L;
             this.wario2PictureMask = wl2 && drMarioCapsule >= 0
                 ? (((long)drMarioCapsule & 0x3FFFFL) << 32) | ((long)drMarioSpeed & 0xFFFFFFFFL) : -1L;
             observeGoldPile();
             observeWarioState();
+            observeWario3State();
             this.slot = Math.max(0, Math.min(9, slot));
             if (animatedSlot < 0f) animatedSlot = this.slot;
             this.palette = Math.max(0, Math.min(PALETTES.length - 1, palette));
