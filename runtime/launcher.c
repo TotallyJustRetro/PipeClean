@@ -1888,6 +1888,7 @@ static void sub_dualsense(int g, float x, float y)
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 476, "WHEN THIS HAPPENS");
     int n = events_count(g);
+    float row_h = n > 7 ? 35.0f : 46.0f;
     float tx[3] = {rw - 18 - 44 - 64 - 64 - 44 + 0, 0, 0};
     (void)tx;
     float c1 = rx + rw - 18 - 44 * 3 - 20 * 2 - 0, c2 = c1 + 64, c3 = c2 + 64;
@@ -1895,8 +1896,8 @@ static void sub_dualsense(int g, float x, float y)
     ui_text_c(F_BOLD, 11, c1 + 22, y + 40, C_MUTED, "LIGHT"); ui_text_c(F_BOLD, 11, c2 + 22, y + 40, C_MUTED, "RUMBLE"); ui_text_c(F_BOLD, 11, c3 + 22, y + 40, C_MUTED, "SPEAKER");
     for (int i = 0; i < n; i++) {
         const EventDef *d = events_def(g, i);
-        float ry = y + 62 + i * 46;
-        ui_rrect(rx + 10, ry - 3, rw - 20, 44, 8, RGBA(255, 255, 255, i % 2 ? 0 : 6));
+        float ry = y + 62 + i * row_h;
+        ui_rrect(rx + 10, ry - 3, rw - 20, row_h - 2, 8, RGBA(255, 255, 255, i % 2 ? 0 : 6));
         ui_rrect(rx + 18, ry + 8, 8, 24, 3, HEX(d->color));
         ui_text_fit(F_BOLD, 13, rx + 34, ry + 2, 150, C_TEXT, d->name);
         ui_text_fit(F_REG, 11, rx + 34, ry + 20, 150, C_DIM, d->desc);
@@ -1915,7 +1916,7 @@ static void sub_dualsense(int g, float x, float y)
             if ((c->ds_ev_speaker >> i) & 1 || 1) { if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(d->beep ? d->beep : 0); } }
         }
     }
-    ui_text_wrap(F_REG, 11, rx + 18, y + 62 + n * 46 + 8, rw - 36, C_DIM, "The Try button tries the light, rumble and speaker together.", 2);
+    ui_text_wrap(F_REG, 11, rx + 18, y + 62 + n * row_h + 8, rw - 36, C_DIM, "The Try button tries the light, rumble and speaker together.", 2);
 }
 
 /* ------------------------------------------------------------------ game tab: Textures */
