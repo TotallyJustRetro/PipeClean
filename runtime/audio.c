@@ -845,21 +845,23 @@ int audio_pad_open(void)
         if (!pdev) continue;
         pch = have.channels; prate = have.freq;
         if (!beep.d) {
-            /* Eight synthesized alerts at half-second slots. Keep kinds 0-4
-               stable for the existing games; 5-7 provide distinct Wario event
-               cues (recovery, extra-life/story milestone, and picture/stage). */
-            clip_alloc(&beep, prate * 4);
-            static const struct { float f1, f2; float t1; float len; float vol; } k[8] = {
+            /* Eleven synthesized alerts at half-second slots. Keep kinds 0-7
+               stable for existing events; 8-10 are course entry, key, and results. */
+            clip_alloc(&beep, prate * 6);
+            static const struct { float f1, f2; float t1; float len; float vol; } k[11] = {
                 {880, 1320, 0.08f, 0.35f, 0.5f}, /* 0: coin */
                 {988, 1319, 0.07f, 0.40f, 0.5f}, /* 1: power-up */
                 {330, 220, 0.05f, 0.30f, 0.6f},  /* 2: damage / coin loss */
                 {392, 262, 0.15f, 0.55f, 0.6f},  /* 3: life lost / game over */
                 {523, 784, 0.10f, 0.50f, 0.5f},  /* 4: treasure */
-                {659, 988, 0.05f, 0.35f, 0.48f}, /* 5: recovery / stage clear */
+                {659, 988, 0.05f, 0.35f, 0.48f}, /* 5: recovery / stage change */
                 {1046, 1568, 0.04f, 0.40f, 0.50f},/* 6: extra-life / milestone */
-                {740, 1108, 0.05f, 0.30f, 0.42f} /* 7: picture piece */
+                {740, 1108, 0.05f, 0.30f, 0.42f},/* 7: picture piece */
+                {587, 880, 0.07f, 0.32f, 0.45f}, /* 8: course entry */
+                {1174, 1760, 0.03f, 0.38f, 0.50f},/* 9: key obtained */
+                {784, 1174, 0.12f, 0.50f, 0.52f} /* 10: course results */
             };
-            for (int b = 0; b < 8; b++)
+            for (int b = 0; b < 11; b++)
                 for (long j = 0; j < (long)(k[b].len * prate); j++) {
                     long o = b * (prate / 2) + j;
                     if (o >= beep.n) break;
@@ -898,7 +900,7 @@ void audio_pad_push(const int16_t *st, int frames)
 void audio_pad_play_beep(int kind)
 {
     if (!pdev) return;
-    if (kind < 0 || kind > 7) kind = 0;
+    if (kind < 0 || kind > 10) kind = 0;
     SDL_LockMutex(pmx);
     beep_pos = (long)kind * (prate / 2);
     beep_end = beep_pos + (long)(prate * 0.45);
