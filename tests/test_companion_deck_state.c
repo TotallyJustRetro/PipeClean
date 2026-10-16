@@ -42,8 +42,16 @@ int main(void)
                       GAME_WARIO_LAND2_GBC, 1, 0, 1);
     failures += check("closing Wario Land II returns to dashboard",
                       GAME_WARIO_LAND2_GBC, 0, 0, 0);
-    failures += check("Wario Land 3 is still separate from the Wario Land II deck",
-                      GAME_WARIO_LAND3_GBC, 1, 0, 0);
+    failures += check("idle Wario Land 3 selection keeps Recently Played dashboard",
+                      GAME_WARIO_LAND3_GBC, 0, 0, 0);
+    failures += check("active Wario Land 3 uses the four-key Companion Deck",
+                      GAME_WARIO_LAND3_GBC, 1, 0, 1);
+    failures += check("Wario Land 3 deck stays selected without a fresh frame",
+                      GAME_WARIO_LAND3_GBC, 1, 0, 1);
+    failures += check("Wario Land 3 layout preview works while idle",
+                      GAME_WARIO_LAND3_GBC, 0, 1, 1);
+    failures += check("closing Wario Land 3 returns to Recently Played dashboard",
+                      GAME_WARIO_LAND3_GBC, 0, 0, 0);
     if (failures) {
         fprintf(stderr, "%d companion deck state check(s) failed\n", failures);
         return 1;
