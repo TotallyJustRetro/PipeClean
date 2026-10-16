@@ -39,18 +39,18 @@ static const EventDef sml2_defs[] = {
 static const EventDef wario_sml3_defs[] = {
     {"treasure", "Treasure found",      "Recover a hidden treasure",       0, 0, 4, 0xFFD34A, 500, 100},
     {"power",    "Power-up",            "Gain a Wario power form",         0, 0, 1, 0xB58AFF, 300, 75},
-    {"damage",   "Damage / power loss", "Take damage or lose a form",      0, 0, 3, 0xFF3D4F, 340, 85},
+    {"damage",   "Damage / power loss", "Take damage or lose a form",      0, 0, 2, 0xFF3D4F, 340, 85},
     {"coin",     "Coin collected",      "Collect coins",                   0, 0, 0, 0xFFD23C, 70, 35},
-    {"heart",    "Heart restored",      "Recover health",                  0, 0, 1, 0x6CFF8C, 160, 55},
-    {"extra",    "Extra life",          "Gain an extra life",              0, 0, 4, 0x6CFF8C, 450, 90},
+    {"heart",    "Heart restored",      "Recover health",                  0, 0, 5, 0x6CFF8C, 160, 55},
+    {"extra",    "Extra life",          "Gain an extra life",              0, 0, 6, 0x6CFF8C, 450, 90},
     {"lost",     "Life lost",           "Lose a life",                     0, 0, 3, 0xFF3030, 650, 100},
 };
 static const EventDef wario2_defs[] = {
     {"treasure", "Treasure found", "Recover one of the 50 treasures", 0, 0, 4, 0xFFD34A, 500, 100},
-    {"picture",  "Picture piece", "Find a piece for the picture panel", 0, 0, 1, 0xB58AFF, 380, 85},
+    {"picture",  "Picture piece", "Find a piece for the picture panel", 0, 0, 7, 0xB58AFF, 380, 85},
     {"coin",     "Coins collected", "Increase the coin bank", 0, 0, 0, 0xFFD23C, 90, 40},
-    {"stage",    "Stage changed", "Enter another stage", 0, 0, 3, 0x6CFF8C, 180, 55},
-    {"loss",     "Coins lost / wounded", "Coins dropped when Wario is hit or spent in a minigame", 0, 0, 3, 0xFF3D4F, 380, 90},
+    {"stage",    "Stage changed", "Enter another stage", 0, 0, 5, 0x6CFF8C, 180, 55},
+    {"loss",     "Coins lost / wounded", "Coins dropped when Wario is hit or spent in a minigame", 0, 0, 2, 0xFF3D4F, 380, 90},
 };
 /* Wario Land 3 uses the same seven event slots as Wario Land: SML3.
  * Two labels are explicit analogues: WL3 has no ordinary lives or heart
@@ -62,8 +62,8 @@ static const EventDef wario3_defs[] = {
     {"damage",   "Damage",                 "Wario enters a temporary status effect",                 0, 0, 3, 0xFF3D4F, 340, 85},
     {"treasure", "Treasure found",         "A course treasure is added to the collection",            0, 0, 4, 0xFFD34A, 500, 100},
     {"coin",     "Coin collected",         "The coin total increases during a course",                0, 0, 0, 0xFFD23C, 90, 40},
-    {"heart",    "Heart restored",       "Wario returns to normal after a status effect (WL3 has no heart meter)", 0, 0, 1, 0x6CFF8C, 160, 55},
-    {"extra",    "Extra life",           "Rudy defeated (WL3 has no extra-life system)",            0, 0, 4, 0x6CFF8C, 450, 90},
+    {"heart",    "Heart restored",       "Wario returns to normal after a status effect (WL3 has no heart meter)", 0, 0, 5, 0x6CFF8C, 160, 55},
+    {"extra",    "Extra life",           "Rudy defeated (WL3 has no extra-life system)",            0, 0, 6, 0x6CFF8C, 450, 90},
     {"lost",     "Life lost",            "Enter WL3's rare Game Over scene",                        0, 0, 3, 0xFF3030, 650, 100},
 };
 typedef struct { const EventDef *defs; int n; } GameEvents;
