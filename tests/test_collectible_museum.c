@@ -63,6 +63,14 @@ int main(void)
     museum_sync_flags(GAME_WARIO_SML3, "wario1_treasure", UINT64_C(0x11), 16);
     assert(museum_is_discovered(GAME_WARIO_SML3, "wario1_treasure_01"));
     assert(museum_is_discovered(GAME_WARIO_SML3, "wario1_treasure_05"));
+    assert(!museum_is_discovered(GAME_WARIO_SML3, "wario1_treasure_16"));
+    {
+        const MuseumEntry *e = museum_catalog_entry(GAME_WARIO_SML3, 2);
+        assert(e && !strcmp(e->id, "wario1_treasure_01"));
+        assert(!strcmp(e->name, "Treasure A"));
+        assert(strstr(e->description, "Course 03"));
+        assert(strstr(e->description, "9000 coins"));
+    }
 
     assert(museum_catalog_count(GAME_WARIO_SML3) == 19);
     assert(museum_catalog_count(GAME_WARIO_LAND2_GB) == 103);
