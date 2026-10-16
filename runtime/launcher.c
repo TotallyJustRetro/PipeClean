@@ -4734,8 +4734,13 @@ static void tab_museum(float x, float y)
         return;
     }
 
+    /* Keep reset in this fixed header row, outside the scrollable specimen
+       grid. On short/touch displays, footer controls could be mistaken for
+       the last visible discovery tile. */
     const float cat_gap = 4.0f;
-    const float cat_w = (width - cat_gap * (category_count - 1)) / (float)category_count;
+    const float reset_w = 124.0f;
+    const float cat_area_w = width - reset_w - cat_gap;
+    const float cat_w = (cat_area_w - cat_gap * (category_count - 1)) / (float)category_count;
     for (int i = 0; i < category_count; ++i) {
         int category_index = i;
         if (!has_treasures && i >= 3) category_index = i + 1;
@@ -4743,6 +4748,31 @@ static void tab_museum(float x, float y)
         if (ui_chip(bx, y + 31, cat_w, 25, category_labels[category_index],
                     museum_category == category_values[category_index])) {
             museum_category = category_values[category_index]; museum_scroll = 0.0f;
+            museum_reset_confirm = 0;
+        }
+    }
+
+    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until)
+        museum_reset_confirm = 0;
+    if (ui_button(x + cat_area_w + cat_gap, y + 31, reset_w, 25,
+                  museum_reset_confirm ? "Confirm reset" : "Reset all",
+                  museum_reset_confirm ? B_DANGER : B_GHOST, 1)) {
+        if (!museum_reset_confirm) {
+            museum_reset_confirm = 1;
+            museum_reset_confirm_until = anim_clock + 4.0f;
+            launcher_toast("Press Confirm reset within 4 seconds to clear discoveries for every game.");
+        } else if (museum_clear_discoveries()) {
+            museum_reset_confirm = 0;
+            museum_category = MUSEUM_CATEGORY_ALL;
+            museum_filter_mode = 0;
+            museum_scroll = 0.0f;
+            for (int game = 0; game < N_GAMES; ++game)
+                museum_selected[game] = 0;
+            launcher_toast("All Museum discoveries cleared. Play again to start a fresh collection.");
+        } else {
+            museum_reset_confirm = 0;
+            launcher_toast(museum_last_storage_error()[0]
+                ? museum_last_storage_error() : "Couldn't reset Museum discoveries.");
         }
     }
 
@@ -4899,29 +4929,7 @@ static void tab_museum(float x, float y)
                     ? "Pop-ups appear over gameplay."
                     : "Pop-ups off; progress still saves.");
 
-    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until)
-        museum_reset_confirm = 0;
-    if (ui_button(x + 606, y + 479, 192, 26,
-                  museum_reset_confirm ? "Confirm reset" : "Reset all discoveries",
-                  museum_reset_confirm ? B_DANGER : B_GHOST, 1)) {
-        if (!museum_reset_confirm) {
-            museum_reset_confirm = 1;
-            museum_reset_confirm_until = anim_clock + 4.0f;
-            launcher_toast("Press Confirm reset within 4 seconds to clear discoveries for every game.");
-        } else if (museum_clear_discoveries()) {
-            museum_reset_confirm = 0;
-            museum_category = MUSEUM_CATEGORY_ALL;
-            museum_filter_mode = 0;
-            museum_scroll = 0.0f;
-            for (int game = 0; game < N_GAMES; ++game)
-                museum_selected[game] = 0;
-            launcher_toast("All Museum discoveries cleared. Play again to start a fresh collection.");
-        } else {
-            museum_reset_confirm = 0;
-            launcher_toast(museum_last_storage_error()[0]
-                ? museum_last_storage_error() : "Couldn't reset Museum discoveries.");
-        }
-    }
+    /* Reset action is handled beside the category filters above. */
     if (museum_last_storage_error()[0])
         ui_text_fit(F_REG, 9, x + 3, y + 503, width - 6, C_ERR,
                     museum_last_storage_error());
