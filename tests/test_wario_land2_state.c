@@ -49,7 +49,7 @@ int main(void)
     assert(wario_land2_read_bcd(GAME_WARIO_LAND2_GB, test_peek, 0x0B, 3) == -1);
 
     WarioLand2EventTracker events = {0};
-    WarioLand2Snapshot w = {3, 100, 10, 0, 0};
+    WarioLand2Snapshot w = {3, 100, 10, 0, 0, 0};
     assert(wario_land2_tracker_update(&events, &w) == 0); /* baseline */
 
     w.bank_coins = 101;
@@ -63,12 +63,31 @@ int main(void)
     assert(wario_land2_tracker_update(&events, &w) ==
            (WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN) |
             WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_TREASURE) |
-            WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_PICTURE) |
-            WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_RESULTS)));
+            WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_PICTURE)));
 
     w.stage = 4;
     assert(wario_land2_tracker_update(&events, &w) ==
            WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_ENTERED));
+
+    /* D6D8 modes 4 and 10 dispatch to the end-of-course result handlers. */
+    w.render_mode = 4;
+    assert(wario_land2_tracker_update(&events, &w) ==
+           WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_RESULTS));
+    w.render_mode = 10; /* another phase of the same result screen */
+    assert(wario_land2_tracker_update(&events, &w) == 0);
+    w.render_mode = 0;
+    assert(wario_land2_tracker_update(&events, &w) == 0);
+    w.render_mode = 4; /* don't repeat for the same course */
+    assert(wario_land2_tracker_update(&events, &w) == 0);
+
+    /* A different course resets the results latch, allowing a fresh event. */
+    w.stage = 5;
+    w.render_mode = 0;
+    assert(wario_land2_tracker_update(&events, &w) ==
+           WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_ENTERED));
+    w.render_mode = 4;
+    assert(wario_land2_tracker_update(&events, &w) ==
+           WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COURSE_RESULTS));
 
     /* A counter decrease on the same stage gets its own red/strong effect;
        it may be damage or coins spent in a minigame, so the UI calls it loss. */
