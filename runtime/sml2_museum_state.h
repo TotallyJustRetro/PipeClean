@@ -73,6 +73,10 @@ static inline uint32_t sml2_museum_tracker_update(Sml2MuseumTracker *tracker,
     if (!tracker->have_previous) {
         /* The player may resume directly in a powered-up state or an already
          * unlocked endgame. Those states are valid evidence for the Museum. */
+        /* A resumed save may already have non-zero counters before PipeClean
+           starts observing it; those values are evidence of real encounters. */
+        if (current->coins > 0) discoveries |= SML2_MUSEUM_COIN;
+        if (current->enemy_kills > 0) discoveries |= SML2_MUSEUM_ENEMY;
         discoveries |= sml2_museum_powerup_discovery(current->powerup);
         if (current->star_active) discoveries |= SML2_MUSEUM_SUPER_STAR;
         discoveries |= sml2_museum_final_area_discoveries(current->level);
