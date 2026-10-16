@@ -1,5 +1,6 @@
 #include "museum.h"
 #include "settings.h"
+#include <SDL.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -17,10 +18,16 @@ static char storage_error[160];
 static char discovery_notices[MUSEUM_NOTICE_QUEUE_CAP][160];
 static int discovery_notice_head;
 static int discovery_notice_count;
+static SDL_SpinLock discovery_notice_lock;
 
 static void museum_queue_discovery_notice(const MuseumEntry *entry)
 {
-    if (!entry || !settings.museum_discovery_notifications) return;
+    if (!entry) return;
+    SDL_AtomicLock(&discovery_notice_lock);
+    if (!settings.museum_discovery_notifications) {
+        SDL_AtomicUnlock(&discovery_notice_lock);
+        return;
+    }
     if (discovery_notice_count >= MUSEUM_NOTICE_QUEUE_CAP) {
         discovery_notice_head = (discovery_notice_head + 1) % MUSEUM_NOTICE_QUEUE_CAP;
         --discovery_notice_count;
@@ -28,6 +35,7 @@ static void museum_queue_discovery_notice(const MuseumEntry *entry)
     int slot = (discovery_notice_head + discovery_notice_count) % MUSEUM_NOTICE_QUEUE_CAP;
     snprintf(discovery_notices[slot], sizeof discovery_notices[slot], "New discovery: %.125s", entry->name);
     ++discovery_notice_count;
+    SDL_AtomicUnlock(&discovery_notice_lock);
 }
 
 static const char *game_source(int game)
@@ -493,7 +501,9 @@ static int entry_index(int game, const char *id)
 void museum_set_storage_path(const char *path)
 {
     memset(discovered, 0, sizeof discovered);
+    SDL_AtomicLock(&discovery_notice_lock);
     discovery_notice_head = discovery_notice_count = 0;
+    SDL_AtomicUnlock(&discovery_notice_lock);
     storage_error[0] = 0;
     if (path && path[0]) snprintf(storage_path, sizeof storage_path, "%s", path);
     else storage_path[0] = 0;
@@ -703,14 +713,20 @@ int museum_take_notification(char *out, size_t out_size)
 {
     if (!out || out_size == 0) return 0;
     out[0] = 0;
+    SDL_AtomicLock(&discovery_notice_lock);
     if (!settings.museum_discovery_notifications) {
         discovery_notice_head = discovery_notice_count = 0;
+        SDL_AtomicUnlock(&discovery_notice_lock);
         return 0;
     }
-    if (discovery_notice_count <= 0) return 0;
+    if (discovery_notice_count <= 0) {
+        SDL_AtomicUnlock(&discovery_notice_lock);
+        return 0;
+    }
     snprintf(out, out_size, "%s", discovery_notices[discovery_notice_head]);
     discovery_notices[discovery_notice_head][0] = 0;
     discovery_notice_head = (discovery_notice_head + 1) % MUSEUM_NOTICE_QUEUE_CAP;
     --discovery_notice_count;
+    SDL_AtomicUnlock(&discovery_notice_lock);
     return 1;
 }
