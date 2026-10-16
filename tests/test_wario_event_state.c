@@ -59,12 +59,13 @@ int main(void)
     s.coins = 10;
     assert(wario_event_tracker_update(&tracker, &s) == -1); /* re-baseline */
 
-    /* Wario Land 3's displayed three-digit counters use a leading digit plus
-       a packed-BCD pair for the last two digits. */
-    assert(wario_land3_read_counter3(0, 0x00) == 0);
-    assert(wario_land3_read_counter3(1, 0x23) == 123);
-    assert(wario_land3_read_counter3(9, 0x99) == 999);
-    assert(wario_land3_read_counter3(10, 0x00) == -1);
+    /* WL3 stores the final two decimal digits as a plain numeric byte, not
+       packed BCD: 99 is 0x63 and 23 is 0x17. */
+    assert(wario_land3_read_counter3(0, 0) == 0);
+    assert(wario_land3_read_counter3(1, 23) == 123);
+    assert(wario_land3_read_counter3(9, 99) == 999);
+    assert(wario_land3_read_counter3(10, 0) == -1);
+    assert(wario_land3_read_counter3(1, 100) == -1);
     assert(wario_land3_read_counter3(1, 0xFA) == -1);
 
     WarioLand3Tracker wl3 = {0};
