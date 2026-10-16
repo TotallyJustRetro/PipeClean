@@ -246,7 +246,7 @@ static int wario_event_snapshot_read(WarioEventSnapshot *snapshot)
     snapshot->lives = wario_bcd_pair(lives_raw);
     snapshot->power = power_raw;
     snapshot->treasure_mask = (int)treasure_low | ((int)treasure_high << 8);
-    snapshot->course = wario_ram_read(0xA804);
+    snapshot->course = wario_ram_read(0xA9E4);
     snapshot->game_mode = wario_ram_read(0xA8C3);
     snapshot->sub_mode = wario_ram_read(0xA8C4);
     snapshot->held_key = wario_ram_read(0xA392);
