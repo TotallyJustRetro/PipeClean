@@ -13,6 +13,22 @@ static int catalog_count[N_GAMES];
 static int initialized;
 static char storage_path[MUSEUM_PATH_MAX];
 static char storage_error[160];
+#define MUSEUM_NOTICE_QUEUE_CAP 16
+static char discovery_notices[MUSEUM_NOTICE_QUEUE_CAP][160];
+static int discovery_notice_head;
+static int discovery_notice_count;
+
+static void museum_queue_discovery_notice(const MuseumEntry *entry)
+{
+    if (!entry || !settings.museum_discovery_notifications) return;
+    if (discovery_notice_count >= MUSEUM_NOTICE_QUEUE_CAP) {
+        discovery_notice_head = (discovery_notice_head + 1) % MUSEUM_NOTICE_QUEUE_CAP;
+        --discovery_notice_count;
+    }
+    int slot = (discovery_notice_head + discovery_notice_count) % MUSEUM_NOTICE_QUEUE_CAP;
+    snprintf(discovery_notices[slot], sizeof discovery_notices[slot], "New discovery: %.125s", entry->name);
+    ++discovery_notice_count;
+}
 
 static const char *game_source(int game)
 {
@@ -477,6 +493,7 @@ static int entry_index(int game, const char *id)
 void museum_set_storage_path(const char *path)
 {
     memset(discovered, 0, sizeof discovered);
+    discovery_notice_head = discovery_notice_count = 0;
     storage_error[0] = 0;
     if (path && path[0]) snprintf(storage_path, sizeof storage_path, "%s", path);
     else storage_path[0] = 0;
@@ -629,6 +646,7 @@ int museum_discover_entry(int game, const char *id)
     }
     storage_error[0] = 0;
     discovered[game][idx] = 1;
+    museum_queue_discovery_notice(&catalog[game][idx]);
     return 1;
 }
 
@@ -680,3 +698,19 @@ const char *museum_category_name(MuseumCategory category)
 }
 
 const char *museum_last_storage_error(void) { return storage_error; }
+
+int museum_take_notification(char *out, size_t out_size)
+{
+    if (!out || out_size == 0) return 0;
+    out[0] = 0;
+    if (!settings.museum_discovery_notifications) {
+        discovery_notice_head = discovery_notice_count = 0;
+        return 0;
+    }
+    if (discovery_notice_count <= 0) return 0;
+    snprintf(out, out_size, "%s", discovery_notices[discovery_notice_head]);
+    discovery_notices[discovery_notice_head][0] = 0;
+    discovery_notice_head = (discovery_notice_head + 1) % MUSEUM_NOTICE_QUEUE_CAP;
+    --discovery_notice_count;
+    return 1;
+}
