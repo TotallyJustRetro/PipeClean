@@ -175,6 +175,32 @@ static void add_wl3_treasures(void)
     }
 }
 
+typedef struct { const char *letter; int course; int value; } WarioSml3TreasureDef;
+static const WarioSml3TreasureDef wario_sml3_treasures[15] = {
+    {"A", 3, 9000}, {"B", 9, 6000}, {"C", 11, 2000},
+    {"D", 16, 7000}, {"E", 17, 5000}, {"F", 18, 9000},
+    {"G", 20, 5000}, {"H", 24, 8000}, {"I", 26, 7000},
+    {"J", 29, 3000}, {"K", 30, 4000}, {"L", 31, 8000},
+    {"M", 34, 4000}, {"N", 37, 7000}, {"O", 39, 6000}
+};
+
+static void add_wario_sml3_treasures(void)
+{
+    for (int i = 0; i < 15; ++i) {
+        char id[40], name[80], description[200];
+        snprintf(id, sizeof id, "wario1_treasure_%02d", i + 1);
+        snprintf(name, sizeof name, "Treasure %s", wario_sml3_treasures[i].letter);
+        snprintf(description, sizeof description,
+                 "Found in Course %02d. Worth %d coins toward Wario's ending.",
+                 wario_sml3_treasures[i].course, wario_sml3_treasures[i].value);
+        add_entry(GAME_WARIO_SML3, id, name, MUSEUM_CATEGORY_TREASURE,
+                  description, "");
+        MuseumEntry *e = &catalog[GAME_WARIO_SML3][catalog_count[GAME_WARIO_SML3] - 1];
+        snprintf(e->source_url, sizeof e->source_url, "%s",
+                 "https://www.mariowiki.com/Treasure_%28Wario_franchise%29");
+    }
+}
+
 static void build_catalog(void)
 {
     memset(catalog, 0, sizeof catalog);
@@ -215,8 +241,7 @@ static void build_catalog(void)
               "A coin-count increase was observed.", "coin");
     add_entry(GAME_WARIO_SML3, "power_up", "Power-up", MUSEUM_CATEGORY_ITEM,
               "A Wario power-state change was observed; exact forms need their own mapping.", "power");
-    add_numbered(GAME_WARIO_SML3, "wario1_treasure", "Treasure",
-                 MUSEUM_CATEGORY_TREASURE, "One of the game's 15 treasures, tracked by the cartridge's collection flags.", 15);
+    add_wario_sml3_treasures();
     add_entry(GAME_WARIO_SML3, "course", "Course", MUSEUM_CATEGORY_STAGE,
               "A course was entered.", "course");
     add_entry(GAME_WARIO_SML3, "course_results", "Course results", MUSEUM_CATEGORY_MILESTONE,
