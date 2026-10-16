@@ -5,6 +5,7 @@
 #include "gb.h"
 #include "widescreen.h"
 #include "cart.h"
+#include <limits.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 /* Optional for renderer-only unit tests that compile ppu.c without gb.c. */
@@ -238,6 +239,108 @@ void ppu_cgb_obj_palette_copy(uint32_t out[32])
     for (unsigned pal = 0; pal < 8; pal++)
         for (unsigned ci = 0; ci < 4; ci++)
             out[pal * 4 + ci] = cgb_rgb(cgb_obj_palette, pal, ci);
+}
+
+/* Rebuild an object's sprite directly from OAM and tile VRAM. Cropping the
+ * composited PPU frame can cut metasprites in half at screen edges; using the
+ * live tile IDs also preserves clean one-pixel source data for nearest-neighbor
+ * scaling in the Museum. */
+int ppu_museum_capture_object(uint8_t object_y, uint8_t object_x,
+                              uint32_t *rgba, size_t pixel_capacity,
+                              int max_dim, int *out_w, int *out_h,
+                              const uint32_t ob0[4], const uint32_t ob1[4])
+{
+    if (out_w) *out_w = 0;
+    if (out_h) *out_h = 0;
+    if (!rgba || !out_w || !out_h || !ob0 || !ob1 ||
+        max_dim < 8 || max_dim > 128 ||
+        pixel_capacity < (size_t)max_dim * (size_t)max_dim)
+        return 0;
+
+    const int origin_x = (int)object_x - 8;
+    const int origin_y = (int)object_y - 16;
+    const int sprite_h = (lcdc & 0x04) ? 16 : 8;
+    int picked[20], picked_n = 0;
+    int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+
+    /* SML's ten live object slots draw through OAM entries 20-39. Compute the
+     * union of nearby 8x8/8x16 pieces instead of forcing a 16x16 crop. */
+    for (int i = 20; i < 40; ++i) {
+        const int oy = oam[i * 4], ox = oam[i * 4 + 1];
+        if (!oy || !ox || oy == 0xFF || ox == 0xFF) continue;
+        const int sx = ox - 8, sy = oy - 16;
+        const int dx = sx - origin_x, dy = sy - origin_y;
+        if (dx < -24 || dx > 24 || dy < -24 || dy > 24) continue;
+        picked[picked_n++] = i;
+        if (sx < min_x) min_x = sx;
+        if (sy < min_y) min_y = sy;
+        if (sx + 7 > max_x) max_x = sx + 7;
+        if (sy + sprite_h - 1 > max_y) max_y = sy + sprite_h - 1;
+    }
+    if (!picked_n || max_x < min_x || max_y < min_y) return 0;
+    const int width = max_x - min_x + 1, height = max_y - min_y + 1;
+    if (width < 8 || height < 8 || width > max_dim || height > max_dim) return 0;
+
+    memset(rgba, 0, (size_t)max_dim * (size_t)max_dim * sizeof rgba[0]);
+    uint32_t cgb_palette[32];
+    if (cgb_render_enabled) ppu_cgb_obj_palette_copy(cgb_palette);
+
+    /* Reverse OAM order so earlier entries can overwrite later entries on
+     * overlapping opaque pixels. */
+    for (int p = picked_n - 1; p >= 0; --p) {
+        const int i = picked[p];
+        const int oy = oam[i * 4], ox = oam[i * 4 + 1];
+        const int sx = ox - 8, sy = oy - 16;
+        const uint8_t attr = oam[i * 4 + 3];
+        int tile = oam[i * 4 + 2];
+        if (sprite_h == 16) tile &= 0xFE;
+        const uint8_t *tile_data = (cgb_render_enabled && (attr & 0x08))
+            ? vram_cgb1 : vram;
+
+        for (int dy = 0; dy < sprite_h; ++dy) {
+            const int local_y = sy + dy - min_y;
+            const int source_y = (attr & 0x40) ? sprite_h - 1 - dy : dy;
+            const int source_tile = tile + (source_y >> 3);
+            const int tile_row = source_y & 7;
+            const int address = source_tile * 16 + tile_row * 2;
+            if (address < 0 || address + 1 >= 0x2000) continue;
+            const uint8_t low = tile_data[address], high = tile_data[address + 1];
+
+            for (int dx = 0; dx < 8; ++dx) {
+                const int local_x = sx + dx - min_x;
+                const int source_x = (attr & 0x20) ? 7 - dx : dx;
+                const int bit = 7 - source_x;
+                const unsigned ci = (unsigned)(((high >> bit) & 1u) << 1) |
+                                    (unsigned)((low >> bit) & 1u);
+                if (ci == 0 || local_x < 0 || local_x >= width ||
+                    local_y < 0 || local_y >= height)
+                    continue;
+
+                uint32_t rgb;
+                if (cgb_render_enabled) {
+                    rgb = cgb_palette[(attr & 7u) * 4u + ci];
+                } else {
+                    const uint8_t reg = (attr & 0x10) ? obp1 : obp0;
+                    const unsigned shade = (reg >> (ci * 2u)) & 3u;
+                    rgb = (attr & 0x10) ? ob1[shade] : ob0[shade];
+                }
+                rgba[(size_t)local_y * (size_t)max_dim + (size_t)local_x] =
+                    (((rgb >> 16) & 0xFFu) << 24) |
+                    (((rgb >> 8) & 0xFFu) << 16) |
+                    ((rgb & 0xFFu) << 8) | 0xFFu;
+            }
+        }
+    }
+
+    int opaque = 0;
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            if ((rgba[(size_t)y * (size_t)max_dim + (size_t)x] & 0xFFu) != 0)
+                opaque++;
+    if (opaque < 6) return 0;
+    *out_w = width;
+    *out_h = height;
+    return 1;
 }
 
 /* Resolve a pixel from a tile index and attribute. Coordinates are pixel

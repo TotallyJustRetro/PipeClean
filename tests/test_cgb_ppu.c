@@ -308,5 +308,32 @@ int main(void)
     assert(ppu_rgb[0][192] == 0xFF0000u); /* reconstructed right margin */
     wl3_test_active = 0;
     ppu_set_wl3_wide(0);
+
+    /* Museum reconstruction must preserve complete adjacent tiles, not just
+       the part visible in the composited frame, and retain native pixel colors. */
+    ppu_reset();
+    ppu_set_cgb_mode(0);
+    ppu_write(0x48, 0xE4); /* map color indices 1/2/3 to shades 1/2/3 */
+    for (int row = 0; row < 8; ++row) {
+        ppu_vram_write((uint16_t)(0x0010 + row * 2), 0xFF); /* tile 1 = color 1 */
+        ppu_vram_write((uint16_t)(0x0011 + row * 2), 0x00);
+        ppu_vram_write((uint16_t)(0x0020 + row * 2), 0x00); /* tile 2 = color 2 */
+        ppu_vram_write((uint16_t)(0x0021 + row * 2), 0xFF);
+    }
+    oam[20 * 4] = 32; oam[20 * 4 + 1] = 40; oam[20 * 4 + 2] = 1;
+    oam[21 * 4] = 32; oam[21 * 4 + 1] = 48; oam[21 * 4 + 2] = 2;
+    {
+        uint32_t pixels[64 * 64];
+        uint32_t ob0[4] = {0xFFFFFFu, 0x112233u, 0x445566u, 0x778899u};
+        uint32_t ob1[4] = {0xFFFFFFu, 0x112233u, 0x445566u, 0x778899u};
+        int width = 0, height = 0;
+        assert(ppu_museum_capture_object(32, 40, pixels, 64u * 64u, 64,
+                                         &width, &height, ob0, ob1));
+        assert(width == 16 && height == 8);
+        assert(pixels[0] == 0x112233FFu);
+        assert(pixels[8] == 0x445566FFu);
+        assert(pixels[15] == 0x445566FFu);
+        assert(pixels[16] == 0x112233FFu);
+    }
     return 0;
 }

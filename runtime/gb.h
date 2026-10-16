@@ -96,6 +96,13 @@ void ppu_vram_write(uint16_t address, uint8_t value);
 uint8_t ppu_vram_bank_read(void);
 void ppu_vram_bank1_copy(uint8_t out[0x1800]);
 void ppu_cgb_obj_palette_copy(uint32_t out[32]);
+/* Rebuild a complete object directly from OAM/tile VRAM for crisp Museum art.
+ * Pixels are packed 0xRRGGBBAA; transparent pixels are zero. The output uses
+ * max_dim as its row stride. */
+int ppu_museum_capture_object(uint8_t object_y, uint8_t object_x,
+                              uint32_t *rgba, size_t pixel_capacity,
+                              int max_dim, int *out_w, int *out_h,
+                              const uint32_t ob0[4], const uint32_t ob1[4]);
 void ppu_set_cgb_mode(int enabled);
 int ppu_cgb_mode_enabled(void);
 extern uint32_t ppu_rgb[GB_H][GB_WMAX];
