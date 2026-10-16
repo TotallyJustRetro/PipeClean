@@ -145,6 +145,7 @@ add_test(NAME companion_deck_state COMMAND test_companion_deck_state)
 
 add_executable(test_collectible_museum tests/test_collectible_museum.c runtime/museum.c)
 target_include_directories(test_collectible_museum PRIVATE runtime)
+target_link_libraries(test_collectible_museum PRIVATE SDL2::SDL2)
 add_test(NAME collectible_museum COMMAND test_collectible_museum)
 
 add_executable(test_sml2_wide tests/test_sml2_wide.c runtime/widescreen.c)
