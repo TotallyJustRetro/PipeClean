@@ -449,15 +449,51 @@ static void sml2_actor_trace_begin(void)
 
 static void sml2_actor_trace_frame(void)
 {
-    if (!sml2_actor_trace_file || cur_game != GAME_SML2 ||
-        rom_loaded_game() != GAME_SML2 || !cart_ram)
-        return;
+    if (!sml2_actor_trace_file) return;
 
+    /* Keep a heartbeat even when a guard prevents actor scanning. A header-only
+     * trace is otherwise indistinguishable from a trace hook that never ran. */
+    const int loaded_game = rom_loaded_game();
+    const int has_cart_ram = cart_ram != NULL;
     const uint8_t mode = rd8(0xFF9Bu);
-    if (!sml2_museum_mode_is_active(mode)) return;
-
     const uint8_t level = rd8(0xA269);
-    if (level > 0x1F) return;
+    const int diagnostic_tick = (frame_count % 60) == 0;
+
+    if (cur_game != GAME_SML2 || loaded_game != GAME_SML2 || !has_cart_ram) {
+        if (diagnostic_tick)
+            fprintf(sml2_actor_trace_file,
+                    "diag frame=%d reason=game_or_ram_guard cur_game=%d loaded_game=%d cart_ram=%d mode=%02X level=%02X\\n",
+                    frame_count, cur_game, loaded_game, has_cart_ram, mode, level);
+        return;
+    }
+
+    if (!sml2_museum_mode_is_active(mode)) {
+        if (diagnostic_tick)
+            fprintf(sml2_actor_trace_file,
+                    "diag frame=%d reason=inactive_mode mode=%02X level=%02X\\n",
+                    frame_count, mode, level);
+        return;
+    }
+
+    if (level > 0x1F) {
+        if (diagnostic_tick)
+            fprintf(sml2_actor_trace_file,
+                    "diag frame=%d reason=invalid_level mode=%02X level=%02X\\n",
+                    frame_count, mode, level);
+        return;
+    }
+
+    if (diagnostic_tick) {
+        unsigned nonzero_slots = 0;
+        for (int slot = 0; slot < 16; ++slot) {
+            const uint16_t base = (uint16_t)(0xAD08u + (unsigned)slot * 0x20u);
+            if (rd8(base) != 0) ++nonzero_slots;
+        }
+        fprintf(sml2_actor_trace_file,
+                "diag frame=%d reason=scanning mode=%02X level=%02X nonzero_slots=%u\\n",
+                frame_count, mode, level, nonzero_slots);
+        fflush(sml2_actor_trace_file);
+    }
 
     for (int slot = 0; slot < 16; ++slot) {
         const uint16_t base = (uint16_t)(0xAD08u + (unsigned)slot * 0x20u);
