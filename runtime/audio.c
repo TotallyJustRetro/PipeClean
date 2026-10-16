@@ -845,12 +845,21 @@ int audio_pad_open(void)
         if (!pdev) continue;
         pch = have.channels; prate = have.freq;
         if (!beep.d) {
-            /* a little bank of synthesized sounds, one per kind, played back to back in one clip */
-            clip_alloc(&beep, prate * 5 / 2);
-            static const struct { float f1, f2; float t1; float len; float vol; } k[5] = {
-                {880, 1320, 0.08f, 0.35f, 0.5f}, {988, 1319, 0.07f, 0.40f, 0.5f}, {330, 220, 0.05f, 0.30f, 0.6f},
-                {392, 262, 0.15f, 0.55f, 0.6f}, {523, 784, 0.10f, 0.50f, 0.5f}};
-            for (int b = 0; b < 5; b++)
+            /* Eight synthesized alerts at half-second slots. Keep kinds 0-4
+               stable for the existing games; 5-7 provide distinct Wario event
+               cues (recovery, extra-life/story milestone, and picture/stage). */
+            clip_alloc(&beep, prate * 4);
+            static const struct { float f1, f2; float t1; float len; float vol; } k[8] = {
+                {880, 1320, 0.08f, 0.35f, 0.5f}, /* 0: coin */
+                {988, 1319, 0.07f, 0.40f, 0.5f}, /* 1: power-up */
+                {330, 220, 0.05f, 0.30f, 0.6f},  /* 2: damage / coin loss */
+                {392, 262, 0.15f, 0.55f, 0.6f},  /* 3: life lost / game over */
+                {523, 784, 0.10f, 0.50f, 0.5f},  /* 4: treasure */
+                {659, 988, 0.05f, 0.35f, 0.48f}, /* 5: recovery / stage clear */
+                {1046, 1568, 0.04f, 0.40f, 0.50f},/* 6: extra-life / milestone */
+                {740, 1108, 0.05f, 0.30f, 0.42f} /* 7: picture piece */
+            };
+            for (int b = 0; b < 8; b++)
                 for (long j = 0; j < (long)(k[b].len * prate); j++) {
                     long o = b * (prate / 2) + j;
                     if (o >= beep.n) break;
@@ -889,7 +898,7 @@ void audio_pad_push(const int16_t *st, int frames)
 void audio_pad_play_beep(int kind)
 {
     if (!pdev) return;
-    if (kind < 0 || kind > 4) kind = 0;
+    if (kind < 0 || kind > 7) kind = 0;
     SDL_LockMutex(pmx);
     beep_pos = (long)kind * (prate / 2);
     beep_end = beep_pos + (long)(prate * 0.45);
