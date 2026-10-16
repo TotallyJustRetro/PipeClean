@@ -415,7 +415,7 @@ static void sml2_actor_trace_begin(void)
     const char *base = settings_dir();
     if (!base || !base[0]) return;
     size_t len = strlen(base);
-    const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\\\')) ? "" : "/";
+    const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
     char path[1200];
     int n = snprintf(path, sizeof path, "%s%spipeclean-sml2-actor-trace.txt", base, sep);
     if (n < 0 || (size_t)n >= sizeof path) return;
