@@ -2078,6 +2078,131 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
 
+        private int wario3KeyColor(int key) {
+            switch (key) {
+                case 0: return 0xFFC9D1D8; // Gray / silver
+                case 1: return 0xFFFF6267; // Red
+                case 2: return 0xFF62D783; // Green
+                case 3: return 0xFF5D9FFF; // Blue
+                default: return accent();
+            }
+        }
+
+        /* Original geometric key art: deliberately drawn from simple shapes rather
+           than copying the game's sprite. Missing keys use the same silhouette,
+           darkened just like the greyed-out icons in the pause menu. */
+        private void drawWario3Key(Canvas c, float cx, float cy, float size,
+                                   int key, boolean found) {
+            float ringX = cx - size * 0.22f;
+            float ringY = cy;
+            int color = found ? wario3KeyColor(key) : 0xFF57534D;
+            int outline = found ? 0xFF241B15 : 0xFF302D29;
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(outline);
+            c.drawCircle(ringX, ringY, size * 0.29f, p);
+            p.setColor(color);
+            c.drawCircle(ringX, ringY, size * 0.23f, p);
+            p.setColor(panel());
+            c.drawCircle(ringX, ringY, size * 0.105f, p);
+
+            p.setColor(outline);
+            c.drawRoundRect(cx - size * 0.04f, cy - size * 0.095f,
+                cx + size * 0.40f, cy + size * 0.095f, size * 0.035f, size * 0.035f, p);
+            p.setColor(color);
+            c.drawRoundRect(cx - size * 0.06f, cy - size * 0.075f,
+                cx + size * 0.38f, cy + size * 0.055f, size * 0.025f, size * 0.025f, p);
+            p.setColor(outline);
+            c.drawRect(cx + size * 0.17f, cy + size * 0.025f,
+                cx + size * 0.25f, cy + size * 0.22f, p);
+            c.drawRect(cx + size * 0.30f, cy + size * 0.025f,
+                cx + size * 0.38f, cy + size * 0.17f, p);
+            p.setColor(color);
+            c.drawRect(cx + size * 0.19f, cy + size * 0.02f,
+                cx + size * 0.23f, cy + size * 0.17f, p);
+            c.drawRect(cx + size * 0.32f, cy + size * 0.02f,
+                cx + size * 0.36f, cy + size * 0.13f, p);
+            if (found) {
+                p.setColor(0xD8FFFFFF);
+                c.drawRoundRect(ringX - size * 0.105f, ringY - size * 0.15f,
+                    ringX - size * 0.035f, ringY - size * 0.08f,
+                    size * 0.025f, size * 0.025f, p);
+                c.drawRoundRect(cx + size * 0.01f, cy - size * 0.055f,
+                    cx + size * 0.12f, cy - size * 0.018f, size * 0.02f, size * 0.02f, p);
+            }
+        }
+
+        private void drawWario3KeyRing(Canvas c, float x, float y, float w, float h) {
+            card(c, x, y, w, h, "THE FOUR KEYS");
+            int count = wario3KeyCount();
+            String summary = wario3Keys < 0 ? "ENTER A COURSE TO SCAN KEYS" : count + " / 4 COLLECTED";
+            textFit(c, summary, x + 12, y + (h < 112 ? 33 : 42), w - 24,
+                h < 112 ? 6.4f : 8f, accent());
+            float usable = w - 24f;
+            float step = usable / 4f;
+            float iconY = y + (h < 112 ? h * 0.56f : h * 0.53f);
+            float iconSize = Math.min(h < 112 ? 25f : 32f, step * 0.50f);
+            for (int key = 0; key < WARIO3_KEY_NAMES.length; key++) {
+                float cx = x + 12f + step * (key + 0.5f);
+                boolean found = wario3Keys >= 0 && (wario3Keys & (1 << key)) != 0;
+                drawWario3Key(c, cx, iconY, iconSize, key, found);
+                textFit(c, WARIO3_KEY_NAMES[key], cx - step * 0.48f,
+                    y + (h < 112 ? h - 17f : h - 26f), step * 0.96f,
+                    h < 112 ? 6.8f : 7.4f, found ? wario3KeyColor(key) : muted(), true);
+                if (h >= 112)
+                    textFit(c, found ? "FOUND" : "MISSING", cx - step * 0.48f,
+                        y + h - 10f, step * 0.96f, 5.9f,
+                        found ? ink() : 0xFF777068, true);
+            }
+        }
+
+        private void drawWario3Vault(Canvas c, float x, float y, float w, float h) {
+            card(c, x, y, w, h, "TREASURE VAULT");
+            String countText = wario3TreasureCount < 0 ? "-- / 100 TREASURES" :
+                String.format(Locale.US, "%02d / 100 TREASURES", wario3TreasureCount);
+            text(c, countText, x + 12, y + 41, 8.1f, accent());
+            float bx = x + 12f, by = y + 48f, bw = w - 24f;
+            p.setColor(0x553A2B1B);
+            c.drawRoundRect(bx, by, bx + bw, by + 5f, 3f, 3f, p);
+            if (wario3TreasureCount > 0) {
+                p.setColor(0xFFFFD66B);
+                c.drawRoundRect(bx, by, bx + bw * Math.min(100, wario3TreasureCount) / 100f,
+                    by + 5f, 3f, 3f, p);
+            }
+            /* Aggregate meter, not a claim about the identity/order of the chests:
+               the RAM map provides a total count but not a verified 100-bit list. */
+            int cols = 20, rows = 5;
+            float top = y + 59f, bottom = y + h - 7f;
+            float stepX = bw / cols, stepY = Math.max(2f, (bottom - top) / rows);
+            for (int i = 0; i < 100; i++) {
+                int col = i % cols, row = i / cols;
+                float cx = bx + col * stepX, cy = top + row * stepY;
+                boolean filled = wario3TreasureCount >= 0 && i < wario3TreasureCount;
+                p.setColor(filled ? 0xFFFFD66B : 0xFF493A2A);
+                c.drawRoundRect(cx + 1f, cy, cx + stepX - 1f,
+                    cy + Math.max(1.5f, stepY * 0.58f), 1.4f, 1.4f, p);
+                if (filled) {
+                    p.setColor(0xAAFFF3C0);
+                    c.drawRect(cx + stepX * 0.20f, cy + 0.8f,
+                        cx + stepX * 0.40f, cy + Math.max(1.3f, stepY * 0.38f), p);
+                }
+            }
+        }
+
+        private void drawWario3Status(Canvas c, float x, float y, float w, float h) {
+            card(c, x, y, w, h, "COURSE TRACKER");
+            textFit(c, stageText() + "  •  " + (world < 0 ? "TIME UNKNOWN" : world == 1 ? "NIGHT" : "DAY"),
+                x + 12f, y + 42f, w - 24f, h < 104 ? 8.2f : 10f, accent());
+            textFit(c, "COINS  " + (warioCoins < 0 ? "---" :
+                String.format(Locale.US, "%03d", warioCoins)), x + 12f, y + 60f,
+                w - 24f, h < 104 ? 7.3f : 8.8f, ink());
+            textFit(c, "MUSIC COINS  " + (wario3MusicCoins < 0 ? "-- / 8" :
+                wario3MusicCoinCount() + " / 8"), x + 12f, y + 77f,
+                w - 24f, h < 104 ? 7.3f : 8.8f, muted());
+            textFit(c, paused ? "EXPEDITION PAUSED" :
+                (wario3Scene == 3 ? "COURSE RESULTS" : "COURSE IN PROGRESS"),
+                x + 12f, y + h - 9f, w - 24f, 6.8f, muted());
+        }
+
         private void drawWario2Grid(Canvas c, float x, float y, float w, float h,
                                     String heading, long flags, boolean pictures) {
             card(c, x, y, w, h, heading);
