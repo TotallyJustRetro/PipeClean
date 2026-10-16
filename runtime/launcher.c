@@ -866,10 +866,12 @@ static void sub_external_game(int g, float x, float y)
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
                  g == GAME_WARIO_SML3
-                   ? "Wario Land: Super Mario Land 3 opens a live Treasure Expedition Companion Deck when enabled in Display settings. It tracks treasures, course changes, power changes, extra lives and coin milestones."
-                   : ((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
-                      ? "Both Wario Land II releases use the same live Stolen Treasure Companion Deck: all 50 treasures, all 50 picture panels, stage and coin tracking, an expedition log, collection animations, DualSense lightbar and rumble, and rumble for compatible controllers."
-                      : "This title runs in the separate gbrecomp player. PipeClean's in-runtime filters and save-state slots do not apply to this player."), 5);
+                    ? "Wario Land: Super Mario Land 3 opens a live Treasure Expedition Companion Deck when enabled in Display settings. It tracks treasures, course changes, power changes, extra lives and coin milestones."
+                    : ((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
+                       ? "Both Wario Land II releases use the same live Stolen Treasure Companion Deck: all 50 treasures, all 50 picture panels, stage and coin tracking, an expedition log, collection animations, event-specific DualSense lightbar flashes, rumble and speaker alerts, plus rumble for compatible controllers."
+                       : (g == GAME_WARIO_LAND3_GBC
+                          ? "Wario Land 3 has seven live controller events: power-up, temporary-form damage/recovery, treasure, coins, and major story/game-over milestones. Events can trigger DualSense lightbar flashes, event-specific rumble and speaker alerts; other compatible controllers can rumble."
+                          : "This title runs in the separate gbrecomp player. PipeClean's in-runtime filters and save-state slots do not apply to this player.")), 5);
 
     ui_text(F_BOLD, 12, x + 18, y + 276, C_MUTED, "CONTROLS");
     ui_text_wrap(F_REG, 12, x + 18, y + 300, 772, C_TEXT,
@@ -1881,7 +1883,7 @@ static void sub_dualsense(int g, float x, float y)
         if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(0); } else launcher_toast("Speaker not found. Connect the controller with the USB cable.");
     }
     ui_text_wrap(F_REG, 12, x + 18, y + 386, lw - 36, C_DIM,
-                 "The speaker plays the game's own sound effect while the event happens, so you hear a coin or a clear from the controller. Rumble and light follow the choices on the right.", 3);
+                 "Enabled events can flash the DualSense lightbar, rumble the selected controller and play an event-specific alert tone through a supported controller speaker. Non-DualSense controllers can rumble when SDL exposes a rumble motor.", 3);
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 476, "WHEN THIS HAPPENS");
