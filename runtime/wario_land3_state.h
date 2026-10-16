@@ -30,6 +30,38 @@ enum {
 
 #define WARIO_LAND3_EVENT_MASK(event) (UINT32_C(1) << (event))
 
+/* CA5B is the current course's four-bit key inventory.
+ * Bits are Gray (0), Red (1), Green (2), Blue (3). */
+enum {
+    WARIO_LAND3_KEY_GRAY = 0,
+    WARIO_LAND3_KEY_RED,
+    WARIO_LAND3_KEY_GREEN,
+    WARIO_LAND3_KEY_BLUE,
+    WARIO_LAND3_KEY_COUNT
+};
+
+static inline int wario_land3_key_collected(uint8_t key_mask, int key)
+{
+    return key >= 0 && key < WARIO_LAND3_KEY_COUNT &&
+           (key_mask & (uint8_t)(1u << key)) != 0;
+}
+
+static inline int wario_land3_key_total(uint8_t key_mask)
+{
+    key_mask &= 0x0Fu;
+    key_mask = (uint8_t)(key_mask - ((key_mask >> 1) & 0x55u));
+    key_mask = (uint8_t)((key_mask & 0x33u) + ((key_mask >> 2) & 0x33u));
+    return (int)((key_mask + (key_mask >> 4)) & 0x0Fu);
+}
+
+static inline int wario_land3_music_coin_total(uint8_t music_coin_mask)
+{
+    music_coin_mask = (uint8_t)(music_coin_mask - ((music_coin_mask >> 1) & 0x55u));
+    music_coin_mask = (uint8_t)((music_coin_mask & 0x33u) +
+                                ((music_coin_mask >> 2) & 0x33u));
+    return (int)((music_coin_mask + (music_coin_mask >> 4)) & 0x0Fu);
+}
+
 typedef struct {
     int scene;
     int operation;
