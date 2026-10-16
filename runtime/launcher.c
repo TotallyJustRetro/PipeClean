@@ -3251,6 +3251,17 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
         }
         deck_editor_element_rect(d,DECK_ELEM_DECORATION_3,x,y,w,h,&lx,&ly,&lw,&lh);
         deck_editor_preview_log(lx,ly,lw,lh,game,wario2);
+        if (wario3) {
+            float sx,sy,sw,sh;
+            deck_editor_element_rect(d,DECK_ELEM_STATUS,x,y,w,h,&sx,&sy,&sw,&sh);
+            deck_editor_preview_card(sx,sy,sw,sh,game,"COURSE TRACKER");
+            ui_text_fit(F_BOLD,6.5f,sx+sw*.05f,sy+sh*.40f,sw*.90f,
+                        RGBA(255,214,107,255),"COURSE --  •  DAY");
+            ui_text_fit(F_REG,5.2f,sx+sw*.05f,sy+sh*.60f,sw*.90f,
+                        RGBA(255,241,212,255),"COINS ---  /  MUSIC COINS -- / 8");
+            ui_text_fit(F_REG,4.5f,sx+sw*.05f,sy+sh*.80f,sw*.90f,
+                        RGBA(184,170,149,255),"COURSE IN PROGRESS");
+        }
     } else if(!dr_mario){
         deck_editor_preview_card(x+w*20/800.f,y+h*70/DECK_EDITOR_THOR_H,w*210/800.f,h*50/DECK_EDITOR_THOR_H,game,"LIVES");
         ui_text_fit(F_BOLD,6.5f,x+w*32/800.f,y+h*94/DECK_EDITOR_THOR_H,w*186/800.f,RGBA(250,240,220,255),"x 03");
