@@ -309,7 +309,7 @@ static void wario3_event_frame(void)
                      (unsigned)last_slot + 1u);
             (void)museum_discover_entry(cur_game, museum_id);
             if (events_log)
-                fprintf(stderr, "[museum] WL3 treasure RAM id %02X -> catalogue %03u (total %d)\\n",
+                fprintf(stderr, "[museum] WL3 treasure RAM id %02X -> catalogue %03u (total %d)\n",
                         last_slot, (unsigned)last_slot + 1u, snapshot.treasures);
         } else if (events_log) {
             fprintf(stderr, "[museum] ignored invalid WL3 treasure slot %02X\n", last_slot);
@@ -422,9 +422,9 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_file = fopen(path, "w");
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
-            "PipeClean SML2 live sprite actor trace v1\\n"
-            "One line per (level, raw sprite-type key); record bytes are included for mapping.\\n"
-            "frame level slot active sprite_type mapping x y record[00..0F]\\n");
+            "PipeClean SML2 live sprite actor trace v1\n"
+            "One line per (level, raw sprite-type key); record bytes are included for mapping.\n"
+            "frame level slot active sprite_type mapping x y record[00..0F]\n");
     fflush(sml2_actor_trace_file);
 }
 
@@ -455,7 +455,7 @@ static void sml2_actor_trace_frame(void)
                 frame_count, level, slot, active, sprite_type, mapping, x, y);
         for (unsigned i = 0; i < 16; ++i)
             fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
-        fputc('\\n', sml2_actor_trace_file);
+        fputc('\n', sml2_actor_trace_file);
         fflush(sml2_actor_trace_file);
     }
 }
