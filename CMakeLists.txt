@@ -143,6 +143,10 @@ add_executable(test_companion_deck_state tests/test_companion_deck_state.c)
 target_include_directories(test_companion_deck_state PRIVATE runtime)
 add_test(NAME companion_deck_state COMMAND test_companion_deck_state)
 
+add_executable(test_collectible_museum tests/test_collectible_museum.c runtime/museum.c runtime/settings.c)
+target_include_directories(test_collectible_museum PRIVATE runtime)
+add_test(NAME collectible_museum COMMAND test_collectible_museum)
+
 add_executable(test_sml2_wide tests/test_sml2_wide.c runtime/widescreen.c)
 target_include_directories(test_sml2_wide PRIVATE runtime)
 add_test(NAME sml2_widescreen COMMAND test_sml2_wide)
