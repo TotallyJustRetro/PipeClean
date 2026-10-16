@@ -246,6 +246,10 @@ static int wario_event_snapshot_read(WarioEventSnapshot *snapshot)
     snapshot->lives = wario_bcd_pair(lives_raw);
     snapshot->power = power_raw;
     snapshot->treasure_mask = (int)treasure_low | ((int)treasure_high << 8);
+    snapshot->course = wario_ram_read(0xA804);
+    snapshot->game_mode = wario_ram_read(0xA8C3);
+    snapshot->sub_mode = wario_ram_read(0xA8C4);
+    snapshot->held_key = wario_ram_read(0xA392);
     return snapshot->coins >= 0 && snapshot->hearts >= 0 && snapshot->lives >= 0;
 }
 
@@ -257,8 +261,9 @@ static void wario_event_frame(void)
         return;
     }
 
-    int event = wario_event_tracker_update(&wario_event_tracker, &snapshot);
-    if (event >= 0) fire(event);
+    uint32_t events = wario_event_tracker_update(&wario_event_tracker, &snapshot);
+    for (int ev = 0; ev < WARIO_EVENT_COUNT; ++ev)
+        if (events & WARIO_EVENT_MASK(ev)) fire(ev);
 }
 
 void events_begin(void)
