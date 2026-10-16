@@ -72,6 +72,75 @@ static inline WarioLand2Snapshot wario_land2_read_snapshot(int game, WarioLand2P
     return s;
 }
 
+enum {
+    WARIO_LAND2_EVENT_TREASURE = 0,
+    WARIO_LAND2_EVENT_PICTURE,
+    WARIO_LAND2_EVENT_COIN,
+    WARIO_LAND2_EVENT_STAGE,
+    WARIO_LAND2_EVENT_COIN_LOSS,
+    WARIO_LAND2_EVENT_COUNT
+};
+
+#define WARIO_LAND2_EVENT_MASK(event) (UINT32_C(1) << (event))
+
+typedef struct {
+    WarioLand2Snapshot previous;
+    int have_previous;
+} WarioLand2EventTracker;
+
+/* Return a bitmask so one snapshot can deliver several real events. Coin
+ * decreases can be caused by Wario being hit or by paying for a minigame,
+ * so the event deliberately describes the observable coin loss rather than
+ * claiming every decrease is damage. Collection rollbacks are treated as
+ * save-state load/rewind, not new collection events. */
+static inline uint32_t wario_land2_tracker_update(WarioLand2EventTracker *tracker,
+                                                  const WarioLand2Snapshot *current)
+{
+    if (!tracker || !current || current->stage < 0 ||
+        current->bank_coins < 0 || current->overworld_coins < 0) {
+        if (tracker) tracker->have_previous = 0;
+        return 0;
+    }
+
+    if (!tracker->have_previous) {
+        tracker->previous = *current;
+        tracker->have_previous = 1;
+        return 0;
+    }
+
+    const WarioLand2Snapshot old = tracker->previous;
+    uint32_t events = 0;
+    const uint64_t new_treasures = current->treasures & WARIO_LAND2_COLLECTION_MASK;
+    const uint64_t old_treasures = old.treasures & WARIO_LAND2_COLLECTION_MASK;
+    const uint64_t new_pictures = current->picture_panels & WARIO_LAND2_COLLECTION_MASK;
+    const uint64_t old_pictures = old.picture_panels & WARIO_LAND2_COLLECTION_MASK;
+
+    const int rollback = ((new_treasures & old_treasures) != old_treasures) ||
+                         ((new_pictures & old_pictures) != old_pictures);
+    if (rollback) {
+        tracker->previous = *current;
+        return 0;
+    }
+
+    if ((new_treasures & ~old_treasures) != 0)
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_TREASURE);
+    if ((new_pictures & ~old_pictures) != 0)
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_PICTURE);
+
+    if (current->bank_coins > old.bank_coins ||
+        current->overworld_coins > old.overworld_coins)
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN);
+
+    if (current->stage != old.stage)
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_STAGE);
+    else if (current->bank_coins < old.bank_coins ||
+             current->overworld_coins < old.overworld_coins)
+        events |= WARIO_LAND2_EVENT_MASK(WARIO_LAND2_EVENT_COIN_LOSS);
+
+    tracker->previous = *current;
+    return events;
+}
+
 static inline int wario_land2_popcount(uint64_t value)
 {
     int count = 0;
