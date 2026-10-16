@@ -425,7 +425,7 @@ static void sml2_actor_trace_begin(void)
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
             "PipeClean SML2 live sprite actor trace v1\n"
-            "One line per (level, raw sprite-type key); record bytes are included for mapping.\n"
+            "One line per (level, raw sprite-type key, mapping key); full records are included.\n"
             "frame level slot slot_state sprite_type mapping x y record[00..1F]\n");
     fflush(sml2_actor_trace_file);
 }
