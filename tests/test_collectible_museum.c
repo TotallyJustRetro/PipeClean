@@ -67,6 +67,12 @@ int main(void)
         assert(category == MUSEUM_CATEGORY_ENEMY);
         assert(!strcmp(museum_sml_object_entry_id(0x80, &category), "sml_goombo"));
         assert(!strcmp(museum_sml_object_entry_id(0x04, &category), "sml_bombshell_koopa"));
+        assert(!strcmp(museum_sml_object_entry_id(0x3D, &category), "sml_batadon"));
+        assert(!strcmp(museum_sml_object_entry_id(0x43, &category), "sml_bunbun"));
+        assert(!strcmp(museum_sml_object_entry_id(0x57, &category), "sml_pionpi"));
+        assert(museum_sml_object_entry_id(0x03, &category) == NULL); /* spawn helper */
+        assert(museum_sml_object_entry_id(0x40, &category) == NULL); /* shared stomp state */
+        assert(museum_sml_object_entry_id(0x4A, &category) == NULL); /* Gira orientation helper */
         assert(!strcmp(museum_sml_object_entry_id(0x29, &category), "sml_mushroom"));
         assert(category == MUSEUM_CATEGORY_ITEM);
         assert(museum_sml_object_entry_id(0x7E, &category) == NULL);

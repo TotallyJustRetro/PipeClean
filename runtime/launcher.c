@@ -4561,14 +4561,9 @@ static void tab_museum(float x, float y)
     ui_line(x + 13, body_y + 156, x + left_w - 13, body_y + 156, 2, HEX(0xB87C3A));
     ui_text(F_BOLD, 12, x + 15, body_y + 164, HEX(0x5F2E16),
             "FIELD NOTES");
-    if (selected_found && selected) {
+    if (selected) {
         ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
                      HEX(0x33251A), selected->description, 1.15f);
-    } else {
-        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
-                     HEX(0x65452F),
-                     "This entry is still classified. Its name, researched description, and real game sprite will be revealed after you discover it.",
-                     1.15f);
     }
 
     ui_line(x + 13, body_y + 268, x + left_w - 13, body_y + 268, 1, HEX(0xC79A62));

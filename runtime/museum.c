@@ -499,7 +499,7 @@ const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *categor
     switch (type) {
     case 0x00: case 0x01: id = "sml_goombo"; break;
     case 0x02: id = "sml_piranha"; break;
-    case 0x03: case 0x33: case 0x47: id = "sml_ganchan"; break;
+    case 0x47: id = "sml_ganchan"; break; /* actual Ganchan, not a spawn/helper slot */
     case 0x04: id = "sml_bombshell_koopa"; break;
     case 0x05: id = "sml_nokobon_bomb"; break;
     case 0x06: id = "sml_pipe_fist"; break;
@@ -520,11 +520,11 @@ const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *categor
     case 0x31: id = "sml_tokotoko"; break;
     case 0x32: id = "sml_hiyoihoi"; break;
     case 0x34: cat = MUSEUM_CATEGORY_ITEM; id = "sml_star"; break;
-    case 0x3C: id = "sml_batadon"; break;
-    case 0x3F: case 0x40: id = "sml_gao"; break;
+    case 0x3C: case 0x3D: id = "sml_batadon"; break;
+    case 0x3F: id = "sml_gao"; break; /* 0x40 is shared by Gao/Tokotoko stomp states */
     case 0x42: case 0x43: id = "sml_bunbun"; break;
     case 0x49: id = "sml_pipe_cannon"; break;
-    case 0x4A: case 0x4B: case 0x5A: id = "sml_gira"; break;
+    case 0x4B: id = "sml_gira"; break; /* exclude orientation/diagonal helper objects */
     case 0x52: id = "sml_rocketon"; break;
     case 0x53: id = "sml_chicken"; break;
     case 0x54: id = "sml_roto_disc"; break;
