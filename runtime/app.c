@@ -2456,6 +2456,7 @@ static int play_multiplayer(int g)
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
         }
         game_notice_draw(dt);
+        launcher_museum_notification_draw(dt);
         touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
@@ -2809,6 +2810,7 @@ static int play(int g)
             ui_text_c(F_BOLD, 13, UI_W / 2, 26, C_TEXT, "REWIND");
         }
         game_notice_draw(dt);
+        launcher_museum_notification_draw(dt);
         touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
