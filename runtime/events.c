@@ -534,7 +534,7 @@ static void sml2_actor_trace_sprite_mapping(const char *kind, int mode, int leve
     const unsigned pointer_count = level < 0x0A ? 0xA8u : 0xE4u;
     if (lookup_id >= pointer_count) {
         fprintf(sml2_actor_trace_file,
-                "sprite_map kind=%s frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X object_type=%02X lookup_id=%02X observed_db=out_of_range map_ptr=---- pieces=unavailable\\n",
+                "sprite_map kind=%s frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X object_type=%02X lookup_id=%02X observed_db=out_of_range map_ptr=---- pieces=unavailable\n",
                 kind ? kind : "unknown", frame_count, mode, level, slot,
                 record_addr, source_ref, object_type, lookup_id);
         fflush(sml2_actor_trace_file);
@@ -598,7 +598,7 @@ static void sml2_actor_trace_dump_rom_level_lists(void)
         const uint16_t list_addr = (uint16_t)((uint16_t)lo | ((uint16_t)hi << 8));
         if (list_addr < 0x4000u || list_addr >= 0x8000u) {
             fprintf(sml2_actor_trace_file,
-                    "rom_spawn_list level=%02X pointer=%04X entries=0 status=invalid_pointer\\n",
+                    "rom_spawn_list level=%02X pointer=%04X entries=0 status=invalid_pointer\n",
                     level, list_addr);
             continue;
         }
@@ -617,7 +617,7 @@ static void sml2_actor_trace_dump_rom_level_lists(void)
         }
 
         fprintf(sml2_actor_trace_file,
-                "rom_spawn_list level=%02X pointer=%04X entries=%u terminated=%d\\n",
+                "rom_spawn_list level=%02X pointer=%04X entries=%u terminated=%d\n",
                 level, list_addr, count, terminated);
         for (unsigned i = 0; i < count; ++i) {
             const uint16_t raw_addr = (uint16_t)(list_addr + i * 3u);
@@ -627,7 +627,7 @@ static void sml2_actor_trace_dump_rom_level_lists(void)
             const uint8_t object_type = (uint8_t)(
                 ((a & 0x10u) << 2) | ((a & 0xE0u) >> 2) | ((b & 0xE0u) >> 5));
             fprintf(sml2_actor_trace_file,
-                    "rom_spawn level=%02X index=%03u record_addr=%04X raw=%02X %02X %02X object_type=%02X\\n",
+                    "rom_spawn level=%02X index=%03u record_addr=%04X raw=%02X %02X %02X object_type=%02X\n",
                     level, i, raw_addr, a, b, d, object_type);
 
             const unsigned profile = level < 0x0A ? 0u : 1u;
@@ -639,7 +639,7 @@ static void sml2_actor_trace_dump_rom_level_lists(void)
         }
         if (!terminated)
             fprintf(sml2_actor_trace_file,
-                    "rom_spawn_list_warning level=%02X pointer=%04X status=missing_terminator_or_limit\\n",
+                    "rom_spawn_list_warning level=%02X pointer=%04X status=missing_terminator_or_limit\n",
                     level, list_addr);
     }
     fflush(sml2_actor_trace_file);
