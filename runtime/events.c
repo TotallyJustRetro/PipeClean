@@ -476,7 +476,7 @@ static void sml2_actor_trace_frame(void)
      * Actor/spawn rows include the observed mode for later filtering. */
     if (!sml2_museum_mode_is_active(mode) && diagnostic_tick)
         fprintf(sml2_actor_trace_file,
-                "diag frame=%d reason=nonstandard_mode_scanning mode=%02X level=%02X\\n",
+                "diag frame=%d reason=nonstandard_mode_scanning mode=%02X level=%02X\n",
                 frame_count, mode, level);
 
     if (level > 0x1F) {
@@ -542,8 +542,8 @@ static void sml2_actor_trace_frame(void)
                 fputc('\n', sml2_actor_trace_file);
             } else {
                 fprintf(sml2_actor_trace_file,
-                        "spawn frame=%d level=%02X slot=%02d record_addr=%04X source_ref=%04X descriptor=unavailable\n",
-                        frame_count, level, slot, base, source_ref);
+                        "spawn frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X descriptor=unavailable\n",
+                        frame_count, mode, level, slot, base, source_ref);
             }
             sml2_actor_trace_source_ref[level][slot] = source_ref;
             sml2_actor_trace_source_logged[level][slot] = 1;
