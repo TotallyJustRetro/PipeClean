@@ -23,6 +23,11 @@ static Sml2MuseumSnapshot snapshot(int coins, int kills, int lives, int powerup,
 
 int main(void)
 {
+    assert(!sml2_museum_is_secret_level(0x18));
+    assert(sml2_museum_is_secret_level(0x19));
+    assert(sml2_museum_is_secret_level(0x1E));
+    assert(!sml2_museum_is_secret_level(0x1F));
+
     Sml2MuseumTracker tracker;
     memset(&tracker, 0, sizeof tracker);
 
