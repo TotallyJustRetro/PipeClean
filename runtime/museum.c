@@ -282,31 +282,41 @@ static void add_wl3_treasures(void)
     }
 }
 
-typedef struct { const char *letter; int course; int value; } WarioSml3TreasureDef;
+typedef struct { const char *letter; const char *name; const char *description; int course; int value; } WarioSml3TreasureDef;
 static const WarioSml3TreasureDef wario_sml3_treasures[15] = {
-    {"A", 3, 9000}, {"B", 9, 6000}, {"C", 11, 2000},
-    {"D", 16, 7000}, {"E", 17, 5000}, {"F", 18, 9000},
-    {"G", 20, 5000}, {"H", 24, 8000}, {"I", 26, 7000},
-    {"J", 29, 3000}, {"K", 30, 4000}, {"L", 31, 8000},
-    {"M", 34, 4000}, {"N", 37, 7000}, {"O", 39, 6000}
+    {"A", "Golden Horn", "A polished horn-shaped treasure from Course 03. Worth 9,000 coins toward the final reward.", 3, 9000},
+    {"B", "Harp", "A harp recovered from Course 09. Worth 6,000 coins toward the final reward.", 9, 6000},
+    {"C", "Crown", "A crown recovered from Course 11. Worth 2,000 coins toward the final reward.", 11, 2000},
+    {"D", "Shield", "A shield recovered from Course 16. Worth 7,000 coins toward the final reward.", 16, 7000},
+    {"E", "Bell", "A bell recovered from Course 17. Worth 5,000 coins toward the final reward.", 17, 5000},
+    {"F", "Lamp", "A lamp recovered from Course 18. Worth 9,000 coins toward the final reward.", 18, 9000},
+    {"G", "Crystal Ball", "A crystal ball recovered from Course 20. Worth 5,000 coins toward the final reward.", 20, 5000},
+    {"H", "Gold Cup", "A gold cup recovered from Course 24. Worth 8,000 coins toward the final reward.", 24, 8000},
+    {"I", "Dagger", "A dagger recovered from Course 26. Worth 7,000 coins toward the final reward.", 26, 7000},
+    {"J", "Axe", "An axe recovered from Course 29. Worth 3,000 coins toward the final reward.", 29, 3000},
+    {"K", "Conch Horn", "A conch-shaped horn recovered from Course 30. Worth 4,000 coins toward the final reward.", 30, 4000},
+    {"L", "Idol", "An idol recovered from Course 31. Worth 8,000 coins toward the final reward.", 31, 8000},
+    {"M", "Golden Glove", "A golden glove recovered from Course 34. Worth 4,000 coins toward the final reward.", 34, 4000},
+    {"N", "Whale", "A whale-shaped treasure recovered from Course 37. Worth 7,000 coins toward the final reward.", 37, 7000},
+    {"O", "Diamond Ring", "A diamond ring recovered from Course 39. Worth 6,000 coins toward the final reward.", 39, 6000}
 };
 
 static void add_wario_sml3_treasures(void)
 {
     for (int i = 0; i < 15; ++i) {
-        char id[40], name[80], description[200];
+        char id[40], description[200];
         snprintf(id, sizeof id, "wario1_treasure_%02d", i + 1);
-        snprintf(name, sizeof name, "Treasure %s", wario_sml3_treasures[i].letter);
-        snprintf(description, sizeof description,
-                 "Found in Course %02d. Worth %d coins toward Wario's ending.",
+        snprintf(description, sizeof description, "%s Course %02d; worth %d coins.",
+                 wario_sml3_treasures[i].description,
                  wario_sml3_treasures[i].course, wario_sml3_treasures[i].value);
-        add_entry(GAME_WARIO_SML3, id, name, MUSEUM_CATEGORY_TREASURE,
-                  description, "");
+        add_entry(GAME_WARIO_SML3, id, wario_sml3_treasures[i].name,
+                  MUSEUM_CATEGORY_TREASURE, description, "");
         MuseumEntry *e = &catalog[GAME_WARIO_SML3][catalog_count[GAME_WARIO_SML3] - 1];
         snprintf(e->source_url, sizeof e->source_url, "%s",
                  "https://www.mariowiki.com/Treasure_%28Wario_franchise%29");
     }
 }
+
 
 typedef struct { const char *id; const char *name; const char *description; MuseumCategory category; } SmlMuseumDef;
 static const SmlMuseumDef sml_museum_defs[] = {

@@ -4542,23 +4542,33 @@ static void tab_museum(float x, float y)
     museum_draw_entry_art(museum_game, selected, x + 13, body_y + 39, 108, 108,
                           selected_found);
     const float info_x = x + 132;
-    if (selected) {
+    if (selected_found && selected) {
         ui_text_fit(F_BOLD, 18, info_x, body_y + 42, left_w - 153,
                     HEX(0x25170E), selected->name);
-        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E),
-                selected_found ? "SPECIMEN RECORDED" : "NOT DISCOVERED");
-        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C),
-                selected_found ? "Found: 1 / 1" : "Found: 0 / 1");
+        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "SPECIMEN RECORDED");
+        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 1 / 1");
         ui_text(F_REG, 10, info_x, body_y + 101, HEX(0x65452F),
                 rs[museum_game].ok ? "Cartridge: ready" : "Add this game's ROM for sprite capture");
+    } else {
+        ui_text_fit(F_BOLD, 18, info_x, body_y + 43, left_w - 153,
+                    HEX(0x25170E), "UNDISCOVERED");
+        ui_text(F_BOLD, 11, info_x, body_y + 68, HEX(0x75401E), "CLASSIFIED ENTRY");
+        ui_text(F_REG, 11, info_x, body_y + 87, HEX(0x3B291C), "Found: 0 / 1");
+        ui_text_wrap(F_REG, 10, info_x, body_y + 104, left_w - 153, HEX(0x65452F),
+                     "Encounter this specimen in the game to identify it and reveal its field notes.", 1.0f);
     }
 
     ui_line(x + 13, body_y + 156, x + left_w - 13, body_y + 156, 2, HEX(0xB87C3A));
     ui_text(F_BOLD, 12, x + 15, body_y + 164, HEX(0x5F2E16),
             "FIELD NOTES");
-    if (selected) {
+    if (selected_found && selected) {
         ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
                      HEX(0x33251A), selected->description, 1.15f);
+    } else {
+        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
+                     HEX(0x65452F),
+                     "This entry is still classified. Its name, researched description, and real game sprite will be revealed after you discover it.",
+                     1.15f);
     }
 
     ui_line(x + 13, body_y + 268, x + left_w - 13, body_y + 268, 1, HEX(0xC79A62));

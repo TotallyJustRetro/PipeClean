@@ -99,9 +99,10 @@ int main(void)
     {
         const MuseumEntry *e = museum_catalog_entry(GAME_WARIO_SML3, 2);
         assert(e && !strcmp(e->id, "wario1_treasure_01"));
-        assert(!strcmp(e->name, "Treasure A"));
+        assert(!strcmp(e->name, "Golden Horn"));
         assert(strstr(e->description, "Course 03"));
         assert(strstr(e->description, "9000 coins"));
+        assert(strstr(e->description, "horn-shaped"));
     }
 
     assert(museum_catalog_count(GAME_WARIO_SML3) == 19);

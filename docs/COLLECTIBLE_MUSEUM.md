@@ -15,7 +15,7 @@ The Museum is a shared collection browser with the same layout and discovery rul
 
 - **Super Mario Land:** mapped object IDs for the enemies, hazards, boss objects, mushroom, heart, star and Superball Flower; sprite capture is performed from the active rendered frame. Coins still use the game event/counter signal and need a separate reliable coin-art capture path.
 - **Super Mario Land 2 and Dr. Mario:** current event-based catalogue entries and in-app descriptions. Dedicated per-species live-sprite extraction is not yet implemented.
-- **Wario Land: Super Mario Land 3:** 15 treasure records (A–O), with course/value notes and live collection flags.
+- **Wario Land: Super Mario Land 3:** 15 named treasures (Golden Horn, Harp, Crown, Shield, Bell, Lamp, Crystal Ball, Gold Cup, Dagger, Axe, Conch Horn, Idol, Golden Glove, Whale, and Diamond Ring), each with its course, coin value, and an item description; discovery is driven by the game's treasure flags.
 - **Wario Land II (GB/GBC):** 50 treasure flags and 50 picture-panel flags per version. Treasure notes describe the matching-key/chest collection; picture panels come from the number-matching mini-game.
 - **Wario Land 3:** 100 named treasure records with level/chest locations and purpose notes where documented, plus key-colour entries. Exact WL3 sprite capture from its game objects remains future work.
 
