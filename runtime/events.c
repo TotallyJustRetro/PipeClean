@@ -582,22 +582,21 @@ static void sml2_actor_trace_frame(void)
              * actor, so reset the seen-field combinations when its source changes. */
             memset(sml2_actor_trace_seen[level][slot], 0,
                    sizeof sml2_actor_trace_seen[level][slot]);
-            /* Source descriptors normally live in ROM, but allow the visible
-             * external-RAM window too. The previous check accepted only RAM,
-             * incorrectly rejecting values such as source_ref=1002 (descriptor
-             * starts at 1000 in fixed ROM). Range checks ensure all six bytes
-             * stay within one mapped address window. */
-            const int source_in_rom = source_ref >= 0x0002u && source_ref <= 0x7FFCu;
-            const int source_in_ram = source_ref >= 0xA002u && source_ref <= 0xBFFCu;
-            if (source_in_rom || source_in_ram) {
-                const uint16_t source_addr = (uint16_t)(source_ref - 2u);
+            /* SML2 rebuilds its six-byte source-descriptor table at AB06.
+             * The stored pointer targets entry byte +2, so it must resolve to
+             * AB06 + n*6 + 2. The earlier 1002 values came from reading eight
+             * bytes into an actor record and were not reliable pointer evidence. */
+            const uint16_t source_addr = (uint16_t)(source_ref - 2u);
+            const int source_is_entry =
+                source_addr >= 0xAB06u && source_addr <= 0xACF8u &&
+                ((source_addr - 0xAB06u) % 6u) == 0;
+            if (source_ref >= 2u && source_is_entry) {
                 uint8_t descriptor[6];
                 for (unsigned i = 0; i < sizeof descriptor; ++i)
                     descriptor[i] = rd8((uint16_t)(source_addr + i));
                 fprintf(sml2_actor_trace_file,
-                        "spawn frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X source_addr=%04X source_space=%s descriptor=",
-                        frame_count, mode, level, slot, base, source_ref, source_addr,
-                        source_in_rom ? "rom" : "ram");
+                        "spawn frame=%d mode=%02X level=%02X slot=%02d record_addr=%04X source_ref=%04X source_addr=%04X descriptor=",
+                        frame_count, mode, level, slot, base, source_ref, source_addr);
                 for (unsigned i = 0; i < sizeof descriptor; ++i)
                     fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", descriptor[i]);
                 fputc('\n', sml2_actor_trace_file);
