@@ -446,11 +446,12 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_file = fopen(path, "w");
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
-            "PipeClean SML2 live sprite actor trace v3\n"
+            "PipeClean SML2 live sprite actor trace v4\n"
             "Each actor record is 0x20 bytes; the active marker is at record offset +8.\n"
             "Record bases begin at AD00; active markers begin at AD08.\n"
             "The source descriptor pointer is stored high-byte first at record offsets +6/+7.\n"
             "It points at descriptor byte +2; descriptor bytes are read from pointer - 2.\n"
+            "The level spawn list at AB06 is dumped independently of active actors.\n"
             "Descriptor bytes and actor fields are diagnostic evidence, not assumed species IDs.\n"
             "spawn frame level slot record_addr source_ref source_addr descriptor[00..05]\n"
             "actor frame level slot record_addr active source_ref field05 field0B record[00..1F]\n");
