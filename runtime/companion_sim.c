@@ -813,12 +813,12 @@ static int simulator_layout_preview_item(void)
 #endif
 }
 
-static Uint8 theme_bg_r(int g) { return g == GAME_DRMARIO ? 240 : g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 33 : 23; }
-static Uint8 theme_bg_g(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 26 : 35; }
-static Uint8 theme_bg_b(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 19 : 55; }
-static Uint8 theme_accent_r(int g) { return g == GAME_DRMARIO ? 21 : g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 255 : 110; }
-static Uint8 theme_accent_g(int g) { return g == GAME_DRMARIO ? 157 : g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 200 : 229; }
-static Uint8 theme_accent_b(int g) { return g == GAME_DRMARIO ? 173 : g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 87 : 239; }
+static Uint8 theme_bg_r(int g) { return g == GAME_DRMARIO ? 240 : g == GAME_SML ? 184 : g == GAME_SML2 ? 37 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND3_GBC || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 33 : 23; }
+static Uint8 theme_bg_g(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 217 : g == GAME_SML2 ? 21 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND3_GBC || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 26 : 35; }
+static Uint8 theme_bg_b(int g) { return g == GAME_DRMARIO ? 247 : g == GAME_SML ? 145 : g == GAME_SML2 ? 47 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND3_GBC || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 19 : 55; }
+static Uint8 theme_accent_r(int g) { return g == GAME_DRMARIO ? 21 : g == GAME_SML ? 57 : g == GAME_SML2 ? 255 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND3_GBC || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 255 : 110; }
+static Uint8 theme_accent_g(int g) { return g == GAME_DRMARIO ? 157 : g == GAME_SML ? 124 : g == GAME_SML2 ? 202 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND3_GBC || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 200 : 229; }
+static Uint8 theme_accent_b(int g) { return g == GAME_DRMARIO ? 173 : g == GAME_SML ? 48 : g == GAME_SML2 ? 91 : (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND3_GBC || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) ? 87 : 239; }
 static Uint8 theme_ink_r(int g) { return g == GAME_DRMARIO ? 23 : g == GAME_SML ? 37 : g == GAME_SML2 ? 255 : g == GAME_WARIO_SML3 ? 255 : 234; }
 static Uint8 theme_ink_g(int g) { return g == GAME_DRMARIO ? 56 : g == GAME_SML ? 60 : g == GAME_SML2 ? 240 : g == GAME_WARIO_SML3 ? 241 : 245; }
 static Uint8 theme_ink_b(int g) { return g == GAME_DRMARIO ? 73 : g == GAME_SML ? 32 : g == GAME_SML2 ? 210 : g == GAME_WARIO_SML3 ? 212 : 255; }
@@ -885,6 +885,7 @@ static const char *android_game_title(int game)
     if (game == GAME_SML2) return "6 GOLDEN COINS";
     if (game == 0) return "DR MARIO";
     if (game == GAME_WARIO_SML3) return "WARIO LAND EXPEDITION";
+    if (game == GAME_WARIO_LAND3_GBC) return "WARIO LAND 3 // FOUR KEYS";
     return game >= 0 && game < N_GAMES && games[game].name ? games[game].name : "PIPECLEAN READY";
 }
 
@@ -2245,8 +2246,8 @@ static float thor_element_scale_y(const CompanionLayoutCfg *d,int element)
 static void thor_header(const Settings *s,int g)
 {
     const CompanionLayoutCfg *d=&s->deck_layout[g];
-    const char *tag=g==GAME_DRMARIO?"PIPE CLEAN  •  MEDICAL DECK":g==GAME_WARIO_SML3?"PIPE CLEAN  •  TREASURE EXPEDITION":wario_land2_supported_game(g)?"PIPE CLEAN  •  STOLEN TREASURE":"PIPE CLEAN  •  POCKET QUEST";
-    const char *title=g==GAME_DRMARIO?"DR MARIO":g==GAME_SML?"SUPER MARIO LAND":g==GAME_SML2?"SUPER MARIO LAND 2":g==GAME_WARIO_SML3?"WARIO LAND: SUPER MARIO LAND 3":g==GAME_WARIO_LAND2_GBC?"WARIO LAND II // COLOR QUEST":"WARIO LAND II // CLASSIC QUEST";
+    const char *tag=g==GAME_DRMARIO?"PIPE CLEAN  •  MEDICAL DECK":g==GAME_WARIO_SML3?"PIPE CLEAN  •  TREASURE EXPEDITION":g==GAME_WARIO_LAND3_GBC?"PIPE CLEAN  •  FOUR KEYS":wario_land2_supported_game(g)?"PIPE CLEAN  •  STOLEN TREASURE":"PIPE CLEAN  •  POCKET QUEST";
+    const char *title=g==GAME_DRMARIO?"DR MARIO":g==GAME_SML?"SUPER MARIO LAND":g==GAME_SML2?"SUPER MARIO LAND 2":g==GAME_WARIO_SML3?"WARIO LAND: SUPER MARIO LAND 3":g==GAME_WARIO_LAND3_GBC?"WARIO LAND 3 // FOUR KEYS":g==GAME_WARIO_LAND2_GBC?"WARIO LAND II // COLOR QUEST":"WARIO LAND II // CLASSIC QUEST";
     float x=18,y=7,w=390,h=49; transform_box(d,0,400,34,&x,&y,&w,&h);
     draw_android_header(s,(int)x,(int)y,(int)w,(int)h,g);
     float tx=27,ty=22;thor_transform_point(d,0,400,34,&tx,&ty);
@@ -2276,7 +2277,7 @@ static void thor_decorations(const Settings *s,int g)
 {
     const CompanionLayoutCfg *d=&s->deck_layout[g];
     static const float bx[16]={280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495},by[16]={150,78,78,295,218,218,95,285,135,135,410,410,35,35,190,190},bw[16]={240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112},bh[16]={135,115,115,115,90,90,84,84,68,68,68,68,64,64,72,72};
-    int first_slot=(g==GAME_WARIO_SML3||wario_land2_supported_game(g))?4:0;
+    int first_slot=(g==GAME_WARIO_SML3||g==GAME_WARIO_LAND3_GBC||wario_land2_supported_game(g))?4:0;
     for(int i=first_slot;i<16;i++){const char *p=i==0?d->decoration_path:d->decoration_extra_path[i-1];if(!p[0])continue;float x=bx[i],y=by[i],w=bw[i],h=bh[i];transform_box(d,5+i,x+w*.5f,y+h*.5f,&x,&y,&w,&h);draw_asset_image(s,g,i==0?3:i<=7?20+i:22+i,(int)x,(int)y,(int)w,(int)h);}
 }
 static void thor_dashboard(const Settings *s,int selected)
