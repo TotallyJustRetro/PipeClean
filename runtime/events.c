@@ -54,7 +54,7 @@ static const EventDef wario2_defs[] = {
     {"coin",     "Coins collected", "Increase the coin bank", 0, 0, 0, 0xFFD23C, 90, 40},
     {"course",   "Course entered", "Enter a stage from the map", 0, 0, 5, 0x4C8DFF, 150, 40},
     {"loss",     "Coins lost / wounded", "Coins dropped when Wario is hit or spent in a minigame", 0, 0, 2, 0xFF3D4F, 380, 90},
-    {"results",  "Course results", "Receive the end-of-course treasure or picture reward", 0, 0, 10, 0xFFD34A, 500, 95},
+    {"results",  "Course results", "Reach the end-of-course results screen", 0, 0, 10, 0xFFD34A, 500, 95},
 };
 /* Wario Land 3 uses the same seven event slots as Wario Land: SML3.
  * Two labels are explicit analogues: WL3 has no ordinary lives or heart
