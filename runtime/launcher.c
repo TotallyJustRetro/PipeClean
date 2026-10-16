@@ -4621,6 +4621,13 @@ static void tab_museum(float x, float y)
         MUSEUM_CATEGORY_TREASURE, MUSEUM_CATEGORY_STAGE,
         MUSEUM_CATEGORY_MILESTONE, MUSEUM_CATEGORY_CHARACTER
     };
+    /* Treasures are a Wario-series mechanic. Keep that filter out of Mario
+       and Dr. Mario tabs rather than showing an empty, misleading category. */
+    const int has_treasures = museum_game == GAME_WARIO_SML3 ||
+        museum_game == GAME_WARIO_LAND2_GB ||
+        museum_game == GAME_WARIO_LAND2_GBC ||
+        museum_game == GAME_WARIO_LAND3_GBC;
+    const int category_count = has_treasures ? 7 : 6;
     static const char *filter_labels[] = {"All Entries", "Collected", "Undiscovered"};
     const float width = 808.0f;
     ui_accent = museum_hacks_view ? 0xC77B44u : games[museum_game].accent;
@@ -4651,12 +4658,14 @@ static void tab_museum(float x, float y)
     }
 
     const float cat_gap = 4.0f;
-    const float cat_w = (width - cat_gap * 6.0f) / 7.0f;
-    for (int i = 0; i < 7; ++i) {
+    const float cat_w = (width - cat_gap * (category_count - 1)) / (float)category_count;
+    for (int i = 0; i < category_count; ++i) {
+        int category_index = i;
+        if (!has_treasures && i >= 3) category_index = i + 1;
         float bx = x + i * (cat_w + cat_gap);
-        if (ui_chip(bx, y + 31, cat_w, 25, category_labels[i],
-                    museum_category == category_values[i])) {
-            museum_category = category_values[i]; museum_scroll = 0.0f;
+        if (ui_chip(bx, y + 31, cat_w, 25, category_labels[category_index],
+                    museum_category == category_values[category_index])) {
+            museum_category = category_values[category_index]; museum_scroll = 0.0f;
         }
     }
 
