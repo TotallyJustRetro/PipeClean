@@ -361,7 +361,8 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             int music_coins = gb_wram_peek(0x0A5C); /* CA5C: eight music coins */
             int treasure_count = wario_land3_read_counter3(
                 gb_wram_peek(0x0A39), gb_wram_peek(0x0A3A));
-            int valid_course = scene <= 0x0E && course != 0xFF;
+            int valid_course = (scene == 2 || scene == 3 || scene == 4 || scene == 8) &&
+                               course != 0xFF;
 
             lives = -1;
             stage = course == 0xFF ? -1 : course;
