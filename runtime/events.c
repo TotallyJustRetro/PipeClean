@@ -399,8 +399,10 @@ static SmlMuseumObject sml_museum_previous[10];
  * are included so we can verify the field meanings before mapping species IDs. */
 #if defined(PIPECLEAN_DEV_BUILD)
 static FILE *sml2_actor_trace_file;
-/* Bitset of observed animation mappings for each level and raw type. */
-static uint8_t sml2_actor_trace_seen[0x20][0x100][0x20];
+/* Track unique animation-key combinations independently per actor slot.
+ * Slots can be reused for different enemies; clear a slot's set when it empties. */
+static uint8_t sml2_actor_trace_seen[0x20][16][0x100][0x20];
+static uint8_t sml2_actor_trace_slot_active[16];
 
 static void sml2_actor_trace_close(void)
 {
@@ -415,6 +417,7 @@ static void sml2_actor_trace_begin(void)
 {
     sml2_actor_trace_close();
     memset(sml2_actor_trace_seen, 0, sizeof sml2_actor_trace_seen);
+    memset(sml2_actor_trace_slot_active, 0, sizeof sml2_actor_trace_slot_active);
     if (cur_game != GAME_SML2) return;
 
     const char *base = settings_dir();
@@ -428,8 +431,8 @@ static void sml2_actor_trace_begin(void)
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
             "PipeClean SML2 live sprite actor trace v1\n"
-            "One line per (level, raw sprite-type key, mapping key); full records are included.\n"
-            "frame level slot byte0 type_key map_key x y record[00..1F]\n");
+            "One line per (level, slot, sprite-table key, mapping key); full records are included.\n"
+            "frame level slot byte0 sprite_table_key map_key x y record[00..1F]\n");
     fflush(sml2_actor_trace_file);
 }
 
@@ -449,13 +452,22 @@ static void sml2_actor_trace_frame(void)
         const uint16_t base = (uint16_t)(0xAD08u + (unsigned)slot * 0x20u);
         /* The game's scheduler starts at AD08 and advances by 0x20 bytes. */
         const uint8_t active = rd8(base);
-        /* Match the game's empty-record check; the later all-FF check handles disabled RAM. */
-        if (!active) continue;
+        /* The game treats a zero first byte as an empty actor record. */
+        if (!active) {
+            if (sml2_actor_trace_slot_active[slot]) {
+                memset(sml2_actor_trace_seen[level][slot], 0,
+                       sizeof sml2_actor_trace_seen[level][slot]);
+                sml2_actor_trace_slot_active[slot] = 0;
+            }
+            continue;
+        }
 
         const uint8_t sprite_type = rd8((uint16_t)(base + 5u));
         const uint8_t mapping = rd8((uint16_t)(base + 11u));
-        if (sprite_type == 0xFFu && mapping == 0xFFu) continue;
-        uint8_t *seen = &sml2_actor_trace_seen[level][sprite_type][mapping >> 3];
+        /* Disabled external RAM reads as FF; do not treat that bus value as an actor. */
+        if (active == 0xFFu && sprite_type == 0xFFu && mapping == 0xFFu) continue;
+        sml2_actor_trace_slot_active[slot] = 1;
+        uint8_t *seen = &sml2_actor_trace_seen[level][slot][sprite_type][mapping >> 3];
         const uint8_t mapping_bit = (uint8_t)(1u << (mapping & 7u));
         if (*seen & mapping_bit) continue;
         *seen |= mapping_bit;
@@ -464,7 +476,7 @@ static void sml2_actor_trace_frame(void)
         const unsigned y = ((unsigned)rd8((uint16_t)(base + 3u)) << 8) |
                            rd8((uint16_t)(base + 4u));
         fprintf(sml2_actor_trace_file,
-                "frame=%d level=%02X slot=%02d byte0=%02X type_key=%02X map_key=%02X x=%04X y=%04X record=",
+                "frame=%d level=%02X slot=%02d byte0=%02X sprite_table_key=%02X map_key=%02X x=%04X y=%04X record=",
                 frame_count, level, slot, active, sprite_type, mapping, x, y);
         for (unsigned i = 0; i < 32; ++i)
             fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
