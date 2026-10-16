@@ -202,7 +202,7 @@ static int sml2_museum_snapshot_read(Sml2MuseumSnapshot *snapshot)
     const uint8_t ending_raw = sml2_ram_read(0xA2D5);
 
     if (coin_pair < 0 || coin_hundreds > 9 || lives < 0 || kills < 0 ||
-        powerup > 0x0F || level > 0x1F || ending_raw > 1)
+        powerup > 0x0F || level > 0x1F)
         return 0;
 
     memset(snapshot, 0, sizeof *snapshot);
@@ -253,6 +253,13 @@ static void sml2_museum_live_frame(void)
         sml2_museum_tracker.have_previous = 0;
         return;
     }
+
+    /* The ending trigger is checked as the game loads its credits scene, where
+       the ordinary status bar may no longer be drawn. Probe this flag separately
+       so the final Museum entry doesn't depend on the HUD visibility check. */
+    if (cart_ram && sml2_ram_read(0xA2D5) == 1)
+        (void)museum_discover_entry(GAME_SML2, "castle_cleared");
+
     Sml2MuseumSnapshot snapshot;
     if (!sml2_museum_snapshot_read(&snapshot)) return;
     const uint32_t found = sml2_museum_tracker_update(&sml2_museum_tracker, &snapshot);
