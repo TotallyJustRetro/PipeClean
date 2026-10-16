@@ -42,15 +42,13 @@ typedef struct {
     int have_previous;
 } WarioLand3Tracker;
 
-/* CA04/CA39 contain the leading decimal digit; CA05/CA3A contain packed BCD
- * for the final two digits. Return -1 for transient/uninitialized RAM. */
+/* CA04/CA39 contain the leading decimal digit; CA05/CA3A contain the last
+ * two digits as a plain decimal byte (e.g. 99 coins is stored as 0x63).
+ * Return -1 for transient or uninitialized RAM. */
 static inline int wario_land3_read_counter3(uint8_t leading, uint8_t trailing)
 {
-    const int hundreds = (int)leading;
-    const int tens = (int)((trailing >> 4) & 0x0F);
-    const int ones = (int)(trailing & 0x0F);
-    if (hundreds > 9 || tens > 9 || ones > 9) return -1;
-    return hundreds * 100 + tens * 10 + ones;
+    if (leading > 9 || trailing > 99) return -1;
+    return (int)leading * 100 + (int)trailing;
 }
 
 static inline int wario_land3_snapshot_valid(const WarioLand3Snapshot *s)
