@@ -169,6 +169,11 @@ static void rescan(void)
     }
     memset(pads, 0, sizeof pads);
     n_pads = 0;
+#ifdef __ANDROID__
+    /* Refresh SDL's Android InputDevice vibrator list before binding the
+     * newly arrived joystick to its per-device haptic (SDL polls this list). */
+    (void)SDL_NumHaptics();
+#endif
     int nj = SDL_NumJoysticks();
     for (int i = 0; i < nj && n_pads < MAXPADS; i++) {
         if (SDL_IsGameController(i)) {
