@@ -23,6 +23,12 @@ static Sml2MuseumSnapshot snapshot(int coins, int kills, int lives, int powerup,
 
 int main(void)
 {
+    assert(sml2_museum_mode_is_active(0x04)); /* stage play */
+    assert(sml2_museum_mode_is_active(0x08)); /* paused */
+    assert(sml2_museum_mode_is_active(0x09)); /* death sequence */
+    assert(!sml2_museum_mode_is_active(0x00));
+    assert(!sml2_museum_mode_is_active(0x02));
+    assert(!sml2_museum_mode_is_active(0xFF));
     assert(!sml2_museum_is_secret_level(0x18));
     assert(sml2_museum_is_secret_level(0x19));
     assert(sml2_museum_is_secret_level(0x1E));
