@@ -42,3 +42,5 @@ void museum_sync_flags(int game, const char *id_prefix, uint64_t flags, int coun
 int museum_discovered_count(int game);
 const char *museum_category_name(MuseumCategory category);
 const char *museum_last_storage_error(void);
+/* Returns one queued new-discovery notification; disabled notifications are discarded. */
+int museum_take_notification(char *out, size_t out_size);
