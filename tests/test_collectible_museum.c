@@ -59,22 +59,25 @@ int main(void)
         assert(e && !strcmp(e->name, "Pills cleared"));
     }
 
-    assert(museum_catalog_count(GAME_SML) == 42);
+    assert(museum_catalog_count(GAME_SML) == 41);
     {
-        const MuseumEntry *one_up = NULL, *tamao = NULL, *kumo = NULL;
+        const MuseumEntry *one_up = NULL, *tamao = NULL, *fly_kumo = NULL, *gunion = NULL;
         for (int i = 0; i < museum_catalog_count(GAME_SML); ++i) {
             const MuseumEntry *entry = museum_catalog_entry(GAME_SML, i);
             if (!strcmp(entry->id, "sml_heart")) one_up = entry;
             if (!strcmp(entry->id, "sml_tamao")) tamao = entry;
-            if (!strcmp(entry->id, "sml_kumo")) kumo = entry;
+            if (!strcmp(entry->id, "sml_fly")) fly_kumo = entry;
+            if (!strcmp(entry->id, "sml_gunion")) gunion = entry;
         }
         assert(one_up && !strcmp(one_up->name, "1-Up Heart"));
         assert(strstr(one_up->description, "extra life"));
         assert(!strstr(one_up->description, "sprite"));
         assert(tamao && strstr(tamao->description, "Dragonzamasu"));
         assert(!strstr(tamao->description, "object ID"));
-        assert(kumo && strstr(kumo->description, "spider"));
-        assert(!strstr(kumo->description, "object ID"));
+        assert(fly_kumo && strstr(fly_kumo->name, "Kumo"));
+        assert(strstr(fly_kumo->description, "spider"));
+        assert(gunion && strstr(gunion->description, "Two Marine Pop torpedoes"));
+        assert(!strstr(fly_kumo->description, "object ID"));
         for (int i = 0; i < museum_catalog_count(GAME_SML); ++i) {
             const MuseumEntry *entry = museum_catalog_entry(GAME_SML, i);
             assert(!strstr(entry->description, "object ID"));
@@ -98,9 +101,10 @@ int main(void)
         assert(!strcmp(museum_sml_object_entry_id(0x40, &category), "sml_gao"));
         assert(!strcmp(museum_sml_object_entry_id(0x43, &category), "sml_bunbun"));
         assert(!strcmp(museum_sml_object_entry_id(0x57, &category), "sml_pionpi"));
-        assert(!strcmp(museum_sml_object_entry_id(0x20, &category), "sml_kumo"));
+        assert(!strcmp(museum_sml_object_entry_id(0x20, &category), "sml_gunion"));
         assert(!strcmp(museum_sml_object_entry_id(0x2F, &category), "sml_torion"));
-        assert(!strcmp(museum_sml_object_entry_id(0x33, &category), "sml_ganchan"));
+        assert(museum_sml_object_entry_id(0x33, &category) == NULL);
+        assert(!strcmp(museum_sml_object_entry_id(0x47, &category), "sml_ganchan"));
         assert(!strcmp(museum_sml_object_entry_id(0x48, &category), "sml_tamao"));
         assert(!strcmp(museum_sml_object_entry_id(0x4A, &category), "sml_gira"));
         assert(!strcmp(museum_sml_object_entry_id(0x5A, &category), "sml_gira"));
