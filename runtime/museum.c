@@ -397,6 +397,97 @@ static void add_sml_catalog(void)
               "Small Mario loses a life when hit by an enemy or certain hazards. Powered-up Mario usually shrinks instead; after losing a life, Mario returns in Small form.", "life");
 }
 
+typedef struct {
+    const char *id;
+    const char *name;
+    const char *description;
+} Sml2EnemyDef;
+
+/* The linked MarioWiki category has 63 enemy pages; its boss subcategory is
+   represented by six additional entries here, with Wario's existing record
+   serving as the seventh boss entry. Discoveries are deliberately not tied to
+   the generic kill counter: each species needs its own live entity mapping. */
+static const Sml2EnemyDef sml2_enemy_catalog[] = {
+    {"sml2_ant", "Ant", "A small ant that marches around a limited area and hurts Mario on contact."},
+    {"sml2_aqua_goomba", "Aqua Goomba", "An aquatic Goomba that bounces Mario high when he stomps on it."},
+    {"sml2_battle_beetle", "Battle Beetle", "A beetle that jumps upward, then swoops down at an angle toward Mario."},
+    {"sml2_bear", "Bear", "A toy-like bear that rolls along on a beach ball in the Mario Zone."},
+    {"sml2_bee_fly", "Bee Fly", "A flying insect that retreats when Mario comes too close."},
+    {"sml2_beebee", "Beebee", "A bee that emerges from a honeycomb and homes in on Mario to sting him."},
+    {"sml2_bero", "Bero", "A long-tongued creature that can hurt Mario, but can also serve as a platform."},
+    {"sml2_bigbee", "Bigbee", "A large bee that drops down to crush Mario, then returns to its perch."},
+    {"sml2_birdfish", "Birdfish", "A fish that leaps from the water and briefly glides through the air."},
+    {"sml2_blurp", "Blurp", "A fish that swims in one direction and occasionally pauses."},
+    {"sml2_bomubomu", "Bomubomu", "A stationary cannon-like enemy that patrols its area and fires cannonballs."},
+    {"sml2_boo", "Boo", "A ghost that pursues Mario when he looks away and hides when he faces it."},
+    {"sml2_bopping_toady", "Bopping Toady", "A hopping frog-like enemy that lashes out with its tongue at close range."},
+    {"sml2_bullet_bill", "Bullet Bill", "A fast projectile launched from a Turtle Cannon."},
+    {"sml2_cheep_cheep", "Cheep Cheep", "A familiar fish that swims back and forth through water."},
+    {"sml2_chikunto", "Chikunto", "An enemy with retractable spikes; jumping on it while they are extended is dangerous."},
+    {"sml2_collector", "Collector", "A nimble thief that runs away while carrying a 1-Up Heart."},
+    {"sml2_dokanto", "Dokanto", "An ant-like enemy with a cannon on its head that fires pellets."},
+    {"sml2_dondon", "Dondon", "A flying enemy that travels in a straight line across the screen."},
+    {"sml2_falling_spike", "Falling Spike", "A ceiling trap that drops down to strike Mario."},
+    {"sml2_fire_piranha_plant", "Fire Piranha Plant", "A pipe-dwelling plant that periodically spits fireballs at Mario."},
+    {"sml2_fireball_boy", "Fireball Boy", "A floating enemy that moves around in a looping, figure-eight pattern."},
+    {"sml2_floating_face", "Floating Face", "A ball-like face resembling Wario that bounces diagonally around small rooms."},
+    {"sml2_ghost_goomba", "Ghost Goomba", "A ghostly Goomba that follows its usual walking pattern but cannot be defeated by stomping."},
+    {"sml2_goomba", "Goomba", "A simple walking enemy that can be defeated with one stomp."},
+    {"sml2_goronto", "Goronto", "A digging enemy that sends rolling rocks toward Mario."},
+    {"sml2_grubby", "Grubby", "A spiky crawler related to Unera; its spikes make it unsafe to stomp."},
+    {"sml2_honebon", "Honebon", "A fish that swims underwater in an upside-down V-shaped path."},
+    {"sml2_jack_in_the_box", "Jack-in-the-Box", "A toy enemy hidden inside a disguised block that springs out and hops wildly."},
+    {"sml2_karakara", "Karakara", "A hopping enemy that opens up and floats down while drifting side to side."},
+    {"sml2_karamenbo", "Karamenbo", "A group of spinning pillars that drop down from above, then rise again."},
+    {"sml2_kiddokatto", "Kiddokatto", "A toy soldier that charges at Mario at high speed, often alongside others."},
+    {"sml2_koopa_troopa", "Koopa Troopa", "A turtle enemy that can be knocked into its shell; the shell can be carried or kicked at other enemies."},
+    {"sml2_kurokyura", "Kurokyura", "A stationary monster that sends small bats called Minikyura after Mario."},
+    {"sml2_kyororo", "Kyororo", "A lurking enemy that waits until Mario appears, then charges at him."},
+    {"sml2_kyotonbo", "Kyotonbo", "A fast-flying insect that darts toward Mario to attack."},
+    {"sml2_masked_ghoul", "Masked Ghoul", "A walking ghost that launches Mario high into the air when stomped."},
+    {"sml2_mechanical_fist", "Mechanical Fist", "A giant mechanical fist in Wario's Castle that slams down at high speed."},
+    {"sml2_minikyura", "Minikyura", "A small bat launched by Kurokyura to chase Mario."},
+    {"sml2_moofish", "Moofish", "A fish that swims through tree sap and charges horizontally when Mario approaches."},
+    {"sml2_no_48", "No.48", "A strange enemy that jumps around and fires arcing stars that explode."},
+    {"sml2_noko_bombette", "Noko Bombette", "A turtle with a bomb on its back that patrols an area and explodes after being stomped."},
+    {"sml2_paragoomba", "Paragoomba", "A winged Goomba that hops or flies short distances; a stomp removes its wings."},
+    {"sml2_pikku", "Pikku", "A small enemy that hops back and forth within a limited area."},
+    {"sml2_piranha_plant", "Piranha Plant", "A plant that periodically emerges from a pipe to bite Mario."},
+    {"sml2_poro", "Poro", "A space enemy that orbits blocks or a fixed point in the air."},
+    {"sml2_ragumo", "Ragumo", "An underground enemy that burrows, then pops up to surprise Mario."},
+    {"sml2_rerere", "Rerere", "A creature that bounces back and forth while sweeping close to the ground."},
+    {"sml2_satellite", "Satellite", "A small satellite that circles a point and damages Mario on contact."},
+    {"sml2_screw", "Screw", "An enemy that bursts from the ground and bounces toward Mario."},
+    {"sml2_shark", "Shark", "A shark that swims slowly until Mario gets close, then charges at him."},
+    {"sml2_skeleton_bee", "Skeleton Bee", "A skeletal bee that may revive after being stomped."},
+    {"sml2_spiked_ball_pumpkin", "Spiked Ball (Pumpkin Zone)", "A spiked ball that travels up and down along a chain, pausing before reversing direction."},
+    {"sml2_spikey", "Spikey", "A hedgehog-like enemy that curls into a ball and dashes toward Mario."},
+    {"sml2_spiny_cheep_cheep", "Spiny Cheep-Cheep", "An underwater fish that puffs up and floats upward."},
+    {"sml2_star_enemy", "Star (Enemy)", "An indestructible star-like enemy that floats through the Space Zone."},
+    {"sml2_tamara", "Tamara", "An egg-shaped enemy that emerges from a small plant-like pod and rises upward."},
+    {"sml2_tatenoko", "Tatenoko", "A saw blade that moves horizontally along a fixed path."},
+    {"sml2_tosenbo", "Tosenbo", "An enemy that briefly inflates to block Mario's path."},
+    {"sml2_unera", "Unera", "A slow-moving crawler that patrols a small area."},
+    {"sml2_unibo", "Unibo", "An indestructible enemy that appears in both air and water."},
+    {"sml2_wakiri", "Wakiri", "A saw blade set into the ground that moves back and forth."},
+    {"sml2_yashichi", "Yashichi", "A spinning blade that follows a track through the level."},
+    {"sml2_big_bird", "Big Bird", "The Tree Zone's crow guardian swoops down at Mario. Defeating it reveals the zone's Golden Coin in its egg."},
+    {"sml2_octopus_boss", "Octopus", "The Turtle Zone's mother octopus attacks underwater by sending her young after Mario."},
+    {"sml2_sewer_rat", "Sewer Rat", "The Macro Zone guardian has a drill-like nose and moves up walls and through pipes before dropping toward Mario."},
+    {"sml2_tatanga", "Tatanga", "The Space Zone's alien guardian attacks from a spacecraft that fires energy beams; stomping on the craft damages him."},
+    {"sml2_three_little_pigs", "Three Little Pigs", "Buro, Bucho, and Bupon are three separate bosses; Mario must defeat all three to win the Mario Zone's Golden Coin."},
+    {"sml2_witch", "Witch", "The Pumpkin Zone's guardian conjures flames and lights the fires beneath her cauldrons."},
+};
+
+static void add_sml2_enemy_catalog(void)
+{
+    for (size_t i = 0; i < sizeof sml2_enemy_catalog / sizeof sml2_enemy_catalog[0]; ++i) {
+        const Sml2EnemyDef *enemy = &sml2_enemy_catalog[i];
+        add_entry(GAME_SML2, enemy->id, enemy->name, MUSEUM_CATEGORY_ENEMY,
+                  enemy->description, "");
+    }
+}
+
 static void build_catalog(void)
 {
     memset(catalog, 0, sizeof catalog);
@@ -419,8 +510,9 @@ static void build_catalog(void)
        game-specific detection is available. */
     add_entry(GAME_SML2, "coin", "Coin", MUSEUM_CATEGORY_ITEM,
               "A common coin found throughout Mario Land. Coins can be spent at the Game Boy's bonus-game house for chances to win extra lives and prizes.", "coin");
-    add_entry(GAME_SML2, "enemy_defeated", "Enemy encounter", MUSEUM_CATEGORY_ENEMY,
-              "Mario defeated an enemy. The current signal tracks the game's defeated-enemy counter, but does not yet identify the exact species.", "enemy");
+    add_entry(GAME_SML2, "enemy_tally", "Enemy tally", MUSEUM_CATEGORY_MILESTONE,
+              "The game's defeated-enemy counter increased. In this game, defeating 100 enemies causes a Super Star to appear; this tally is separate from the individual species records.", "enemy");
+    add_sml2_enemy_catalog();
     add_entry(GAME_SML2, "extra_life", "Extra life", MUSEUM_CATEGORY_ITEM,
               "An extra life was awarded. The game represents these rewards with hearts rather than the familiar green 1-Up Mushroom.", "oneup");
     add_entry(GAME_SML2, "life_lost", "Life lost", MUSEUM_CATEGORY_MILESTONE,
@@ -435,10 +527,8 @@ static void build_catalog(void)
               "Grants temporary invincibility, letting Mario defeat most enemies by touching them.", "");
     add_entry(GAME_SML2, "golden_coins", "Six Golden Coins", MUSEUM_CATEGORY_MILESTONE,
               "Six unique coins are held by the guardians of Tree, Turtle, Macro, Pumpkin, Mario, and Space Zones. Recovering all six opens the way to Mario's castle.", "");
-    add_entry(GAME_SML2, "wario", "Wario", MUSEUM_CATEGORY_CHARACTER,
-              "Mario's rival has taken over Mario's castle. The final confrontation unfolds in three rounds, each with a different power-up form.", "");
-    add_entry(GAME_SML2, "zone_bosses", "Zone guardians", MUSEUM_CATEGORY_ENEMY,
-              "Each of the six main zones has a guardian protecting its Golden Coin, including Big Bird, the octopus, the Three Little Pigheads, Tatanga, the Sewer Rat, and the Witch.", "");
+    add_entry(GAME_SML2, "wario", "Wario", MUSEUM_CATEGORY_ENEMY,
+              "Mario's rival is the final boss. The battle has three rounds, and Wario copies Bunny Mario and Fire Mario before Mario reclaims his castle.", "");
     add_entry(GAME_SML2, "secret_exit", "Secret exit", MUSEUM_CATEGORY_STAGE,
               "Some courses contain an alternate exit that opens a hidden course on the world map. Look for the star-marked goal door.", "");
     add_entry(GAME_SML2, "castle_cleared", "Castle reclaimed", MUSEUM_CATEGORY_MILESTONE,
