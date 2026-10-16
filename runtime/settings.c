@@ -528,7 +528,7 @@ void settings_load(void)
         if (c->romhack_selected < -1 || c->romhack_selected >= c->romhack_count)
             c->romhack_selected = -1;
     }
-    if (settings.last_tab > N_GAMES + 5) settings.last_tab = 0;
+    if (settings.last_tab > N_GAMES + 6) settings.last_tab = 0;
 
     /* Migrate the prior local-only default to the deployed traversal endpoint.
        If the user explicitly configured another address, leave it untouched. */
