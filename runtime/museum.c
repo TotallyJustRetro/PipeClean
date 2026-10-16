@@ -114,7 +114,7 @@ static const Wl3TreasureDef wl3_treasures[100] = {
     {"Crown","W2 The Volcano's Base","Green"},
     {"Pink Crayon","W1 Desert Ruins","Green"},
     {"Teapot","E2 The Frigid Sea","Red"},
-    {"Pikachu Doll","S2 The Big Bridge","Green"},
+    {"Pokémon Pikachu","S2 The Big Bridge","Green"},
     {"Magnifying Glass","N4 Bank of the Wild River","Red"},
     {"Pump","E4 The Colossal Hole","Red"},
     {"Toy Rocket","N4 Bank of the Wild River","Blue"},
