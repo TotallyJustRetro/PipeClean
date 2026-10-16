@@ -866,11 +866,11 @@ static void sub_external_game(int g, float x, float y)
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
                  g == GAME_WARIO_SML3
-                    ? "Wario Land: Super Mario Land 3 opens a live Treasure Expedition Companion Deck when enabled in Display settings. It tracks treasures, course changes, power changes, extra lives and coin milestones."
+                    ? "Wario Land: Super Mario Land 3 opens the Treasure Expedition Companion Deck when enabled. Controller events now include power-up, damage, treasure, coins, recovery, extra life, life lost, course entry, key pickup and course results."
                     : ((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
-                       ? "Both Wario Land II releases use the same live Stolen Treasure Companion Deck: all 50 treasures, all 50 picture panels, stage and coin tracking, an expedition log, collection animations, event-specific DualSense lightbar flashes, rumble and speaker alerts, plus rumble for compatible controllers."
+                       ? "Both Wario Land II releases use the Stolen Treasure Companion Deck: all 50 treasures and picture panels, course-entry tracking, an expedition log, collection animations, and event-specific DualSense lightbar, rumble and speaker alerts. The course-results alert fires when its treasure or picture reward is revealed; Wario Land II has no key pickup mechanic."
                        : (g == GAME_WARIO_LAND3_GBC
-                          ? "Wario Land 3 has seven live controller events: power-up, temporary-form damage/recovery, treasure, coins, and major story/game-over milestones. Events can trigger DualSense lightbar flashes, event-specific rumble and speaker alerts; other compatible controllers can rumble."
+                          ? "Wario Land 3 has ten live controller events, including power-up, damage/recovery, treasure, coins, story/game-over milestones, course entry, key obtained and the course-results screen. Events can trigger DualSense lightbar flashes, distinct rumble and speaker alerts; compatible other controllers can rumble."
                           : "This title runs in the separate gbrecomp player. PipeClean's in-runtime filters and save-state slots do not apply to this player.")), 5);
 
     ui_text(F_BOLD, 12, x + 18, y + 276, C_MUTED, "CONTROLS");
