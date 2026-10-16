@@ -217,7 +217,7 @@ static int sml2_museum_snapshot_read(Sml2MuseumSnapshot *snapshot)
     snapshot->ending_flag = ending_raw == 1;
     /* The six secret courses use level IDs 19..1E; reaching one is a reliable
        secret-course discovery. Level 1F is the final castle course. */
-    snapshot->secret_exit_seen = level >= 0x19 && level <= 0x1E;
+    snapshot->secret_exit_seen = sml2_museum_is_secret_level(level);
     return 1;
 }
 
