@@ -42,6 +42,16 @@ int main(void)
         (void)has_treasure;
     }
 
+    {
+        char sprite_path[1200] = "must-be-cleared";
+        /* No art is distributed in the repo; missing local PNGs stay locked. */
+        assert(!museum_sprite_asset_path(GAME_WARIO_LAND3_GBC, "wl3_treasure_001",
+                                         sprite_path, sizeof sprite_path));
+        assert(sprite_path[0] == 0);
+        assert(!museum_sprite_asset_path(GAME_WARIO_LAND3_GBC, "../not-an-entry",
+                                         sprite_path, sizeof sprite_path));
+    }
+
     assert(museum_discover_entry(GAME_SML, "coin") == 1);
     assert(museum_discover_entry(GAME_SML, "coin") == 0);
     museum_observe_event(GAME_SML, "power");
