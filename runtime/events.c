@@ -62,9 +62,9 @@ static const EventDef wario3_defs[] = {
     {"damage",   "Damage",                 "Wario enters a temporary status effect",                 0, 0, 3, 0xFF3D4F, 340, 85},
     {"treasure", "Treasure found",         "A course treasure is added to the collection",            0, 0, 4, 0xFFD34A, 500, 100},
     {"coin",     "Coin collected",         "The coin total increases during a course",                0, 0, 0, 0xFFD23C, 90, 40},
-    {"heart",    "Heart restored / recovery","Wario returns to normal after a status effect",          0, 0, 1, 0x6CFF8C, 160, 55},
-    {"extra",    "Extra life / milestone", "Rudy defeated (WL3 has no extra-life system)",            0, 0, 4, 0x6CFF8C, 450, 90},
-    {"lost",     "Life lost / Game Over",  "Enter WL3's rare Game Over scene",                        0, 0, 3, 0xFF3030, 650, 100},
+    {"heart",    "Heart restored",       "Wario returns to normal after a status effect (WL3 has no heart meter)", 0, 0, 1, 0x6CFF8C, 160, 55},
+    {"extra",    "Extra life",           "Rudy defeated (WL3 has no extra-life system)",            0, 0, 4, 0x6CFF8C, 450, 90},
+    {"lost",     "Life lost",            "Enter WL3's rare Game Over scene",                        0, 0, 3, 0xFF3030, 650, 100},
 };
 typedef struct { const EventDef *defs; int n; } GameEvents;
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
