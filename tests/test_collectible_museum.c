@@ -59,7 +59,23 @@ int main(void)
         assert(e && !strcmp(e->name, "Pills cleared"));
     }
 
-    assert(museum_catalog_count(GAME_SML) == 41);
+    assert(museum_catalog_count(GAME_SML) == 42);
+    {
+        const MuseumEntry *one_up = NULL, *tamao = NULL, *kumo = NULL;
+        for (int i = 0; i < museum_catalog_count(GAME_SML); ++i) {
+            const MuseumEntry *entry = museum_catalog_entry(GAME_SML, i);
+            if (!strcmp(entry->id, "sml_heart")) one_up = entry;
+            if (!strcmp(entry->id, "sml_tamao")) tamao = entry;
+            if (!strcmp(entry->id, "sml_kumo")) kumo = entry;
+        }
+        assert(one_up && !strcmp(one_up->name, "1-Up Heart"));
+        assert(strstr(one_up->description, "extra life"));
+        assert(!strstr(one_up->description, "sprite"));
+        assert(tamao && strstr(tamao->description, "Dragonzamasu"));
+        assert(!strstr(tamao->description, "object ID"));
+        assert(kumo && strstr(kumo->description, "spider"));
+        assert(!strstr(kumo->description, "object ID"));
+    }
     {
         MuseumCategory category = MUSEUM_CATEGORY_ALL;
         const MuseumEntry *goombo = museum_catalog_entry(GAME_SML, 0);
@@ -69,12 +85,17 @@ int main(void)
         assert(category == MUSEUM_CATEGORY_ENEMY);
         assert(!strcmp(museum_sml_object_entry_id(0x80, &category), "sml_goombo"));
         assert(!strcmp(museum_sml_object_entry_id(0x04, &category), "sml_bombshell_koopa"));
-        assert(!strcmp(museum_sml_object_entry_id(0x3D, &category), "sml_batadon"));
+        assert(!strcmp(museum_sml_object_entry_id(0x3C, &category), "sml_batadon"));
+        assert(museum_sml_object_entry_id(0x3D, &category) == NULL);
+        assert(!strcmp(museum_sml_object_entry_id(0x40, &category), "sml_gao"));
         assert(!strcmp(museum_sml_object_entry_id(0x43, &category), "sml_bunbun"));
         assert(!strcmp(museum_sml_object_entry_id(0x57, &category), "sml_pionpi"));
-        assert(museum_sml_object_entry_id(0x03, &category) == NULL); /* spawn helper */
-        assert(museum_sml_object_entry_id(0x40, &category) == NULL); /* shared stomp state */
-        assert(museum_sml_object_entry_id(0x4A, &category) == NULL); /* Gira orientation helper */
+        assert(!strcmp(museum_sml_object_entry_id(0x20, &category), "sml_kumo"));
+        assert(!strcmp(museum_sml_object_entry_id(0x2F, &category), "sml_torion"));
+        assert(!strcmp(museum_sml_object_entry_id(0x33, &category), "sml_ganchan"));
+        assert(!strcmp(museum_sml_object_entry_id(0x48, &category), "sml_tamao"));
+        assert(!strcmp(museum_sml_object_entry_id(0x4A, &category), "sml_gira"));
+        assert(!strcmp(museum_sml_object_entry_id(0x5A, &category), "sml_gira"));
         assert(!strcmp(museum_sml_object_entry_id(0x29, &category), "sml_mushroom"));
         assert(category == MUSEUM_CATEGORY_ITEM);
         assert(museum_sml_object_entry_id(0x7E, &category) == NULL);
@@ -167,6 +188,14 @@ int main(void)
     assert(museum_is_discovered(GAME_WARIO_LAND2_GBC, "wl2_picture_10"));
     assert(museum_is_discovered(GAME_WARIO_SML3, "wario1_treasure_05"));
     assert(museum_is_discovered(GAME_WARIO_LAND3_GBC, "key_blue"));
+
+    assert(museum_clear_discoveries() == 1);
+    for (int game = 0; game < N_GAMES; ++game)
+        assert(museum_discovered_count(game) == 0);
+    assert(museum_take_notification(notice, sizeof notice) == 0);
+    museum_set_storage_path(path);
+    for (int game = 0; game < N_GAMES; ++game)
+        assert(museum_discovered_count(game) == 0);
 
     remove(path);
     puts("Collectible Museum tests passed.");
