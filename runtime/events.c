@@ -50,6 +50,7 @@ static const EventDef wario2_defs[] = {
     {"picture",  "Picture piece", "Find a piece for the picture panel", 0, 0, 1, 0xB58AFF, 380, 85},
     {"coin",     "Coins collected", "Increase the coin bank", 0, 0, 0, 0xFFD23C, 90, 40},
     {"stage",    "Stage changed", "Enter another stage", 0, 0, 3, 0x6CFF8C, 180, 55},
+    {"loss",     "Coins lost / wounded", "Coins dropped when Wario is hit or spent in a minigame", 0, 0, 3, 0xFF3D4F, 380, 90},
 };
 /* Wario Land 3 uses the same seven event slots as Wario Land: SML3.
  * Two labels are explicit analogues: WL3 has no ordinary lives or heart
@@ -172,34 +173,15 @@ static void hud_frame(void)
 
 /* Wario Land SML3 stores its expedition counters in cartridge RAM. */
 static WarioEventTracker wario_event_tracker;
-static WarioLand2Snapshot wario2_event_previous;
-static int wario2_event_have_previous;
+static WarioLand2EventTracker wario2_event_tracker;
 static WarioLand3Tracker wario3_event_tracker;
 
 static void wario2_event_frame(void)
 {
     WarioLand2Snapshot snapshot = wario_land2_read_snapshot(cur_game, gb_wram_peek);
-    if (snapshot.stage < 0) {
-        wario2_event_have_previous = 0;
-        return;
-    }
-    if (!wario2_event_have_previous) {
-        wario2_event_previous = snapshot;
-        wario2_event_have_previous = 1;
-        return;
-    }
-    const WarioLand2Snapshot old = wario2_event_previous;
-    int rollback = ((snapshot.treasures & old.treasures) != old.treasures) ||
-                   ((snapshot.picture_panels & old.picture_panels) != old.picture_panels);
-    if (!rollback) {
-        if (snapshot.treasures != old.treasures) fire(0);
-        else if (snapshot.picture_panels != old.picture_panels) fire(1);
-        else if ((snapshot.bank_coins > old.bank_coins && old.bank_coins >= 0) ||
-                 (snapshot.overworld_coins > old.overworld_coins && old.overworld_coins >= 0))
-            fire(2);
-        else if (snapshot.stage != old.stage) fire(3);
-    }
-    wario2_event_previous = snapshot;
+    uint32_t events = wario_land2_tracker_update(&wario2_event_tracker, &snapshot);
+    for (int ev = 0; ev < WARIO_LAND2_EVENT_COUNT; ++ev)
+        if (events & WARIO_LAND2_EVENT_MASK(ev)) fire(ev);
 }
 
 static void wario3_event_frame(void)
@@ -277,7 +259,7 @@ void events_begin(void)
     cur_game = rom_loaded_game();
     qr = qw = 0; tap_frames = 0; hud_have = 0; hud_cnt = 0;
     wario_event_tracker.have_previous = 0;
-    wario2_event_have_previous = 0;
+    wario2_event_tracker.have_previous = 0;
     wario3_event_tracker.have_previous = 0;
     apu_set_tap_mask(0);
     apu_set_trigger_hook(on_trigger);
@@ -294,7 +276,7 @@ void events_end(void)
     apu_set_tap_mask(0);
     gb_watch_set(NULL, 0, NULL);
     wario_event_tracker.have_previous = 0;
-    wario2_event_have_previous = 0;
+    wario2_event_tracker.have_previous = 0;
     wario3_event_tracker.have_previous = 0;
 }
 
@@ -306,7 +288,7 @@ void events_state_reset(void)
     hud_cnt = 0;
     tap_frames = 0;
     wario_event_tracker.have_previous = 0;
-    wario2_event_have_previous = 0;
+    wario2_event_tracker.have_previous = 0;
     wario3_event_tracker.have_previous = 0;
     apu_set_tap_mask(0);
 }
