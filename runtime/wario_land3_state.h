@@ -1,23 +1,40 @@
 #pragma once
+#include <stdint.h>
 
-/* Wario Land 3 keeps its current scene and scene operation in fixed WRAM.
- * Scene IDs used here are documented by the game's RAM map:
- *   1 = overworld, 2 = level, 3 = level results (treasures/music coins),
- *   8 = key obtained during a level.
+/* Wario Land 3 has no normal heart meter or lives counter. We expose the
+ * closest game-native events to the shared controller-effects system:
+ * power upgrades, temporary status changes/recovery, treasure/coin gains,
+ * the story-completion milestone, and its rare Game Over scene.
  *
- * The tracker only emits events on scene transitions, so it doesn't repeat
- * rumble every frame while one of the result/animation scenes is active.
+ * WRAM offsets correspond to the C000-based backing store:
+ *   C09B/C09C: scene/subscene
+ *   CA04/CA05: coin total (three decimal digits)
+ *   CA39/CA3A: treasure total (three decimal digits)
+ *   CA3C: power-up state; values 0A-0C are Action Help screens
+ *   CA3D: completion flags (bit 0 = Rudy defeated)
+ *   CA8E: temporary Wario status (0 = normal)
  */
 enum {
-    WARIO_LAND3_EVENT_LEVEL_ENTERED = 0,
-    WARIO_LAND3_EVENT_KEY_OBTAINED,
-    WARIO_LAND3_EVENT_COURSE_RESULTS,
+    WARIO_LAND3_EVENT_POWER_UP = 0,
+    WARIO_LAND3_EVENT_DAMAGE,
+    WARIO_LAND3_EVENT_TREASURE,
+    WARIO_LAND3_EVENT_COIN,
+    WARIO_LAND3_EVENT_HEART,
+    WARIO_LAND3_EVENT_EXTRA_LIFE,
+    WARIO_LAND3_EVENT_LIFE_LOST,
     WARIO_LAND3_EVENT_COUNT
 };
+
+#define WARIO_LAND3_EVENT_MASK(event) (UINT32_C(1) << (event))
 
 typedef struct {
     int scene;
     int operation;
+    int coins;
+    int treasures;
+    int powerups;
+    int status;
+    int completion;
 } WarioLand3Snapshot;
 
 typedef struct {
@@ -25,37 +42,77 @@ typedef struct {
     int have_previous;
 } WarioLand3Tracker;
 
+/* CA04/CA39 contain the leading decimal digit; CA05/CA3A contain packed BCD
+ * for the final two digits. Return -1 for transient/uninitialized RAM. */
+static inline int wario_land3_read_counter3(uint8_t leading, uint8_t trailing)
+{
+    const int hundreds = (int)leading;
+    const int tens = (int)((trailing >> 4) & 0x0F);
+    const int ones = (int)(trailing & 0x0F);
+    if (hundreds > 9 || tens > 9 || ones > 9) return -1;
+    return hundreds * 100 + tens * 10 + ones;
+}
+
 static inline int wario_land3_snapshot_valid(const WarioLand3Snapshot *s)
 {
     return s && s->scene >= 0 && s->scene <= 0x0E &&
-           s->operation >= 0 && s->operation <= 0xFF;
+           s->operation >= 0 && s->operation <= 0xFF &&
+           s->coins >= 0 && s->coins <= 999 &&
+           s->treasures >= 0 && s->treasures <= 999 &&
+           s->powerups >= 0 && s->powerups <= 0xFF &&
+           s->status >= 0 && s->status <= 0xFF &&
+           s->completion >= 0 && s->completion <= 0xFF;
 }
 
-/* Returns an event index or -1. Scene 8 returns to scene 2 after its key
- * animation; do not misreport that return as a second level entry. */
-static inline int wario_land3_tracker_update(WarioLand3Tracker *tracker,
-                                             const WarioLand3Snapshot *current)
+/* Return an event bitmask, not a single event: if the game updates coins and
+ * a treasure in the same frame, both effects must be delivered. */
+static inline uint32_t wario_land3_tracker_update(WarioLand3Tracker *tracker,
+                                                  const WarioLand3Snapshot *current)
 {
     if (!tracker || !wario_land3_snapshot_valid(current)) {
         if (tracker) tracker->have_previous = 0;
-        return -1;
+        return 0;
     }
 
     if (!tracker->have_previous) {
         tracker->previous = *current;
         tracker->have_previous = 1;
-        return -1;
+        return 0;
     }
 
     const WarioLand3Snapshot old = tracker->previous;
-    int event = -1;
-    if (current->scene == 8 && old.scene != 8)
-        event = WARIO_LAND3_EVENT_KEY_OBTAINED;
-    else if (current->scene == 3 && old.scene != 3)
-        event = WARIO_LAND3_EVENT_COURSE_RESULTS;
-    else if (current->scene == 2 && old.scene != 2 && old.scene != 8)
-        event = WARIO_LAND3_EVENT_LEVEL_ENTERED;
+    uint32_t events = 0;
+
+    /* Scene C: Game Over, which is only possible in the Rudy encounter. */
+    if (current->scene == 12 && old.scene != 12)
+        events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_LIFE_LOST);
+
+    /* The game has no extra-life mechanic; use the Rudy-defeated flag as the
+     * nearest one-time major milestone rather than inventing a life counter. */
+    if ((current->completion & 0x01) && !(old.completion & 0x01))
+        events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_EXTRA_LIFE);
+
+    if (current->treasures > old.treasures)
+        events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_TREASURE);
+
+    /* CA3C values 0A-0C are Action Help screens, not a new ability. Ignore
+     * those transitions to prevent false power-up pings in help/tutorial UI. */
+    if (old.scene == current->scene &&
+        current->powerups > old.powerups &&
+        old.powerups < 0x0A && current->powerups > 0 && current->powerups < 0x0A)
+        events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_POWER_UP);
+
+    /* Wario is effectively immortal: temporary forms are the game's closest
+     * equivalent to damage/recovery. Only count transitions during gameplay. */
+    if (old.scene == 2 && current->scene == 2) {
+        if (old.status == 0 && current->status != 0)
+            events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_DAMAGE);
+        else if (old.status != 0 && current->status == 0)
+            events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_HEART);
+        if (current->coins > old.coins)
+            events |= WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_COIN);
+    }
 
     tracker->previous = *current;
-    return event;
+    return events;
 }
