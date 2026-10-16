@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <stdio.h>
 #include "events.h"
+#include "museum.h"
 #include "wario_event_state.h"
 #include "wario_land2_state.h"
 #include "wario_land3_state.h"
@@ -121,6 +122,7 @@ static void fire(int ev)
     if (!d) return;
     if (events_log) fprintf(stderr, "[event] frame %d %s\n", frame_count, d->name);
     push(ev);
+    museum_observe_event(cur_game, d->id);
     const GameCfg *c = &settings.g[cur_game];
     if ((c->ds_ev_speaker >> ev) & 1) {
         if (d->sfx_mask && audio_pad_available()) { apu_set_tap_mask(d->sfx_mask); tap_frames = d->sfx_ms * 60 / 1000 + 1; }
@@ -185,6 +187,8 @@ static WarioLand3Tracker wario3_event_tracker;
 static void wario2_event_frame(void)
 {
     WarioLand2Snapshot snapshot = wario_land2_read_snapshot(cur_game, gb_wram_peek);
+    museum_sync_flags(cur_game, "wl2_treasure", snapshot.treasures, 50);
+    museum_sync_flags(cur_game, "wl2_picture", snapshot.picture_panels, 50);
     uint32_t events = wario_land2_tracker_update(&wario2_event_tracker, &snapshot);
     for (int ev = 0; ev < WARIO_LAND2_EVENT_COUNT; ++ev)
         if (events & WARIO_LAND2_EVENT_MASK(ev)) fire(ev);
@@ -202,6 +206,17 @@ static void wario3_event_frame(void)
         (int)gb_wram_peek(0x0A8E), /* CA8E: temporary Wario status */
         (int)gb_wram_peek(0x0A3D)  /* CA3D: completion flags */
     };
+    /* CA5B is the current course's Gray/Red/Green/Blue key bitmask. Keep
+       museum progress monotonic so rewind/load never removes a discovery. */
+    const uint8_t key_mask_raw = gb_wram_peek(0x005B);
+    if ((snapshot.scene == 2 || snapshot.scene == 8) && key_mask_raw <= 0x0F) {
+        static const char *key_ids[WARIO_LAND3_KEY_COUNT] = {
+            "key_gray", "key_red", "key_green", "key_blue"
+        };
+        for (int key = 0; key < WARIO_LAND3_KEY_COUNT; ++key)
+            if (wario_land3_key_collected(key_mask_raw, key))
+                (void)museum_discover_entry(cur_game, key_ids[key]);
+    }
     uint32_t events = wario_land3_tracker_update(&wario3_event_tracker, &snapshot);
     for (int ev = 0; ev < WARIO_LAND3_EVENT_COUNT; ++ev)
         if (events & WARIO_LAND3_EVENT_MASK(ev)) fire(ev);
@@ -260,6 +275,7 @@ static void wario_event_frame(void)
         return;
     }
 
+    museum_sync_flags(cur_game, "wario1_treasure", (uint64_t)(unsigned)snapshot.treasure_mask, 16);
     uint32_t events = wario_event_tracker_update(&wario_event_tracker, &snapshot);
     for (int ev = 0; ev < WARIO_EVENT_COUNT; ++ev)
         if (events & WARIO_EVENT_MASK(ev)) fire(ev);
