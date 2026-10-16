@@ -2,6 +2,7 @@
 
 #include "games.h"
 #include <stdint.h>
+#include <stddef.h>
 
 typedef enum {
     MUSEUM_CATEGORY_ALL = -1,
