@@ -212,7 +212,7 @@ static void wario3_event_frame(void)
     };
     /* CA5B is the current course's Gray/Red/Green/Blue key bitmask. Keep
        museum progress monotonic so rewind/load never removes a discovery. */
-    const uint8_t key_mask_raw = gb_wram_peek(0x005B);
+    const uint8_t key_mask_raw = gb_wram_peek(0x0A5B); /* CA5B */
     if (wario_land3_snapshot_valid(&snapshot) &&
         (snapshot.scene == 2 || snapshot.scene == 8) && key_mask_raw <= 0x0F) {
         static const char *key_ids[WARIO_LAND3_KEY_COUNT] = {
