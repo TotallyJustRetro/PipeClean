@@ -4810,8 +4810,17 @@ static void tab_museum(float x, float y)
     }
     ui_unclip();
 
-    ui_text_fit(F_REG, 10, x + 3, y + 485, width - 6, C_DIM,
-                "Discoveries save automatically · Specimen art comes from the configured game's live graphics.");
+    ui_text(F_BOLD, 10, x + 3, y + 486, HEX(0xD8B78A), "Discovery alerts");
+    if (ui_toggle(x + 112, y + 481, &settings.museum_discovery_notifications)) {
+        settings_save();
+        launcher_toast(settings.museum_discovery_notifications
+            ? "Museum discovery notifications enabled."
+            : "Museum discovery notifications disabled.");
+    }
+    ui_text_fit(F_REG, 10, x + 151, y + 486, width - 154, C_DIM,
+                settings.museum_discovery_notifications
+                    ? "New discoveries show a pop-up; progress always saves."
+                    : "Pop-ups off; discoveries still save automatically.");
     if (museum_last_storage_error()[0])
         ui_text_fit(F_REG, 10, x + 3, y + 499, width - 6, C_ERR,
                     museum_last_storage_error());
@@ -4867,6 +4876,11 @@ LauncherResult launcher_frame(float dt)
     launcher_controller_update(dt);
     anim_clock += dt;
     museum_init();
+    if (toast_t <= 0.0f) {
+        char discovery_notice[160];
+        if (museum_take_notification(discovery_notice, sizeof discovery_notice))
+            launcher_toast(discovery_notice);
+    }
     if (tab != TAB_AUDIO && music_notice_deferred && music_notice_age >= 0.0f) {
         /* Re-enter the animation at the start when leaving the management tab. */
         music_notice_age = 0.0f;
