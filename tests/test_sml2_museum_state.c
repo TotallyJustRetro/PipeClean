@@ -58,7 +58,8 @@ int main(void)
     s = snapshot(1, 1, 4, 0, 0, 0x1F, 0, 0);
     found = sml2_museum_tracker_update(&tracker, &s);
     assert(found & SML2_MUSEUM_GOLDEN_COINS);
-    assert(found & SML2_MUSEUM_WARIO);
+    /* Entering the castle unlocks the route milestone, not a boss encounter. */
+    assert(!(found & SML2_MUSEUM_WARIO));
 
     s = snapshot(1, 1, 4, 0, 0, 0x1F, 1, 0);
     found = sml2_museum_tracker_update(&tracker, &s);
