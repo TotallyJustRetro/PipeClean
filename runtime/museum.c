@@ -211,8 +211,8 @@ static void build_catalog(void)
               "A two-colour medical capsule used to clear matching lines in the bottle.", "land");
     add_entry(GAME_DRMARIO, "virus", "Virus", MUSEUM_CATEGORY_ENEMY,
               "A virus was registered by the game's event signal; exact colour identification is not mapped yet.", "virus");
-    add_entry(GAME_DRMARIO, "virus_clear", "Virus cleared", MUSEUM_CATEGORY_MILESTONE,
-              "A clearing event was observed during play.", "clear");
+    add_entry(GAME_DRMARIO, "virus_clear", "Pills cleared", MUSEUM_CATEGORY_MILESTONE,
+              "Four or more matching capsule segments cleared from the bottle.", "clear");
 
     /* Super Mario Land */
     add_entry(GAME_SML, "coin", "Coin", MUSEUM_CATEGORY_ITEM,
