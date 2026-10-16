@@ -579,6 +579,101 @@ final class PipeCleanCompanionPresentation extends Presentation {
         }
 
 
+        private static final String[] WARIO3_KEY_NAMES = {"GRAY", "RED", "GREEN", "BLUE"};
+
+        private int wario3KeyCount() {
+            return wario3Keys < 0 ? 0 : Integer.bitCount(wario3Keys & 0x0F);
+        }
+
+        private int wario3MusicCoinCount() {
+            return wario3MusicCoins < 0 ? 0 : Integer.bitCount(wario3MusicCoins & 0xFF);
+        }
+
+        private void rememberWario3State() {
+            previousWario3Keys = wario3Keys;
+            previousWario3MusicCoins = wario3MusicCoins;
+            previousWario3TreasureCount = wario3TreasureCount;
+            previousWario3Stage = stage;
+            previousWario3Coins = warioCoins;
+            previousWario3Scene = wario3Scene;
+        }
+
+        private void observeWario3State() {
+            if (game != 5 || wario3Keys < 0 || wario3MusicCoins < 0 ||
+                wario3Scene < 0) {
+                wario3BaselineSet = false;
+                wario3KeyAnimationActive = false;
+                return;
+            }
+
+            if (!wario3BaselineSet) {
+                for (int i = 0; i < expeditionLog.length; i++) expeditionLog[i] = null;
+                pushExpeditionLog("EXPEDITION LINKED");
+                if (stage >= 0 && wario3Scene == 2)
+                    pushExpeditionLog(String.format(Locale.US, "COURSE %02d ENTERED", stage));
+                rememberWario3State();
+                wario3BaselineSet = true;
+                return;
+            }
+
+            boolean courseChanged = stage >= 0 && previousWario3Stage >= 0 &&
+                stage != previousWario3Stage;
+            if (courseChanged) {
+                pushExpeditionLog(String.format(Locale.US, "COURSE %02d ENTERED", stage));
+                wario3KeyAnimationActive = false;
+            } else if (wario3Scene == 2 && previousWario3Scene == 1 && stage >= 0) {
+                pushExpeditionLog(String.format(Locale.US, "COURSE %02d ENTERED", stage));
+            }
+
+            int oldKeys = previousWario3Keys & 0x0F;
+            int nextKeys = wario3Keys & 0x0F;
+            boolean keysRolledBack = (nextKeys & oldKeys) != oldKeys;
+            if (!courseChanged && !keysRolledBack) {
+                int gainedKeys = nextKeys & ~oldKeys;
+                if (gainedKeys != 0) {
+                    for (int key = 0; key < WARIO3_KEY_NAMES.length; key++) {
+                        if ((gainedKeys & (1 << key)) != 0) {
+                            pushExpeditionLog(WARIO3_KEY_NAMES[key] + " KEY FOUND");
+                            wario3KeyAnimationId = key;
+                        }
+                    }
+                    wario3KeyAnimationStart = SystemClock.uptimeMillis();
+                    wario3KeyAnimationActive = true;
+                    postInvalidateOnAnimation();
+                }
+            } else if (keysRolledBack) {
+                // Save-state loads/rewinds can remove keys from this timeline.
+                // Rebase silently instead of claiming that any were found.
+                wario3KeyAnimationActive = false;
+            }
+
+            int oldMusic = previousWario3MusicCoins & 0xFF;
+            int nextMusic = wario3MusicCoins & 0xFF;
+            if (!courseChanged && (nextMusic & oldMusic) == oldMusic) {
+                int gainedMusic = nextMusic & ~oldMusic;
+                int gainedCount = Integer.bitCount(gainedMusic);
+                if (gainedCount == 1)
+                    pushExpeditionLog("MUSIC COIN FOUND");
+                else if (gainedCount > 1)
+                    pushExpeditionLog("MUSIC COINS +" + gainedCount);
+            }
+
+            if (!courseChanged && wario3TreasureCount >= 0 &&
+                previousWario3TreasureCount >= 0 &&
+                wario3TreasureCount > previousWario3TreasureCount) {
+                pushExpeditionLog(String.format(Locale.US, "TREASURE TOTAL %02d / 100",
+                    wario3TreasureCount));
+            }
+            if (warioCoins >= 0 && previousWario3Coins >= 0 &&
+                warioCoins / 10 > previousWario3Coins / 10) {
+                pushExpeditionLog(String.format(Locale.US, "COINS %03d", warioCoins));
+            }
+            if (wario3Scene == 3 && previousWario3Scene != 3)
+                pushExpeditionLog("COURSE RESULTS READY");
+
+            rememberWario3State();
+        }
+
         private int wario2TreasureCount() {
             return wario2TreasureMask < 0 ? 0 : Long.bitCount(wario2TreasureMask & 0x3FFFFFFFFFFFFL);
         }
@@ -665,6 +760,12 @@ final class PipeCleanCompanionPresentation extends Presentation {
             drMarioCapsule = 0xFF;
             warioCoins = warioHearts = warioPower = warioTime = -1;
             warioTreasureMask = -1;
+            wario3Keys = wario3MusicCoins = wario3Scene = wario3TreasureCount = -1;
+            wario3BaselineSet = false;
+            wario3KeyAnimationActive = false;
+            previousWario3Keys = previousWario3MusicCoins = -1;
+            previousWario3TreasureCount = previousWario3Stage = -1;
+            previousWario3Coins = previousWario3Scene = -1;
             warioLevelCoins = 0;
             warioPileDisplayedCoins = 0f;
             previousWarioPileCoins = previousWarioPileStage = previousWarioPileGame = -1;
