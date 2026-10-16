@@ -44,13 +44,17 @@ static const EventDef wario_sml3_defs[] = {
     {"heart",    "Heart restored",      "Recover health",                  0, 0, 5, 0x6CFF8C, 160, 55},
     {"extra",    "Extra life",          "Gain an extra life",              0, 0, 6, 0x6CFF8C, 450, 90},
     {"lost",     "Life lost",           "Lose a life",                     0, 0, 3, 0xFF3030, 650, 100},
+    {"course",   "Course entered",      "Start a course from the map",     0, 0, 8, 0x4C8DFF, 150, 40},
+    {"key",      "Key obtained",        "Pick up the course key",          0, 0, 9, 0xB58AFF, 320, 70},
+    {"results",  "Course results",      "Reach the course-clear results screen", 0, 0, 10, 0xFFD34A, 500, 95},
 };
 static const EventDef wario2_defs[] = {
     {"treasure", "Treasure found", "Recover one of the 50 treasures", 0, 0, 4, 0xFFD34A, 500, 100},
     {"picture",  "Picture piece", "Find a piece for the picture panel", 0, 0, 7, 0xB58AFF, 380, 85},
     {"coin",     "Coins collected", "Increase the coin bank", 0, 0, 0, 0xFFD23C, 90, 40},
-    {"stage",    "Stage changed", "Enter another stage", 0, 0, 5, 0x6CFF8C, 180, 55},
+    {"course",   "Course entered", "Enter a stage from the map", 0, 0, 5, 0x4C8DFF, 150, 40},
     {"loss",     "Coins lost / wounded", "Coins dropped when Wario is hit or spent in a minigame", 0, 0, 2, 0xFF3D4F, 380, 90},
+    {"results",  "Course results", "Receive the end-of-course treasure or picture reward", 0, 0, 10, 0xFFD34A, 500, 95},
 };
 /* Wario Land 3 uses the same seven event slots as Wario Land: SML3.
  * Two labels are explicit analogues: WL3 has no ordinary lives or heart
@@ -65,6 +69,9 @@ static const EventDef wario3_defs[] = {
     {"heart",    "Heart restored",       "Wario returns to normal after a status effect (WL3 has no heart meter)", 0, 0, 5, 0x6CFF8C, 160, 55},
     {"extra",    "Extra life",           "Rudy defeated (WL3 has no extra-life system)",            0, 0, 6, 0x6CFF8C, 450, 90},
     {"lost",     "Life lost",            "Enter WL3's rare Game Over scene",                        0, 0, 3, 0xFF3030, 650, 100},
+    {"course",   "Course entered",       "Enter a course from the overworld",                        0, 0, 8, 0x4C8DFF, 150, 40},
+    {"key",      "Key obtained",         "Collect a course key",                                    0, 0, 9, 0xB58AFF, 320, 70},
+    {"results",  "Course results",       "Reach the treasure and music-coin results screen",          0, 0, 10, 0xFFD34A, 500, 95},
 };
 typedef struct { const EventDef *defs; int n; } GameEvents;
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
