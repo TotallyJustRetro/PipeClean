@@ -169,12 +169,12 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->tex_collect = 1;
     c->ds_led_mode = LED_PALETTE; c->ds_bright = 60; c->ds_color = 0x40A0FF;
     c->ds_rumble = 70; c->ds_speaker_vol = 55;
-    c->ds_ev_led = 0xFF; c->ds_ev_rumble = 0xFF;
+    c->ds_ev_led = 0x3FF; c->ds_ev_rumble = 0x3FF;
     int wario_game = game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
                      game == GAME_WARIO_LAND3_GBC || game == GAME_WARIO_LAND2_GBC;
     c->ds_ev_speaker = !wario_game ? 0 :
-        ((game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) ? 0x1F : 0x7F);
-    c->ds_fx_version = 2;
+        ((game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) ? 0x3F : 0x3FF);
+    c->ds_fx_version = 3;
     controls_defaults(c);
 }
 
@@ -327,8 +327,8 @@ static int field_table(Field *t, int cap)
         GS("pad_guid3", c->pad_guid[2]); GS("pad_guid4", c->pad_guid[3]);
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
-        GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
-        GI("fx_version", c->ds_fx_version, 0, 2);
+        GI("ev_led", c->ds_ev_led, 0, 1023); GI("ev_rumble", c->ds_ev_rumble, 0, 1023); GI("ev_speaker", c->ds_ev_speaker, 0, 1023);
+        GI("fx_version", c->ds_fx_version, 0, 3);
 
         CompanionLayoutCfg *d = &s->deck_layout[g];
         GI("deck_header_dx", d->header_dx, -400, 400); GI("deck_header_dy", d->header_dy, -400, 400); GI("deck_header_scale", d->header_scale, 25, 250); GI("deck_header_scale_y", d->header_scale_y, 25, 250);
@@ -451,21 +451,36 @@ void settings_load(void)
         }
     }
     fclose(f);
-    /* Older Wario configs saved speaker events disabled. Initialize those
-       once, then add only the new Wario Land II coin-loss bit for version 2
-       so users' existing event toggles are preserved. */
+    /* Wario effects migration: old files predate event-speaker defaults,
+       later files predate coin-loss, and v2 files predate course/key/results
+       events. Extend masks without clearing the user's existing toggles. */
     int wario_fx_migrated = 0;
     for (int g = GAME_WARIO_SML3; g < N_GAMES; g++) {
         GameCfg *c = &settings.g[g];
+        const int wario_land2 = g == GAME_WARIO_LAND2_GB ||
+                                g == GAME_WARIO_LAND2_GBC;
         if (!saw_wario_fx_version[g] || c->ds_fx_version < 1) {
-            c->ds_ev_speaker = (g == GAME_WARIO_LAND2_GB ||
-                                g == GAME_WARIO_LAND2_GBC) ? 0x1F : 0x7F;
-            c->ds_fx_version = 2;
+            c->ds_ev_speaker = wario_land2 ? 0x3F : 0x3FF;
+            c->ds_ev_led |= wario_land2 ? 0x20 : 0x380;
+            c->ds_ev_rumble |= wario_land2 ? 0x20 : 0x380;
+            c->ds_fx_version = 3;
             wario_fx_migrated = 1;
         } else if (c->ds_fx_version < 2) {
-            if (g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
-                c->ds_ev_speaker |= 0x10;
+            if (wario_land2) c->ds_ev_speaker |= 0x10;
             c->ds_fx_version = 2;
+            wario_fx_migrated = 1;
+        }
+        if (c->ds_fx_version < 3) {
+            if (wario_land2) {
+                c->ds_ev_led |= 0x20;
+                c->ds_ev_rumble |= 0x20;
+                c->ds_ev_speaker |= 0x20;
+            } else {
+                c->ds_ev_led |= 0x380;
+                c->ds_ev_rumble |= 0x380;
+                c->ds_ev_speaker |= 0x380;
+            }
+            c->ds_fx_version = 3;
             wario_fx_migrated = 1;
         }
     }
