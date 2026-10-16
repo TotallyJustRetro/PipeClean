@@ -21,16 +21,21 @@
 #include "branding.h"
 #include "widescreen.h"
 #include "netplay.h"
+#include "museum.h"
 
 static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
-enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, TAB_DISPLAY, N_TABS };
+enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, TAB_DISPLAY, TAB_MUSEUM, N_TABS };
 enum { SUB_GAME, SUB_ROMHACKS, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
 static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
 
 static int tab, sub[N_GAMES];
+static int museum_game = GAME_DRMARIO;
+static int museum_category = MUSEUM_CATEGORY_ALL;
+static int museum_filter_mode;
+static float museum_scroll;
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
 static char hack_msg[N_GAMES][256];
 static int hack_ok[N_GAMES];
@@ -4405,6 +4410,171 @@ static void tab_display(float x, float y)
 #endif
 }
 
+/* ------------------------------------------------------------------ collectible museum */
+static int museum_entry_matches(const MuseumEntry *entry)
+{
+    if (!entry) return 0;
+    if (museum_category != MUSEUM_CATEGORY_ALL && entry->category != museum_category)
+        return 0;
+    int found = museum_is_discovered(museum_game, entry->id);
+    if (museum_filter_mode == 1 && !found) return 0;
+    if (museum_filter_mode == 2 && found) return 0;
+    return 1;
+}
+
+static int museum_visible_count(void)
+{
+    int total = 0;
+    for (int i = 0; i < museum_catalog_count(museum_game); ++i)
+        if (museum_entry_matches(museum_catalog_entry(museum_game, i))) total++;
+    return total;
+}
+
+static void museum_draw_category_mark(MuseumCategory category, float x, float y)
+{
+    /* These are original generic UI glyphs, never extracted copyrighted art. */
+    if (category == MUSEUM_CATEGORY_ITEM) {
+        ui_rrect(x + 19, y + 14, 24, 32, 9, HEX(0xFFD34A));
+        ui_stroke(x + 19, y + 14, 24, 32, 9, 2, HEX(0xB77D27));
+        ui_line(x + 25, y + 20, x + 37, y + 20, 2, HEX(0xFFF1A6));
+    } else if (category == MUSEUM_CATEGORY_ENEMY) {
+        ui_rrect(x + 16, y + 16, 30, 29, 7, HEX(0xC15D67));
+        ui_rrect(x + 21, y + 21, 5, 6, 2, HEX(0xFFFFFF));
+        ui_rrect(x + 36, y + 21, 5, 6, 2, HEX(0xFFFFFF));
+        ui_line(x + 24, y + 37, x + 39, y + 37, 2, HEX(0x602B38));
+    } else if (category == MUSEUM_CATEGORY_TREASURE) {
+        ui_rect(x + 14, y + 25, 35, 22, HEX(0xC18A3B));
+        ui_rect(x + 14, y + 21, 35, 8, HEX(0xE6B85B));
+        ui_rect(x + 29, y + 28, 6, 10, HEX(0xFFF0A1));
+        ui_line(x + 18, y + 43, x + 45, y + 43, 2, HEX(0x77512C));
+    } else if (category == MUSEUM_CATEGORY_STAGE) {
+        ui_rect(x + 14, y + 17, 14, 14, HEX(0x5C9D74));
+        ui_rect(x + 31, y + 17, 14, 14, HEX(0x82C590));
+        ui_rect(x + 14, y + 34, 14, 14, HEX(0x82C590));
+        ui_rect(x + 31, y + 34, 14, 14, HEX(0x5C9D74));
+    } else if (category == MUSEUM_CATEGORY_CHARACTER) {
+        ui_rrect(x + 22, y + 13, 20, 20, 8, HEX(0x789EEA));
+        ui_rrect(x + 15, y + 33, 34, 18, 8, HEX(0x526CBD));
+    } else {
+        ui_tri(x + 31, y + 11, x + 36, y + 25, x + 50, y + 25, HEX(0xFFD34A));
+        ui_tri(x + 50, y + 25, x + 39, y + 34, x + 43, y + 48, HEX(0xFFD34A));
+        ui_tri(x + 43, y + 48, x + 31, y + 40, x + 19, y + 48, HEX(0xFFD34A));
+        ui_tri(x + 19, y + 48, x + 23, y + 34, x + 12, y + 25, HEX(0xFFD34A));
+        ui_tri(x + 12, y + 25, x + 26, y + 25, x + 31, y + 11, HEX(0xFFD34A));
+    }
+}
+
+static void tab_museum(float x, float y)
+{
+    static const char *category_labels[] = {
+        "All", "Enemies", "Items", "Treasures", "Stages", "Milestones", "Characters"
+    };
+    static const int category_values[] = {
+        MUSEUM_CATEGORY_ALL, MUSEUM_CATEGORY_ENEMY, MUSEUM_CATEGORY_ITEM,
+        MUSEUM_CATEGORY_TREASURE, MUSEUM_CATEGORY_STAGE,
+        MUSEUM_CATEGORY_MILESTONE, MUSEUM_CATEGORY_CHARACTER
+    };
+    static const char *filter_labels[] = {"All", "Found", "Missing"};
+    const float width = 808.0f;
+    ui_accent = games[museum_game].accent;
+
+    /* Every game receives the same selection strip and the same category filters. */
+    float game_gap = 4.0f;
+    float game_w = (width - game_gap * (N_GAMES - 1)) / (float)N_GAMES;
+    for (int g = 0; g < N_GAMES; ++g) {
+        float bx = x + g * (game_w + game_gap);
+        if (ui_button(bx, y, game_w, 31, games[g].name,
+                      g == museum_game ? B_PRIMARY : B_NORMAL, 1)) {
+            museum_game = g;
+            museum_scroll = 0.0f;
+        }
+    }
+
+    float cat_gap = 4.0f;
+    float cat_w = (width - cat_gap * 6.0f) / 7.0f;
+    for (int i = 0; i < 7; ++i) {
+        float bx = x + i * (cat_w + cat_gap);
+        int selected = museum_category == category_values[i];
+        if (ui_button(bx, y + 38, cat_w, 29, category_labels[i],
+                      selected ? B_PRIMARY : B_NORMAL, 1)) {
+            museum_category = category_values[i];
+            museum_scroll = 0.0f;
+        }
+    }
+
+    int all_count = museum_catalog_count(museum_game);
+    int found_count = museum_discovered_count(museum_game);
+    char progress[128];
+    snprintf(progress, sizeof progress, "%d of %d entries discovered", found_count, all_count);
+    ui_text(F_BOLD, 13, x + 2, y + 78, C_TEXT, progress);
+    ui_text(F_REG, 10, x + 2, y + 98, C_MUTED,
+            "Discoveries save immediately. Sprite artwork is local and gated by a verified game ROM.");
+    int old_filter = museum_filter_mode;
+    if (ui_seg(x + width - 242, y + 75, 242, 30, filter_labels, 3, &museum_filter_mode)) {
+        museum_scroll = 0.0f;
+    }
+    if (museum_filter_mode < 0 || museum_filter_mode > 2) museum_filter_mode = old_filter;
+
+    float body_y = y + 121.0f;
+    float body_h = 382.0f;
+    int visible = museum_visible_count();
+    int rows = (visible + 1) / 2;
+    float content_h = rows * 112.0f;
+    float max_scroll = content_h > body_h ? content_h - body_h : 0.0f;
+    if (ui_mouse.x >= x && ui_mouse.x <= x + width &&
+        ui_mouse.y >= body_y && ui_mouse.y <= body_y + body_h &&
+        ui_mouse.wheel != 0.0f) {
+        museum_scroll -= ui_mouse.wheel * 52.0f;
+    }
+    if (museum_scroll < 0.0f) museum_scroll = 0.0f;
+    if (museum_scroll > max_scroll) museum_scroll = max_scroll;
+
+    ui_clip(x, body_y, width, body_h);
+    int shown = 0;
+    for (int i = 0; i < all_count; ++i) {
+        const MuseumEntry *e = museum_catalog_entry(museum_game, i);
+        if (!museum_entry_matches(e)) continue;
+        int col = shown % 2, row = shown / 2;
+        shown++;
+        float card_x = x + col * 404.0f;
+        float card_y = body_y + row * 112.0f - museum_scroll;
+        if (card_y + 104 < body_y || card_y > body_y + body_h) continue;
+        int found = museum_is_discovered(museum_game, e->id);
+        ui_rrect(card_x, card_y, 398, 104, 11, found ? HEX(0x202D35) : C_PANEL);
+        ui_stroke(card_x, card_y, 398, 104, 11, 1,
+                  found ? HEXA(0x55CA91, 150) : C_LINE);
+        ui_rrect(card_x + 9, card_y + 11, 62, 62, 8, HEX(0x111722));
+        museum_draw_category_mark(e->category, card_x + 9, card_y + 11);
+        ui_text_fit(F_BOLD, 14, card_x + 82, card_y + 9, 205, C_TEXT, e->name);
+        ui_text(F_REG, 9, card_x + 82, card_y + 28, C_MUTED,
+                museum_category_name(e->category));
+        ui_text_wrap(F_REG, 10, card_x + 82, card_y + 42, 302, HEX(0xC2C8D8),
+                     e->description, 1.0f);
+        ui_text(F_BOLD, 9, card_x + 10, card_y + 79,
+                found ? C_OK : C_DIM, found ? "DISCOVERED" : "NOT DISCOVERED");
+        const char *asset_note = !rs[museum_game].ok ? "Sprite locked · ROM needed" :
+                                 "ROM linked · sprite mapping pending";
+        ui_text_fit(F_REG, 9, card_x + 10, card_y + 90, 260, C_DIM, asset_note);
+        if (ui_button(card_x + 274, card_y + 75, 114, 24, "Wiki reference",
+                      B_GHOST, 1)) {
+            if (e->source_url[0]) (void)SDL_OpenURL(e->source_url);
+        }
+    }
+    ui_unclip();
+
+    if (visible == 0) {
+        ui_rrect(x + 120, body_y + 86, width - 240, 120, 16, C_PANEL);
+        ui_text_c(F_BOLD, 17, x + width * 0.5f, body_y + 110, C_TEXT,
+                  museum_filter_mode == 1 ? "Nothing discovered here yet" :
+                  (museum_filter_mode == 2 ? "No missing entries in this filter" : "No entries in this category yet"));
+        ui_text_c(F_REG, 12, x + width * 0.5f, body_y + 143, C_MUTED,
+                  "Choose another category or play a supported game to record discoveries.");
+    }
+    if (museum_last_storage_error()[0])
+        ui_text_fit(F_REG, 10, x + 2, body_y + body_h + 2, width - 4, C_ERR,
+                    museum_last_storage_error());
+}
+
 /* ------------------------------------------------------------------ frame */
 
 /* ------------------------------------------------------------------ frame */
@@ -4414,7 +4584,8 @@ static const char *tab_labels[N_TABS] = {
     [TAB_FILTERS] = "Filters",
     [TAB_AUDIO] = "Audio & menu",
     [TAB_ONLINE] = "Online",
-    [TAB_DISPLAY] = "Display"
+    [TAB_DISPLAY] = "Display",
+    [TAB_MUSEUM] = "Museum"
 };
 
 static int tab_button(float x, float y, float w, float h, int selected, uint32_t accent)
@@ -4453,6 +4624,7 @@ LauncherResult launcher_frame(float dt)
     }
     launcher_controller_update(dt);
     anim_clock += dt;
+    museum_init();
     if (tab != TAB_AUDIO && music_notice_deferred && music_notice_age >= 0.0f) {
         /* Re-enter the animation at the start when leaving the management tab. */
         music_notice_age = 0.0f;
@@ -4638,10 +4810,14 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Online");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Session invites, player identity, and cross-platform play.");
         tab_online(cx, cy + 58);
-    } else {
+    } else if (tab == TAB_DISPLAY) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Display & layout");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Adjust the launcher's size on desktop and Android.");
         tab_display(cx, cy + 58);
+    } else {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Collectible Museum");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "A shared collection for every game: enemies, items, treasures, stages, and milestones.");
+        tab_museum(cx, cy + 58);
     }
 
     /* footer */
