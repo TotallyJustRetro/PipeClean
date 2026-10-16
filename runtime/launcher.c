@@ -4544,7 +4544,14 @@ static void tab_museum(float x, float y)
         ui_stroke(card_x, card_y, 398, 104, 11, 1,
                   found ? HEXA(0x55CA91, 150) : C_LINE);
         ui_rrect(card_x + 9, card_y + 11, 62, 62, 8, HEX(0x111722));
-        museum_draw_category_mark(e->category, card_x + 9, card_y + 11);
+        char sprite_path[1200];
+        /* Copyrighted game sprites remain local to a discovered entry and are
+           displayed only when this game's ROM has passed the ROM check. */
+        if (found && rs[museum_game].ok &&
+            museum_sprite_asset_path(museum_game, e->id, sprite_path, sizeof sprite_path))
+            ui_image_file_fit(sprite_path, card_x + 12, card_y + 14, 56, 56);
+        else
+            museum_draw_category_mark(e->category, card_x + 9, card_y + 11);
         ui_text_fit(F_BOLD, 14, card_x + 82, card_y + 9, 205, C_TEXT, e->name);
         ui_text(F_REG, 9, card_x + 82, card_y + 28, C_MUTED,
                 museum_category_name(e->category));
@@ -4552,8 +4559,11 @@ static void tab_museum(float x, float y)
                      e->description, 1.0f);
         ui_text(F_BOLD, 9, card_x + 10, card_y + 79,
                 found ? C_OK : C_DIM, found ? "DISCOVERED" : "NOT DISCOVERED");
+        char status_path[1200];
+        const int artwork_ready = found && rs[museum_game].ok &&
+            museum_sprite_asset_path(museum_game, e->id, status_path, sizeof status_path);
         const char *asset_note = !rs[museum_game].ok ? "Sprite locked · ROM needed" :
-                                 "ROM linked · sprite mapping pending";
+                                 (artwork_ready ? "Local sprite unlocked" : "No local sprite yet");
         ui_text_fit(F_REG, 9, card_x + 10, card_y + 90, 260, C_DIM, asset_note);
         if (ui_button(card_x + 274, card_y + 75, 114, 24, "Wiki reference",
                       B_GHOST, 1)) {
