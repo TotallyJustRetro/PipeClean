@@ -3236,10 +3236,14 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
                 uint32_t kc=key==0?RGBA(201,209,216,255):key==1?RGBA(255,98,103,255):key==2?RGBA(98,215,131,255):RGBA(93,159,255,255);
                 /* Show one collected example and keep the other three greyed out. */
                 if(key>0)kc=RGBA(87,83,77,255);
-                ui_rrect(cx-sz*.55f,cy-sz*.55f,sz*1.1f,sz*1.1f,sz*.55f,RGBA(36,27,21,255));
-                ui_rrect(cx-sz*.36f,cy-sz*.36f,sz*.72f,sz*.72f,sz*.36f,kc);
-                ui_rrect(cx+sz*.12f,cy-sz*.08f,step*.28f,sz*.16f,sz*.04f,kc);
-                ui_rrect(cx+sz*.28f,cy+sz*.02f,step*.045f,sz*.18f,sz*.03f,kc);
+                float ringY=cy-sz*.23f;
+                ui_rrect(cx-sz*.25f,ringY-sz*.25f,sz*.5f,sz*.5f,sz*.25f,RGBA(36,27,21,255));
+                ui_rrect(cx-sz*.19f,ringY-sz*.19f,sz*.38f,sz*.38f,sz*.19f,kc);
+                ui_rrect(cx-sz*.075f,ringY-sz*.075f,sz*.15f,sz*.15f,sz*.075f,RGBA(38,29,22,255));
+                ui_rrect(cx-sz*.07f,ringY+sz*.12f,sz*.14f,sz*.55f,sz*.035f,RGBA(36,27,21,255));
+                ui_rrect(cx-sz*.035f,ringY+sz*.13f,sz*.07f,sz*.51f,sz*.025f,kc);
+                ui_rrect(cx-sz*.02f,cy+sz*.12f,sz*.23f,sz*.09f,sz*.025f,kc);
+                ui_rrect(cx-sz*.02f,cy+sz*.28f,sz*.17f,sz*.09f,sz*.025f,kc);
                 ui_text_fit(F_BOLD,4.2f,cx-step*.46f,ay+ah*.82f,step*.92f,
                             key==0?RGBA(201,209,216,255):RGBA(160,151,139,255),
                             key==0?"GRAY":key==1?"RED":key==2?"GREEN":"BLUE");
