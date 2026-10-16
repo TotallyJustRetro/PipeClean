@@ -352,6 +352,36 @@ int museum_is_discovered(int game, const char *id)
     return idx >= 0 ? discovered[game][idx] != 0 : 0;
 }
 
+int museum_sprite_asset_path(int game, const char *id, char *out, size_t out_size)
+{
+    museum_init();
+    if (!out || out_size == 0) return 0;
+    out[0] = 0;
+    if (entry_index(game, id) < 0 || game < 0 || game >= N_GAMES) return 0;
+
+    const char *base = settings_dir();
+    if (!base || !base[0]) return 0;
+    size_t len = strlen(base);
+    const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
+    int n = snprintf(out, out_size, "%s%s%s%s%s.png", base, sep,
+                     "pipeclean-museum-assets/", games[game].id, "/");
+    if (n < 0 || (size_t)n >= out_size) { out[0] = 0; return 0; }
+    size_t have = strlen(out);
+    if (have + strlen(id) + 1 >= out_size) { out[0] = 0; return 0; }
+    /* Replace the placeholder suffix with the entry ID while preserving
+       the per-game local asset convention. */
+    char *filename = strrchr(out, '/');
+    if (!filename) { out[0] = 0; return 0; }
+    n = snprintf(filename + 1, out_size - (size_t)(filename + 1 - out), "%s.png", id);
+    if (n < 0 || (size_t)n >= out_size - (size_t)(filename + 1 - out)) {
+        out[0] = 0; return 0;
+    }
+    FILE *f = fopen(out, "rb");
+    if (!f) { out[0] = 0; return 0; }
+    fclose(f);
+    return 1;
+}
+
 int museum_discover_entry(int game, const char *id)
 {
     museum_init();
