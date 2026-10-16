@@ -128,40 +128,117 @@ int main(void)
     assert(museum_is_discovered(GAME_SML, "power_up"));
     assert(!museum_is_discovered(GAME_SML2, "coin"));
 
-    /* Every current SML2 Museum row has a live observation path in the
-       SML2 tracker or a generic event trigger; don't leave any catalogue row
-       as a permanent placeholder. */
+    /* SML2 now has a named row for all 63 regular enemy pages and seven bosses,
+       including Wario. Species rows must remain distinct from the generic counter. */
     {
-        static const struct { const char *id; const char *trigger; } expected[] = {
-            {"coin", "coin"},
-            {"enemy_defeated", "enemy"},
-            {"extra_life", "oneup"},
-            {"life_lost", "life"},
-            {"mushroom", ""},
-            {"fire_flower", ""},
-            {"magic_carrot", ""},
-            {"starman", ""},
-            {"golden_coins", ""},
-            {"wario", ""},
-            {"zone_bosses", ""},
-            {"secret_exit", ""},
-            {"castle_cleared", ""}
+        static const char *const expected_enemy_ids[] = {
+            "sml2_ant",
+            "sml2_aqua_goomba",
+            "sml2_battle_beetle",
+            "sml2_bear",
+            "sml2_bee_fly",
+            "sml2_beebee",
+            "sml2_bero",
+            "sml2_bigbee",
+            "sml2_birdfish",
+            "sml2_blurp",
+            "sml2_bomubomu",
+            "sml2_boo",
+            "sml2_bopping_toady",
+            "sml2_bullet_bill",
+            "sml2_cheep_cheep",
+            "sml2_chikunto",
+            "sml2_collector",
+            "sml2_dokanto",
+            "sml2_dondon",
+            "sml2_falling_spike",
+            "sml2_fire_piranha_plant",
+            "sml2_fireball_boy",
+            "sml2_floating_face",
+            "sml2_ghost_goomba",
+            "sml2_goomba",
+            "sml2_goronto",
+            "sml2_grubby",
+            "sml2_honebon",
+            "sml2_jack_in_the_box",
+            "sml2_karakara",
+            "sml2_karamenbo",
+            "sml2_kiddokatto",
+            "sml2_koopa_troopa",
+            "sml2_kurokyura",
+            "sml2_kyororo",
+            "sml2_kyotonbo",
+            "sml2_masked_ghoul",
+            "sml2_mechanical_fist",
+            "sml2_minikyura",
+            "sml2_moofish",
+            "sml2_no_48",
+            "sml2_noko_bombette",
+            "sml2_paragoomba",
+            "sml2_pikku",
+            "sml2_piranha_plant",
+            "sml2_poro",
+            "sml2_ragumo",
+            "sml2_rerere",
+            "sml2_satellite",
+            "sml2_screw",
+            "sml2_shark",
+            "sml2_skeleton_bee",
+            "sml2_spiked_ball_pumpkin",
+            "sml2_spikey",
+            "sml2_spiny_cheep_cheep",
+            "sml2_star_enemy",
+            "sml2_tamara",
+            "sml2_tatenoko",
+            "sml2_tosenbo",
+            "sml2_unera",
+            "sml2_unibo",
+            "sml2_wakiri",
+            "sml2_yashichi",
+            "sml2_big_bird",
+            "sml2_octopus_boss",
+            "sml2_sewer_rat",
+            "sml2_tatanga",
+            "sml2_three_little_pigs",
+            "sml2_witch",
+            "wario",
         };
-        assert(museum_catalog_count(GAME_SML2) == (int)(sizeof expected / sizeof expected[0]));
-        for (int e = 0; e < (int)(sizeof expected / sizeof expected[0]); ++e) {
+        int enemy_count = 0;
+        assert(museum_catalog_count(GAME_SML2) == 81);
+        for (int e = 0; e < (int)(sizeof expected_enemy_ids / sizeof expected_enemy_ids[0]); ++e) {
             const MuseumEntry *entry = NULL;
             for (int i = 0; i < museum_catalog_count(GAME_SML2); ++i) {
                 const MuseumEntry *candidate = museum_catalog_entry(GAME_SML2, i);
-                if (!strcmp(candidate->id, expected[e].id)) {
+                if (!strcmp(candidate->id, expected_enemy_ids[e])) {
                     entry = candidate;
                     break;
                 }
             }
             assert(entry);
-            assert(!strcmp(entry->trigger_event, expected[e].trigger));
+            assert(entry->category == MUSEUM_CATEGORY_ENEMY);
             assert(entry->description[0]);
-            assert(!museum_is_discovered(GAME_SML2, expected[e].id));
+            assert(!museum_is_discovered(GAME_SML2, entry->id));
+            for (int previous = 0; previous < e; ++previous)
+                assert(strcmp(expected_enemy_ids[previous], entry->id) != 0);
         }
+        for (int i = 0; i < museum_catalog_count(GAME_SML2); ++i) {
+            const MuseumEntry *entry = museum_catalog_entry(GAME_SML2, i);
+            if (entry->category == MUSEUM_CATEGORY_ENEMY) enemy_count++;
+        }
+        assert(enemy_count == 70);
+
+        const MuseumEntry *tally = NULL;
+        for (int i = 0; i < museum_catalog_count(GAME_SML2); ++i) {
+            const MuseumEntry *entry = museum_catalog_entry(GAME_SML2, i);
+            if (!strcmp(entry->id, "enemy_tally")) tally = entry;
+            assert(strcmp(entry->id, "zone_bosses") != 0);
+            assert(strcmp(entry->id, "enemy_defeated") != 0);
+        }
+        assert(tally && tally->category == MUSEUM_CATEGORY_MILESTONE);
+        assert(!strcmp(tally->trigger_event, "enemy"));
+        assert(strstr(tally->description, "100 enemies"));
+        const MuseumEntry *coin = museum_catalog_entry(GAME_SML2, 0);
+        assert(coin && !strcmp(coin->id, "coin"));
     }
 
     /* Wario Land II's actual collection flags unlock individual museum rows. */
