@@ -1,4 +1,19 @@
 #include "museum.h"
+#include "games.h"
+#include "settings.h"
+
+const GameDef games[N_GAMES] = {
+    [GAME_DRMARIO] = {.id = "drmario", .name = "Dr. Mario"},
+    [GAME_SML] = {.id = "sml", .name = "Super Mario Land"},
+    [GAME_SML2] = {.id = "sml2", .name = "Super Mario Land 2"},
+    [GAME_WARIO_SML3] = {.id = "wario-sml3", .name = "Wario Land: SML3"},
+    [GAME_WARIO_LAND2_GB] = {.id = "wario2-gb", .name = "Wario Land II (GB)"},
+    [GAME_WARIO_LAND3_GBC] = {.id = "wario3-gbc", .name = "Wario Land 3 (GBC)"},
+    [GAME_WARIO_LAND2_GBC] = {.id = "wario2-gbc", .name = "Wario Land II (GBC)"}
+};
+
+const char *settings_dir(void) { return "./"; }
+
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
