@@ -75,6 +75,14 @@ int main(void)
         assert(!strstr(tamao->description, "object ID"));
         assert(kumo && strstr(kumo->description, "spider"));
         assert(!strstr(kumo->description, "object ID"));
+        for (int i = 0; i < museum_catalog_count(GAME_SML); ++i) {
+            const MuseumEntry *entry = museum_catalog_entry(GAME_SML, i);
+            assert(!strstr(entry->description, "object ID"));
+            assert(!strstr(entry->description, "object id"));
+            assert(!strstr(entry->description, "sprite"));
+            assert(!strstr(entry->description, "capture"));
+        }
+        assert(strstr(museum_catalog_entry(GAME_SML, 0)->description, "ledges"));
     }
     {
         MuseumCategory category = MUSEUM_CATEGORY_ALL;
