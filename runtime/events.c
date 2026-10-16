@@ -392,11 +392,12 @@ typedef struct {
 } SmlMuseumObject;
 static SmlMuseumObject sml_museum_previous[10];
 
-/* SML2 developer trace: the game's live sprite scheduler walks 16 records
- * beginning at AD08, one 0x20-byte record apart. The scheduler skips records
- * whose first byte is zero; offsets +5 and +11 are also copied to FF D5/FF DB
- * by the game and are logged as candidate sprite-type/mapping keys. Full records
- * are included so we can verify the field meanings before mapping species IDs. */
+/* SML2 developer trace: the game allocates records at AD00, AE? no:
+ * each record is 0x20 bytes; its active marker is at record +8, so the active
+ * markers the game scans begin at AD08. Source descriptor pointers are stored
+ * at record +6/+7 in high-byte-first order and point to descriptor byte +2.
+ * Keep the raw descriptor and full actor record as diagnostic evidence; neither
+ * a descriptor byte nor an animation/mapping field is assumed to be a species ID. */
 #if defined(PIPECLEAN_DEV_BUILD)
 static FILE *sml2_actor_trace_file;
 /* Track unique animation-key combinations independently per actor slot.
@@ -438,12 +439,14 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_file = fopen(path, "w");
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
-            "PipeClean SML2 live sprite actor trace v2\n"
-            "Spawn rows record the source descriptor pointer stored at actor offsets +6/+7.\n"
-            "That pointer addresses descriptor byte +2; descriptor bytes are read from pointer - 2.\n"
-            "Descriptor bytes are diagnostic evidence only; they are not assumed to be species IDs.\n"
-            "spawn frame level slot source_ref source_addr descriptor[00..05]\n"
-            "actor frame level slot source_ref byte0 sprite_table_key map_key x y record[00..1F]\n");
+            "PipeClean SML2 live sprite actor trace v3\n"
+            "Each actor record is 0x20 bytes; the active marker is at record offset +8.\n"
+            "Record bases begin at AD00; active markers begin at AD08.\n"
+            "The source descriptor pointer is stored high-byte first at record offsets +6/+7.\n"
+            "It points at descriptor byte +2; descriptor bytes are read from pointer - 2.\n"
+            "Descriptor bytes and actor fields are diagnostic evidence, not assumed species IDs.\n"
+            "spawn frame level slot record_addr source_ref source_addr descriptor[00..05]\n"
+            "actor frame level slot record_addr active source_ref field05 field0B record[00..1F]\n");
     fflush(sml2_actor_trace_file);
 }
 
@@ -496,10 +499,12 @@ static void sml2_actor_trace_frame(void)
     }
 
     for (int slot = 0; slot < 16; ++slot) {
-        const uint16_t base = (uint16_t)(0xAD08u + (unsigned)slot * 0x20u);
-        /* The game's scheduler starts at AD08 and advances by 0x20 bytes. */
-        const uint8_t active = rd8(base);
-        /* The game treats a zero first byte as an empty actor record. */
+        /* The allocator rounds the selected active-marker address down to the
+         * 16-byte boundary before copying the descriptor. The actor starts at
+         * AD00 + slot*0x20; its active marker is record +8 (AD08, AD28, ...). */
+        const uint16_t base = (uint16_t)(0xAD00u + (unsigned)slot * 0x20u);
+        const uint16_t active_addr = (uint16_t)(base + 8u);
+        const uint8_t active = rd8(active_addr);
         if (!active) {
             if (sml2_actor_trace_slot_active[slot]) {
                 memset(sml2_actor_trace_seen[level][slot], 0,
@@ -511,51 +516,52 @@ static void sml2_actor_trace_frame(void)
             continue;
         }
 
+        /* Spawn routine copies the six-byte descriptor to record[0..5], then
+         * stores source high byte at +6 and source low byte +2 at +7. */
         const uint16_t source_ref = (uint16_t)(
             ((uint16_t)rd8((uint16_t)(base + 6u)) << 8) |
             rd8((uint16_t)(base + 7u)));
-        if (!sml2_actor_trace_source_logged[level][slot] ||
-            sml2_actor_trace_source_ref[level][slot] != source_ref) {
-            /* The game's spawn routine stores the address of source + 2 in
-             * actor bytes +6/+7, after copying the descriptor's six bytes.
-             * It then changes source[2] to 2 to prevent duplicate spawning. */
+        const int source_changed = !sml2_actor_trace_source_logged[level][slot] ||
+            sml2_actor_trace_source_ref[level][slot] != source_ref;
+        if (source_changed) {
+            /* A reused slot can have the same animation fields as its previous
+             * actor, so reset the seen-field combinations when its source changes. */
+            memset(sml2_actor_trace_seen[level][slot], 0,
+                   sizeof sml2_actor_trace_seen[level][slot]);
             if (source_ref >= 0xA002u && source_ref <= 0xBFFCu) {
                 const uint16_t source_addr = (uint16_t)(source_ref - 2u);
                 uint8_t descriptor[6];
                 for (unsigned i = 0; i < sizeof descriptor; ++i)
                     descriptor[i] = rd8((uint16_t)(source_addr + i));
                 fprintf(sml2_actor_trace_file,
-                        "spawn frame=%d level=%02X slot=%02d source_ref=%04X source_addr=%04X descriptor=",
-                        frame_count, level, slot, source_ref, source_addr);
+                        "spawn frame=%d level=%02X slot=%02d record_addr=%04X source_ref=%04X source_addr=%04X descriptor=",
+                        frame_count, level, slot, base, source_ref, source_addr);
                 for (unsigned i = 0; i < sizeof descriptor; ++i)
                     fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", descriptor[i]);
                 fputc('\n', sml2_actor_trace_file);
             } else {
                 fprintf(sml2_actor_trace_file,
-                        "spawn frame=%d level=%02X slot=%02d source_ref=%04X descriptor=unavailable\n",
-                        frame_count, level, slot, source_ref);
+                        "spawn frame=%d level=%02X slot=%02d record_addr=%04X source_ref=%04X descriptor=unavailable\n",
+                        frame_count, level, slot, base, source_ref);
             }
             sml2_actor_trace_source_ref[level][slot] = source_ref;
             sml2_actor_trace_source_logged[level][slot] = 1;
             fflush(sml2_actor_trace_file);
         }
 
-        const uint8_t sprite_type = rd8((uint16_t)(base + 5u));
-        const uint8_t mapping = rd8((uint16_t)(base + 11u));
+        const uint8_t field05 = rd8((uint16_t)(base + 5u));
+        const uint8_t field0B = rd8((uint16_t)(base + 11u));
         /* Disabled external RAM reads as FF; do not treat that bus value as an actor. */
-        if (active == 0xFFu && sprite_type == 0xFFu && mapping == 0xFFu) continue;
+        if (active == 0xFFu && field05 == 0xFFu && field0B == 0xFFu) continue;
         sml2_actor_trace_slot_active[slot] = 1;
-        uint8_t *seen = &sml2_actor_trace_seen[level][slot][sprite_type][mapping >> 3];
-        const uint8_t mapping_bit = (uint8_t)(1u << (mapping & 7u));
-        if (*seen & mapping_bit) continue;
-        *seen |= mapping_bit;
+        uint8_t *seen = &sml2_actor_trace_seen[level][slot][field05][field0B >> 3];
+        const uint8_t field_bit = (uint8_t)(1u << (field0B & 7u));
+        if (*seen & field_bit) continue;
+        *seen |= field_bit;
 
-        const unsigned x = ((unsigned)rd8(base) << 8) | rd8((uint16_t)(base + 1u));
-        const unsigned y = ((unsigned)rd8((uint16_t)(base + 3u)) << 8) |
-                           rd8((uint16_t)(base + 4u));
         fprintf(sml2_actor_trace_file,
-                "actor frame=%d level=%02X slot=%02d source_ref=%04X byte0=%02X sprite_table_key=%02X map_key=%02X x=%04X y=%04X record=",
-                frame_count, level, slot, source_ref, active, sprite_type, mapping, x, y);
+                "actor frame=%d level=%02X slot=%02d record_addr=%04X active=%02X source_ref=%04X field05=%02X field0B=%02X record=",
+                frame_count, level, slot, base, active, source_ref, field05, field0B);
         for (unsigned i = 0; i < 32; ++i)
             fprintf(sml2_actor_trace_file, "%s%02X", i ? " " : "", rd8((uint16_t)(base + i)));
         fputc('\n', sml2_actor_trace_file);
