@@ -3,6 +3,7 @@
 #include "events.h"
 #include "wario_event_state.h"
 #include "wario_land2_state.h"
+#include "wario_land3_state.h"
 #include "gb.h"
 #include "rom.h"
 #include "audio.h"
@@ -50,12 +51,20 @@ static const EventDef wario2_defs[] = {
     {"coin",     "Coins collected", "Increase the coin bank", 0, 0, 0, 0xFFD23C, 90, 40},
     {"stage",    "Stage changed", "Enter another stage", 0, 0, 0, 0x6CFF8C, 180, 55},
 };
+/* Wario Land 3 scene transitions are stored in fixed WRAM at C09B/C09C.
+ * We use the key-acquisition scene and end-of-course results screen instead
+ * of guessing at undocumented item counters. */
+static const EventDef wario3_defs[] = {
+    {"level",   "Level entered",  "Enter a course from the overworld",       0, 0, 0, 0x4C8DFF, 150, 40},
+    {"key",     "Key obtained",   "Collect a course key",                    0, 0, 0, 0xB58AFF, 320, 70},
+    {"results", "Course results", "Reach the treasure and music-coin screen", 0, 0, 0, 0xFFD34A, 500, 95},
+};
 typedef struct { const EventDef *defs; int n; } GameEvents;
 #define N(a) ((int)(sizeof(a) / sizeof((a)[0])))
 static const GameEvents ge[N_GAMES] = {
     {dr_defs, N(dr_defs)}, {sml_defs, N(sml_defs)}, {sml2_defs, N(sml2_defs)},
     {wario_sml3_defs, N(wario_sml3_defs)}, {wario2_defs, N(wario2_defs)},
-    {NULL, 0}, {wario2_defs, N(wario2_defs)}
+    {wario3_defs, N(wario3_defs)}, {wario2_defs, N(wario2_defs)}
 };
 
 int events_count(int g) { return g >= 0 && g < N_GAMES ? ge[g].n : 0; }
@@ -159,6 +168,7 @@ static void hud_frame(void)
 static WarioEventTracker wario_event_tracker;
 static WarioLand2Snapshot wario2_event_previous;
 static int wario2_event_have_previous;
+static WarioLand3Tracker wario3_event_tracker;
 
 static void wario2_event_frame(void)
 {
@@ -184,6 +194,17 @@ static void wario2_event_frame(void)
         else if (snapshot.stage != old.stage) fire(3);
     }
     wario2_event_previous = snapshot;
+}
+
+static void wario3_event_frame(void)
+{
+    /* C000-based fixed WRAM is exposed as offset 0; C09B/C09C are 0x09B/0x09C. */
+    WarioLand3Snapshot snapshot = {
+        (int)gb_wram_peek(0x009B),
+        (int)gb_wram_peek(0x009C)
+    };
+    int event = wario_land3_tracker_update(&wario3_event_tracker, &snapshot);
+    if (event >= 0) fire(event);
 }
 
 static uint8_t wario_ram_read(uint16_t address)
@@ -245,6 +266,7 @@ void events_begin(void)
     qr = qw = 0; tap_frames = 0; hud_have = 0; hud_cnt = 0;
     wario_event_tracker.have_previous = 0;
     wario2_event_have_previous = 0;
+    wario3_event_tracker.have_previous = 0;
     apu_set_tap_mask(0);
     apu_set_trigger_hook(on_trigger);
     rules = NULL; n_rules = 0;
@@ -261,6 +283,7 @@ void events_end(void)
     gb_watch_set(NULL, 0, NULL);
     wario_event_tracker.have_previous = 0;
     wario2_event_have_previous = 0;
+    wario3_event_tracker.have_previous = 0;
 }
 
 void events_state_reset(void)
@@ -272,6 +295,7 @@ void events_state_reset(void)
     tap_frames = 0;
     wario_event_tracker.have_previous = 0;
     wario2_event_have_previous = 0;
+    wario3_event_tracker.have_previous = 0;
     apu_set_tap_mask(0);
 }
 
@@ -280,6 +304,7 @@ void events_frame(void)
     static int16_t tb[2048 * 2];
     if (cur_game == GAME_SML2) hud_frame();
     else if (cur_game == GAME_WARIO_SML3) wario_event_frame();
+    else if (cur_game == GAME_WARIO_LAND3_GBC) wario3_event_frame();
     else if (wario_land2_supported_game(cur_game)) wario2_event_frame();
     if (tap_frames > 0) {
         int n = apu_drain_tap(tb, 2048);
