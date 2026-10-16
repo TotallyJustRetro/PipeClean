@@ -2891,8 +2891,8 @@ static int deck_game_ready(int game)
 #define DECK_WARIO_BUILTIN_SLOTS 4
 static int deck_editor_is_wario_game(int game)
 {
-    return game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
-           game == GAME_WARIO_LAND2_GBC;
+    return game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND3_GBC ||
+           game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC;
 }
 static int deck_editor_first_decoration_slot(int game)
 {
@@ -2903,7 +2903,8 @@ static const char *deck_editor_element_label(int element)
     if (deck_editor_is_wario_game(companion_editor_game)) {
         if (element == DECK_ELEM_DECORATION) return "Treasure Vault";
         if (element == DECK_ELEM_DECORATION_2)
-            return companion_editor_game == GAME_WARIO_SML3 ? "Current Course" : "Picture Panel";
+            return companion_editor_game == GAME_WARIO_SML3 ? "Current Course" :
+                   companion_editor_game == GAME_WARIO_LAND3_GBC ? "Four Keys" : "Picture Panel";
         if (element == DECK_ELEM_DECORATION_3) return "Expedition Log";
         if (element == DECK_ELEM_DECORATION_4) return "Gold Pile";
     }
@@ -3008,6 +3009,7 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
     case DECK_ELEM_ITEM:
         if (companion_editor_game == GAME_DRMARIO) { *x=20; *y=78; *w=358; *h=304; }
         else if (companion_editor_game == GAME_WARIO_SML3 ||
+                 companion_editor_game == GAME_WARIO_LAND3_GBC ||
                  companion_editor_game == GAME_WARIO_LAND2_GB ||
                  companion_editor_game == GAME_WARIO_LAND2_GBC) {
             *x=350; *y=208; *w=100; *h=100;
@@ -3018,7 +3020,8 @@ static void deck_editor_element_base(int element, float *x, float *y, float *w, 
     case DECK_ELEM_STATUS:
         if (companion_editor_game == GAME_DRMARIO) { *x=397; *y=78; *w=383; *h=304; }
         else if (companion_editor_game == GAME_WARIO_SML3) { *x=485; *y=78; *w=295; *h=138; }
-        else if (companion_editor_game == GAME_WARIO_LAND2_GB ||
+        else if (companion_editor_game == GAME_WARIO_LAND3_GBC ||
+                 companion_editor_game == GAME_WARIO_LAND2_GB ||
                  companion_editor_game == GAME_WARIO_LAND2_GBC) { *x=485; *y=300; *w=295; *h=110; }
         else { *x=606; *y=136; *w=174; *h=242; }
         break;
@@ -3194,14 +3197,15 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
 {
     int game=companion_editor_game;
     int wario=game==GAME_WARIO_SML3;
+    int wario3=game==GAME_WARIO_LAND3_GBC;
     int wario2=game==GAME_WARIO_LAND2_GB||game==GAME_WARIO_LAND2_GBC;
     int dr_mario=game==GAME_DRMARIO;
     ui_shadow(x,y,w,h,11,5,RGBA(0,0,0,110)); ui_rrect(x,y,w,h,10,RGBA(12,20,34,255));
     ui_vgrad(x+2,y+2,w-4,h-4,dr_mario?RGBA(218,239,237,255):game==GAME_SML?RGBA(52,87,62,255):game==GAME_SML2?RGBA(67,49,88,255):RGBA(72,52,30,255),RGBA(16,22,38,255));
     ui_clip(x+2,y+2,w-4,h-4); deck_editor_preview_asset(d,0,d->background_path,x+2,y+2,w-4,h-4);
-    if(wario || wario2) deck_editor_preview_gold_pile(d,x,y,w,h);
+    if(wario || wario2 || wario3) deck_editor_preview_gold_pile(d,x,y,w,h);
 
-    if(wario || wario2){
+    if(wario || wario2 || wario3){
         float vx,vy,vw,vh,ax,ay,aw,ah,lx,ly,lw,lh;
         deck_editor_element_rect(d,DECK_ELEM_DECORATION,x,y,w,h,&vx,&vy,&vw,&vh);
         if(wario){
@@ -3214,6 +3218,32 @@ static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w
             ui_text_fit(F_BOLD,7.0f,ax+aw*.05f,ay+ah*.39f,aw*.9f,RGBA(255,200,87,255),"COURSE --");
             ui_text_fit(F_REG,5.0f,ax+aw*.05f,ay+ah*.60f,aw*.9f,RGBA(255,241,212,255),"COIN BANK -----");
             ui_text_fit(F_REG,4.5f,ax+aw*.05f,ay+ah*.81f,aw*.9f,RGBA(184,170,149,255),"COURSE IN PROGRESS");
+        } else if (wario3) {
+            deck_editor_preview_card(vx,vy,vw,vh,game,"TREASURE VAULT");
+            ui_text_fit(F_BOLD,5.0f,vx+vw*.045f,vy+vh*.34f,vw*.91f,RGBA(255,224,164,255),"00 / 100 TREASURES");
+            ui_rrect(vx+vw*.045f,vy+vh*.42f,vw*.91f,fmaxf(2.f,vh*.035f),2,RGBA(70,53,34,255));
+            for(int i=0;i<100;i++) {
+                int row=i/20,col=i%20;
+                float dotw=vw*.91f/20.f;
+                ui_rrect(vx+vw*.045f+col*dotw+1.f,vy+vh*.57f+row*vh*.058f,
+                         fmaxf(1.0f,dotw-2.f),fmaxf(1.2f,vh*.032f),1.2f,
+                         i<22?RGBA(255,214,107,230):RGBA(73,58,42,255));
+            }
+            deck_editor_element_rect(d,DECK_ELEM_DECORATION_2,x,y,w,h,&ax,&ay,&aw,&ah);
+            deck_editor_preview_card(ax,ay,aw,ah,game,"THE FOUR KEYS");
+            for(int key=0;key<4;key++) {
+                float step=aw*.205f,cx=ax+aw*(.145f+key*.235f),cy=ay+ah*.48f,sz=fminf(aw*.09f,ah*.23f);
+                uint32_t kc=key==0?RGBA(201,209,216,255):key==1?RGBA(255,98,103,255):key==2?RGBA(98,215,131,255):RGBA(93,159,255,255);
+                /* Show one collected example and keep the other three greyed out. */
+                if(key>0)kc=RGBA(87,83,77,255);
+                ui_rrect(cx-sz*.55f,cy-sz*.55f,sz*1.1f,sz*1.1f,sz*.55f,RGBA(36,27,21,255));
+                ui_rrect(cx-sz*.36f,cy-sz*.36f,sz*.72f,sz*.72f,sz*.36f,kc);
+                ui_rrect(cx+sz*.12f,cy-sz*.08f,step*.28f,sz*.16f,sz*.04f,kc);
+                ui_rrect(cx+sz*.28f,cy+sz*.02f,step*.045f,sz*.18f,sz*.03f,kc);
+                ui_text_fit(F_BOLD,4.2f,cx-step*.46f,ay+ah*.82f,step*.92f,
+                            key==0?RGBA(201,209,216,255):RGBA(160,151,139,255),
+                            key==0?"GRAY":key==1?"RED":key==2?"GREEN":"BLUE");
+            }
         } else {
             deck_editor_preview_collection(vx,vy,vw,vh,game,"TREASURE VAULT",0);
             deck_editor_element_rect(d,DECK_ELEM_DECORATION_2,x,y,w,h,&ax,&ay,&aw,&ah);
@@ -3644,6 +3674,7 @@ static void deck_editor_layout(float x, float y)
                 companion_editor_game == GAME_DRMARIO ? "DR. MARIO  /  CLINIC CANVAS" :
                 companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" :
                 companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2  /  LIVE CANVAS" :
+                companion_editor_game == GAME_WARIO_LAND3_GBC ? "WARIO LAND 3  /  FOUR KEYS" :
                 "WARIO LAND  /  TREASURE EXPEDITION");
 
     if (ui_button(x + 36, y + 105, 58, 34, "Back", B_GHOST, 1)) {
