@@ -187,8 +187,12 @@ static WarioLand3Tracker wario3_event_tracker;
 static void wario2_event_frame(void)
 {
     WarioLand2Snapshot snapshot = wario_land2_read_snapshot(cur_game, gb_wram_peek);
-    museum_sync_flags(cur_game, "wl2_treasure", snapshot.treasures, 50);
-    museum_sync_flags(cur_game, "wl2_picture", snapshot.picture_panels, 50);
+    if (snapshot.stage >= 0 && snapshot.bank_coins >= 0 &&
+        snapshot.overworld_coins >= 0 && snapshot.render_mode >= 0 &&
+        snapshot.render_mode <= 0x13) {
+        museum_sync_flags(cur_game, "wl2_treasure", snapshot.treasures, 50);
+        museum_sync_flags(cur_game, "wl2_picture", snapshot.picture_panels, 50);
+    }
     uint32_t events = wario_land2_tracker_update(&wario2_event_tracker, &snapshot);
     for (int ev = 0; ev < WARIO_LAND2_EVENT_COUNT; ++ev)
         if (events & WARIO_LAND2_EVENT_MASK(ev)) fire(ev);
@@ -209,7 +213,8 @@ static void wario3_event_frame(void)
     /* CA5B is the current course's Gray/Red/Green/Blue key bitmask. Keep
        museum progress monotonic so rewind/load never removes a discovery. */
     const uint8_t key_mask_raw = gb_wram_peek(0x005B);
-    if ((snapshot.scene == 2 || snapshot.scene == 8) && key_mask_raw <= 0x0F) {
+    if (wario_land3_snapshot_valid(&snapshot) &&
+        (snapshot.scene == 2 || snapshot.scene == 8) && key_mask_raw <= 0x0F) {
         static const char *key_ids[WARIO_LAND3_KEY_COUNT] = {
             "key_gray", "key_red", "key_green", "key_blue"
         };
