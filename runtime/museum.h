@@ -34,6 +34,8 @@ const char *museum_sml_object_entry_id(uint8_t raw_type, MuseumCategory *categor
 const MuseumEntry *museum_catalog_entry(int game, int index);
 int museum_is_discovered(int game, const char *entry_id);
 int museum_discover_entry(int game, const char *entry_id);
+/* Clear every game's discovery progress but preserve local sprite caches and ROMs. */
+int museum_clear_discoveries(void);
 /* Resolves a local per-game sprite PNG only when the file exists. Assets are
  * never bundled; callers must also require a valid matching ROM before draw. */
 int museum_sprite_asset_path(int game, const char *entry_id, char *out, size_t out_size);
