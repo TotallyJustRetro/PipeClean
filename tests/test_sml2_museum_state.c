@@ -26,10 +26,10 @@ int main(void)
     Sml2MuseumTracker tracker;
     memset(&tracker, 0, sizeof tracker);
 
-    Sml2MuseumSnapshot s = snapshot(12, 4, 3, 0, 0, 2, 0, 0);
+    Sml2MuseumSnapshot s = snapshot(0, 0, 3, 0, 0, 2, 0, 0);
     assert(sml2_museum_tracker_update(&tracker, &s) == 0);
 
-    s = snapshot(13, 5, 2, 1, 1, 2, 0, 1);
+    s = snapshot(1, 1, 2, 1, 1, 2, 0, 1);
     uint32_t found = sml2_museum_tracker_update(&tracker, &s);
     assert(found & SML2_MUSEUM_COIN);
     assert(found & SML2_MUSEUM_ENEMY);
@@ -41,22 +41,22 @@ int main(void)
     /* Stable gameplay frames do not repeatedly emit collection events. */
     assert(sml2_museum_tracker_update(&tracker, &s) == 0);
 
-    s = snapshot(13, 5, 4, 2, 0, 2, 0, 0);
+    s = snapshot(1, 1, 4, 2, 0, 2, 0, 0);
     found = sml2_museum_tracker_update(&tracker, &s);
     assert(found & SML2_MUSEUM_EXTRA_LIFE);
     assert(found & SML2_MUSEUM_MAGIC_CARROT);
 
-    s = snapshot(13, 5, 4, 3, 0, 2, 0, 0);
+    s = snapshot(1, 1, 4, 3, 0, 2, 0, 0);
     found = sml2_museum_tracker_update(&tracker, &s);
     assert(found & SML2_MUSEUM_FIRE_FLOWER);
 
-    s = snapshot(13, 5, 4, 0, 0, 0x1F, 0, 0);
+    s = snapshot(1, 1, 4, 0, 0, 0x1F, 0, 0);
     found = sml2_museum_tracker_update(&tracker, &s);
     assert(found & SML2_MUSEUM_GOLDEN_COINS);
     assert(found & SML2_MUSEUM_ZONE_GUARDIANS);
     assert(found & SML2_MUSEUM_WARIO);
 
-    s = snapshot(13, 5, 4, 0, 0, 0x1F, 1, 0);
+    s = snapshot(1, 1, 4, 0, 0, 0x1F, 1, 0);
     found = sml2_museum_tracker_update(&tracker, &s);
     assert(found & SML2_MUSEUM_CASTLE_CLEARED);
     assert(sml2_museum_tracker_update(&tracker, &s) == 0);
@@ -66,15 +66,23 @@ int main(void)
     invalid.valid = 0;
     invalid.coins = 99;
     assert(sml2_museum_tracker_update(&tracker, &invalid) == 0);
-    s = snapshot(13, 5, 4, 0, 0, 0x1F, 1, 0);
+    s = snapshot(1, 1, 4, 0, 0, 0x1F, 1, 0);
     assert(sml2_museum_tracker_update(&tracker, &s) == 0);
 
     /* The 99 -> 00 enemy counter wrap is still a valid enemy encounter. */
     memset(&tracker, 0, sizeof tracker);
-    s = snapshot(200, 99, 3, 0, 0, 4, 0, 0);
+    s = snapshot(0, 0, 3, 0, 0, 4, 0, 0);
     assert(sml2_museum_tracker_update(&tracker, &s) == 0);
-    s = snapshot(200, 0, 3, 0, 0, 4, 0, 0);
+    s = snapshot(0, 0, 3, 0, 0, 4, 0, 0);
     assert(sml2_museum_tracker_update(&tracker, &s) & SML2_MUSEUM_ENEMY);
+
+    /* Resuming after already collecting coins/defeating an enemy should not
+       leave those ordinary catalogue rows locked until the next pickup. */
+    memset(&tracker, 0, sizeof tracker);
+    s = snapshot(12, 4, 3, 0, 0, 0, 0, 0);
+    found = sml2_museum_tracker_update(&tracker, &s);
+    assert(found & SML2_MUSEUM_COIN);
+    assert(found & SML2_MUSEUM_ENEMY);
 
     /* Resuming with an active form discovers it even without a new transition. */
     memset(&tracker, 0, sizeof tracker);
