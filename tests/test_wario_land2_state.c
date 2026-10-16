@@ -28,8 +28,11 @@ int main(void)
     memory_image[0x0504] = 0x01;
     memory_image[0x050A] = 0x02; /* the 50th treasure bit */
     memory_image[0x0513] = 0x03;
+    memory_image[0x16D8] = 4; /* D6D8 dispatches the end-of-course UI */
     WarioLand2Snapshot gb = wario_land2_read_snapshot(GAME_WARIO_LAND2_GB, test_peek);
     assert(gb.stage == 0x12);
+    assert(gb.render_mode == 4);
+    memory_image[0x16D8] = 0;
     assert(gb.bank_coins == 12345);
     assert(gb.overworld_coins == 67);
     assert(wario_land2_popcount(gb.treasures) == 2);
