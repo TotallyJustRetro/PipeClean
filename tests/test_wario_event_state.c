@@ -25,6 +25,18 @@ static WarioLand3Snapshot wl3_snapshot(int scene, int operation, int coins,
 
 int main(void)
 {
+    assert(!wario_land3_key_collected(0x00, WARIO_LAND3_KEY_GRAY));
+    assert(wario_land3_key_collected(0x01, WARIO_LAND3_KEY_GRAY));
+    assert(wario_land3_key_collected(0x02, WARIO_LAND3_KEY_RED));
+    assert(wario_land3_key_collected(0x04, WARIO_LAND3_KEY_GREEN));
+    assert(wario_land3_key_collected(0x08, WARIO_LAND3_KEY_BLUE));
+    assert(!wario_land3_key_collected(0x0F, WARIO_LAND3_KEY_COUNT));
+    assert(wario_land3_key_total(0x00) == 0);
+    assert(wario_land3_key_total(0x05) == 2);
+    assert(wario_land3_key_total(0x0F) == 4);
+    assert(wario_land3_music_coin_total(0x00) == 0);
+    assert(wario_land3_music_coin_total(0x95) == 4);
+    assert(wario_land3_music_coin_total(0xFF) == 8);
     WarioEventTracker tracker = {0};
     WarioEventSnapshot s = snapshot(120, 4, 5, 0, 0, 1, 0, 0, 0);
 
