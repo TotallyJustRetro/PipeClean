@@ -2215,17 +2215,28 @@ final class PipeCleanCompanionPresentation extends Presentation {
 
         private void drawWario3Status(Canvas c, float x, float y, float w, float h) {
             card(c, x, y, w, h, "COURSE TRACKER");
-            textFit(c, stageText() + "  •  " + (world < 0 ? "TIME UNKNOWN" : world == 1 ? "NIGHT" : "DAY"),
-                x + 12f, y + 42f, w - 24f, h < 104 ? 8.2f : 10f, accent());
-            textFit(c, "COINS  " + (warioCoins < 0 ? "---" :
-                String.format(Locale.US, "%03d", warioCoins)), x + 12f, y + 60f,
-                w - 24f, h < 104 ? 7.3f : 8.8f, ink());
-            textFit(c, "MUSIC COINS  " + (wario3MusicCoins < 0 ? "-- / 8" :
-                wario3MusicCoinCount() + " / 8"), x + 12f, y + 77f,
-                w - 24f, h < 104 ? 7.3f : 8.8f, muted());
-            textFit(c, paused ? "EXPEDITION PAUSED" :
-                (wario3Scene == 3 ? "COURSE RESULTS" : "COURSE IN PROGRESS"),
-                x + 12f, y + h - 9f, w - 24f, 6.8f, muted());
+            String dayNight = world < 0 ? "TIME UNKNOWN" : world == 1 ? "NIGHT" : "DAY";
+            String coinText = "COINS  " + (warioCoins < 0 ? "---" :
+                String.format(Locale.US, "%03d", warioCoins));
+            String musicText = "MUSIC  " + (wario3MusicCoins < 0 ? "-- / 8" :
+                wario3MusicCoinCount() + " / 8");
+            if (h < 104) {
+                textFit(c, stageText() + "  •  " + dayNight, x + 12f, y + 34f,
+                    w - 24f, 7.8f, accent());
+                textFit(c, coinText, x + 12f, y + 48f, w * 0.47f, 7.1f, ink());
+                textFit(c, musicText, x + w * 0.50f, y + 48f, w * 0.45f, 7.1f, muted());
+                textFit(c, paused ? "PAUSED" :
+                    (wario3Scene == 3 ? "COURSE RESULTS" : "IN PROGRESS"),
+                    x + 12f, y + h - 5f, w - 24f, 6.0f, muted());
+            } else {
+                textFit(c, stageText() + "  •  " + dayNight, x + 12f, y + 42f,
+                    w - 24f, 10f, accent());
+                textFit(c, coinText, x + 12f, y + 60f, w - 24f, 8.8f, ink());
+                textFit(c, musicText, x + 12f, y + 77f, w - 24f, 8.8f, muted());
+                textFit(c, paused ? "EXPEDITION PAUSED" :
+                    (wario3Scene == 3 ? "COURSE RESULTS" : "COURSE IN PROGRESS"),
+                    x + 12f, y + h - 9f, w - 24f, 6.8f, muted());
+            }
         }
 
         private void drawWario2Grid(Canvas c, float x, float y, float w, float h,
