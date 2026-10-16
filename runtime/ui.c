@@ -555,6 +555,19 @@ void ui_image_file_fit(const char *path, float x, float y, float w, float h)
     ui_image(texture, NULL, x + (w - dw) * 0.5f, y + (h - dh) * 0.5f, dw, dh);
 }
 
+void ui_image_file_fit_pixel(const char *path, float x, float y, float w, float h)
+{
+    SDL_Texture *texture = ui_file_texture(path);
+    if (!texture || w <= 0 || h <= 0) return;
+    int iw = 0, ih = 0;
+    if (SDL_QueryTexture(texture, NULL, NULL, &iw, &ih) != 0 || iw <= 0 || ih <= 0) return;
+    float scale = fminf(w / iw, h / ih);
+    float dw = iw * scale, dh = ih * scale;
+    SDL_SetTextureScaleMode(texture, SDL_ScaleModeNearest);
+    ui_image(texture, NULL, x + (w - dw) * 0.5f, y + (h - dh) * 0.5f, dw, dh);
+    SDL_SetTextureScaleMode(texture, SDL_ScaleModeLinear);
+}
+
 /* Draw the entire source into the requested box. This never crops the source;
    unlike fit mode, its aspect ratio may be stretched/squashed intentionally. */
 void ui_image_file_stretch(const char *path, float x, float y, float w, float h)
