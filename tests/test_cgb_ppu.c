@@ -333,7 +333,7 @@ int main(void)
         assert(pixels[0] == 0x112233FFu);
         assert(pixels[8] == 0x445566FFu);
         assert(pixels[15] == 0x445566FFu);
-        assert(pixels[16] == 0x112233FFu);
+        assert(pixels[64] == 0x112233FFu);
     }
     return 0;
 }

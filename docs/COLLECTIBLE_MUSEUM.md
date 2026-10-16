@@ -6,9 +6,9 @@ The Museum is a shared collection browser with the same layout and discovery rul
 
 - Discoveries are saved to `pipeclean-museum.txt` in PipeClean's settings directory, separately by game ID.
 - A supported object's identity comes from the active game's state. Super Mario Land uses its live object table, so a Chibibo/Goombo record is distinct from a Bombshell Koopa, Ganchan, Piranha Plant, and the other mapped species.
-- When a mapped Super Mario Land object is visibly rendered for at least two stable frames, PipeClean crops the real sprite pixels from the emulator's PPU buffer and writes the PNG to the user's local cache. The crop only retains tile IDs used by nearby object OAM pieces to reduce accidental blending. Spawn helpers and ambiguous stomp states do not independently unlock species. Item sprites are cached in their settled form; item entries unlock when the object disappears close to Mario, which remains an inferred pickup signal and should be validated in gameplay.
-- Captured assets are private local files at `<settings directory>/pipeclean-museum-assets/<game-id>/<entry-id>.png`. No copyrighted sprites or ROMs are included in PipeClean's repository or releases.
-- The UI only displays a captured sprite when the matching game ROM is configured and the entry has been discovered. Uncollected entries retain their mystery-slot art, while their researched description remains readable in the detail pane.
+- When a mapped Super Mario Land object is visibly rendered for at least two stable frames, PipeClean reconstructs its sprite directly from nearby OAM entries and tile VRAM and saves a native-resolution PNG. This avoids clipping at the viewport boundary and avoids resampling the composited screen. Spawn helpers and ambiguous stomp states do not independently unlock species. Item sprites are cached in their settled form; item entries unlock when the object disappears close to Mario, which remains an inferred pickup signal and should be validated in gameplay.
+- Captured assets are private local files at `<settings directory>/pipeclean-museum-assets/<game-id>/<entry-id>.png` (Super Mario Land uses `<entry-id>.v2.png` so old partial crops are ignored). No copyrighted sprites or ROMs are included in PipeClean's repository or releases.
+- The UI only displays a captured sprite when the matching game ROM is configured and the entry has been discovered. Undiscovered entries show a lock emblem and a not-yet-unlocked message; the name and field description are withheld until discovery.
 - A sprite is not fabricated when the capture fails. The entry displays the Museum's neutral placeholder until PipeClean has usable pixels.
 
 ## Current coverage
@@ -28,3 +28,7 @@ Descriptions summarize game behavior in original wording, using the correspondin
 
 ### Wario Land 3 description source
 The catalogue uses the game's 100 treasure records with a short in-app explanation of each ability, world-map change, or collection-only item. Descriptions were written from the [MarioWiki treasure list](https://www.mariowiki.com/Wario_Land_III#Treasures) and cross-checked against the [Wario Land 3 treasure guide](https://www.warioland3.com/treasures.html).
+
+## ROM Hacks section
+
+The Museum's **ROM HACKS** view indexes the ROM-hack profiles already registered under each game's Settings > ROM Hacks page. It shows each profile's name, source game, file availability, and whether the profile is selected for launch. ROMs and patches remain local and are never bundled. A collectible catalog specific to a hack still needs object/event mappings for that hack's changed content.
