@@ -392,8 +392,8 @@ typedef struct {
 } SmlMuseumObject;
 static SmlMuseumObject sml_museum_previous[10];
 
-/* SML2 developer trace: the game allocates records at AD00, AE? no:
- * each record is 0x20 bytes; its active marker is at record +8, so the active
+/* SML2 developer trace: actor records begin at AD00 and advance by 0x20 bytes.
+ * Each record's active marker is at record +8, so the active
  * markers the game scans begin at AD08. Source descriptor pointers are stored
  * at record +6/+7 in high-byte-first order and point to descriptor byte +2.
  * Keep the raw descriptor and full actor record as diagnostic evidence; neither
