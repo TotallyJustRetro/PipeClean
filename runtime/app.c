@@ -2544,6 +2544,10 @@ static int play_external_game(int g)
 #else
     int launch_companion = 0;
 #endif
+    /* gbplayer owns the controller rumble and DualSense speaker while the
+     * external Wario game runs. Release PipeClean's handles first, then
+     * reacquire/re-sync them after the child exits. */
+    pad_shutdown();
     int ok = 1;
 #ifdef _WIN32
     char command[4096];
@@ -2583,6 +2587,7 @@ static int play_external_game(int g)
         }
     }
 #endif
+    pad_init();
     audio_menu_music(1);
     game_session_end();
     if (ok) settings_save();
