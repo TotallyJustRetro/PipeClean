@@ -38,6 +38,13 @@ typedef struct {
     int have_previous;
 } Sml2MuseumTracker;
 
+/* These are the live modes used by PipeClean's SML2 compositor. Other modes
+ * may leave plausible old cartridge-RAM values behind while a screen changes. */
+static inline int sml2_museum_mode_is_active(int mode)
+{
+    return mode == 0x04 || mode == 0x08 || mode == 0x09;
+}
+
 static inline uint32_t sml2_museum_powerup_discovery(int powerup)
 {
     /* SML2 RAM: 00 Small, 01 Super, 02 Bunny, 03 Fire, 04+ Super. */
