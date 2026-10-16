@@ -1909,7 +1909,7 @@ static void sub_dualsense(int g, float x, float y)
                 *m = (*m & ~(1 << i)) | (v[k] << i);
             }
         }
-        if (ui_button(c3 + 52, ry + 6, 46, 30, "Try", B_GHOST, 1)) {
+        if (ui_button(c3 + 52, ry + (row_h < 40 ? 3 : 6), 46, 30, "Try", B_GHOST, 1)) {
             pad_set_context(g, 0);
             pad_flash(d->color);
             pad_rumble_selected(g, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
