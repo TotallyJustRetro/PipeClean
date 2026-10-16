@@ -9,6 +9,16 @@ static WarioEventSnapshot snapshot(int coins, int hearts, int lives, int power, 
     return s;
 }
 
+static WarioLand3Snapshot wl3_snapshot(int scene, int operation, int coins,
+                                       int treasures, int powerups, int status,
+                                       int completion)
+{
+    WarioLand3Snapshot s = {
+        scene, operation, coins, treasures, powerups, status, completion
+    };
+    return s;
+}
+
 int main(void)
 {
     WarioEventTracker tracker = {0};
@@ -49,26 +59,58 @@ int main(void)
     s.coins = 10;
     assert(wario_event_tracker_update(&tracker, &s) == -1); /* re-baseline */
 
+    /* Wario Land 3's displayed three-digit counters use a leading digit plus
+       a packed-BCD pair for the last two digits. */
+    assert(wario_land3_read_counter3(0, 0x00) == 0);
+    assert(wario_land3_read_counter3(1, 0x23) == 123);
+    assert(wario_land3_read_counter3(9, 0x99) == 999);
+    assert(wario_land3_read_counter3(10, 0x00) == -1);
+    assert(wario_land3_read_counter3(1, 0xFA) == -1);
+
     WarioLand3Tracker wl3 = {0};
-    WarioLand3Snapshot wl3s = {1, 0}; /* overworld baseline */
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == -1);
-    wl3s.scene = 2;
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == WARIO_LAND3_EVENT_LEVEL_ENTERED);
-    wl3s.operation = 3; /* normal gameplay begins; no duplicate entry */
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == -1);
-    wl3s.scene = 8; /* key-acquisition animation */
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == WARIO_LAND3_EVENT_KEY_OBTAINED);
-    wl3s.scene = 2; /* return from key animation is not another level entry */
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == -1);
-    wl3s.scene = 3; /* end-of-course results screen */
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == WARIO_LAND3_EVENT_COURSE_RESULTS);
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == -1); /* no repeated results rumble */
-    wl3s.scene = 1;
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == -1);
-    wl3s.scene = 2;
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == WARIO_LAND3_EVENT_LEVEL_ENTERED);
-    wl3s.scene = 0xFF;
-    assert(wario_land3_tracker_update(&wl3, &wl3s) == -1);
+    WarioLand3Snapshot w = wl3_snapshot(2, 3, 10, 0, 0, 0, 0);
+    assert(wario_land3_tracker_update(&wl3, &w) == 0); /* baseline */
+
+    w.coins = 11;
+    assert(wario_land3_tracker_update(&wl3, &w) ==
+           WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_COIN));
+
+    /* Coin and treasure changes in one frame are both preserved. */
+    w.coins = 12;
+    w.treasures = 1;
+    assert(wario_land3_tracker_update(&wl3, &w) ==
+           (WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_COIN) |
+            WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_TREASURE)));
+
+    w.powerups = 1;
+    assert(wario_land3_tracker_update(&wl3, &w) ==
+           WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_POWER_UP));
+
+    w.status = 9; /* enter a temporary transformation */
+    assert(wario_land3_tracker_update(&wl3, &w) ==
+           WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_DAMAGE));
+    w.status = 0; /* recover to normal */
+    assert(wario_land3_tracker_update(&wl3, &w) ==
+           WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_HEART));
+
+    w.powerups = 0x0A; /* Action Help selection must not buzz as a power-up */
+    assert(wario_land3_tracker_update(&wl3, &w) == 0);
+    w.powerups = 2; /* leaving a help value must not buzz either */
+    assert(wario_land3_tracker_update(&wl3, &w) == 0);
+
+    w.completion = 1; /* Rudy defeated / story milestone */
+    assert(wario_land3_tracker_update(&wl3, &w) ==
+           WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_EXTRA_LIFE));
+
+    w.scene = 12; /* rare Game Over scene */
+    assert(wario_land3_tracker_update(&wl3, &w) ==
+           WARIO_LAND3_EVENT_MASK(WARIO_LAND3_EVENT_LIFE_LOST));
+
+    w.treasures = 0; /* a rollback from loading/rewinding isn't a new treasure */
+    assert(wario_land3_tracker_update(&wl3, &w) == 0);
+
+    w.coins = -1;
+    assert(wario_land3_tracker_update(&wl3, &w) == 0);
     assert(!wl3.have_previous);
 
     puts("Wario event state regression passed.");
