@@ -289,6 +289,7 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x10, 0x01, "sml2_koopa_troopa"},
     {0x10, 0x08, "sml2_paragoomba"},
     {0x10, 0x20, "sml2_aqua_goomba"},
+    {0x10, 0x55, "sml2_honebon"},
     {0x10, 0x3A, "sml2_paragoomba"},
 
     /* Piranha Plant and Fire Piranha Plant use separate type IDs. */
@@ -311,8 +312,10 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x02, 0x44, "sml2_noko_bombette"},
     {0x02, 0x58, "sml2_moofish"},
 
-    /* Leaf Course: the broad-winged sprite is Bigbee, the segmented crawler
-     * is Ant, the spiky beetle sprite is Battle Beetle, and type 43 is Tamara. */
+    /* Leaf / Bee Hive shared enemy graphics: ROM counts match Bigbee, Ant,
+     * Battle Beetle, Beebee, Skeleton Bee, and Tamara. */
+    {0x03, 0x35, "sml2_beebee"},
+    {0x03, 0x3E, "sml2_skeleton_bee"},
     {0x03, 0x40, "sml2_bigbee"},
     {0x03, 0x41, "sml2_ant"},
     {0x03, 0x42, "sml2_battle_beetle"},
@@ -330,75 +333,90 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     /* The Ant Monsters (Macro Zone 1) uses course-specific ant and mole maps. */
     {0x14, 0x22, "sml2_ant"},
     {0x14, 0x23, "sml2_goronto"},
+    {0x14, 0x25, "sml2_dokanto"},
+    {0x14, 0x27, "sml2_chikunto"},
 
     /* The second Macro Zone course reuses the ant object's alternate map. */
     {0x15, 0x5D, "sml2_ant"},
 
-    /* Pumpkin Zone 1: round ghost, hanging spike trap, masked ghoul,
-     * springing Jack-in-the-Box, and chain-mounted spiked ball. */
-    {0x06, 0x4D, "sml2_ghost_goomba"},
+    /* Bat Course counts: Boo (2), Falling Spike (3), and chain balls (7).
+     * Type 53 matches the repeated Masked Ghoul actor, not the Witch boss. */
+    {0x06, 0x4D, "sml2_boo"},
     {0x06, 0x4E, "sml2_falling_spike"},
     {0x06, 0x4F, "sml2_spiked_ball_pumpkin"},
-    {0x06, 0x07, "sml2_masked_ghoul"},
-    {0x06, 0x53, "sml2_jack_in_the_box"},
+    {0x06, 0x53, "sml2_masked_ghoul"},
 
-    /* Pumpkin Zone 2/3 preserve those same sprite mappings per course.
-     * Type 54 is the rounded Boo; type 07 is the masked ghoul. */
-    {0x07, 0x4D, "sml2_ghost_goomba"},
-    {0x07, 0x4E, "sml2_falling_spike"},
-    {0x07, 0x07, "sml2_masked_ghoul"},
-    {0x07, 0x54, "sml2_boo"},
-    {0x08, 0x4D, "sml2_ghost_goomba"},
-    {0x08, 0x57, "sml2_boo"},
-    {0x09, 0x4D, "sml2_ghost_goomba"},
+    /* Graveyard Course: spawn counts align with Fireball Boy (2), Kyororo (8),
+     * Karakara (7), and Cheep-Cheep (8). */
+    {0x07, 0x4D, "sml2_fireball_boy"},
+    {0x07, 0x07, "sml2_boo"},
+    {0x07, 0x54, "sml2_kyororo"},
+    {0x07, 0x55, "sml2_bero"},
+    {0x07, 0x56, "sml2_karakara"},
+    {0x07, 0x5E, "sml2_cheep_cheep"},
+    {0x07, 0x5F, "sml2_cheep_cheep"},
+
+    /* Ghost House: type 4D occurs eleven times, matching Boo; type 57 is
+     * the remaining Ghost Goomba-like composition. */
+    {0x08, 0x4D, "sml2_boo"},
+    {0x08, 0x57, "sml2_ghost_goomba"},
+
+    /* Witch Mansion course roster: five Boos and eight Masked Ghouls. */
+    {0x09, 0x4D, "sml2_boo"},
 
     /* Pumpkin Zone's fourth course uses the same chain-ball mapping and
      * its type 53 sprite is the witch on a broom. */
     {0x09, 0x4F, "sml2_spiked_ball_pumpkin"},
-    {0x09, 0x53, "sml2_witch"},
+    {0x09, 0x53, "sml2_masked_ghoul"},
+    {0x09, 0x5A, "sml2_rerere"},
+    {0x09, 0x5C, "sml2_pikku"},
 
     /* Mario Zone 1: type 3E draws the row of spinning pillar segments,
      * type 40 is the screw-shaped burrowing enemy, and 41/50 share the
      * four-point spinning blade sprite. */
     {0x0A, 0x01, "sml2_koopa_troopa"},
-    {0x0A, 0x3E, "sml2_karamenbo"},
+    {0x0A, 0x4B, "sml2_tatenoko"},
+
     {0x0A, 0x40, "sml2_screw"},
     {0x0A, 0x41, "sml2_yashichi"},
     {0x0A, 0x50, "sml2_yashichi"},
 
-    /* Mario Zone 2: walking Goombas, the frog-like tongue attacker,
-     * the four-point spinning blade, and Bear. */
+    /* Gumball Course counts match Paragoomba (5), Bomubomu (8), Goomba (4),
+     * and Bear (3). */
     {0x0B, 0x09, "sml2_goomba"},
-    {0x0B, 0x3A, "sml2_bopping_toady"},
-    {0x0B, 0x4D, "sml2_bear"},
+    {0x0B, 0x3A, "sml2_paragoomba"},
+    {0x0B, 0x4D, "sml2_bomubomu"},
+    {0x0B, 0x44, "sml2_bear"},
 
 
-    /* Mario Zone 2 has a four-point spinning blade in type 57. */
-    {0x11, 0x57, "sml2_yashichi"},
+    /* Bubble Course counts align with Birdfish (10), Unibo (7), Blurp (5),
+     * and Dondon (5). */
+    {0x11, 0x57, "sml2_unibo"},
+    {0x11, 0x5B, "sml2_birdfish"},
+    {0x11, 0x05, "sml2_blurp"},
+    {0x11, 0x39, "sml2_dondon"},
 
-    /* Mario Zone 3: type 47 is the small hopping creature (Pikku), type 48
-     * is the toy soldier (Kiddokatto), and type 53 is the one-eyed No.48. */
-    {0x0C, 0x47, "sml2_pikku"},
+    /* Crane Course: type 48 is Kiddokatto; type 53 is Jack-in-the-Box. */
     {0x0C, 0x48, "sml2_kiddokatto"},
-    {0x0C, 0x53, "sml2_no_48"},
+    {0x0C, 0x53, "sml2_jack_in_the_box"},
 
-    /* Mario Zone 4 repeats the one-eyed No.48 sprite and has the spinning
-     * X-shaped blade used by Yashichi. */
-    {0x0D, 0x43, "sml2_yashichi"},
-    {0x0D, 0x4D, "sml2_three_little_pigs"},
-    {0x0D, 0x53, "sml2_no_48"},
+    /* Block Course counts match Satellite (8), Bomubomu (2), and Wakiri (6).
+     * Type 53 is a Turtle Cannon object, not the No.48 enemy. */
+    {0x0D, 0x43, "sml2_satellite"},
+    {0x0D, 0x4D, "sml2_bomubomu"},
+    {0x0D, 0x4A, "sml2_wakiri"},
+    {0x0D, 0x4C, "sml2_wakiri"},
 
-    /* Space Zone 1: the face-like actor is the Floating Face, the small
-     * UFO-shaped sprite is Poro, and the satellite-with-orbiting-dot sprite
-     * is Satellite. */
-    {0x12, 0x4D, "sml2_floating_face"},
-    {0x12, 0x58, "sml2_poro"},
-    {0x12, 0x5A, "sml2_satellite"},
+    /* Moon Course counts match Bomubomu (9), Poro (5), and No.48 (1). */
+    {0x12, 0x4D, "sml2_bomubomu"},
+    {0x12, 0x58, "sml2_no_48"},
+    {0x12, 0x5A, "sml2_poro"},
 
     /* Space Zone 2 contains the star enemy under two object IDs which share
      * the same composed sprite map. */
     {0x13, 0x5E, "sml2_star_enemy"},
     {0x13, 0x5F, "sml2_star_enemy"},
+    {0x13, 0x5C, "sml2_tosenbo"},
 
     /* Macro Zone 3/4 use course-specific enemy mappings. The drill-nosed
      * guardian is type 42 in the final Macro Zone course (level 17). */
@@ -412,6 +430,7 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x17, 0x0C, "sml2_piranha_plant"},
     {0x17, 0x0D, "sml2_fire_piranha_plant"},
     {0x17, 0x42, "sml2_sewer_rat"},
+    {0x17, 0x35, "sml2_collector"},
 
     /* Wario's Castle course type 64 has the fist-shaped mechanical boss. */
     {0x18, 0x64, "sml2_mechanical_fist"},
