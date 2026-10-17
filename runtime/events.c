@@ -481,12 +481,18 @@ static int sml2_actor_trace_sprite_tile_source_table(int base,
 
 static void sml2_actor_trace_dump_sprite_atlas(void)
 {
-    if (!sml2_actor_trace_file || !rom) return;
+    if (!sml2_actor_trace_file) return;
+    if (!rom) {
+        fprintf(sml2_actor_trace_file,
+                "sprite_atlas skipped reason=rom_pointer_unavailable\\n");
+        fflush(sml2_actor_trace_file);
+        return;
+    }
 
     /* MooJelly documents two adjacent versions of SPRITES_TILES. The table is
      * in physical ROM bank 1B; each course entry is bank, unused byte, address. */
-    uint8_t banks_a[32], banks_b[32];
-    uint16_t addrs_a[32], addrs_b[32];
+    uint8_t banks_a[32] = {0}, banks_b[32] = {0};
+    uint16_t addrs_a[32] = {0}, addrs_b[32] = {0};
     const int valid_a = sml2_actor_trace_sprite_tile_source_table(
         0x362A, banks_a, addrs_a);
     const int valid_b = sml2_actor_trace_sprite_tile_source_table(
@@ -496,12 +502,14 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
     uint8_t *banks = table_base == 0x362D ? banks_b : banks_a;
     uint16_t *addresses = table_base == 0x362D ? addrs_b : addrs_a;
 
+    /* Keep the diagnostic image even when the source table does not pass
+     * the confidence threshold. Invalid courses are drawn as grey panels,
+     * while usable course tables still render their real tile graphics. */
     if (valid < 24) {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas skipped reason=sprite_table_not_valid valid_362A=%d valid_362D=%d\n",
-                valid_a, valid_b);
+                "sprite_atlas warning=source_table_below_threshold valid_362A=%d valid_362D=%d selected=%04X; rendering_valid_courses_only\\n",
+                valid_a, valid_b, table_base);
         fflush(sml2_actor_trace_file);
-        return;
     }
 
     enum {
