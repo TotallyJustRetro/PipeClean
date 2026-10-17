@@ -367,7 +367,10 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x0B, 0x09, "sml2_goomba"},
     {0x0B, 0x3A, "sml2_bopping_toady"},
     {0x0B, 0x4D, "sml2_bear"},
-    {0x0B, 0x57, "sml2_yashichi"},
+
+
+    /* Mario Zone 2 has a four-point spinning blade in type 57. */
+    {0x11, 0x57, "sml2_yashichi"},
 
     /* Mario Zone 3: type 47 is the small hopping creature (Pikku), type 48
      * is the toy soldier (Kiddokatto), and type 53 is the one-eyed No.48. */
