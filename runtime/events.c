@@ -327,12 +327,23 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     /* The second Macro Zone course reuses the ant object's alternate map. */
     {0x15, 0x5D, "sml2_ant"},
 
-    /* Pumpkin Zone 2/3 use separate mappings for the ghost enemies:
-     * the side-on ghost-Goomba sprite is type 4D; type 54 is the masked ghoul. */
+    /* Pumpkin Zone 1: the repeated round ghost is Ghost Goomba; type 4E is
+     * the hanging spike trap, type 07 is the masked ghoul, and type 53 is
+     * the springing Jack-in-the-Box. */
+    {0x06, 0x4D, "sml2_ghost_goomba"},
+    {0x06, 0x4E, "sml2_falling_spike"},
+    {0x06, 0x07, "sml2_masked_ghoul"},
+    {0x06, 0x53, "sml2_jack_in_the_box"},
+
+    /* Pumpkin Zone 2/3 preserve those same sprite mappings per course.
+     * Type 54 is the rounded Boo; type 07 is the masked ghoul. */
     {0x07, 0x4D, "sml2_ghost_goomba"},
-    {0x07, 0x54, "sml2_masked_ghoul"},
+    {0x07, 0x4E, "sml2_falling_spike"},
+    {0x07, 0x07, "sml2_masked_ghoul"},
+    {0x07, 0x54, "sml2_boo"},
     {0x08, 0x4D, "sml2_ghost_goomba"},
     {0x08, 0x57, "sml2_boo"},
+    {0x09, 0x4D, "sml2_ghost_goomba"},
 
     /* Pumpkin Zone's fourth course uses the same chain-ball mapping and
      * its type 53 sprite is the witch on a broom. */
