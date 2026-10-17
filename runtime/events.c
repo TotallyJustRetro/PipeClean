@@ -334,10 +334,20 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     /* Manhole Course ant variant. */
     {0x04, 0x5D, "sml2_ant"},
 
+    /* The Ant Monsters (Macro Zone 1) uses course-specific ant and mole maps. */
+    {0x14, 0x22, "sml2_ant"},
+    {0x14, 0x23, "sml2_goronto"},
+
+    /* The second Macro Zone course reuses the ant object's alternate map. */
+    {0x15, 0x5D, "sml2_ant"},
+
     /* Pumpkin Zone's fourth course uses the same chain-ball mapping and
      * its type 53 sprite is the witch on a broom. */
     {0x09, 0x4F, "sml2_spiked_ball_pumpkin"},
     {0x09, 0x53, "sml2_witch"},
+
+    /* Mario Zone 1 has a classic Koopa sprite in its type-01 slot. */
+    {0x0A, 0x01, "sml2_koopa_troopa"},
 
     /* Mario Zone 2's course-specific type 4D composes into the bear sprite. */
     {0x0B, 0x4D, "sml2_bear"},
@@ -359,6 +369,18 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
      * the same composed sprite map. */
     {0x13, 0x5E, "sml2_star_enemy"},
     {0x13, 0x5F, "sml2_star_enemy"},
+
+    /* Macro Zone 3/4 reuse the visible classic enemy mappings in their
+     * own course tables; keep them separate from other courses' object IDs. */
+    {0x16, 0x01, "sml2_koopa_troopa"},
+    {0x16, 0x08, "sml2_paragoomba"},
+    {0x16, 0x09, "sml2_goomba"},
+    {0x16, 0x0C, "sml2_piranha_plant"},
+    {0x17, 0x01, "sml2_koopa_troopa"},
+    {0x17, 0x08, "sml2_paragoomba"},
+    {0x17, 0x09, "sml2_goomba"},
+    {0x17, 0x0C, "sml2_piranha_plant"},
+    {0x17, 0x0D, "sml2_fire_piranha_plant"},
 
     /* Macro Zone 4 has a single special actor using the drill-nosed rat map. */
     {0x17, 0x42, "sml2_sewer_rat"},
