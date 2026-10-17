@@ -678,7 +678,7 @@ static void sml2_actor_trace_begin(void)
     sml2_actor_trace_file = fopen(path, "w");
     if (!sml2_actor_trace_file) return;
     fprintf(sml2_actor_trace_file,
-            "PipeClean SML2 live sprite actor trace v6\n"
+            "PipeClean SML2 live sprite actor trace v7\n"
             "Each actor record is 0x20 bytes; the active marker is at record offset +8.\n"
             "Record bases begin at AD00; active markers begin at AD08.\n"
             "The source descriptor pointer is stored high-byte first at record offsets +6/+7.\n"
@@ -688,6 +688,7 @@ static void sml2_actor_trace_begin(void)
             "sprite_map rows decode the game ROM type-to-sprite and sprite-pointer tables.\n"
             "rom_spawn rows store the ROM source address in record_addr; live actors use RAM.\n"
             "Raw type values and sprite indices are evidence, not species names.\n"
+            "A companion BMP atlas renders the actual sprite tiles for all 32 courses.\n"
             "spawn frame level slot record_addr source_ref source_addr descriptor[00..05]\n"
             "actor frame level slot record_addr active source_ref field05 field0B record[00..1F]\n"
             "sprite_map kind frame mode level slot record_addr source_ref object_type lookup_id observed_db map_ptr pieces[y,x,tile,attr;...]\n");
