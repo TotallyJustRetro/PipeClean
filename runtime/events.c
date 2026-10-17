@@ -417,7 +417,7 @@ static uint8_t sml2_actor_trace_source_logged[0x20][16];
 static uint32_t sml2_actor_trace_spawn_hash[0x20];
 static uint8_t sml2_actor_trace_spawn_hash_valid[0x20];
 /* Avoid repeating static ROM sprite lookup evidence for the same type/profile. */
-static uint8_t sml2_actor_trace_rom_type_seen[2][0x100];
+static uint8_t sml2_actor_trace_rom_type_seen[0x20][0x100];
 static void sml2_actor_trace_sprite_mapping(const char *kind, int mode, int level,
                                             int slot, uint16_t record_addr,
                                             uint16_t source_ref, uint8_t object_type,
@@ -658,8 +658,8 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
 
 /* Render actual composed sprite mappings, not just the source tile sheet.
  * Each cell is labeled with level, raw object type, and lookup index (hex).
- * One representative course is kept for each profile/type pair; the source
- * mapping IDs still come from the cartridge tables, never from guessed names. */
+ * Keep every course/type pair because a course selects its own enemy graphics
+ * set; the same raw type or mapping index may not look alike across courses. */
 typedef struct {
     uint8_t level, object_type, lookup_id, course_bank;
     uint16_t map_ptr, course_address;
@@ -806,7 +806,7 @@ static void sml2_actor_trace_dump_mapped_sprite_atlas(void)
 
     Sml2MappedSpriteEntry entries[512];
     size_t entry_count = 0;
-    uint8_t seen[2][256] = {{0}};
+    uint8_t seen[0x20][256] = {{0}};
     unsigned invalid_lookups = 0;
     for (int level = 0; level < 0x20; ++level) {
         const uint16_t list_table = (uint16_t)(0x6037u + (unsigned)level * 2u);
@@ -824,8 +824,8 @@ static void sml2_actor_trace_dump_mapped_sprite_atlas(void)
             const uint8_t object_type = (uint8_t)(
                 ((a & 0x10u) << 2) | ((a & 0xE0u) >> 2) | ((b & 0xE0u) >> 5));
             const unsigned profile = level < 0x0A ? 0u : 1u;
-            if (seen[profile][object_type]) continue;
-            seen[profile][object_type] = 1;
+            if (seen[level][object_type]) continue;
+            seen[level][object_type] = 1;
 
             const uint16_t type_table = (uint16_t)(profile == 0 ? 0x4B61u : 0x4BC1u);
             const uint8_t lookup_id = cart_rom_read_bank(2,
@@ -1173,8 +1173,8 @@ static void sml2_actor_trace_dump_rom_level_lists(void)
                     level, i, raw_addr, a, b, d, object_type);
 
             const unsigned profile = level < 0x0A ? 0u : 1u;
-            if (!sml2_actor_trace_rom_type_seen[profile][object_type]) {
-                sml2_actor_trace_rom_type_seen[profile][object_type] = 1;
+            if (!sml2_actor_trace_rom_type_seen[level][object_type]) {
+                sml2_actor_trace_rom_type_seen[level][object_type] = 1;
                 sml2_actor_trace_sprite_mapping("rom_spawn", 0xFF, level, -1,
                                                 raw_addr, 0, object_type, -1);
             }
