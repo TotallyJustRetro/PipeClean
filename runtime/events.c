@@ -655,6 +655,313 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
     SDL_FreeSurface(surface);
     fflush(sml2_actor_trace_file);
 }
+
+/* Render actual composed sprite mappings, not just the source tile sheet.
+ * Each cell is labeled with level, raw object type, and lookup index (hex).
+ * One representative course is kept for each profile/type pair; the source
+ * mapping IDs still come from the cartridge tables, never from guessed names. */
+typedef struct {
+    uint8_t level, object_type, lookup_id, course_bank;
+    uint16_t map_ptr, course_address;
+} Sml2MappedSpriteEntry;
+
+static int sml2_actor_trace_signed_offset(uint8_t value)
+{
+    return value < 0x80u ? (int)value : (int)value - 256;
+}
+
+static unsigned sml2_actor_trace_read_sprite_tile_pixel(
+    int course_bank, uint16_t course_address, uint8_t tile,
+    int px, int py, uint8_t attributes)
+{
+    if (tile < 0x80u) return 0;
+    const unsigned cache_tile = (unsigned)(tile - 0x80u);
+    int source_bank;
+    uint16_t source_address;
+    if (cache_tile < 48u) {
+        source_bank = 0x1B;
+        source_address = (uint16_t)(0x7000u + cache_tile * 16u);
+    } else if (cache_tile < 104u) {
+        source_bank = course_bank;
+        source_address = (uint16_t)(course_address +
+                                    (cache_tile - 48u) * 16u);
+    } else {
+        source_bank = 7;
+        source_address = (uint16_t)(0x6A00u +
+                                    (cache_tile - 104u) * 16u);
+    }
+    const CartInfo *info = cart_info();
+    if (!info || source_bank < 0 || source_bank >= info->rom_banks ||
+        source_address < 0x4000u || source_address >= 0x8000u)
+        return 0;
+
+    if (attributes & 0x20u) px = 7 - px;
+    if (attributes & 0x40u) py = 7 - py;
+    const uint16_t row_address = (uint16_t)(source_address + (unsigned)py * 2u);
+    const uint8_t lo = cart_rom_read_bank(source_bank, row_address);
+    const uint8_t hi = cart_rom_read_bank(source_bank, (uint16_t)(row_address + 1u));
+    const unsigned bit = (unsigned)(7 - px);
+    return ((lo >> bit) & 1u) | (((hi >> bit) & 1u) << 1);
+}
+
+static void sml2_actor_trace_draw_mapped_sprite(
+    SDL_Surface *surface, int cell_x, int cell_y,
+    const Sml2MappedSpriteEntry *entry, Uint32 shades[4],
+    Uint32 background, unsigned *unsupported_tiles)
+{
+    uint8_t pieces[40][4];
+    unsigned piece_count = 0;
+    int terminated = 0;
+    if (!entry || entry->map_ptr < 0x4000u || entry->map_ptr >= 0x8000u)
+        return;
+
+    for (unsigned i = 0; i < 40; ++i) {
+        const unsigned address = (unsigned)entry->map_ptr + i * 4u;
+        if (address + 3u >= 0x8000u) break;
+        for (unsigned j = 0; j < 4; ++j)
+            pieces[i][j] = cart_rom_read_bank(3, (uint16_t)(address + j));
+        if (pieces[i][0] == 0x80u) {
+            terminated = 1;
+            break;
+        }
+        ++piece_count;
+    }
+    if (!terminated || piece_count == 0) return;
+
+    int min_x = 127, min_y = 127, max_x = -128, max_y = -128;
+    for (unsigned i = 0; i < piece_count; ++i) {
+        const int y = sml2_actor_trace_signed_offset(pieces[i][0]);
+        const int x = sml2_actor_trace_signed_offset(pieces[i][1]);
+        if (x < min_x) min_x = x;
+        if (y < min_y) min_y = y;
+        if (x + 8 > max_x) max_x = x + 8;
+        if (y + 8 > max_y) max_y = y + 8;
+        if (pieces[i][2] < 0x80u && unsupported_tiles)
+            ++*unsupported_tiles;
+    }
+    const int native_w = max_x - min_x;
+    const int native_h = max_y - min_y;
+    if (native_w <= 0 || native_h <= 0) return;
+
+    enum { CELL_W = 128, CELL_H = 100, ART_TOP = 20, ART_H = 76, ART_W = 120 };
+    int scale = 2;
+    if (native_w * scale > ART_W || native_h * scale > ART_H) scale = 1;
+    const int draw_w = native_w * scale;
+    const int draw_h = native_h * scale;
+    const int origin_x = cell_x + (CELL_W - draw_w) / 2;
+    const int origin_y = cell_y + ART_TOP + (ART_H - draw_h) / 2;
+
+    for (unsigned i = 0; i < piece_count; ++i) {
+        const uint8_t tile = pieces[i][2];
+        if (tile < 0x80u) continue;
+        const int piece_y = sml2_actor_trace_signed_offset(pieces[i][0]);
+        const int piece_x = sml2_actor_trace_signed_offset(pieces[i][1]);
+        const int tile_x = origin_x + (piece_x - min_x) * scale;
+        const int tile_y = origin_y + (piece_y - min_y) * scale;
+        for (int py = 0; py < 8; ++py) {
+            for (int px = 0; px < 8; ++px) {
+                const unsigned color = sml2_actor_trace_read_sprite_tile_pixel(
+                    entry->course_bank, entry->course_address, tile,
+                    px, py, pieces[i][3]);
+                if (color == 0) continue; /* leave transparent pixels as the panel background */
+                for (int sy = 0; sy < scale; ++sy) {
+                    const int out_y = tile_y + py * scale + sy;
+                    if (out_y < cell_y + ART_TOP || out_y >= cell_y + ART_TOP + ART_H)
+                        continue;
+                    Uint32 *row = (Uint32 *)((Uint8 *)surface->pixels +
+                        (size_t)out_y * (size_t)surface->pitch);
+                    for (int sx = 0; sx < scale; ++sx) {
+                        const int out_x = tile_x + px * scale + sx;
+                        if (out_x < cell_x + 4 || out_x >= cell_x + CELL_W - 4)
+                            continue;
+                        row[out_x] = shades[color];
+                    }
+                }
+            }
+        }
+    }
+    (void)background;
+}
+
+static void sml2_actor_trace_dump_mapped_sprite_atlas(void)
+{
+    if (!sml2_actor_trace_file || !rom) return;
+    const CartInfo *info = cart_info();
+    if (!info || info->rom_banks <= 0 || info->rom_banks <= 0x1B) {
+        fprintf(sml2_actor_trace_file,
+                "mapped_sprite_atlas skipped reason=required_rom_bank_unavailable\n");
+        fflush(sml2_actor_trace_file);
+        return;
+    }
+
+    uint8_t banks_a[32] = {0}, banks_b[32] = {0};
+    uint16_t addrs_a[32] = {0}, addrs_b[32] = {0};
+    const int valid_a = sml2_actor_trace_sprite_tile_source_table(0x362A,
+                                                                  banks_a, addrs_a);
+    const int valid_b = sml2_actor_trace_sprite_tile_source_table(0x362D,
+                                                                  banks_b, addrs_b);
+    const int table_base = valid_b > valid_a ? 0x362D : 0x362A;
+    uint8_t *course_banks = table_base == 0x362D ? banks_b : banks_a;
+    uint16_t *course_addrs = table_base == 0x362D ? addrs_b : addrs_a;
+
+    Sml2MappedSpriteEntry entries[512];
+    size_t entry_count = 0;
+    uint8_t seen[2][256] = {{0}};
+    unsigned invalid_lookups = 0;
+    for (int level = 0; level < 0x20; ++level) {
+        const uint16_t list_table = (uint16_t)(0x6037u + (unsigned)level * 2u);
+        const uint16_t list_ptr = (uint16_t)(
+            (uint16_t)cart_rom_read_bank(3, list_table) |
+            ((uint16_t)cart_rom_read_bank(3, (uint16_t)(list_table + 1u)) << 8));
+        if (list_ptr < 0x4000u || list_ptr >= 0x8000u) continue;
+
+        for (unsigned i = 0; i < 128u; ++i) {
+            const unsigned raw_address = (unsigned)list_ptr + i * 3u;
+            if (raw_address + 2u >= 0x8000u) break;
+            const uint8_t a = cart_rom_read_bank(3, (uint16_t)raw_address);
+            if (a == 0xFFu) break;
+            const uint8_t b = cart_rom_read_bank(3, (uint16_t)(raw_address + 1u));
+            const uint8_t object_type = (uint8_t)(
+                ((a & 0x10u) << 2) | ((a & 0xE0u) >> 2) | ((b & 0xE0u) >> 5));
+            const unsigned profile = level < 0x0A ? 0u : 1u;
+            if (seen[profile][object_type]) continue;
+            seen[profile][object_type] = 1;
+
+            const uint16_t type_table = (uint16_t)(profile == 0 ? 0x4B61u : 0x4BC1u);
+            const uint8_t lookup_id = cart_rom_read_bank(2,
+                (uint16_t)(type_table + object_type));
+            const unsigned pointer_count = profile == 0 ? 0xA8u : 0xE4u;
+            if (lookup_id >= pointer_count) {
+                ++invalid_lookups;
+                continue;
+            }
+            const uint16_t pointer_table = (uint16_t)(profile == 0 ? 0x40B1u : 0x4F11u);
+            const uint16_t pointer_entry = (uint16_t)(pointer_table + lookup_id * 2u);
+            const uint16_t map_ptr = (uint16_t)(
+                (uint16_t)cart_rom_read_bank(3, pointer_entry) |
+                ((uint16_t)cart_rom_read_bank(3, (uint16_t)(pointer_entry + 1u)) << 8));
+            if (map_ptr < 0x4000u || map_ptr >= 0x8000u) continue;
+            if (entry_count >= sizeof entries / sizeof entries[0]) {
+                fprintf(sml2_actor_trace_file,
+                        "mapped_sprite_atlas warning=entry_capacity_reached\n");
+                break;
+            }
+            entries[entry_count++] = (Sml2MappedSpriteEntry){
+                (uint8_t)level, object_type, lookup_id,
+                course_banks[level], map_ptr, course_addrs[level]
+            };
+        }
+    }
+
+    if (entry_count == 0) {
+        fprintf(sml2_actor_trace_file,
+                "mapped_sprite_atlas skipped reason=no_static_object_mappings valid_362A=%d valid_362D=%d\n",
+                valid_a, valid_b);
+        fflush(sml2_actor_trace_file);
+        return;
+    }
+
+    enum { CELL_W = 128, CELL_H = 100, COLUMNS = 8 };
+    const size_t rows = (entry_count + COLUMNS - 1u) / COLUMNS;
+    const int width = COLUMNS * CELL_W;
+    if (rows > (size_t)(32768 / CELL_H)) {
+        fprintf(sml2_actor_trace_file,
+                "mapped_sprite_atlas skipped reason=dimensions_too_large entries=%u\n",
+                (unsigned)entry_count);
+        fflush(sml2_actor_trace_file);
+        return;
+    }
+    const int height = (int)rows * CELL_H;
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(
+        0, width, height, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (!surface) {
+        fprintf(sml2_actor_trace_file,
+                "mapped_sprite_atlas skipped reason=surface_create_failed error=%s\n",
+                SDL_GetError());
+        fflush(sml2_actor_trace_file);
+        return;
+    }
+
+    const Uint32 background = SDL_MapRGBA(surface->format, 34, 34, 34, 255);
+    const Uint32 grid = SDL_MapRGBA(surface->format, 72, 72, 72, 255);
+    const Uint32 label = SDL_MapRGBA(surface->format, 245, 245, 245, 255);
+    Uint32 shades[4] = {
+        background,
+        SDL_MapRGBA(surface->format, 238, 238, 238, 255),
+        SDL_MapRGBA(surface->format, 166, 166, 166, 255),
+        SDL_MapRGBA(surface->format, 92, 92, 92, 255)
+    };
+    SDL_FillRect(surface, NULL, background);
+    unsigned unsupported_tiles = 0;
+
+    for (size_t i = 0; i < entry_count; ++i) {
+        const int cell_x = (int)(i % COLUMNS) * CELL_W;
+        const int cell_y = (int)(i / COLUMNS) * CELL_H;
+        const Sml2MappedSpriteEntry *entry = &entries[i];
+        /* Header digits are level, raw type, and lookup ID, in that order. */
+        sml2_actor_trace_hex_digit(surface, cell_x + 4, cell_y + 1,
+                                   entry->level >> 4, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 12, cell_y + 1,
+                                   entry->level & 0x0Fu, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 34, cell_y + 1,
+                                   entry->object_type >> 4, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 42, cell_y + 1,
+                                   entry->object_type & 0x0Fu, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 64, cell_y + 1,
+                                   entry->lookup_id >> 4, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 72, cell_y + 1,
+                                   entry->lookup_id & 0x0Fu, label);
+        SDL_Rect border = {cell_x, cell_y, CELL_W, CELL_H};
+        SDL_FillRect(surface, &border, grid);
+        SDL_Rect inner = {cell_x + 1, cell_y + 1, CELL_W - 2, CELL_H - 2};
+        SDL_FillRect(surface, &inner, background);
+        /* Redraw the numbers over the interior fill. */
+        sml2_actor_trace_hex_digit(surface, cell_x + 4, cell_y + 1,
+                                   entry->level >> 4, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 12, cell_y + 1,
+                                   entry->level & 0x0Fu, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 34, cell_y + 1,
+                                   entry->object_type >> 4, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 42, cell_y + 1,
+                                   entry->object_type & 0x0Fu, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 64, cell_y + 1,
+                                   entry->lookup_id >> 4, label);
+        sml2_actor_trace_hex_digit(surface, cell_x + 72, cell_y + 1,
+                                   entry->lookup_id & 0x0Fu, label);
+        SDL_Rect sep1 = {cell_x + 26, cell_y + 1, 1, 10};
+        SDL_Rect sep2 = {cell_x + 56, cell_y + 1, 1, 10};
+        SDL_FillRect(surface, &sep1, grid);
+        SDL_FillRect(surface, &sep2, grid);
+        sml2_actor_trace_draw_mapped_sprite(surface, cell_x, cell_y,
+                                            entry, shades, background,
+                                            &unsupported_tiles);
+    }
+
+    const char *base = settings_dir();
+    const size_t base_len = base ? strlen(base) : 0;
+    const char *sep = (base_len &&
+        (base[base_len - 1] == '/' || base[base_len - 1] == '\\')) ? "" : "/";
+    char path[1200];
+    const int n = snprintf(path, sizeof path,
+        "%s%spipeclean-sml2-mapped-sprite-atlas.bmp", base ? base : ".", sep);
+    if (n < 0 || (size_t)n >= sizeof path) {
+        fprintf(sml2_actor_trace_file,
+                "mapped_sprite_atlas skipped reason=path_too_long\n");
+    } else if (SDL_SaveBMP(surface, path) != 0) {
+        fprintf(sml2_actor_trace_file,
+                "mapped_sprite_atlas skipped reason=save_failed error=%s\n",
+                SDL_GetError());
+    } else {
+        fprintf(sml2_actor_trace_file,
+                "mapped_sprite_atlas path=%s entries=%u invalid_lookups=%u "
+                "unsupported_low_tile_refs=%u columns=8 cell=128x100 "
+                "labels=level,object_type,lookup_id\n",
+                path, (unsigned)entry_count, invalid_lookups, unsupported_tiles);
+    }
+    SDL_FreeSurface(surface);
+    fflush(sml2_actor_trace_file);
+}
+
 static void sml2_actor_trace_close(void)
 {
     if (sml2_actor_trace_file) {
@@ -703,6 +1010,7 @@ static void sml2_actor_trace_begin(void)
     fflush(sml2_actor_trace_file);
     sml2_actor_trace_dump_rom_level_lists();
     sml2_actor_trace_dump_sprite_atlas();
+    sml2_actor_trace_dump_mapped_sprite_atlas();
 }
 
 static void sml2_actor_trace_spawn_table(int mode, int level)
