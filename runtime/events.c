@@ -424,11 +424,10 @@ static void sml2_actor_trace_sprite_mapping(const char *kind, int mode, int leve
                                             int observed_db);
 static void sml2_actor_trace_dump_rom_level_lists(void);
 
-/* Render the per-course 96-tile object graphics bank into one diagnostic atlas.
- * The spawn/map trace tells us which tile IDs an object uses; this atlas shows
- * what those tiles actually look like without requiring the user to visit every
- * level or guess from numeric tile IDs. It is dev-build-only and never changes
- * emulator memory or game behavior. */
+/* Render the 128 object-tile IDs used by SML2's sprite maps.
+ * IDs 80-AF use the shared bank-1B tile set, B0-E7 use the selected course's
+ * SPRITES_TILES entry, and E8-FF use the leading 24 tiles from bank 7:6A00.
+ * The separate HEADER_TILES table is for map graphics, not enemy sprites. */
 static void sml2_actor_trace_hex_digit(SDL_Surface *surface, int x, int y,
                                        unsigned digit, Uint32 color)
 {
@@ -441,7 +440,8 @@ static void sml2_actor_trace_hex_digit(SDL_Surface *surface, int x, int y,
     const uint16_t bits = glyphs[digit & 15u];
     for (int gy = 0; gy < 5; ++gy) {
         for (int gx = 0; gx < 3; ++gx) {
-            if (!(bits & (uint16_t)(1u << (14 - (gy * 3 + gx)))) ) continue;
+            if ((bits & (uint16_t)(1u << (14 - (gy * 3 + gx)))) == 0)
+                continue;
             for (int sy = 0; sy < 2; ++sy) {
                 Uint32 *row = (Uint32 *)((Uint8 *)surface->pixels +
                     (size_t)(y + gy * 2 + sy) * (size_t)surface->pitch);
@@ -452,25 +452,29 @@ static void sml2_actor_trace_hex_digit(SDL_Surface *surface, int x, int y,
     }
 }
 
-static int sml2_actor_trace_tile_source_table(int base,
-                                               uint8_t banks[32],
-                                               uint16_t addresses[32])
+static int sml2_actor_trace_sprite_tile_source_table(int base,
+                                                      uint8_t banks[32],
+                                                      uint16_t addresses[32])
 {
     const CartInfo *info = cart_info();
-    if (!rom || !info || base < 0 || base + 32 * 4 > 0x4000) return -1;
+    const size_t bank_base = (size_t)0x1Bu * 0x4000u;
+    if (!rom || !info || info->rom_banks <= 0 ||
+        0x1B >= info->rom_banks || base < 0 || base + 32 * 4 > 0x4000)
+        return -1;
 
     int valid = 0;
     for (int level = 0; level < 32; ++level) {
-        const size_t off = (size_t)base + (size_t)level * 4u;
+        const size_t off = bank_base + (size_t)base + (size_t)level * 4u;
         const uint8_t bank = rom[off];
         const uint16_t address = (uint16_t)(
             (uint16_t)rom[off + 2u] | ((uint16_t)rom[off + 3u] << 8));
         banks[level] = bank;
         addresses[level] = address;
+        /* 56 tiles occupy 0x380 bytes and must fit in the bank's 0x4000-0x7FFF
+         * CPU window. */
         if (bank < info->rom_banks && address >= 0x4000u &&
-            address <= 0x7A00u) {
+            address <= 0x7C80u)
             ++valid;
-        }
     }
     return valid;
 }
@@ -479,22 +483,22 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
 {
     if (!sml2_actor_trace_file || !rom) return;
 
-    /* MooJelly documents two adjacent versions of this table. Score both
-     * candidates against the 32 bank/address pairs and use the better fit. */
+    /* MooJelly documents two adjacent versions of SPRITES_TILES. The table is
+     * in physical ROM bank 1B; each course entry is bank, unused byte, address. */
     uint8_t banks_a[32], banks_b[32];
     uint16_t addrs_a[32], addrs_b[32];
-    const int valid_a = sml2_actor_trace_tile_source_table(
-        0x36AA, banks_a, addrs_a);
-    const int valid_b = sml2_actor_trace_tile_source_table(
-        0x36AD, banks_b, addrs_b);
-    const int table_base = valid_b > valid_a ? 0x36AD : 0x36AA;
+    const int valid_a = sml2_actor_trace_sprite_tile_source_table(
+        0x362A, banks_a, addrs_a);
+    const int valid_b = sml2_actor_trace_sprite_tile_source_table(
+        0x362D, banks_b, addrs_b);
+    const int table_base = valid_b > valid_a ? 0x362D : 0x362A;
     const int valid = valid_b > valid_a ? valid_b : valid_a;
-    uint8_t *banks = table_base == 0x36AD ? banks_b : banks_a;
-    uint16_t *addresses = table_base == 0x36AD ? addrs_b : addrs_a;
+    uint8_t *banks = table_base == 0x362D ? banks_b : banks_a;
+    uint16_t *addresses = table_base == 0x362D ? addrs_b : addrs_a;
 
     if (valid < 24) {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas skipped reason=tile_table_not_valid valid_36AA=%d valid_36AD=%d\n",
+                "sprite_atlas skipped reason=sprite_table_not_valid valid_362A=%d valid_362D=%d\n",
                 valid_a, valid_b);
         fflush(sml2_actor_trace_file);
         return;
@@ -503,7 +507,7 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
     enum {
         TILE_SCALE = 2,
         TILES_WIDE = 16,
-        TILES_HIGH = 6,
+        TILES_HIGH = 8,
         PANEL_W = TILES_WIDE * 8 * TILE_SCALE,
         PANEL_H = TILES_HIGH * 8 * TILE_SCALE + 12,
         PANEL_GAP = 8,
@@ -541,25 +545,45 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
         sml2_actor_trace_hex_digit(surface, panel_x + 12, panel_y + 1,
                                    (unsigned)level & 0x0Fu, label);
 
-        const uint8_t bank = banks[level];
-        const uint16_t address = addresses[level];
-        if (bank >= (uint8_t)cart_info()->rom_banks ||
-            address < 0x4000u || address > 0x7A00u) {
+        const uint8_t course_bank = banks[level];
+        const uint16_t course_address = addresses[level];
+        if (course_bank >= cart_info()->rom_banks ||
+            course_address < 0x4000u || course_address > 0x7C80u) {
             SDL_Rect rect = {panel_x, panel_y + 12, PANEL_W, PANEL_H - 12};
             SDL_FillRect(surface, &rect, grid);
             continue;
         }
 
-        /* These bytes feed the game's tile cache at tile IDs A0..FF. */
+        /* The displayed raw sprite tile IDs 80-FF resolve to cache indices
+         * 0-127. Assemble those tiles from the same three source ranges used
+         * by MooJelly's renderer, so the map's piece indices match this atlas. */
         for (int tile_y = 0; tile_y < TILES_HIGH; ++tile_y) {
             for (int tile_x = 0; tile_x < TILES_WIDE; ++tile_x) {
-                const unsigned tile = (unsigned)(tile_y * TILES_WIDE + tile_x);
-                const uint16_t tile_addr = (uint16_t)(address + tile * 16u);
+                const unsigned cache_tile =
+                    (unsigned)(tile_y * TILES_WIDE + tile_x);
+                int source_bank;
+                uint16_t source_address;
+                if (cache_tile < 48u) {
+                    source_bank = 0x1B;
+                    source_address = (uint16_t)(0x7000u + cache_tile * 16u);
+                } else if (cache_tile < 104u) {
+                    source_bank = course_bank;
+                    source_address = (uint16_t)(
+                        course_address + (cache_tile - 48u) * 16u);
+                } else {
+                    source_bank = 7;
+                    source_address = (uint16_t)(
+                        0x6A00u + (cache_tile - 104u) * 16u);
+                }
+                if (source_bank >= cart_info()->rom_banks ||
+                    source_address < 0x4000u || source_address >= 0x8000u)
+                    continue;
+
                 for (int py = 0; py < 8; ++py) {
                     const uint8_t lo = cart_rom_read_bank(
-                        bank, (uint16_t)(tile_addr + (unsigned)py * 2u));
+                        source_bank, (uint16_t)(source_address + (unsigned)py * 2u));
                     const uint8_t hi = cart_rom_read_bank(
-                        bank, (uint16_t)(tile_addr + (unsigned)py * 2u + 1u));
+                        source_bank, (uint16_t)(source_address + (unsigned)py * 2u + 1u));
                     for (int px = 0; px < 8; ++px) {
                         const unsigned bit = (unsigned)(7 - px);
                         const unsigned value = ((lo >> bit) & 1u) |
@@ -579,7 +603,6 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
             }
         }
 
-        /* Thin rules preserve tile boundaries when the atlas is zoomed in. */
         for (int gx = 0; gx <= TILES_WIDE; ++gx) {
             SDL_Rect line = {
                 panel_x + gx * 8 * TILE_SCALE,
@@ -603,7 +626,7 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
     const char *base = settings_dir();
     const size_t base_len = base ? strlen(base) : 0;
     const char *sep = (base_len &&
-        (base[base_len - 1] == '/' || base[base_len - 1] == '\\')) ? "" : "/";
+        (base[base_len - 1] == '/' || base[base_len - 1] == '\\') ? "" : "/";
     char path[1200];
     const int n = snprintf(path, sizeof path,
         "%s%spipeclean-sml2-sprite-atlas.bmp", base ? base : ".", sep);
@@ -616,15 +639,14 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
                 SDL_GetError());
     } else {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas path=%s table=%04X valid_levels=%d panels=32 "
-                "layout=levels_00_to_1F_row_major tiles=A0_to_FF scale=2 "
-                "tile_bytes=2bpp_grayscale\n",
+                "sprite_atlas path=%s table=1B:%04X valid_levels=%d panels=32 "
+                "layout=levels_00_to_1F_row_major tiles=80_to_FF grid=16x8 "
+                "scale=2 tile_bytes=2bpp_grayscale\n",
                 path, table_base, valid);
     }
     SDL_FreeSurface(surface);
     fflush(sml2_actor_trace_file);
 }
-
 static void sml2_actor_trace_close(void)
 {
     if (sml2_actor_trace_file) {
