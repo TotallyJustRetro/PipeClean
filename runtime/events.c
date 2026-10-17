@@ -276,10 +276,12 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x0E, 0x08, "sml2_paragoomba"},
     {0x0E, 0x09, "sml2_goomba"},
 
-    /* Sunken Ship Course: type 01 is Koopa, 06 is Shark, and the spiky
-     * round sprite on type 56 matches Unibo (also listed for Turtle Zone). */
+    /* Sunken Ship Course: types 01/06/53/55/56 resolve to the turtle,
+     * shark, cannon-like Bomubomu, bullet projectile, and spiky Unibo sprites. */
     {0x0F, 0x01, "sml2_koopa_troopa"},
     {0x0F, 0x06, "sml2_shark"},
+    {0x0F, 0x53, "sml2_bomubomu"},
+    {0x0F, 0x55, "sml2_bullet_bill"},
     {0x0F, 0x56, "sml2_unibo"},
 
     /* Whale Course: the helmeted aquatic Goomba occupies type 20; types 08
@@ -297,9 +299,11 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x08, 0x0D, "sml2_fire_piranha_plant"},
     {0x09, 0x0C, "sml2_piranha_plant"},
 
-    /* Roots Course: the composed sprite sheet shows the spiked hedgehog
-     * on type 21 and the flying insect on type 22. */
-    {0x01, 0x1F, "sml2_ragumo"},
+    /* Roots Course: the ROM has 13 objects of type 1F, 4 of type 20,
+     * 3 of type 21, and 4 of type 22. Those counts match the course's
+     * documented Bopping Toady, Ragumo, Spikey, and Kyotonbo roster. */
+    {0x01, 0x1F, "sml2_bopping_toady"},
+    {0x01, 0x20, "sml2_ragumo"},
     {0x01, 0x21, "sml2_spikey"},
     {0x01, 0x22, "sml2_kyotonbo"},
 
