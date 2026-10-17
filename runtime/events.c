@@ -238,6 +238,99 @@ static void sml2_museum_discover(uint32_t discoveries)
         (void)museum_discover_entry(GAME_SML2, "castle_cleared");
 }
 
+/* SML2 actor IDs are contextual: the first ten courses and later courses
+ * use different object-type-to-sprite tables. Keep discoveries conservative
+ * until an object's type and course have been cross-checked against ROM data.
+ * This first pass contains only mappings supported by the decoded course
+ * spawn lists, composed sprites, and course references. */
+typedef struct {
+    uint8_t level;
+    uint8_t object_type;
+    const char *museum_id;
+} Sml2MuseumEnemyMap;
+
+static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
+    /* Intro / Classic enemy set. These IDs also recur in its bonus courses. */
+    {0x00, 0x09, "sml2_goomba"},
+    {0x00, 0x01, "sml2_koopa_troopa"},
+    {0x00, 0x08, "sml2_paragoomba"},
+    {0x00, 0x0C, "sml2_piranha_plant"},
+    {0x19, 0x09, "sml2_goomba"},
+    {0x19, 0x01, "sml2_koopa_troopa"},
+    {0x19, 0x08, "sml2_paragoomba"},
+    {0x19, 0x0C, "sml2_piranha_plant"},
+    {0x1A, 0x09, "sml2_goomba"},
+    {0x1A, 0x01, "sml2_koopa_troopa"},
+    {0x1A, 0x08, "sml2_paragoomba"},
+    {0x1A, 0x0C, "sml2_piranha_plant"},
+    {0x1B, 0x09, "sml2_goomba"},
+    {0x1B, 0x01, "sml2_koopa_troopa"},
+    {0x1B, 0x08, "sml2_paragoomba"},
+    {0x1B, 0x0C, "sml2_piranha_plant"},
+    {0x1D, 0x09, "sml2_goomba"},
+    {0x1D, 0x01, "sml2_koopa_troopa"},
+    {0x1D, 0x08, "sml2_paragoomba"},
+    {0x1D, 0x0C, "sml2_piranha_plant"},
+    {0x1E, 0x09, "sml2_goomba"},
+    {0x1E, 0x01, "sml2_koopa_troopa"},
+    {0x1E, 0x08, "sml2_paragoomba"},
+    {0x1E, 0x0C, "sml2_piranha_plant"},
+    {0x1F, 0x09, "sml2_goomba"},
+    {0x1F, 0x01, "sml2_koopa_troopa"},
+    {0x1F, 0x08, "sml2_paragoomba"},
+    {0x1F, 0x0C, "sml2_piranha_plant"},
+
+    /* Tree Zone types identified from their per-course sprite maps. */
+    {0x01, 0x21, "sml2_spikey"},
+    {0x01, 0x22, "sml2_kyotonbo"},
+    {0x02, 0x58, "sml2_moofish"},
+    {0x03, 0x40, "sml2_battle_beetle"},
+    {0x03, 0x41, "sml2_ant"},
+
+    /* The chain-mounted spiked ball is specific to Pumpkin Zone. */
+    {0x06, 0x4F, "sml2_spiked_ball_pumpkin"},
+};
+
+static const char *sml2_museum_enemy_id(uint8_t level, uint8_t object_type)
+{
+    for (size_t i = 0; i < sizeof sml2_museum_enemy_map / sizeof sml2_museum_enemy_map[0]; ++i) {
+        if (sml2_museum_enemy_map[i].level == level &&
+            sml2_museum_enemy_map[i].object_type == object_type)
+            return sml2_museum_enemy_map[i].museum_id;
+    }
+    return NULL;
+}
+
+/* The active marker is set to 2 once an object has been initialized and has
+ * entered the live actor list. RAM record +5 preserves its source object type;
+ * +9/+10 are screen-space Y/X. Require a visible vertical position, but allow
+ * X values beyond 159 because PipeClean's SML2 widescreen camera can expose
+ * actors to the right of the original Game Boy viewport. */
+static void sml2_museum_observe_visible_enemies(uint8_t level)
+{
+    if (!cart_ram || level > 0x1Fu ||
+        !sml2_museum_mode_is_active(rd8(0xFF9Bu)))
+        return;
+
+    for (int slot = 0; slot < 16; ++slot) {
+        const uint16_t base = (uint16_t)(0xAD00u + (unsigned)slot * 0x20u);
+        if (sml2_ram_read((uint16_t)(base + 8u)) != 0x02u) continue;
+
+        const uint8_t y = sml2_ram_read((uint16_t)(base + 9u));
+        if (y < 0x08u || y > 0xA0u) continue;
+
+        const uint8_t object_type = sml2_ram_read((uint16_t)(base + 5u));
+        const char *museum_id = sml2_museum_enemy_id(level, object_type);
+        if (!museum_id) continue;
+
+        if (museum_discover_entry(GAME_SML2, museum_id) && events_log) {
+            fprintf(stderr,
+                    "[museum] SML2 enemy encounter level=%02X slot=%02d type=%02X -> %s\n",
+                    level, slot, object_type, museum_id);
+        }
+    }
+}
+
 static void sml2_museum_live_frame(void)
 {
     if (cur_game != GAME_SML2 || rom_loaded_game() != GAME_SML2) {
@@ -250,6 +343,11 @@ static void sml2_museum_live_frame(void)
        so the final Museum entry doesn't depend on the HUD visibility check. */
     if (cart_ram && sml2_ram_read(0xA2D5) == 1)
         (void)museum_discover_entry(GAME_SML2, "castle_cleared");
+
+    /* Encounter discoveries are independent from kill-count milestones, so
+     * walking past or seeing an enemy is sufficient to add its specimen. */
+    const uint8_t level = sml2_ram_read(0xA269);
+    sml2_museum_observe_visible_enemies(level);
 
     Sml2MuseumSnapshot snapshot;
     if (!sml2_museum_snapshot_read(&snapshot)) return;
