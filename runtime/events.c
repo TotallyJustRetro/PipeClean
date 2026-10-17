@@ -647,7 +647,7 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
                 SDL_GetError());
     } else {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas path=%s table=1B:%04X valid_levels=%d panels=32 "
+                "sprite_atlas path=%s table=ROM0:%04X valid_levels=%d panels=32 "
                 "layout=levels_00_to_1F_row_major tiles=80_to_FF grid=16x8 "
                 "scale=2 tile_bytes=2bpp_grayscale\n",
                 path, table_base, valid);
