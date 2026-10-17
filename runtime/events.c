@@ -338,7 +338,13 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x14, 0x25, "sml2_dokanto"},
     {0x14, 0x27, "sml2_chikunto"},
 
-    /* The second Macro Zone course reuses the ant object's alternate map. */
+    /* Flower Course roster: Ant, Piranha Plant, Venus Fire Trap, Battle Beetle,
+     * and Cheep-Cheep. Type 5D is the seven-count ant; types 0C/0D and 34/3D
+     * match the plant, beetle, and fish sprites in this course's graphics set. */
+    {0x15, 0x0C, "sml2_piranha_plant"},
+    {0x15, 0x0D, "sml2_fire_piranha_plant"},
+    {0x15, 0x34, "sml2_battle_beetle"},
+    {0x15, 0x3D, "sml2_cheep_cheep"},
     {0x15, 0x5D, "sml2_ant"},
 
     /* Bat Course counts: Boo (2), Falling Spike (3), and chain balls (7).
