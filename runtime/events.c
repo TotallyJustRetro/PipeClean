@@ -309,13 +309,13 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x03, 0x41, "sml2_ant"},
     {0x03, 0x43, "sml2_tamara"},
 
-    /* Cheep Cheep Course: object counts in its ROM spawn list line up with
-     * the reference enemy tally (7 Blurps, 5 sharks, 8 Cheep-Cheeps, and
-     * 3 Spiny Cheep-Cheeps), including the alternate Cheep-Cheep object ID. */
-    {0x0E, 0x05, "sml2_blurp"},
-    {0x0E, 0x06, "sml2_shark"},
+    /* Cheep Cheep Course: pair each course object ID with the species shown
+     * by its composed sprite mapping. Types 07 and 3D share one mapping, so
+     * keep them under the same species instead of creating duplicate entries. */
+    {0x0E, 0x05, "sml2_shark"},
+    {0x0E, 0x06, "sml2_spiny_cheep_cheep"},
     {0x0E, 0x07, "sml2_cheep_cheep"},
-    {0x0E, 0x0B, "sml2_spiny_cheep_cheep"},
+    {0x0E, 0x0B, "sml2_blurp"},
     {0x0E, 0x3D, "sml2_cheep_cheep"},
 
     /* The chain-mounted spiked ball is specific to Pumpkin Zone. */
@@ -357,7 +357,14 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
         const uint16_t source_ref = (uint16_t)(
             ((uint16_t)sml2_ram_read((uint16_t)(base + 6u)) << 8) |
             sml2_ram_read((uint16_t)(base + 7u)));
-        if (source_ref < 0xA002u || source_ref > 0xBFFCu) continue;
+        /* Valid source refs point to descriptor byte +2 in the expanded AB06
+         * spawn list. Requiring the exact six-byte stride rejects stale actor
+         * records and arbitrary pointers before reading the source object ID. */
+        if (source_ref < 0xAB08u || source_ref > 0xACFAu ||
+            ((source_ref - 0xAB08u) % 6u) != 0)
+            continue;
+        const uint8_t x = sml2_ram_read((uint16_t)(base + 10u));
+        if (x < 0x08u || x > 0xF0u) continue;
         const uint8_t object_type = sml2_ram_read((uint16_t)(source_ref + 3u));
         const char *museum_id = sml2_museum_enemy_id(level, object_type);
         if (!museum_id) continue;
