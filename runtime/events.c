@@ -280,6 +280,26 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x1F, 0x08, "sml2_paragoomba"},
     {0x1F, 0x0C, "sml2_piranha_plant"},
 
+    /* The Cheep Cheep Course also contains three Goombas and one Para-Goomba. */
+    {0x0E, 0x08, "sml2_paragoomba"},
+    {0x0E, 0x09, "sml2_goomba"},
+
+    /* The Sunken Ship Course has Koopas and sharks; the Whale Course adds
+     * Aqua Goombas, alongside Koopas and Para-Goombas. */
+    {0x0F, 0x01, "sml2_koopa_troopa"},
+    {0x0F, 0x06, "sml2_shark"},
+    {0x10, 0x01, "sml2_koopa_troopa"},
+    {0x10, 0x08, "sml2_paragoomba"},
+    {0x10, 0x3A, "sml2_aqua_goomba"},
+
+    /* Piranha Plant and Fire Piranha Plant use separate type IDs. */
+    {0x04, 0x0C, "sml2_piranha_plant"},
+    {0x04, 0x0D, "sml2_fire_piranha_plant"},
+    {0x06, 0x0C, "sml2_piranha_plant"},
+    {0x06, 0x0D, "sml2_fire_piranha_plant"},
+    {0x08, 0x0D, "sml2_fire_piranha_plant"},
+    {0x09, 0x0C, "sml2_piranha_plant"},
+
     /* Tree Zone types identified from their per-course sprite maps. */
     {0x01, 0x21, "sml2_spikey"},
     {0x01, 0x22, "sml2_kyotonbo"},
