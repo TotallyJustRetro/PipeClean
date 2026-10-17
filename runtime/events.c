@@ -296,10 +296,10 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x04, 0x07, "sml2_bee_fly"},
     {0x04, 0x34, "sml2_battle_beetle"},
     {0x04, 0x0C, "sml2_piranha_plant"},
-    {0x04, 0x0D, "sml2_venus_fire_trap"},
+    {0x04, 0x0D, "sml2_fire_piranha_plant"},
     {0x06, 0x0C, "sml2_piranha_plant"},
-    {0x06, 0x0D, "sml2_venus_fire_trap"},
-    {0x08, 0x0D, "sml2_venus_fire_trap"},
+    {0x06, 0x0D, "sml2_fire_piranha_plant"},
+    {0x08, 0x0D, "sml2_fire_piranha_plant"},
     {0x09, 0x0C, "sml2_piranha_plant"},
 
     /* Roots Course: the ROM has 13 objects of type 1F, 4 of type 20,
@@ -431,7 +431,7 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x17, 0x08, "sml2_paragoomba"},
     {0x17, 0x09, "sml2_goomba"},
     {0x17, 0x0C, "sml2_piranha_plant"},
-    {0x17, 0x0D, "sml2_venus_fire_trap"},
+    {0x17, 0x0D, "sml2_fire_piranha_plant"},
     {0x17, 0x42, "sml2_sewer_rat"},
     {0x17, 0x35, "sml2_collector"},
 

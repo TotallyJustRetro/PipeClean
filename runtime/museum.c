@@ -428,8 +428,8 @@ static const Sml2EnemyDef sml2_enemy_catalog[] = {
     {"sml2_dokanto", "Dokanto", "An ant-like enemy with a cannon on its head that fires pellets."},
     {"sml2_dondon", "Dondon", "A flying enemy that travels in a straight line across the screen."},
     {"sml2_falling_spike", "Falling Spike", "A ceiling trap that drops down to strike Mario."},
-    {"sml2_fire_piranha_plant", "Fire Piranha Plant", "A pipe-dwelling plant that periodically spits fireballs at Mario."},
-    {"sml2_venus_fire_trap", "Venus Fire Trap", "A pipe-dwelling plant that shoots fireballs; its course-specific entry is tracked separately from Fire Piranha Plant."},
+    {"sml2_fire_piranha_plant", "Fire Piranha Plant", "A pipe-dwelling plant that periodically spits fireballs at Mario; some course references call this sprite a Venus Fire Trap."},
+
     {"sml2_fireball_boy", "Fireball Boy", "A floating enemy that moves around in a looping, figure-eight pattern."},
     {"sml2_floating_face", "Floating Face", "A ball-like face resembling Wario that bounces diagonally around small rooms."},
     {"sml2_ghost_goomba", "Ghost Goomba", "A ghostly Goomba that follows its usual walking pattern but cannot be defeated by stomping."},
