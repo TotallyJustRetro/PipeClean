@@ -134,8 +134,9 @@ int main(void)
     assert(museum_is_discovered(GAME_SML, "power_up"));
     assert(!museum_is_discovered(GAME_SML2, "coin"));
 
-    /* SML2 now has a named row for all 63 regular enemy pages and seven bosses,
-       including Wario. Species rows must remain distinct from the generic counter. */
+    /* SML2 has named regular enemies plus separately represented bosses and
+       the Venus Fire Trap course variant. Species rows remain distinct from
+       the generic defeated-enemy counter. */
     {
         static const char *const expected_enemy_ids[] = {
             "sml2_ant",
@@ -159,6 +160,7 @@ int main(void)
             "sml2_dondon",
             "sml2_falling_spike",
             "sml2_fire_piranha_plant",
+            "sml2_venus_fire_trap",
             "sml2_fireball_boy",
             "sml2_floating_face",
             "sml2_ghost_goomba",
@@ -210,7 +212,7 @@ int main(void)
             "wario",
         };
         int enemy_count = 0;
-        assert(museum_catalog_count(GAME_SML2) == 81);
+        assert(museum_catalog_count(GAME_SML2) == 82);
         for (int e = 0; e < (int)(sizeof expected_enemy_ids / sizeof expected_enemy_ids[0]); ++e) {
             const MuseumEntry *entry = NULL;
             for (int i = 0; i < museum_catalog_count(GAME_SML2); ++i) {
@@ -231,7 +233,7 @@ int main(void)
             const MuseumEntry *entry = museum_catalog_entry(GAME_SML2, i);
             if (entry->category == MUSEUM_CATEGORY_ENEMY) enemy_count++;
         }
-        assert(enemy_count == 70);
+        assert(enemy_count == 71);
 
         const MuseumEntry *tally = NULL;
         for (int i = 0; i < museum_catalog_count(GAME_SML2); ++i) {
