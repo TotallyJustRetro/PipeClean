@@ -350,16 +350,26 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x09, 0x4F, "sml2_spiked_ball_pumpkin"},
     {0x09, 0x53, "sml2_witch"},
 
-    /* Mario Zone 1 has a classic Koopa sprite in its type-01 slot. */
+    /* Mario Zone 1: type 3E draws the row of spinning pillar segments,
+     * type 40 is the screw-shaped burrowing enemy, and 41/50 share the
+     * four-point spinning blade sprite. */
     {0x0A, 0x01, "sml2_koopa_troopa"},
+    {0x0A, 0x3E, "sml2_karamenbo"},
+    {0x0A, 0x40, "sml2_screw"},
+    {0x0A, 0x41, "sml2_yashichi"},
+    {0x0A, 0x50, "sml2_yashichi"},
 
-    /* Mario Zone 2's course-specific type 4D composes into the bear sprite. */
+    /* Mario Zone 2: the standard walking mushroom and the frog-like
+     * tongue attacker use separate graphics mappings. */
+    {0x0B, 0x09, "sml2_goomba"},
+    {0x0B, 0x3A, "sml2_bopping_toady"},
     {0x0B, 0x4D, "sml2_bear"},
 
     /* Mario Zone 3 type 48 uses the toy-soldier sprite. */
     {0x0C, 0x48, "sml2_kiddokatto"},
 
-    /* Mario Zone 4's course-specific type 4D is the pig-like boss sprite. */
+    /* Mario Zone 4's spinning X-shaped blade uses the Yashichi entry. */
+    {0x0D, 0x43, "sml2_yashichi"},
     {0x0D, 0x4D, "sml2_three_little_pigs"},
 
     /* Space Zone 1: the face-like actor is the Floating Face, the small
