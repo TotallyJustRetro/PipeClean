@@ -70,6 +70,8 @@ int main(void)
     s = snapshot(1, 1, 4, 0, 0, 0x1F, 1, 0);
     found = sml2_museum_tracker_update(&tracker, &s);
     assert(found & SML2_MUSEUM_CASTLE_CLEARED);
+    /* Reaching the castle does not unlock Wario; finishing his boss sequence does. */
+    assert(found & SML2_MUSEUM_WARIO);
     assert(sml2_museum_tracker_update(&tracker, &s) == 0);
 
     /* Invalid/loading frames do not erase the baseline or invent discoveries. */

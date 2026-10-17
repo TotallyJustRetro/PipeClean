@@ -90,7 +90,8 @@ static inline uint32_t sml2_museum_tracker_update(Sml2MuseumTracker *tracker,
         discoveries |= sml2_museum_powerup_discovery(current->powerup);
         if (current->star_active) discoveries |= SML2_MUSEUM_SUPER_STAR;
         discoveries |= sml2_museum_final_area_discoveries(current->level);
-        if (current->ending_flag) discoveries |= SML2_MUSEUM_CASTLE_CLEARED;
+        if (current->ending_flag)
+            discoveries |= SML2_MUSEUM_CASTLE_CLEARED | SML2_MUSEUM_WARIO;
         if (current->secret_exit_seen) discoveries |= SML2_MUSEUM_SECRET_EXIT;
         tracker->previous = *current;
         tracker->have_previous = 1;
@@ -117,8 +118,10 @@ static inline uint32_t sml2_museum_tracker_update(Sml2MuseumTracker *tracker,
 
     discoveries |= sml2_museum_final_area_discoveries(current->level) &
                    ~sml2_museum_final_area_discoveries(old.level);
+    /* The ending flag is only raised after the Wario boss sequence. It is
+     * reliable proof of the encounter; merely entering the castle is not. */
     if (current->ending_flag && !old.ending_flag)
-        discoveries |= SML2_MUSEUM_CASTLE_CLEARED;
+        discoveries |= SML2_MUSEUM_CASTLE_CLEARED | SML2_MUSEUM_WARIO;
     if (current->secret_exit_seen && !old.secret_exit_seen)
         discoveries |= SML2_MUSEUM_SECRET_EXIT;
 
