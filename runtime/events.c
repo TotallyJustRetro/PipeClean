@@ -301,11 +301,13 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x09, 0x0C, "sml2_piranha_plant"},
 
     /* Tree Zone types identified from their per-course sprite maps. */
+    {0x01, 0x1F, "sml2_ragumo"},
     {0x01, 0x21, "sml2_spikey"},
     {0x01, 0x22, "sml2_kyotonbo"},
     {0x02, 0x58, "sml2_moofish"},
     {0x03, 0x40, "sml2_battle_beetle"},
     {0x03, 0x41, "sml2_ant"},
+    {0x03, 0x43, "sml2_tamara"},
 
     /* Cheep Cheep Course: object counts in its ROM spawn list line up with
      * the reference enemy tally (7 Blurps, 5 sharks, 8 Cheep-Cheeps, and
