@@ -293,8 +293,10 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x10, 0x3A, "sml2_paragoomba"},
 
     /* Piranha Plant and Fire Piranha Plant use separate type IDs. */
+    {0x04, 0x07, "sml2_bee_fly"},
+    {0x04, 0x34, "sml2_battle_beetle"},
     {0x04, 0x0C, "sml2_piranha_plant"},
-    {0x04, 0x0D, "sml2_fire_piranha_plant"},
+    {0x04, 0x0D, "sml2_venus_fire_trap"},
     {0x06, 0x0C, "sml2_piranha_plant"},
     {0x06, 0x0D, "sml2_venus_fire_trap"},
     {0x08, 0x0D, "sml2_venus_fire_trap"},
@@ -317,8 +319,8 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x03, 0x35, "sml2_beebee"},
     {0x03, 0x3E, "sml2_skeleton_bee"},
     {0x03, 0x40, "sml2_bigbee"},
-    {0x03, 0x41, "sml2_ant"},
-    {0x03, 0x42, "sml2_battle_beetle"},
+    {0x03, 0x41, "sml2_unera"},
+    {0x03, 0x42, "sml2_grubby"},
     {0x03, 0x43, "sml2_tamara"},
 
     /* Tree Zone 4: the large front-facing bird and the swooping side-view
