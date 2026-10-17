@@ -494,7 +494,7 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
 
     if (valid < 24) {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas skipped reason=tile_table_not_valid valid_36AA=%d valid_36AD=%d\\n",
+                "sprite_atlas skipped reason=tile_table_not_valid valid_36AA=%d valid_36AD=%d\n",
                 valid_a, valid_b);
         fflush(sml2_actor_trace_file);
         return;
@@ -516,7 +516,7 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
         0, ATLAS_W, ATLAS_H, 32, SDL_PIXELFORMAT_ARGB8888);
     if (!surface) {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas skipped reason=surface_create_failed error=%s\\n",
+                "sprite_atlas skipped reason=surface_create_failed error=%s\n",
                 SDL_GetError());
         fflush(sml2_actor_trace_file);
         return;
@@ -603,22 +603,22 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
     const char *base = settings_dir();
     const size_t base_len = base ? strlen(base) : 0;
     const char *sep = (base_len &&
-        (base[base_len - 1] == '/' || base[base_len - 1] == '\\\\')) ? "" : "/";
+        (base[base_len - 1] == '/' || base[base_len - 1] == '\\')) ? "" : "/";
     char path[1200];
     const int n = snprintf(path, sizeof path,
         "%s%spipeclean-sml2-sprite-atlas.bmp", base ? base : ".", sep);
     if (n < 0 || (size_t)n >= sizeof path) {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas skipped reason=path_too_long\\n");
+                "sprite_atlas skipped reason=path_too_long\n");
     } else if (SDL_SaveBMP(surface, path) != 0) {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas skipped reason=save_failed error=%s\\n",
+                "sprite_atlas skipped reason=save_failed error=%s\n",
                 SDL_GetError());
     } else {
         fprintf(sml2_actor_trace_file,
                 "sprite_atlas path=%s table=%04X valid_levels=%d panels=32 "
                 "layout=levels_00_to_1F_row_major tiles=A0_to_FF scale=2 "
-                "tile_bytes=2bpp_grayscale\\n",
+                "tile_bytes=2bpp_grayscale\n",
                 path, table_base, valid);
     }
     SDL_FreeSurface(surface);
