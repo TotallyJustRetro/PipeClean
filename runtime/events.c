@@ -362,11 +362,12 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x0A, 0x41, "sml2_yashichi"},
     {0x0A, 0x50, "sml2_yashichi"},
 
-    /* Mario Zone 2: the standard walking mushroom and the frog-like
-     * tongue attacker use separate graphics mappings. */
+    /* Mario Zone 2: walking Goombas, the frog-like tongue attacker,
+     * the four-point spinning blade, and Bear. */
     {0x0B, 0x09, "sml2_goomba"},
     {0x0B, 0x3A, "sml2_bopping_toady"},
     {0x0B, 0x4D, "sml2_bear"},
+    {0x0B, 0x57, "sml2_yashichi"},
 
     /* Mario Zone 3: type 47 is the small hopping creature (Pikku), type 48
      * is the toy soldier (Kiddokatto), and type 53 is the one-eyed No.48. */
