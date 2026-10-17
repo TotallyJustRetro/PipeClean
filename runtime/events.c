@@ -342,8 +342,18 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     /* Mario Zone 2's course-specific type 4D composes into the bear sprite. */
     {0x0B, 0x4D, "sml2_bear"},
 
+    /* Mario Zone 3 type 48 uses the toy-soldier sprite. */
+    {0x0C, 0x48, "sml2_kiddokatto"},
+
     /* Mario Zone 4's course-specific type 4D is the pig-like boss sprite. */
     {0x0D, 0x4D, "sml2_three_little_pigs"},
+
+    /* Space Zone 1: the face-like actor is the Floating Face, the small
+     * UFO-shaped sprite is Poro, and the satellite-with-orbiting-dot sprite
+     * is Satellite. */
+    {0x12, 0x4D, "sml2_floating_face"},
+    {0x12, 0x58, "sml2_poro"},
+    {0x12, 0x5A, "sml2_satellite"},
 
     /* Space Zone 2 contains the star enemy under two object IDs which share
      * the same composed sprite map. */
