@@ -402,10 +402,9 @@ static const char *sml2_museum_enemy_id(uint8_t level, uint8_t object_type)
 }
 
 /* The active marker is set to 2 once an object has been initialized and has
- * entered the live actor list. The captured v7 trace confirms byte +10 is Y
- * and byte +11 is X; +9 is not a coordinate. Require a visible vertical
- * position, but allow X values beyond 159 because PipeClean's SML2 widescreen
- * camera can expose actors to the right of the original Game Boy viewport. */
+ * entered the live actor list. The v7 trace's field0B is byte +11 (animation/
+ * mapping state); the actor's screen coordinates are +9=Y and +10=X. Require
+ * a visible vertical position, but allow widescreen X values beyond 159. */
 static void sml2_museum_observe_visible_enemies(uint8_t level)
 {
     if (!cart_ram || level > 0x1Fu ||
@@ -416,7 +415,7 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
         const uint16_t base = (uint16_t)(0xAD00u + (unsigned)slot * 0x20u);
         if (sml2_ram_read((uint16_t)(base + 8u)) != 0x02u) continue;
 
-        const uint8_t y = sml2_ram_read((uint16_t)(base + 10u));
+        const uint8_t y = sml2_ram_read((uint16_t)(base + 9u));
         if (y < 0x08u || y > 0xA0u) continue;
 
         /* The live actor's +5 field changes during transitions (for example,
@@ -432,7 +431,7 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
         if (source_ref < 0xAB08u || source_ref > 0xACFAu ||
             ((source_ref - 0xAB08u) % 6u) != 0)
             continue;
-        const uint8_t x = sml2_ram_read((uint16_t)(base + 11u));
+        const uint8_t x = sml2_ram_read((uint16_t)(base + 10u));
         if (x < 0x08u || x > 0xF0u) continue;
         const uint8_t object_type = sml2_ram_read((uint16_t)(source_ref + 3u));
         const char *museum_id = sml2_museum_enemy_id(level, object_type);
