@@ -314,8 +314,11 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x03, 0x42, "sml2_battle_beetle"},
     {0x03, 0x43, "sml2_tamara"},
 
-    /* Tree Zone 4's type 39 composes into the swooping bird sprite. */
+    /* Tree Zone 4: the large front-facing bird and the swooping side-view
+     * are two mapped appearances of Big Bird; type 3A is the flying insect. */
+    {0x05, 0x37, "sml2_big_bird"},
     {0x05, 0x39, "sml2_big_bird"},
+    {0x05, 0x3A, "sml2_bee_fly"},
 
     /* Manhole Course ant variant. */
     {0x04, 0x5D, "sml2_ant"},
@@ -327,11 +330,11 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     /* The second Macro Zone course reuses the ant object's alternate map. */
     {0x15, 0x5D, "sml2_ant"},
 
-    /* Pumpkin Zone 1: the repeated round ghost is Ghost Goomba; type 4E is
-     * the hanging spike trap, type 07 is the masked ghoul, and type 53 is
-     * the springing Jack-in-the-Box. */
+    /* Pumpkin Zone 1: round ghost, hanging spike trap, masked ghoul,
+     * springing Jack-in-the-Box, and chain-mounted spiked ball. */
     {0x06, 0x4D, "sml2_ghost_goomba"},
     {0x06, 0x4E, "sml2_falling_spike"},
+    {0x06, 0x4F, "sml2_spiked_ball_pumpkin"},
     {0x06, 0x07, "sml2_masked_ghoul"},
     {0x06, 0x53, "sml2_jack_in_the_box"},
 
@@ -365,12 +368,17 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x0B, 0x3A, "sml2_bopping_toady"},
     {0x0B, 0x4D, "sml2_bear"},
 
-    /* Mario Zone 3 type 48 uses the toy-soldier sprite. */
+    /* Mario Zone 3: type 47 is the small hopping creature (Pikku), type 48
+     * is the toy soldier (Kiddokatto), and type 53 is the one-eyed No.48. */
+    {0x0C, 0x47, "sml2_pikku"},
     {0x0C, 0x48, "sml2_kiddokatto"},
+    {0x0C, 0x53, "sml2_no_48"},
 
-    /* Mario Zone 4's spinning X-shaped blade uses the Yashichi entry. */
+    /* Mario Zone 4 repeats the one-eyed No.48 sprite and has the spinning
+     * X-shaped blade used by Yashichi. */
     {0x0D, 0x43, "sml2_yashichi"},
     {0x0D, 0x4D, "sml2_three_little_pigs"},
+    {0x0D, 0x53, "sml2_no_48"},
 
     /* Space Zone 1: the face-like actor is the Floating Face, the small
      * UFO-shaped sprite is Poro, and the satellite-with-orbiting-dot sprite
