@@ -699,16 +699,19 @@ static int sml2_actor_trace_sprite_tile_source_table(int base,
 {
     const CartInfo *info = cart_info();
     /* LevelEnemySets is in fixed ROM bank 0 at $362A, not bank $1B. */
-    if (!rom || !info || info->rom_banks <= 0 ||
+    if (!info || info->rom_banks <= 0 ||
         0x1B >= info->rom_banks || base < 0 || base + 32 * 4 > 0x4000)
         return -1;
 
     int valid = 0;
     for (int level = 0; level < 32; ++level) {
-        const size_t off = (size_t)base + (size_t)level * 4u;
-        const uint8_t bank = rom[off];
+        const uint16_t entry = (uint16_t)(base + level * 4);
+        /* Read through the active mapper; the recomp ROM pointer is not a
+         * reliable way to address the fixed bank of the active cartridge. */
+        const uint8_t bank = cart_rom_read_bank(0, entry);
         const uint16_t address = (uint16_t)(
-            (uint16_t)rom[off + 2u] | ((uint16_t)rom[off + 3u] << 8));
+            (uint16_t)cart_rom_read_bank(0, (uint16_t)(entry + 2u)) |
+            ((uint16_t)cart_rom_read_bank(0, (uint16_t)(entry + 3u)) << 8));
         banks[level] = bank;
         addresses[level] = address;
         /* 56 tiles occupy 0x380 bytes and must fit in the bank's 0x4000-0x7FFF
@@ -732,24 +735,19 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
 
     /* The original SML2 disassembly places LevelEnemySets at ROM0:$362A.
      * Each course entry is bank, unused byte, and a banked graphics address. */
-    uint8_t banks_a[32] = {0}, banks_b[32] = {0};
-    uint16_t addrs_a[32] = {0}, addrs_b[32] = {0};
-    const int valid_a = sml2_actor_trace_sprite_tile_source_table(
-        0x362A, banks_a, addrs_a);
-    const int valid_b = sml2_actor_trace_sprite_tile_source_table(
-        0x362D, banks_b, addrs_b);
-    const int table_base = valid_b > valid_a ? 0x362D : 0x362A;
-    const int valid = valid_b > valid_a ? valid_b : valid_a;
-    uint8_t *banks = table_base == 0x362D ? banks_b : banks_a;
-    uint16_t *addresses = table_base == 0x362D ? addrs_b : addrs_a;
+    uint8_t banks[32] = {0};
+    uint16_t addresses[32] = {0};
+    const int table_base = 0x362A;
+    const int valid = sml2_actor_trace_sprite_tile_source_table(
+        table_base, banks, addresses);
 
     /* Keep the diagnostic image even when the source table does not pass
      * the confidence threshold. Invalid courses are drawn as grey panels,
      * while usable course tables still render their real tile graphics. */
     if (valid < 24) {
         fprintf(sml2_actor_trace_file,
-                "sprite_atlas warning=source_table_below_threshold valid_362A=%d valid_362D=%d selected=%04X; rendering_valid_courses_only\\n",
-                valid_a, valid_b, table_base);
+                "sprite_atlas warning=source_table_below_threshold valid=%d table=ROM0:%04X; rendering_valid_courses_only\\n",
+                valid, table_base);
         fflush(sml2_actor_trace_file);
     }
 
@@ -1035,15 +1033,11 @@ static void sml2_actor_trace_dump_mapped_sprite_atlas(void)
         return;
     }
 
-    uint8_t banks_a[32] = {0}, banks_b[32] = {0};
-    uint16_t addrs_a[32] = {0}, addrs_b[32] = {0};
-    const int valid_a = sml2_actor_trace_sprite_tile_source_table(0x362A,
-                                                                  banks_a, addrs_a);
-    const int valid_b = sml2_actor_trace_sprite_tile_source_table(0x362D,
-                                                                  banks_b, addrs_b);
-    const int table_base = valid_b > valid_a ? 0x362D : 0x362A;
-    uint8_t *course_banks = table_base == 0x362D ? banks_b : banks_a;
-    uint16_t *course_addrs = table_base == 0x362D ? addrs_b : addrs_a;
+    uint8_t course_banks[32] = {0};
+    uint16_t course_addrs[32] = {0};
+    const int table_base = 0x362A;
+    const int source_table_valid = sml2_actor_trace_sprite_tile_source_table(
+        table_base, course_banks, course_addrs);
 
     Sml2MappedSpriteEntry entries[512];
     size_t entry_count = 0;
@@ -1096,8 +1090,8 @@ static void sml2_actor_trace_dump_mapped_sprite_atlas(void)
 
     if (entry_count == 0) {
         fprintf(sml2_actor_trace_file,
-                "mapped_sprite_atlas skipped reason=no_static_object_mappings valid_362A=%d valid_362D=%d\n",
-                valid_a, valid_b);
+                "mapped_sprite_atlas skipped reason=no_static_object_mappings valid_source_table=%d table=ROM0:%04X\\n",
+                source_table_valid, table_base);
         fflush(sml2_actor_trace_file);
         return;
     }
@@ -1194,10 +1188,10 @@ static void sml2_actor_trace_dump_mapped_sprite_atlas(void)
                 SDL_GetError());
     } else {
         fprintf(sml2_actor_trace_file,
-                "mapped_sprite_atlas path=%s entries=%u invalid_lookups=%u "
+                "mapped_sprite_atlas path=%s table=ROM0:%04X source_levels=%d entries=%u invalid_lookups=%u "
                 "unsupported_low_tile_refs=%u columns=8 cell=128x100 "
                 "labels=level,object_type,lookup_id\n",
-                path, (unsigned)entry_count, invalid_lookups, unsupported_tiles);
+                path, table_base, source_table_valid, (unsigned)entry_count, invalid_lookups, unsupported_tiles);
     }
     SDL_FreeSurface(surface);
     fflush(sml2_actor_trace_file);
