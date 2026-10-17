@@ -373,8 +373,8 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     /* Witch Mansion course roster: five Boos and eight Masked Ghouls. */
     {0x09, 0x4D, "sml2_boo"},
 
-    /* Pumpkin Zone's fourth course uses the same chain-ball mapping and
-     * its type 53 sprite is the witch on a broom. */
+    /* Witch's Mansion contains regular enemies plus a separately scripted boss.
+     * Type 53's normal course mapping is Masked Ghoul, not the Witch boss. */
     {0x09, 0x4F, "sml2_spiked_ball_pumpkin"},
     {0x09, 0x53, "sml2_masked_ghoul"},
     {0x09, 0x5A, "sml2_rerere"},
@@ -498,13 +498,36 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
         const char *museum_id = sml2_museum_enemy_id(level, object_type);
         if (!museum_id) continue;
 
-        /* Minikyura are spawned by Kurokyura's attack routine rather than
-         * appearing as independent course-list objects. The stable source ID is
-         * the parent Kurokyura (level 06, type 51); unlock its summoned species
-         * here instead of relying on mutable actor animation fields. */
+        /* Minikyura are spawned by Kurokyura, not by a course-list entry of
+         * their own. Only unlock one after another live actor shares the same
+         * Kurokyura source descriptor; this avoids crediting Minikyura before a
+         * bat has actually appeared. Do not classify from mutable field +5. */
         const int discovered = museum_discover_entry(GAME_SML2, museum_id);
         if (level == 0x06u && object_type == 0x51u) {
-            if (museum_discover_entry(GAME_SML2, "sml2_minikyura") && events_log) {
+            int summoned_actor_visible = 0;
+            for (int other = 0; other < 16; ++other) {
+                if (other == slot) continue;
+                const uint16_t other_base =
+                    (uint16_t)(0xAD00u + (unsigned)other * 0x20u);
+                if (sml2_ram_read((uint16_t)(other_base + 8u)) != 0x02u)
+                    continue;
+                const uint8_t other_y =
+                    sml2_ram_read((uint16_t)(other_base + 9u));
+                const uint8_t other_x =
+                    sml2_ram_read((uint16_t)(other_base + 10u));
+                if (other_y < 0x08u || other_y > 0xA0u ||
+                    other_x < 0x08u || other_x > 0xF0u)
+                    continue;
+                const uint16_t other_ref = (uint16_t)(
+                    ((uint16_t)sml2_ram_read((uint16_t)(other_base + 6u)) << 8) |
+                    sml2_ram_read((uint16_t)(other_base + 7u)));
+                if (other_ref == source_ref) {
+                    summoned_actor_visible = 1;
+                    break;
+                }
+            }
+            if (summoned_actor_visible &&
+                museum_discover_entry(GAME_SML2, "sml2_minikyura") && events_log) {
                 fprintf(stderr,
                         "[museum] SML2 spawned enemy encounter level=06 -> sml2_minikyura\n");
             }
