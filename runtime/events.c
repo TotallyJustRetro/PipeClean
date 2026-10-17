@@ -328,20 +328,33 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x03, 0x41, "sml2_ant"},
     {0x03, 0x43, "sml2_tamara"},
 
+    /* Tree Zone 4's type 39 composes into the swooping bird sprite. */
+    {0x05, 0x39, "sml2_big_bird"},
+
     /* Manhole Course ant variant. */
     {0x04, 0x5D, "sml2_ant"},
 
-    /* Cheep Cheep Course: pair each course object ID with the species shown
-     * by its composed sprite mapping. Types 07 and 3D share one mapping, so
-     * keep them under the same species instead of creating duplicate entries. */
-    {0x0E, 0x05, "sml2_shark"},
-    {0x0E, 0x06, "sml2_spiny_cheep_cheep"},
-    {0x0E, 0x07, "sml2_cheep_cheep"},
-    {0x0E, 0x0B, "sml2_blurp"},
-    {0x0E, 0x3D, "sml2_cheep_cheep"},
+    /* Pumpkin Zone's fourth course uses the same chain-ball mapping and
+     * its type 53 sprite is the witch on a broom. */
+    {0x09, 0x4F, "sml2_spiked_ball_pumpkin"},
+    {0x09, 0x53, "sml2_witch"},
 
-    /* The chain-mounted spiked ball is specific to Pumpkin Zone. */
-    {0x06, 0x4F, "sml2_spiked_ball_pumpkin"},
+    /* Mario Zone 2's course-specific type 4D composes into the bear sprite. */
+    {0x0B, 0x4D, "sml2_bear"},
+
+    /* Mario Zone 4's course-specific type 4D is the pig-like boss sprite. */
+    {0x0D, 0x4D, "sml2_three_little_pigs"},
+
+    /* Space Zone 2 contains the star enemy under two object IDs which share
+     * the same composed sprite map. */
+    {0x13, 0x5E, "sml2_star_enemy"},
+    {0x13, 0x5F, "sml2_star_enemy"},
+
+    /* Macro Zone 4 has a single special actor using the drill-nosed rat map. */
+    {0x17, 0x42, "sml2_sewer_rat"},
+
+    /* Wario's Castle type 64 composes into the mechanical fist. */
+    {0x18, 0x64, "sml2_mechanical_fist"},
 };
 
 static const char *sml2_museum_enemy_id(uint8_t level, uint8_t object_type)
