@@ -396,21 +396,24 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x13, 0x5E, "sml2_star_enemy"},
     {0x13, 0x5F, "sml2_star_enemy"},
 
-    /* Macro Zone courses use the same classic enemy mappings in their own
-     * course tables. Sewer Rat's drill-nosed sprite is type 42 in course 16. */
+    /* Macro Zone 3/4 use course-specific enemy mappings. The drill-nosed
+     * guardian is type 42 in the final Macro Zone course (level 17). */
     {0x16, 0x01, "sml2_koopa_troopa"},
     {0x16, 0x08, "sml2_paragoomba"},
     {0x16, 0x09, "sml2_goomba"},
     {0x16, 0x0C, "sml2_piranha_plant"},
-    {0x16, 0x42, "sml2_sewer_rat"},
     {0x17, 0x01, "sml2_koopa_troopa"},
-    {0x17, 0x08, "sml2_mechanical_fist"},
+    {0x17, 0x08, "sml2_paragoomba"},
     {0x17, 0x09, "sml2_goomba"},
     {0x17, 0x0C, "sml2_piranha_plant"},
     {0x17, 0x0D, "sml2_fire_piranha_plant"},
+    {0x17, 0x42, "sml2_sewer_rat"},
 
-    /* Space Zone boss course: type 67 maps to the Tatanga/ship sprite. */
-    {0x18, 0x67, "sml2_tatanga"},
+    /* Wario's Castle course type 64 has the fist-shaped mechanical boss. */
+    {0x18, 0x64, "sml2_mechanical_fist"},
+
+    /* Space Zone's additional boss course has the Tatanga spacecraft at 5A. */
+    {0x1C, 0x5A, "sml2_tatanga"},
 };
 
 static const char *sml2_museum_enemy_id(uint8_t level, uint8_t object_type)
