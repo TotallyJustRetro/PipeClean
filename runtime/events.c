@@ -345,6 +345,7 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x06, 0x4E, "sml2_falling_spike"},
     {0x06, 0x4F, "sml2_spiked_ball_pumpkin"},
     {0x06, 0x53, "sml2_masked_ghoul"},
+    {0x06, 0x51, "sml2_kurokyura"},
 
     /* Graveyard Course: spawn counts align with Fireball Boy (2), Kyororo (8),
      * Karakara (7), and Cheep-Cheep (8). */
@@ -432,8 +433,11 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x17, 0x42, "sml2_sewer_rat"},
     {0x17, 0x35, "sml2_collector"},
 
-    /* Wario's Castle course type 64 has the fist-shaped mechanical boss. */
+    /* Wario's Castle: the face and pillar-mechanism sprites are course-specific. */
+    {0x18, 0x60, "sml2_karamenbo"},
+    {0x18, 0x61, "sml2_karamenbo"},
     {0x18, 0x64, "sml2_mechanical_fist"},
+    {0x18, 0x68, "sml2_floating_face"},
 
     /* Space Zone's additional boss course has the Tatanga spacecraft at 5A. */
     {0x1C, 0x5A, "sml2_tatanga"},
