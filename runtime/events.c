@@ -626,7 +626,7 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
     const char *base = settings_dir();
     const size_t base_len = base ? strlen(base) : 0;
     const char *sep = (base_len &&
-        (base[base_len - 1] == '/' || base[base_len - 1] == '\\') ? "" : "/";
+        (base[base_len - 1] == '/' || base[base_len - 1] == '\\')) ? "" : "/";
     char path[1200];
     const int n = snprintf(path, sizeof path,
         "%s%spipeclean-sml2-sprite-atlas.bmp", base ? base : ".", sep);
