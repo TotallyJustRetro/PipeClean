@@ -380,10 +380,10 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x09, 0x5A, "sml2_rerere"},
     {0x09, 0x5C, "sml2_pikku"},
 
-    /* Mario Zone 1: type 3E draws the row of spinning pillar segments,
-     * type 40 is the screw-shaped burrowing enemy, and 41/50 share the
-     * four-point spinning blade sprite. */
+    /* Gear Course: type 3E is the row of Karamenbo spinning pillars, type 40
+     * is the screw-shaped burrowing enemy, and 41/50 share Yashichi's blade. */
     {0x0A, 0x01, "sml2_koopa_troopa"},
+    {0x0A, 0x3E, "sml2_karamenbo"},
     {0x0A, 0x4B, "sml2_tatenoko"},
 
     {0x0A, 0x40, "sml2_screw"},
@@ -441,11 +441,12 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x17, 0x42, "sml2_sewer_rat"},
     {0x17, 0x35, "sml2_collector"},
 
-    /* Wario's Castle: the face and pillar-mechanism sprites are course-specific. */
-    {0x18, 0x60, "sml2_karamenbo"},
-    {0x18, 0x61, "sml2_karamenbo"},
+    /* Wario's Castle: type 64 is the mechanical fist. Types 68-6A use
+     * the three face/eye maps for Floating Face animations in its final rooms. */
     {0x18, 0x64, "sml2_mechanical_fist"},
     {0x18, 0x68, "sml2_floating_face"},
+    {0x18, 0x69, "sml2_floating_face"},
+    {0x18, 0x6A, "sml2_floating_face"},
 
     /* Space Zone's additional boss course has the Tatanga spacecraft at 5A. */
     {0x1C, 0x5A, "sml2_tatanga"},
