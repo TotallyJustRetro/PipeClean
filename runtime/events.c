@@ -457,14 +457,14 @@ static int sml2_actor_trace_sprite_tile_source_table(int base,
                                                       uint16_t addresses[32])
 {
     const CartInfo *info = cart_info();
-    const size_t bank_base = (size_t)0x1Bu * 0x4000u;
+    /* LevelEnemySets is in fixed ROM bank 0 at $362A, not bank $1B. */
     if (!rom || !info || info->rom_banks <= 0 ||
         0x1B >= info->rom_banks || base < 0 || base + 32 * 4 > 0x4000)
         return -1;
 
     int valid = 0;
     for (int level = 0; level < 32; ++level) {
-        const size_t off = bank_base + (size_t)base + (size_t)level * 4u;
+        const size_t off = (size_t)base + (size_t)level * 4u;
         const uint8_t bank = rom[off];
         const uint16_t address = (uint16_t)(
             (uint16_t)rom[off + 2u] | ((uint16_t)rom[off + 3u] << 8));
@@ -489,8 +489,8 @@ static void sml2_actor_trace_dump_sprite_atlas(void)
         return;
     }
 
-    /* MooJelly documents two adjacent versions of SPRITES_TILES. The table is
-     * in physical ROM bank 1B; each course entry is bank, unused byte, address. */
+    /* The original SML2 disassembly places LevelEnemySets at ROM0:$362A.
+     * Each course entry is bank, unused byte, and a banked graphics address. */
     uint8_t banks_a[32] = {0}, banks_b[32] = {0};
     uint16_t addrs_a[32] = {0}, addrs_b[32] = {0};
     const int valid_a = sml2_actor_trace_sprite_tile_source_table(
