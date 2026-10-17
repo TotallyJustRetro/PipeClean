@@ -498,7 +498,18 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
         const char *museum_id = sml2_museum_enemy_id(level, object_type);
         if (!museum_id) continue;
 
-        if (museum_discover_entry(GAME_SML2, museum_id) && events_log) {
+        /* Minikyura are spawned by Kurokyura's attack routine rather than
+         * appearing as independent course-list objects. The stable source ID is
+         * the parent Kurokyura (level 06, type 51); unlock its summoned species
+         * here instead of relying on mutable actor animation fields. */
+        const int discovered = museum_discover_entry(GAME_SML2, museum_id);
+        if (level == 0x06u && object_type == 0x51u) {
+            if (museum_discover_entry(GAME_SML2, "sml2_minikyura") && events_log) {
+                fprintf(stderr,
+                        "[museum] SML2 spawned enemy encounter level=06 -> sml2_minikyura\n");
+            }
+        }
+        if (discovered && events_log) {
             fprintf(stderr,
                     "[museum] SML2 enemy encounter level=%02X slot=%02d type=%02X -> %s\n",
                     level, slot, object_type, museum_id);
