@@ -300,14 +300,23 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x08, 0x0D, "sml2_fire_piranha_plant"},
     {0x09, 0x0C, "sml2_piranha_plant"},
 
-    /* Tree Zone types identified from their per-course sprite maps. */
+    /* Roots Course: type 1F is the burrowing Ragumo, type 21 uses the
+     * flying-insect mapping, and type 22 is the spiked hedgehog. */
     {0x01, 0x1F, "sml2_ragumo"},
-    {0x01, 0x21, "sml2_spikey"},
-    {0x01, 0x22, "sml2_kyotonbo"},
+    {0x01, 0x21, "sml2_kyotonbo"},
+    {0x01, 0x22, "sml2_spikey"},
+
+    /* Tree Trunk Course: the atlas and named course roster agree on these. */
+    {0x02, 0x44, "sml2_noko_bombette"},
     {0x02, 0x58, "sml2_moofish"},
+
+    /* Leaf Course has the beetle and ant sprites; keep other types locked
+     * until their mapping is distinguished from plants and stage objects. */
     {0x03, 0x40, "sml2_battle_beetle"},
     {0x03, 0x41, "sml2_ant"},
-    {0x03, 0x43, "sml2_tamara"},
+
+    /* Manhole Course ant variant. */
+    {0x04, 0x5D, "sml2_ant"},
 
     /* Cheep Cheep Course: pair each course object ID with the species shown
      * by its composed sprite mapping. Types 07 and 3D share one mapping, so
