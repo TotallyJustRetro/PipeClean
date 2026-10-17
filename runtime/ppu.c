@@ -4,6 +4,13 @@
  * handler) work. */
 #include "gb.h"
 #include "widescreen.h"
+#include "cart.h"
+#include <limits.h>
+
+#if defined(__GNUC__) || defined(__clang__)
+/* Optional for renderer-only unit tests that compile ppu.c without gb.c. */
+extern uint8_t gb_wram_peek(size_t offset) __attribute__((weak));
+#endif
 
 /* ppu.c is also compiled alone by the CGB renderer unit test. Keep the
  * compositor an optional link-time feature for that target. */
@@ -14,6 +21,17 @@ extern int wide_sml2_margin_tile(int, int, uint8_t *, int *, int *) __attribute_
 extern void wide_sml2_snapshot_actors(void) __attribute__((weak));
 extern const WideSml2Sprite *wide_sml2_actor_sprites(int *) __attribute__((weak));
 extern int wide_sml2_world_origin(int *, int *) __attribute__((weak));
+extern void wide_wl2_trace_frame(const uint8_t *) __attribute__((weak));
+extern void wide_wl3_trace_frame(const uint8_t *) __attribute__((weak));
+extern int wide_wl2_block_at(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl2_block_tile(int, int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl2_block_attr(int, int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_block_at(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_block_tile(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_block_attr(int, int, uint8_t *) __attribute__((weak));
+extern int wide_wl3_camera(int *, int *) __attribute__((weak));
+/* Renderer-only regression tests link ppu.c without the full GB bus module. */
+extern uint8_t rd8(uint16_t address) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -30,6 +48,82 @@ uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
+static int wario_wide_enabled, wario_frame_active;
+static int wl2_wide_enabled, wl2_frame_active;
+static int wl3_wide_enabled, wl3_frame_active;
+static int wl3_frame_world_x0, wl3_frame_world_y0;
+static int wl3_frame_scx, wl3_frame_scy;
+typedef struct {
+    uint8_t tile[4], attr[4];
+    uint8_t valid;
+} Wl2BlockVisual;
+/* Preserve CGB attributes by exact world-tile coordinate. The hardware
+ * tilemap is a 256x256 ring, so its attribute slots can be recycled for a
+ * different room while the widescreen renderer is still drawing older
+ * world coordinates in the margins. */
+#define WL2_WORLD_ATTR_EXTENT 0x1100
+#define WL2_WORLD_ATTR_TILES (WL2_WORLD_ATTR_EXTENT / 8)
+typedef struct {
+    uint8_t attr, valid;
+} Wl2WorldAttr;
+static Wl2WorldAttr wl2_world_attrs[WL2_WORLD_ATTR_TILES][WL2_WORLD_ATTR_TILES];
+static Wl2BlockVisual wl2_block_visuals[256];
+static Wl2BlockVisual wl2_frame_visuals[256];
+static uint8_t wl2_frame_seen[256], wl2_frame_conflict[256];
+/* Speculative samples come from the live 256x256 VRAM tilemap ring outside
+ * the native viewport. Keep them separate so stale ring entries never
+ * override a confirmed in-viewport sample. */
+static Wl2BlockVisual wl2_ring_visuals[256];
+static uint8_t wl2_ring_seen[256], wl2_ring_conflict[256];
+static int wl2_frame_world_x0, wl2_frame_world_y0;
+static int wl2_frame_scx, wl2_frame_scy;
+static int wl2_cache_level = -1, wl2_cache_tref = -1, wl2_cache_cgb = -1;
+static int wl2_metatile_set = -1;
+static uint16_t wario_frame_scroll_x, wario_frame_scroll_y;
+static int wario_cached_level = -1;
+static uint8_t wario_block_attr[0x80][4], wario_block_known[0x80][4];
+static uint8_t wario_tile_attr[256], wario_tile_known[256];
+
+static void wl2_clear_visual_cache(void)
+{
+    memset(wl2_block_visuals, 0, sizeof wl2_block_visuals);
+    memset(wl2_frame_visuals, 0, sizeof wl2_frame_visuals);
+    memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
+    memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
+    memset(wl2_ring_visuals, 0, sizeof wl2_ring_visuals);
+    memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
+    memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
+    memset(wl2_world_attrs, 0, sizeof wl2_world_attrs);
+    wl2_frame_active = 0;
+    wl2_metatile_set = -1;
+    wl2_cache_level = wl2_cache_tref = wl2_cache_cgb = -1;
+}
+
+void ppu_set_wl2_wide(int enabled)
+{
+    int next = enabled != 0;
+    if (wl2_wide_enabled != next) wl2_clear_visual_cache();
+    wl2_wide_enabled = next;
+    if (!next) wl2_frame_active = 0;
+}
+
+void ppu_set_wl3_wide(int enabled)
+{
+    wl3_wide_enabled = enabled != 0;
+    wl3_frame_active = 0;
+}
+
+void ppu_set_wario_sml3(int enabled)
+{
+    wario_wide_enabled = enabled != 0;
+    if (!wario_wide_enabled) {
+        wario_frame_active = 0;
+        wario_cached_level = -1;
+        memset(wario_block_known, 0, sizeof wario_block_known);
+        memset(wario_tile_known, 0, sizeof wario_tile_known);
+    }
+}
+
 void ppu_set_wide(int l, int r, int hud, int centre_win, int gate)
 {
     if (l < 0) l = 0;
@@ -88,6 +182,11 @@ void ppu_reset(void)
     bgp = 0xFC; obp0 = obp1 = 0xFF; wy = wx = 0;
     dot = 0; ly = 0; mode = 2; lcd_on = 1; stat_line = 0; wlc = 0; off_cycles = 0;
     frame_count = 0;
+    wario_frame_active = 0;
+    wl2_clear_visual_cache();
+    wario_cached_level = -1;
+    memset(wario_block_known, 0, sizeof wario_block_known);
+    memset(wario_tile_known, 0, sizeof wario_tile_known);
 }
 
 static void update_stat(void)
@@ -142,6 +241,108 @@ void ppu_cgb_obj_palette_copy(uint32_t out[32])
             out[pal * 4 + ci] = cgb_rgb(cgb_obj_palette, pal, ci);
 }
 
+/* Rebuild an object's sprite directly from OAM and tile VRAM. Cropping the
+ * composited PPU frame can cut metasprites in half at screen edges; using the
+ * live tile IDs also preserves clean one-pixel source data for nearest-neighbor
+ * scaling in the Museum. */
+int ppu_museum_capture_object(uint8_t object_y, uint8_t object_x,
+                              uint32_t *rgba, size_t pixel_capacity,
+                              int max_dim, int *out_w, int *out_h,
+                              const uint32_t ob0[4], const uint32_t ob1[4])
+{
+    if (out_w) *out_w = 0;
+    if (out_h) *out_h = 0;
+    if (!rgba || !out_w || !out_h || !ob0 || !ob1 ||
+        max_dim < 8 || max_dim > 128 ||
+        pixel_capacity < (size_t)max_dim * (size_t)max_dim)
+        return 0;
+
+    const int origin_x = (int)object_x - 8;
+    const int origin_y = (int)object_y - 16;
+    const int sprite_h = (lcdc & 0x04) ? 16 : 8;
+    int picked[20], picked_n = 0;
+    int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+
+    /* SML's ten live object slots draw through OAM entries 20-39. Compute the
+     * union of nearby 8x8/8x16 pieces instead of forcing a 16x16 crop. */
+    for (int i = 20; i < 40; ++i) {
+        const int oy = oam[i * 4], ox = oam[i * 4 + 1];
+        if (!oy || !ox || oy == 0xFF || ox == 0xFF) continue;
+        const int sx = ox - 8, sy = oy - 16;
+        const int dx = sx - origin_x, dy = sy - origin_y;
+        if (dx < -24 || dx > 24 || dy < -24 || dy > 24) continue;
+        picked[picked_n++] = i;
+        if (sx < min_x) min_x = sx;
+        if (sy < min_y) min_y = sy;
+        if (sx + 7 > max_x) max_x = sx + 7;
+        if (sy + sprite_h - 1 > max_y) max_y = sy + sprite_h - 1;
+    }
+    if (!picked_n || max_x < min_x || max_y < min_y) return 0;
+    const int width = max_x - min_x + 1, height = max_y - min_y + 1;
+    if (width < 8 || height < 8 || width > max_dim || height > max_dim) return 0;
+
+    memset(rgba, 0, (size_t)max_dim * (size_t)max_dim * sizeof rgba[0]);
+    uint32_t cgb_palette[32];
+    if (cgb_render_enabled) ppu_cgb_obj_palette_copy(cgb_palette);
+
+    /* Reverse OAM order so earlier entries can overwrite later entries on
+     * overlapping opaque pixels. */
+    for (int p = picked_n - 1; p >= 0; --p) {
+        const int i = picked[p];
+        const int oy = oam[i * 4], ox = oam[i * 4 + 1];
+        const int sx = ox - 8, sy = oy - 16;
+        const uint8_t attr = oam[i * 4 + 3];
+        int tile = oam[i * 4 + 2];
+        if (sprite_h == 16) tile &= 0xFE;
+        const uint8_t *tile_data = (cgb_render_enabled && (attr & 0x08))
+            ? vram_cgb1 : vram;
+
+        for (int dy = 0; dy < sprite_h; ++dy) {
+            const int local_y = sy + dy - min_y;
+            const int source_y = (attr & 0x40) ? sprite_h - 1 - dy : dy;
+            const int source_tile = tile + (source_y >> 3);
+            const int tile_row = source_y & 7;
+            const int address = source_tile * 16 + tile_row * 2;
+            if (address < 0 || address + 1 >= 0x2000) continue;
+            const uint8_t low = tile_data[address], high = tile_data[address + 1];
+
+            for (int dx = 0; dx < 8; ++dx) {
+                const int local_x = sx + dx - min_x;
+                const int source_x = (attr & 0x20) ? 7 - dx : dx;
+                const int bit = 7 - source_x;
+                const unsigned ci = (unsigned)(((high >> bit) & 1u) << 1) |
+                                    (unsigned)((low >> bit) & 1u);
+                if (ci == 0 || local_x < 0 || local_x >= width ||
+                    local_y < 0 || local_y >= height)
+                    continue;
+
+                uint32_t rgb;
+                if (cgb_render_enabled) {
+                    rgb = cgb_palette[(attr & 7u) * 4u + ci];
+                } else {
+                    const uint8_t reg = (attr & 0x10) ? obp1 : obp0;
+                    const unsigned shade = (reg >> (ci * 2u)) & 3u;
+                    rgb = (attr & 0x10) ? ob1[shade] : ob0[shade];
+                }
+                rgba[(size_t)local_y * (size_t)max_dim + (size_t)local_x] =
+                    (((rgb >> 16) & 0xFFu) << 24) |
+                    (((rgb >> 8) & 0xFFu) << 16) |
+                    ((rgb & 0xFFu) << 8) | 0xFFu;
+            }
+        }
+    }
+
+    int opaque = 0;
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            if ((rgba[(size_t)y * (size_t)max_dim + (size_t)x] & 0xFFu) != 0)
+                opaque++;
+    if (opaque < 6) return 0;
+    *out_w = width;
+    *out_h = height;
+    return 1;
+}
+
 /* Resolve a pixel from a tile index and attribute. Coordinates are pixel
  * coordinates in the source tile/world, not the 256x256 VRAM map ring. */
 static int tile_pixel_data(uint8_t tile, uint8_t attr, int map_x, int map_y,
@@ -169,6 +370,729 @@ static int tile_pixel(int map_off, int map_x, int map_y, int *attr_out, int *til
     uint8_t attr = cgb_render_enabled ? vram_cgb1[map_index] : 0;
     return tile_pixel_data(tile, attr, map_x, map_y, attr_out, tile_out);
 }
+
+/* Wario Land stores its full 256x32 block layout in WRAM and the four tile
+ * IDs for each 16x16 block in cartridge RAM. The PPU's hardware tilemap is
+ * only a 256px ring, so simply reading it for wide margins causes repeated
+ * columns and obvious pop-in. Reconstruct those margins from the live map. */
+static int wario_ram_ready(void)
+{
+    const CartInfo *ci = cart_info();
+    return wario_wide_enabled && gb_wram_peek && rom && cart_ram && ci &&
+           ci->ram_bytes > 0x0F00u && ci->size >= 0x80000u;
+}
+
+static int wario_unwrap_tile_coordinate(int map_tile, int reference)
+{
+    int coordinate = (reference & ~0xFF) + map_tile * 8;
+    if (coordinate - reference > 128) coordinate -= 256;
+    else if (reference - coordinate > 128) coordinate += 256;
+    return coordinate;
+}
+
+static int wario_block_at(int world_x, int world_y, uint8_t *block, int *tile_in_block)
+{
+    if (!gb_wram_peek || world_x < 0 || world_y < 0 ||
+        world_x >= 0x1000 || world_y >= 0x0200)
+        return 0;
+    unsigned layout_offset = (unsigned)(world_y >> 4) * 0x100u + (unsigned)(world_x >> 4);
+    *block = (uint8_t)(gb_wram_peek(layout_offset) & 0x7Fu);
+    *tile_in_block = (((world_y >> 3) & 1) * 2) + ((world_x >> 3) & 1);
+    return 1;
+}
+
+static void wario_learn_visible_attributes(void)
+{
+    if (!cgb_render_enabled) return;
+    const int reference_x = (int)wario_frame_scroll_x - 0x50;
+    const int reference_y = (int)wario_frame_scroll_y - 0x48;
+    const int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    for (int map_y = 0; map_y < 32; map_y++) {
+        int world_y = wario_unwrap_tile_coordinate(map_y, reference_y);
+        if (world_y < 0 || world_y >= 0x0200) continue;
+        for (int map_x = 0; map_x < 32; map_x++) {
+            int world_x = wario_unwrap_tile_coordinate(map_x, reference_x);
+            if (world_x < 0 || world_x >= 0x1000) continue;
+            uint8_t block;
+            int part;
+            if (!wario_block_at(world_x, world_y, &block, &part)) continue;
+            size_t tile_offset = 0x0D00u + (size_t)block * 4u + (size_t)part;
+            const CartInfo *ci = cart_info();
+            if (!ci || tile_offset >= ci->ram_bytes) continue;
+            unsigned map_entry = (unsigned)map_off + (unsigned)map_y * 32u + (unsigned)map_x;
+            uint8_t tile = cart_ram[tile_offset];
+            if (vram[map_entry] != tile) continue;
+            uint8_t attr = vram_cgb1[map_entry];
+            wario_block_attr[block][part] = attr;
+            wario_block_known[block][part] = 1;
+            wario_tile_attr[tile] = attr;
+            wario_tile_known[tile] = 1;
+        }
+    }
+}
+
+static void wario_prepare_frame(void)
+{
+    wario_frame_active = 0;
+    if (!wario_ram_ready()) return;
+    const CartInfo *ci = cart_info();
+    if (!ci || ci->ram_bytes <= 0x0903u) return;
+    uint8_t game_mode = cart_ram[0x08C3u];
+    if (game_mode != 2 && game_mode != 3) return;
+    uint8_t level = cart_ram[0x0800u];
+    if (wario_cached_level != level) {
+        memset(wario_block_known, 0, sizeof wario_block_known);
+        memset(wario_tile_known, 0, sizeof wario_tile_known);
+        wario_cached_level = level;
+    }
+    wario_frame_scroll_x = (uint16_t)(((uint16_t)cart_ram[0x0902u] << 8) |
+                                      cart_ram[0x0903u]);
+    wario_frame_scroll_y = (uint16_t)(((uint16_t)cart_ram[0x0900u] << 8) |
+                                      cart_ram[0x0901u]);
+    wario_frame_active = 1;
+    wario_learn_visible_attributes();
+}
+
+static int wario_dx_palette_attr(uint8_t tile, uint8_t *attr)
+{
+    const CartInfo *ci = cart_info();
+    if (!rom || !ci || ci->size < 0x85000u ||
+        rom[0x143] != 0xC0 || rom[0x147] != 0x1B ||
+        !cart_ram || ci->ram_bytes <= 0x0800u)
+        return 0;
+    uint8_t level = cart_ram[0x0800u];
+    if (level > 0x2D) return 0;
+    size_t offset = 0x84000u + ((size_t)(0x41u + level) << 8) + tile;
+    if (offset >= ci->size || rom[offset] >= 8) return 0;
+    *attr = rom[offset];
+    return 1;
+}
+
+static int wario_margin_pixel(int world_x, int world_y, uint8_t *tile,
+                              uint8_t *attr, int *inside_world)
+{
+    uint8_t block;
+    int part;
+    *inside_world = wario_block_at(world_x, world_y, &block, &part);
+    if (!*inside_world) return 0;
+    size_t offset = 0x0D00u + (size_t)block * 4u + (size_t)part;
+    const CartInfo *ci = cart_info();
+    if (!ci || offset >= ci->ram_bytes) { *inside_world = 0; return 0; }
+    *tile = cart_ram[offset];
+    *attr = 0;
+    if (!cgb_render_enabled) return 1;
+
+    int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    unsigned map_entry = (unsigned)map_off +
+        (unsigned)(((unsigned)world_y >> 3) & 31u) * 32u +
+        (unsigned)(((unsigned)world_x >> 3) & 31u);
+    if (vram[map_entry] == *tile) {
+        *attr = vram_cgb1[map_entry];
+        wario_block_attr[block][part] = *attr;
+        wario_block_known[block][part] = 1;
+        wario_tile_attr[*tile] = *attr;
+        wario_tile_known[*tile] = 1;
+    } else if (!wario_dx_palette_attr(*tile, attr)) {
+        if (wario_block_known[block][part]) *attr = wario_block_attr[block][part];
+        else if (wario_tile_known[*tile]) *attr = wario_tile_attr[*tile];
+    }
+    return 1;
+}
+
+static void wario_render_margins(int y, int W, int L, uint8_t *out,
+                                 uint32_t *rgb, uint8_t *bgci, uint8_t *bgattr)
+{
+    if (!wario_frame_active || !wario_wide_enabled || W <= GB_W) return;
+    int expected_x = ((int)wario_frame_scroll_x - 0x50) & 0xFF;
+    int expected_y = ((int)wario_frame_scroll_y - 0x48) & 0xFF;
+    int dx = (int)scx - expected_x, dy = (int)scy - expected_y;
+    if (dx > 128) dx -= 256;
+    if (dx < -128) dx += 256;
+    if (dy > 128) dy -= 256;
+    if (dy < -128) dy += 256;
+    int world_y = (int)wario_frame_scroll_y - 0x48 + y + dy;
+    for (int X = 0; X < W; X++) {
+        if (X >= L && X < L + GB_W) continue;
+        int world_x = (int)wario_frame_scroll_x - 0x50 + (X - L) + dx;
+        uint8_t tile = 0, attr = 0;
+        int inside = 0;
+        if (!wario_margin_pixel(world_x, world_y, &tile, &attr, &inside)) {
+            bgci[X] = 0; bgattr[X] = 0;
+            out[X] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
+            if (cgb_render_enabled) rgb[X] = cgb_rgb(cgb_bg_palette, 0, 0);
+            ppu_bgtile[y][X] = 0xFFFF;
+            ppu_bguv[y][X] = 0;
+            continue;
+        }
+        int attr_out = 0, tile_id = 0;
+        int ci = tile_pixel_data(tile, attr, world_x, world_y, &attr_out, &tile_id);
+        bgci[X] = (uint8_t)ci; bgattr[X] = (uint8_t)attr_out;
+        out[X] = cgb_render_enabled ? (uint8_t)ci : (uint8_t)((bgp >> (ci * 2)) & 3);
+        if (cgb_render_enabled)
+            rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr_out & 7), (unsigned)ci);
+        ppu_bgtile[y][X] = (uint16_t)tile_id;
+        ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+    }
+}
+
+static int wl2_floor16(int v)
+{
+    return v >= 0 ? (v / 16) * 16 : -(((-v + 15) / 16) * 16);
+}
+
+static int wl2_same_visual(const Wl2BlockVisual *a, const Wl2BlockVisual *b)
+{
+    /* CGB tilemap attributes can vary by placement (for example, a flipped
+       copy of the same block). The four tile IDs define the block's geometry;
+       keep the latest observed attributes instead of discarding such blocks. */
+    return memcmp(a->tile, b->tile, sizeof a->tile) == 0;
+}
+
+/* Choose the active 0x200-byte metatile set by matching its tile IDs
+ * against block graphics observed in the unmodified 160px viewport. This
+ * avoids assuming every room uses the table at 0x18000+0x000, while still
+ * allowing the margin renderer to draw blocks that have never entered view. */
+/* Cache CGB palette attributes for every native 8x8 tile, not only tiles in
+ * completely visible 16x16 blocks. A partial block at the viewport edge is
+ * still authoritative for its world coordinate; skipping it can cause its
+ * expanded margin copy to switch palettes when the block fully scrolls in. */
+static void wl2_store_world_attr(int world_x, int world_y, uint8_t attr);
+
+static int wl2_floor8(int v)
+{
+    return v >= 0 ? (v / 8) * 8 : -(((-v + 7) / 8) * 8);
+}
+
+static void wl2_cache_native_world_attrs(int world_x0, int world_y0, int map_off)
+{
+    if (!cgb_render_enabled) return;
+    int first_x = wl2_floor8(world_x0);
+    int first_y = wl2_floor8(world_y0);
+    for (int world_y = first_y; world_y < world_y0 + GB_H; world_y += 8) {
+        if (world_y < 0) continue;
+        for (int world_x = first_x; world_x < world_x0 + GB_W; world_x += 8) {
+            if (world_x < 0) continue;
+            unsigned map_index = (unsigned)map_off +
+                (((unsigned)world_y & 0xFFu) >> 3) * 32u +
+                (((unsigned)world_x & 0xFFu) >> 3);
+            wl2_store_world_attr(world_x, world_y, vram_cgb1[map_index]);
+        }
+    }
+}
+
+static void wl2_select_metatile_set(void)
+{
+    uint8_t probe;
+    if (!rom || !wide_wl2_block_tile ||
+        !wide_wl2_block_tile(0, 0, 0, &probe)) {
+        wl2_metatile_set = -1;
+        return;
+    }
+
+    int score[32] = {0};
+    int compared = 0;
+    for (unsigned id = 0; id < 128; id++) {
+        if (!wl2_frame_seen[id] || wl2_frame_conflict[id]) continue;
+        const uint8_t *observed = wl2_frame_visuals[id].tile;
+        compared++;
+        for (unsigned set = 0; set < 32; set++) {
+            size_t off = 0x18000u + (size_t)set * 0x200u + (size_t)id * 4u;
+            if (memcmp(rom + off, observed, 4) == 0)
+                score[set]++;
+        }
+    }
+
+    /* Common metatiles are shared across many sets. Wait for several
+       distinctive visible blocks before replacing the current selection. */
+    if (compared < 4) return;
+    int best = -1, best_score = -1, second_score = -1;
+    for (int set = 0; set < 32; set++) {
+        if (score[set] > best_score) {
+            second_score = best_score;
+            best_score = score[set];
+            best = set;
+        } else if (score[set] > second_score) {
+            second_score = score[set];
+        }
+    }
+    int equivalent_tie = best >= 0 && best_score == second_score;
+    if (equivalent_tie) {
+        size_t best_off = 0x18000u + (size_t)best * 0x200u;
+        for (int set = 0; set < 32; set++) {
+            if (set == best || score[set] != best_score) continue;
+            size_t other_off = 0x18000u + (size_t)set * 0x200u;
+            if (memcmp(rom + best_off, rom + other_off, 0x200u) != 0) {
+                equivalent_tie = 0;
+                break;
+            }
+        }
+    }
+    if (best >= 0 && best_score >= 3 &&
+        (best_score - second_score >= 2 || equivalent_tie))
+        wl2_metatile_set = best;
+}
+
+static int wl2_scroll_delta(int current, int initial)
+{
+    int delta = current - initial;
+    if (delta > 128) delta -= 256;
+    if (delta < -128) delta += 256;
+    return delta;
+}
+
+static int wl2_align_origin(int world_origin, int ppu_scroll)
+{
+    int low = world_origin % 256;
+    if (low < 0) low += 256;
+    return world_origin + wl2_scroll_delta(ppu_scroll, low);
+}
+
+static void wl2_store_world_attr(int world_x, int world_y, uint8_t attr)
+{
+    if (!cgb_render_enabled || world_x < 0 || world_y < 0 ||
+        world_x >= WL2_WORLD_ATTR_EXTENT || world_y >= WL2_WORLD_ATTR_EXTENT)
+        return;
+    Wl2WorldAttr *entry = &wl2_world_attrs[(unsigned)world_y >> 3]
+                                          [(unsigned)world_x >> 3];
+    entry->attr = attr;
+    entry->valid = 1;
+}
+
+static int wl2_world_attr_at(int world_x, int world_y, uint8_t *attr)
+{
+    if (!attr || world_x < 0 || world_y < 0 ||
+        world_x >= WL2_WORLD_ATTR_EXTENT || world_y >= WL2_WORLD_ATTR_EXTENT)
+        return 0;
+    const Wl2WorldAttr *entry = &wl2_world_attrs[(unsigned)world_y >> 3]
+                                                [(unsigned)world_x >> 3];
+    if (!entry->valid) return 0;
+    *attr = entry->attr;
+    return 1;
+}
+
+/* Learn a map-block's 2x2 graphic from the live VRAM map ring.
+ * Native-viewport samples are authoritative. Samples from the extra left/right
+ * area are speculative: they can prewarm block IDs before they enter view,
+ * but must never replace a confirmed pattern or make a confirmed ID ambiguous. */
+static void wl2_learn_block(int block_x, int block_y,
+                            int screen_x, int screen_y,
+                            int map_off, int speculative)
+{
+    if (!wide_wl2_block_at || screen_y < 0 || screen_y + 16 > GB_H)
+        return;
+    if (!speculative) {
+        if (screen_x < 0 || screen_x + 16 > GB_W) return;
+    } else {
+        if (screen_x < -ppu_xoff || screen_x + 16 > GB_W + wide_r) return;
+    }
+
+    uint8_t id;
+    if (!wide_wl2_block_at(block_x + 8, block_y + 8, &id)) return;
+    if (speculative && (wl2_frame_seen[id] || wl2_block_visuals[id].valid))
+        return;
+
+    Wl2BlockVisual sample;
+    memset(&sample, 0, sizeof sample);
+    for (int row = 0; row < 2; row++) {
+        for (int col = 0; col < 2; col++) {
+            int sx = screen_x + col * 8;
+            int sy = screen_y + row * 8;
+            unsigned mx = (unsigned)(sx + scx) & 0xFFu;
+            unsigned my = (unsigned)(sy + scy) & 0xFFu;
+            unsigned index = (unsigned)map_off + ((my >> 3) & 31u) * 32u +
+                             ((mx >> 3) & 31u);
+            unsigned part = (unsigned)(row * 2 + col);
+            sample.tile[part] = vram[index];
+            sample.attr[part] = cgb_render_enabled ? vram_cgb1[index] : 0;
+            /* Keep attributes for this exact world position before the game
+               recycles the corresponding 256px hardware-map ring slot. */
+            if (!speculative)
+                wl2_store_world_attr(block_x + col * 8, block_y + row * 8,
+                                     sample.attr[part]);
+        }
+    }
+
+    if (!speculative) {
+        if (!wl2_frame_seen[id]) {
+            wl2_frame_seen[id] = 1;
+            wl2_frame_visuals[id] = sample;
+        } else if (!wl2_same_visual(&wl2_frame_visuals[id], &sample)) {
+            wl2_frame_conflict[id] = 1;
+        } else {
+            memcpy(wl2_frame_visuals[id].attr, sample.attr, sizeof sample.attr);
+        }
+        return;
+    }
+
+    if (!wl2_ring_seen[id]) {
+        wl2_ring_seen[id] = 1;
+        wl2_ring_visuals[id] = sample;
+    } else if (!wl2_same_visual(&wl2_ring_visuals[id], &sample)) {
+        wl2_ring_conflict[id] = 1;
+    } else {
+        memcpy(wl2_ring_visuals[id].attr, sample.attr, sizeof sample.attr);
+    }
+}
+
+static uint8_t wl2_read_wram(uint16_t address)
+{
+    /* These game variables are documented by WRAM-domain offsets. For Dxxx
+       addresses, rd8() follows the active SVBK bank instead of the physical
+       bank where Wario Land II keeps its coordinates and level state. */
+#if defined(__GNUC__) || defined(__clang__)
+    if (gb_wram_peek && address >= 0xC000u && address < 0xE000u)
+        return gb_wram_peek((size_t)(address - 0xC000u));
+#endif
+    return rd8(address);
+}
+
+static void wl2_prepare_frame(void)
+{
+    wl2_frame_active = 0;
+    if (!wl2_wide_enabled || !rom || !cart_ram || !cart_info() ||
+        !wide_wl2_block_at || !rd8 || ppu_w <= GB_W)
+        return;
+
+    const int color_release = (rom[0x143] & 0x80u) != 0;
+    uint16_t px_addr = color_release ? 0xD53Cu : 0xC53Cu;
+    uint16_t py_addr = color_release ? 0xD53Au : 0xC53Au;
+    uint16_t camx_addr = color_release ? 0xC660u : 0xD652u;
+    uint16_t camy_addr = color_release ? 0xC65Fu : 0xD651u;
+    uint16_t tref_addr = color_release ? 0xC704u : 0xD6EBu;
+    uint16_t level_addr = color_release ? 0xD510u : 0xC510u;
+    int player_x = ((int)wl2_read_wram(px_addr) << 8) |
+                   wl2_read_wram((uint16_t)(px_addr + 1u));
+    int player_y = ((int)wl2_read_wram(py_addr) << 8) |
+                   wl2_read_wram((uint16_t)(py_addr + 1u));
+    int world_x0 = player_x - wl2_read_wram(camx_addr);
+    int world_y0 = player_y - wl2_read_wram(camy_addr);
+    world_x0 = wl2_align_origin(world_x0, scx);
+    world_y0 = wl2_align_origin(world_y0, scy);
+
+    uint16_t tref = (uint16_t)(((uint16_t)wl2_read_wram(tref_addr) << 8) |
+                                wl2_read_wram((uint16_t)(tref_addr + 1u)));
+    int level = wl2_read_wram(level_addr);
+    int cgb = cgb_render_enabled != 0;
+    if (tref == 0 || tref == 0xFFFFu ||
+        world_x0 < -16 || world_x0 > 0x1000 ||
+        world_y0 < -16 || world_y0 > 0x1000)
+        return;
+
+    if (wl2_cache_level != level || wl2_cache_tref != (int)tref ||
+        wl2_cache_cgb != cgb) {
+        memset(wl2_block_visuals, 0, sizeof wl2_block_visuals);
+        memset(wl2_world_attrs, 0, sizeof wl2_world_attrs);
+        wl2_metatile_set = -1;
+        wl2_cache_level = level;
+        wl2_cache_tref = (int)tref;
+        wl2_cache_cgb = cgb;
+    }
+
+    wl2_frame_world_x0 = world_x0;
+    wl2_frame_world_y0 = world_y0;
+    wl2_frame_scx = scx;
+    wl2_frame_scy = scy;
+    memset(wl2_frame_seen, 0, sizeof wl2_frame_seen);
+    memset(wl2_frame_conflict, 0, sizeof wl2_frame_conflict);
+    memset(wl2_ring_visuals, 0, sizeof wl2_ring_visuals);
+    memset(wl2_ring_seen, 0, sizeof wl2_ring_seen);
+    memset(wl2_ring_conflict, 0, sizeof wl2_ring_conflict);
+
+    int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    /* Record palette attributes even for 8x8 tiles partially clipped by the
+       native viewport edges; the 16x16 block learner intentionally skips
+       those incomplete blocks. */
+    wl2_cache_native_world_attrs(world_x0, world_y0, map_off);
+    int first_y = wl2_floor16(world_y0);
+    int first_native_x = wl2_floor16(world_x0);
+    /* Pass 1: learn from blocks fully inside the original 160px viewport.
+       These samples are trustworthy and may refresh the persistent cache. */
+    for (int by = first_y; by < world_y0 + GB_H; by += 16) {
+        int sy = by - world_y0;
+        if (sy < 0 || sy + 16 > GB_H) continue;
+        for (int bx = first_native_x; bx < world_x0 + GB_W; bx += 16) {
+            int sx = bx - world_x0;
+            if (sx < 0 || sx + 16 > GB_W) continue;
+            wl2_learn_block(bx, by, sx, sy, map_off, 0);
+        }
+    }
+
+    for (unsigned id = 0; id < 256; id++) {
+        if (wl2_frame_conflict[id]) {
+            wl2_block_visuals[id].valid = 0;
+        } else if (wl2_frame_seen[id]) {
+            wl2_block_visuals[id] = wl2_frame_visuals[id];
+            wl2_block_visuals[id].valid = 1;
+        }
+    }
+    wl2_select_metatile_set();
+
+    /* Pass 2: look ahead into the actual 256x256 hardware tilemap ring.
+       WL2 often has the next/previous room columns populated before they enter
+       the 160px viewport. Learn those block IDs early so the widescreen edge
+       doesn't wait for an entire 16x16 block to walk fully on-screen. */
+    int first_ring_x = wl2_floor16(world_x0 - ppu_xoff);
+    int ring_end_x = world_x0 + GB_W + wide_r;
+    for (int by = first_y; by < world_y0 + GB_H; by += 16) {
+        int sy = by - world_y0;
+        if (sy < 0 || sy + 16 > GB_H) continue;
+        for (int bx = first_ring_x; bx < ring_end_x; bx += 16) {
+            int sx = bx - world_x0;
+            if (sx >= 0 && sx + 16 <= GB_W) continue;
+            wl2_learn_block(bx, by, sx, sy, map_off, 1);
+        }
+    }
+
+    /* Only use an unambiguous speculative sample if we have not learned a
+       confirmed version of that block ID. A later native sample supersedes it. */
+    for (unsigned id = 0; id < 256; id++) {
+        if (!wl2_frame_seen[id] && !wl2_block_visuals[id].valid &&
+            wl2_ring_seen[id] && !wl2_ring_conflict[id]) {
+            wl2_block_visuals[id] = wl2_ring_visuals[id];
+            wl2_block_visuals[id].valid = 1;
+        }
+    }
+    wl2_frame_active = 1;
+}
+
+static void wl2_render_margins(int y, int W, int L, uint8_t *out,
+                               uint32_t *rgb, uint8_t *bgci, uint8_t *bgattr)
+{
+    if (!wl2_wide_enabled || !wl2_frame_active || W <= GB_W) return;
+    /* Some rooms update SCX/SCY during the frame. Follow those raster
+       changes just as the Wario Land margin renderer does. */
+    int world_y = wl2_frame_world_y0 + wl2_scroll_delta(scy, wl2_frame_scy) + y;
+    if (world_y < 0 || world_y > 0xFFFF) return;
+    int scroll_x_delta = wl2_scroll_delta(scx, wl2_frame_scx);
+
+    for (int X = 0; X < W; X++) {
+        if (X >= L && X < L + GB_W) continue;
+        int world_x = wl2_frame_world_x0 + scroll_x_delta + X - L;
+        if (world_x < 0 || world_x > 0xFFFF) continue;
+        uint8_t id;
+        if (!wide_wl2_block_at || !wide_wl2_block_at(world_x, world_y, &id))
+            continue;
+        unsigned part = ((world_y & 8) ? 2u : 0u) + ((world_x & 8) ? 1u : 0u);
+        const Wl2BlockVisual *visual = &wl2_block_visuals[id];
+        uint8_t tile = 0, attr = 0;
+        uint8_t static_block_tiles[4];
+        int have_static_block = wide_wl2_block_tile != NULL;
+        for (unsigned p = 0; p < 4 && have_static_block; p++) {
+            if (!wide_wl2_block_tile(wl2_metatile_set, (int)id, (int)p,
+                                     &static_block_tiles[p]))
+                have_static_block = 0;
+        }
+        if (have_static_block) {
+            tile = static_block_tiles[part];
+        } else {
+            /* Unknown ROM revisions retain the frame-learned tile/attribute
+               pair rather than combining a learned tile with stale CGB data. */
+            if (!visual->valid) continue;
+            tile = visual->tile[part];
+            attr = visual->attr[part];
+        }
+        if (cgb_render_enabled) {
+            uint8_t world_attr = 0, palette_attr = 0;
+            int have_world_attr = wl2_world_attr_at(world_x, world_y, &world_attr);
+            int have_rom_palette = have_static_block && wide_wl2_block_attr &&
+                wide_wl2_block_attr(wl2_metatile_set, (int)id, (int)part,
+                                    &palette_attr);
+            if (have_rom_palette) {
+                /* The GBC ROM has a parallel static palette table for the same
+                   metatile set at 0xF0000. Use its palette ID as the source of
+                   truth, just as GB uses the static tile-ID table. The live
+                   map's attribute ring is only used for non-palette flags. */
+                attr = (uint8_t)(palette_attr & 0x07u);
+                if (have_world_attr) {
+                    attr |= (uint8_t)(world_attr & 0xF8u);
+                } else {
+                    int have_world_flags = 0;
+                    if (have_static_block) {
+                        unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
+                        int block_x = world_x & ~15;
+                        int block_y = world_y & ~15;
+                        int map_block_matches = 1;
+                        for (unsigned p = 0; p < 4; p++) {
+                            int px = block_x + (int)(p & 1u) * 8;
+                            int py = block_y + (int)(p >> 1) * 8;
+                            unsigned map_index = map_off +
+                                (((unsigned)py >> 3) & 31u) * 32u +
+                                (((unsigned)px >> 3) & 31u);
+                            if (vram[map_index] != static_block_tiles[p]) {
+                                map_block_matches = 0;
+                                break;
+                            }
+                        }
+                        if (map_block_matches) {
+                            unsigned map_index = map_off +
+                                ((unsigned)(world_y >> 3) & 31u) * 32u +
+                                ((unsigned)(world_x >> 3) & 31u);
+                            attr |= (uint8_t)(vram_cgb1[map_index] & 0xF8u);
+                            have_world_flags = 1;
+                        }
+                    }
+                    if (!have_world_flags && visual->valid)
+                        attr |= (uint8_t)(visual->attr[part] & 0xF8u);
+                }
+            } else if (have_world_attr) {
+                /* Unknown cartridge revisions use only attributes captured
+                   from the exact coordinate in the native viewport. */
+                attr = world_attr;
+            } else if (have_static_block) {
+                /* Fallback for ROMs without a verified palette table: accept
+                   ring flags/attributes only when the entire metatile matches. */
+                unsigned map_off = (lcdc & 0x08) ? 0x1C00u : 0x1800u;
+                int block_x = world_x & ~15;
+                int block_y = world_y & ~15;
+                int map_block_matches = 1;
+                for (unsigned p = 0; p < 4; p++) {
+                    int px = block_x + (int)(p & 1u) * 8;
+                    int py = block_y + (int)(p >> 1) * 8;
+                    unsigned map_index = map_off +
+                        (((unsigned)py >> 3) & 31u) * 32u +
+                        (((unsigned)px >> 3) & 31u);
+                    if (vram[map_index] != static_block_tiles[p]) {
+                        map_block_matches = 0;
+                        break;
+                    }
+                }
+                if (map_block_matches) {
+                    unsigned map_index = map_off +
+                        ((unsigned)(world_y >> 3) & 31u) * 32u +
+                        ((unsigned)(world_x >> 3) & 31u);
+                    attr = vram_cgb1[map_index];
+                } else if (visual->valid) {
+                    attr = visual->attr[part];
+                } else {
+                    attr = 0;
+                }
+            }
+        }
+
+        int attr_out = 0, tile_id = 0;
+        int ci = tile_pixel_data(tile, attr, world_x, world_y,
+                                 &attr_out, &tile_id);
+        bgci[X] = (uint8_t)ci;
+        bgattr[X] = (uint8_t)attr_out;
+        out[X] = cgb_render_enabled ? (uint8_t)ci
+                                     : (uint8_t)((bgp >> (ci * 2)) & 3);
+        if (cgb_render_enabled)
+            rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr_out & 7), (unsigned)ci);
+        ppu_bgtile[y][X] = (uint16_t)tile_id;
+        ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+    }
+}
+
+
+static int wl3_align_origin(int world_origin, int ppu_scroll)
+{
+    int low = world_origin % 256;
+    if (low < 0) low += 256;
+    int delta = ppu_scroll - low;
+    if (delta > 128) delta -= 256;
+    if (delta < -128) delta += 256;
+    return world_origin + delta;
+}
+
+static void wl3_prepare_frame(void)
+{
+    wl3_frame_active = 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (!wide_wl3_block_at || !wide_wl3_block_tile || !wide_wl3_camera)
+        return;
+#endif
+    if (!wl3_wide_enabled || !rom || !cart_ram || !cart_info() ||
+        ppu_w <= GB_W || !wide_wl3_block_at ||
+        !wide_wl3_block_tile || !wide_wl3_camera)
+        return;
+
+    int camera_x = 0, camera_y = 0;
+    if (!wide_wl3_camera(&camera_x, &camera_y)) return;
+    int native_x0 = wl3_align_origin(camera_x, scx);
+    int native_y0 = wl3_align_origin(camera_y, scy);
+    int map_off = (lcdc & 0x08) ? 0x1C00 : 0x1800;
+    int first_x = (8 - (scx & 7)) & 7;
+    int first_y = (8 - (scy & 7)) & 7;
+    int hits = 0, samples = 0;
+
+    /* Verify that the candidate camera symbol, SRAM block map and current
+     * room graphics table describe the same live scene before extending it.
+     * Dynamic door/room variants and unknown ROM revisions fail closed. */
+    for (int sy = first_y; sy < GB_H - 8; sy += 8) {
+        for (int sx = first_x; sx < GB_W; sx += 8) {
+            uint8_t block = 0, expected_tile = 0;
+            int world_x = native_x0 + sx;
+            int world_y = native_y0 + sy;
+            int map_result = wide_wl3_block_at(world_x, world_y, &block);
+            if (map_result == 0) return; /* Unknown map/data: fail closed. */
+            if (map_result < 0) continue; /* Outside the level is valid blank space. */
+            int part = ((world_y & 8) ? 2 : 0) | ((world_x & 8) ? 1 : 0);
+            if (!wide_wl3_block_tile((int)block, part, &expected_tile)) return;
+            unsigned index = (unsigned)map_off +
+                (((unsigned)(sy + scy) >> 3) & 31u) * 32u +
+                (((unsigned)(sx + scx) >> 3) & 31u);
+            if (vram[index] == expected_tile) hits++;
+            samples++;
+        }
+    }
+    if (samples < 100 || hits * 100 < samples * 95) return;
+
+    wl3_frame_world_x0 = native_x0 - ppu_xoff;
+    wl3_frame_world_y0 = native_y0;
+    wl3_frame_scx = scx;
+    wl3_frame_scy = scy;
+    wl3_frame_active = 1;
+}
+
+static int wl3_scroll_delta(int current, int initial)
+{
+    int delta = current - initial;
+    if (delta > 128) delta -= 256;
+    if (delta < -128) delta += 256;
+    return delta;
+}
+
+static void wl3_render_margins(int y, int W, int L, uint8_t *out,
+                               uint32_t *rgb, uint8_t *bgci, uint8_t *bgattr)
+{
+    if (!wl3_wide_enabled || !wl3_frame_active || W <= GB_W) return;
+    int world_y = wl3_frame_world_y0 + wl3_scroll_delta(scy, wl3_frame_scy) + y;
+    int scroll_dx = wl3_scroll_delta(scx, wl3_frame_scx);
+
+    for (int X = 0; X < W; ++X) {
+        if (X >= L && X < L + GB_W) continue;
+        int world_x = wl3_frame_world_x0 + scroll_dx + X;
+        uint8_t block = 0, tile = 0, attr = 0;
+        int map_result = wide_wl3_block_at(world_x, world_y, &block);
+        if (map_result == 0) continue; /* Unknown frame/data: leave PPU output untouched. */
+        if (map_result < 0) {
+            bgci[X] = 0;
+            bgattr[X] = 0;
+            out[X] = cgb_render_enabled ? 0 : (uint8_t)(bgp & 3);
+            if (cgb_render_enabled) rgb[X] = cgb_rgb(cgb_bg_palette, 0, 0);
+            ppu_bgtile[y][X] = 0xFFFF;
+            ppu_bguv[y][X] = 0;
+            continue;
+        }
+
+        int part = ((world_y & 8) ? 2 : 0) | ((world_x & 8) ? 1 : 0);
+        if (!wide_wl3_block_tile((int)block, part, &tile)) continue;
+        if (cgb_render_enabled && wide_wl3_block_attr)
+            (void)wide_wl3_block_attr((int)block, part, &attr);
+
+        int attr_out = 0, tile_id = 0;
+        int ci = tile_pixel_data(tile, attr, world_x, world_y, &attr_out, &tile_id);
+        bgci[X] = (uint8_t)ci;
+        bgattr[X] = (uint8_t)attr_out;
+        out[X] = cgb_render_enabled ? (uint8_t)ci
+                                     : (uint8_t)((bgp >> (ci * 2)) & 3);
+        if (cgb_render_enabled)
+            rgb[X] = cgb_rgb(cgb_bg_palette, (unsigned)(attr_out & 7), (unsigned)ci);
+        ppu_bgtile[y][X] = (uint16_t)tile_id;
+        ppu_bguv[y][X] = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+    }
+}
+
 void ppu_vram_bank_write(uint8_t value) { vram_bank = value & 1; }
 
 uint8_t ppu_cgb_read(uint8_t r)
@@ -270,7 +1194,13 @@ void ppu_write(uint8_t r, uint8_t v)
 /* ------------------------------------------------------------------ */
 static void render_line(int y)
 {
-    if (y == 0) ppu_refresh_wide_layout();
+    if (y == 0) {
+        ppu_refresh_wide_layout();
+        /* Sample after the VBlank routine, when OAM and game RAM have been
+           updated for the image now about to be rendered. */
+        if (wide_wl2_trace_frame) wide_wl2_trace_frame(oam);
+        if (wide_wl3_trace_frame) wide_wl3_trace_frame(oam);
+    }
     const int W = ppu_w, L = ppu_xoff;
     hud_lines = wide_on ? cfg_hud : 0; win_centre = wide_on ? cfg_win : 0;
     if (y == 0 && ppu_w > GB_W) {
@@ -279,6 +1209,9 @@ static void render_line(int y)
         if (wide_sml2_snapshot_actors) wide_sml2_snapshot_actors();
         if (wide_sml2_prepare_frame)
             wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
+        wario_prepare_frame();
+        wl2_prepare_frame();
+        wl3_prepare_frame();
     }
     int sml2_margin_mode = 0;
     if (wide_on && ppu_w > GB_W && wide_sml2_world_origin) {
@@ -313,6 +1246,18 @@ static void render_line(int y)
         memset(out, 0, W);
         memset(rgb, 0, W * sizeof rgb[0]);
     }
+
+    /* Wario's level map is reconstructed from its live 16x16 block layout;
+       its hardware tilemap ring otherwise repeats old columns and pops in. */
+    if (wide_on && W > GB_W && wario_wide_enabled)
+        wario_render_margins(y, W, L, out, rgb, bgci, bgattr);
+    if (wide_on && W > GB_W && wl2_wide_enabled)
+        wl2_render_margins(y, W, L, out, rgb, bgci, bgattr);
+    /* Wario Land 3 margins come from its live SRAM block map and dynamic room
+     * graphics/palette tables. The validation above leaves native 160px pixels
+     * untouched and refuses to draw margins when the tables don't agree. */
+    if (wide_on && W > GB_W && wl3_wide_enabled)
+        wl3_render_margins(y, W, L, out, rgb, bgci, bgattr);
 
     /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
        only the margins from the live 16x16 block map, leaving the original
@@ -354,7 +1299,9 @@ static void render_line(int y)
         int map_off = (lcdc & 0x40) ? 0x1C00 : 0x1800;
         int x0 = wx - 7 + L + (win_centre ? hud_shift : 0), drew = 0;
         int first = win_centre ? 0 : (x0 < 0 ? 0 : x0);
-        for (int X = first; X < W; X++) {
+        int window_end = (wario_wide_enabled && W > GB_W) ? L + GB_W : W;
+        if (window_end > W) window_end = W;
+        for (int X = first; X < window_end; X++) {
             int px = (X - x0) & 0xFF, attr = 0, tile_id = 0;
             int ci = tile_pixel(map_off, px, wlc, &attr, &tile_id);
             bgci[X] = (uint8_t)ci; bgattr[X] = (uint8_t)attr;
@@ -484,7 +1431,9 @@ void ppu_tick(int n)
 {
     if (!lcd_on) {
         off_cycles += n;
-        if (off_cycles >= CYCLES_PER_FRAME) { off_cycles -= CYCLES_PER_FRAME; frame_count++; frame_hook(); }
+        if (off_cycles >= CYCLES_PER_FRAME) { off_cycles -= CYCLES_PER_FRAME; frame_count++;
+            if (wide_wl2_trace_frame) wide_wl2_trace_frame(oam);
+            frame_hook(); }
         return;
     }
     dot += n;

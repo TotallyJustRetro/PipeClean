@@ -11,10 +11,40 @@ typedef struct {
 
 /* pixels to add left and right for a slider value (0..100) */
 void wide_dims(int game, int pct, int *left, int *right);
+/* Variant-aware sizing/install hooks: the Wario DX profile needs its own tested bounds. */
+void wide_dims_profile(int game, int pct, int wario_dx, int *left, int *right);
+int  wide_install_profile(int game, int left, int right, int wario_dx);
+int  wide_is_wario_dx_profile(const char *title, const char *path);
 /* patch the loaded ROM for these dimensions. 1 = ok / nothing needed, 0 = this ROM doesn't match (use the normal screen) */
 int  wide_install(int game, int left, int right);
-/* Interpreter hook used by SML2 entity activation. Returns 1 when it handled op. */
+/* Wario Land II activation-bound diagnostics (active only with its widescreen profile). */
+extern int wide_wl2_trace_active;
+void wide_wl2_trace_instruction(uint16_t pc);
+void wide_wl2_trace_frame(const uint8_t *oam_snapshot);
+/* Read the full 8-bit Wario Land II 16x16 block ID from its swizzled level map. */
+int wide_wl2_block_at(int world_x, int world_y, uint8_t *block);
+/* Read one tile ID from a verified ROM metatile table set (0-31). */
+int wide_wl2_block_tile(int table_set, int block, int part, uint8_t *tile);
+/* Read the parallel GBC palette-ID table for one metatile component. */
+int wide_wl2_block_attr(int table_set, int block, int part, uint8_t *attr);
+void wide_wl2_trace_finish(void);
+void wide_wl2_trace_set_path(const char *path);
+/* Wario Land 3 runtime observation; diagnostic only, no ROM patching. */
+extern int wide_wl3_trace_active;
+void wide_wl3_trace_begin(int left, int right);
+void wide_wl3_trace_instruction(uint16_t pc);
+void wide_wl3_trace_memory_write(uint16_t address, uint8_t old_value, uint8_t new_value);
+void wide_wl3_trace_frame(const uint8_t *oam_snapshot);
+void wide_wl3_trace_finish(void);
+void wide_wl3_trace_set_path(const char *path);
+/* Interpreter hooks used for runtime-only game-specific camera/object bounds. */
 int wide_intercept_sml2(uint8_t op);
+int wide_intercept_wl3(uint8_t op);
+/* Wario Land 3 room map, dynamic block graphics/palettes, and camera. */
+int wide_wl3_block_at(int world_x, int world_y, uint8_t *block);
+int wide_wl3_block_tile(int block, int part, uint8_t *tile);
+int wide_wl3_block_attr(int block, int part, uint8_t *attr);
+int wide_wl3_camera(int *camera_x, int *camera_y);
 /* Override SML2 enemy-spawn scan bounds at their verified bank-2 read sites. */
 uint8_t wide_read_sml2(uint16_t address, uint8_t value);
 /* Clear per-frame SML2 widescreen scanner state after a save-state/rewind load. */

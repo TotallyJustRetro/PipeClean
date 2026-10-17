@@ -22,6 +22,24 @@ The setup script also copies SDL's Gradle wrapper scripts/JAR and updates its di
 
 The native build creates a synthetic build-only ROM because PipeClean's generator expects ROM-shaped input at compile time. The generated stub is not playable and is not packaged as game content. At runtime, select your own legally obtained ROM through the Android document picker.
 
+## Updating Android development builds without reinstalling
+
+GitHub Actions builds must use the same signing keystore for every APK update. Before the next install, configure these four **repository Actions secrets** under Settings → Secrets and variables → Actions:
+
+- `PIPECLEAN_ANDROID_KEYSTORE_BASE64`: Base64 of the private `pipeclean-dev-signing.keystore` file supplied for the PipeClean development build.
+- `PIPECLEAN_ANDROID_KEYSTORE_PASSWORD`: the keystore password.
+- `PIPECLEAN_ANDROID_KEY_ALIAS`: the private-key alias.
+- `PIPECLEAN_ANDROID_KEY_PASSWORD`: the private-key password.
+
+Keep the keystore file private; never commit it to this public repository. On Windows PowerShell, from the folder containing the file, run:
+
+```powershell
+$bytes = [IO.File]::ReadAllBytes("$PWD\pipeclean-dev-signing.keystore")
+[Convert]::ToBase64String($bytes) | Set-Clipboard
+```
+
+Paste the clipboard into the value for `PIPECLEAN_ANDROID_KEYSTORE_BASE64`. The supplied key uses alias `pipeclean-dev`; its password is provided separately with the key file. Once all four secrets are set, CI checks the key before building and assigns an increasing Android version code to each build. Because prior CI APKs were signed with temporary keys, uninstall the old app one final time before installing the first APK signed with this persistent key. Back up app-private save data first.
+
 ## What's present vs. still pending
 
 - Present in code: desktop player color wheel, persistent RGB colors for local extra players, shared Online/profile tab, Android project/manifest scaffold, SDL2 CMake Android target, storage-access-framework file picker, writable Android preference/save directory, multi-touch gameplay overlay, and an opt-in per-game second-screen deck for Super Mario Land 1 and 2 (Display tab).

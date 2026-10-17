@@ -1,16 +1,31 @@
 #include <string.h>
 #include <math.h>
+#ifdef __ANDROID__
+#include <SDL_haptic.h>
+#endif
 #include "pad.h"
 #include "settings.h"
 #include "events.h"
 #include "audio.h"
 
 #define MAXPADS 4
-typedef struct { SDL_GameController *gc; SDL_Joystick *joy; int mapped; } Pad;
+typedef struct {
+    SDL_GameController *gc;
+    SDL_Joystick *joy;
+    int mapped;
+#ifdef __ANDROID__
+    SDL_Haptic *haptic; /* Android maps this to InputDevice.getVibrator(). */
+#endif
+} Pad;
 static Pad pads[MAXPADS];
 static int n_pads;
 static SDL_JoystickID assigned_instance[N_GAMES][MAX_MP_PLAYERS];
 static int sync_initialized;
+#ifdef __ANDROID__
+/* SDL2's Android joystick rumble backend is unsupported. Its separate haptic
+ * backend exposes controller vibrators and a VIBRATOR_SERVICE device. */
+static SDL_Haptic *android_system_haptic;
+#endif
 static uint8_t touch_buttons[N_GAMES][MAX_MP_PLAYERS];
 static uint8_t touch_dpad[N_GAMES][MAX_MP_PLAYERS];
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
@@ -97,15 +112,94 @@ static void remember_assigned_instances(void)
         }
     }
 }
+#ifdef __ANDROID__
+static void pad_close_haptic(Pad *p)
+{
+    if (!p || !p->haptic) return;
+    SDL_HapticRumbleStop(p->haptic);
+    SDL_HapticClose(p->haptic);
+    p->haptic = NULL;
+}
+
+static void pad_open_haptic(int device)
+{
+    if (device < 0 || device >= n_pads) return;
+    Pad *p = &pads[device];
+    SDL_Joystick *j = joystick_for_device(device);
+    if (!j) return;
+
+    /* Prefer the vibration motor attached to this exact Android input device
+     * (e.g. a USB/Bluetooth controller that exposes its own vibrator). */
+    SDL_Haptic *h = SDL_HapticOpenFromJoystick(j);
+    if (!h) return;
+    if (!SDL_HapticRumbleSupported(h) || SDL_HapticRumbleInit(h) < 0) {
+        SDL_HapticClose(h);
+        return;
+    }
+    p->haptic = h;
+}
+
+static void pad_open_android_system_haptic(void)
+{
+    if (android_system_haptic) return;
+    const int count = SDL_NumHaptics();
+    for (int i = 0; i < count; ++i) {
+        const char *name = SDL_HapticName(i);
+        if (!name || strcmp(name, "VIBRATOR_SERVICE") != 0) continue;
+        SDL_Haptic *h = SDL_HapticOpen(i);
+        if (!h) continue;
+        if (!SDL_HapticRumbleSupported(h) || SDL_HapticRumbleInit(h) < 0) {
+            SDL_HapticClose(h);
+            continue;
+        }
+        android_system_haptic = h;
+        return;
+    }
+}
+#endif
+
 static void rescan(void)
 {
-    for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
-    memset(pads, 0, sizeof pads); n_pads = 0;
+    for (int i = 0; i < n_pads; i++) {
+#ifdef __ANDROID__
+        pad_close_haptic(&pads[i]);
+#endif
+        if (pads[i].gc) SDL_GameControllerClose(pads[i].gc);
+        else if (pads[i].joy) SDL_JoystickClose(pads[i].joy);
+    }
+    memset(pads, 0, sizeof pads);
+    n_pads = 0;
+#ifdef __ANDROID__
+    /* Refresh SDL's Android InputDevice vibrator list before binding the
+     * newly arrived joystick to its per-device haptic (SDL polls this list). */
+    (void)SDL_NumHaptics();
+#endif
     int nj = SDL_NumJoysticks();
     for (int i = 0; i < nj && n_pads < MAXPADS; i++) {
-        if (SDL_IsGameController(i)) { SDL_GameController *c = SDL_GameControllerOpen(i); if (c) { pads[n_pads].gc = c; pads[n_pads].mapped = 1; n_pads++; } }
-        else { SDL_Joystick *j = SDL_JoystickOpen(i); if (j) { pads[n_pads].joy = j; n_pads++; } }
+        if (SDL_IsGameController(i)) {
+            SDL_GameController *controller = SDL_GameControllerOpen(i);
+            if (controller) {
+                pads[n_pads].gc = controller;
+                pads[n_pads].mapped = 1;
+                n_pads++;
+#ifdef __ANDROID__
+                pad_open_haptic(n_pads - 1);
+#endif
+            }
+        } else {
+            SDL_Joystick *joystick = SDL_JoystickOpen(i);
+            if (joystick) {
+                pads[n_pads].joy = joystick;
+                n_pads++;
+#ifdef __ANDROID__
+                pad_open_haptic(n_pads - 1);
+#endif
+            }
+        }
     }
+#ifdef __ANDROID__
+    pad_open_android_system_haptic();
+#endif
 }
 
 void pad_init(void)
@@ -114,20 +208,54 @@ void pad_init(void)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
+#ifdef __ANDROID__
+    /* Android SDL2 implements vibration through SDL_Haptic, not through the
+     * SDL_JoystickRumble backend (which returns unsupported on this platform). */
+    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC);
+#else
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
+#endif
     for (int g = 0; g < N_GAMES; g++)
         for (int player = 0; player < MAX_MP_PLAYERS; player++)
             assigned_instance[g][player] = (SDL_JoystickID)-1;
     sync_initialized = 0;
     rescan();
     pad_sync_assignments();
+    /* If a DualSense is already connected when PipeClean starts, open its
+       audio endpoint now so event speaker effects work without first visiting
+       the DualSense settings page. */
+    for (int i = 0; i < n_pads; i++) {
+        if (pad_is_dualsense(i)) {
+            (void)audio_pad_open();
+            break;
+        }
+    }
 }
 
 void pad_shutdown(void)
 {
-    for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
+    for (int i = 0; i < n_pads; i++) {
+#ifdef __ANDROID__
+        pad_close_haptic(&pads[i]);
+#endif
+        if (pads[i].gc) SDL_GameControllerClose(pads[i].gc);
+        else if (pads[i].joy) SDL_JoystickClose(pads[i].joy);
+    }
+    memset(pads, 0, sizeof pads);
     n_pads = 0;
+#ifdef __ANDROID__
+    if (android_system_haptic) {
+        SDL_HapticRumbleStop(android_system_haptic);
+        SDL_HapticClose(android_system_haptic);
+        android_system_haptic = NULL;
+    }
+#endif
     audio_pad_close();
+#ifdef __ANDROID__
+    SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC);
+#else
+    SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
+#endif
 }
 
 void pad_event(const SDL_Event *e)
@@ -138,8 +266,14 @@ void pad_event(const SDL_Event *e)
         remember_assigned_instances();
         rescan();
         pad_sync_assignments();
-        if (e->type == SDL_CONTROLLERDEVICEADDED && pad_is_dualsense(0) + pad_is_dualsense(1) > 0)
-            audio_pad_open();
+        if (e->type == SDL_CONTROLLERDEVICEADDED) {
+            for (int i = 0; i < n_pads; i++) {
+                if (pad_is_dualsense(i)) {
+                    (void)audio_pad_open();
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -665,7 +799,9 @@ void pad_flash(uint32_t rgb) { flash_rgb = rgb; flash_t = 1.0f; }
 
 int pad_has_light(void)
 {
-    for (int i = 0; i < n_pads; i++) if (pads[i].mapped && SDL_GameControllerHasLED(pads[i].gc)) return 1;
+    /* Only DualSense lightbars are driven by PipeClean's event lighting. */
+    for (int i = 0; i < n_pads; i++)
+        if (pad_is_dualsense(i) && SDL_GameControllerHasLED(pads[i].gc)) return 1;
     return 0;
 }
 
@@ -674,11 +810,29 @@ static void pad_rumble_device(int device, int pct, int ms)
     if (pct <= 0 || device < 0 || device >= n_pads) return;
     if (pct > 100) pct = 100;
     Pad *p = &pads[device];
-    if (p->mapped && SDL_GameControllerHasRumble(p->gc)) {
-        Uint16 lo = (Uint16)(pct * 655);
-        Uint16 hi = (Uint16)(pct * 655 * 0.8f);
-        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms);
-    }
+    Uint16 lo = (Uint16)(pct * 655);
+    Uint16 hi = (Uint16)(pct * 655 * 0.8f);
+
+#ifdef __ANDROID__
+    /* SDL 2.32.10's Android SDL_JoystickRumble implementation returns
+     * SDL_Unsupported(). Use SDL's Android Haptic backend first. For the Thor's
+     * built-in "Odin" gamepad, Android may expose only the device-wide
+     * VIBRATOR_SERVICE rather than a vibrator attached to the joystick. */
+    if (p->haptic && SDL_HapticRumblePlay(p->haptic, pct / 100.0f, (Uint32)ms) == 0)
+        return;
+    if (android_system_haptic &&
+        SDL_HapticRumblePlay(android_system_haptic, pct / 100.0f, (Uint32)ms) == 0)
+        return;
+#endif
+
+    /* Desktop and Android controllers that expose SDL's direct rumble API. */
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc) &&
+        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms) == 0)
+        return;
+
+    SDL_Joystick *j = joystick_for_device(device);
+    if (j && SDL_JoystickHasRumble(j))
+        SDL_JoystickRumble(j, lo, hi, (Uint32)ms);
 }
 
 void pad_rumble(int pct, int ms)
@@ -700,7 +854,10 @@ void pad_event_fx(int game, int ev)
     const GameCfg *c = &settings.g[game];
     if ((c->ds_ev_rumble >> ev) & 1)
         pad_rumble_selected(game, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
-    if ((c->ds_ev_led >> ev) & 1) pad_flash(d->color);
+    if (((c->ds_ev_led >> ev) & 1) &&
+        c->pad_device[0] >= 0 && c->pad_device[0] < n_pads &&
+        pad_is_dualsense(c->pad_device[0]))
+        pad_flash(d->color);
 }
 
 static uint32_t base_color(const GameCfg *c)
@@ -732,6 +889,7 @@ void pad_frame(float dt)
     send_acc = 0;
     last_sent = out;
     int device = settings.g[ctx_game].pad_device[0];
-    if (device >= 0 && device < n_pads && pads[device].mapped && SDL_GameControllerHasLED(pads[device].gc))
+    if (device >= 0 && device < n_pads && pad_is_dualsense(device) &&
+        pads[device].mapped && SDL_GameControllerHasLED(pads[device].gc))
         SDL_GameControllerSetLED(pads[device].gc, (Uint8)(out >> 16), (Uint8)(out >> 8), (Uint8)out);
 }

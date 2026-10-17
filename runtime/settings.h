@@ -40,6 +40,8 @@ enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 #define N_UI_SFX 5                      /* hover, click, confirm, back, toggle */
 #define MAX_ROMHACKS 16
 #define ROMHACK_TITLE_LEN 96
+#define MAX_MENU_TRACKS 12
+#define N_RECENT_PLAYED 5
 
 typedef struct {
     char path[512];
@@ -57,6 +59,7 @@ typedef struct {
     int wide;                           /* widescreen amount 0..100 (% of what the game supports) */
     int tex_on, tex_collect;
     int dual_screen;                    /* Show the Android second-screen deck for this game. */
+    int pipe_screen_swap;                /* Swap gameplay to the companion screen while SML1 is underground. */
     int multiplayer;                    /* local multiplayer mode; default off */
     int multiplayer_players;             /* selected player count, clamped to 2..4 */
     char p2_name[32];                    /* Player 2 default name: Luigi */
@@ -90,12 +93,57 @@ typedef struct {
     int ds_rumble;                      /* 0..100 strength */
     int ds_speaker_vol;                 /* 0..100 */
     int ds_ev_led, ds_ev_rumble, ds_ev_speaker;     /* bitmasks over the game's events */
+    int ds_fx_version;                  /* one-time migration for Wario controller effects */
 } GameCfg;
 
 typedef struct {
     int lcd_grid, ghost, scanlines, mask, curve, bloom, hdr, vignette, blur;   /* 0..100 each */
     int preset;
 } FilterCfg;
+
+/* Custom Companion Deck layout controls and assets. Offsets use the deck's
+ * 800x450 reference coordinates and scales are percentages. */
+enum { DECK_SOUND_SAVE, DECK_SOUND_LOAD, DECK_SOUND_PAUSE, DECK_SOUND_REWIND,
+       DECK_SOUND_BACKGROUND, DECK_SOUND_CLOSE, N_DECK_BUTTON_SOUNDS };
+/* Reserve item IDs: 1 = mushroom, 2 = SML1 superball / SML2 fire flower,
+ * 3 = SML2 carrot. Index 0 is unused; item_texture_path is the legacy fallback. */
+#define N_DECK_ITEM_TEXTURE_IDS 4
+#define N_DECK_DECORATIONS 16
+#define N_DECK_ASSET_PATHS 38
+#define N_DECK_LAYOUT_ASSET_MODE_BASE 49
+#define N_DECK_STATUS_VALUE_BASE (N_DECK_LAYOUT_ASSET_MODE_BASE + N_DECK_ASSET_PATHS)
+#define N_DECK_EXTENDED_DECORATION_COUNT (N_DECK_DECORATIONS - 8)
+#define N_DECK_EXTENDED_DECORATION_VALUE_BASE (N_DECK_STATUS_VALUE_BASE + 4)
+#define N_DECK_EXTENDED_DECORATION_SCALE_Y_BASE \
+    (N_DECK_EXTENDED_DECORATION_VALUE_BASE + N_DECK_EXTENDED_DECORATION_COUNT * 3)
+#define N_DECK_LAYOUT_VALUES \
+    (N_DECK_EXTENDED_DECORATION_SCALE_Y_BASE + N_DECK_EXTENDED_DECORATION_COUNT)
+typedef struct {
+    int header_dx, header_dy, header_scale, header_scale_y;
+    int item_dx, item_dy, item_scale, item_scale_y;
+    int controls_dx, controls_dy, controls_scale, controls_scale_y;
+    int timeline_dx, timeline_dy, timeline_scale, timeline_scale_y;
+    int status_dx, status_dy, status_scale, status_scale_y;
+    int decoration_dx, decoration_dy, decoration_scale, decoration_scale_y;
+    int decoration_extra_dx[N_DECK_DECORATIONS - 1], decoration_extra_dy[N_DECK_DECORATIONS - 1];
+    int decoration_extra_scale[N_DECK_DECORATIONS - 1], decoration_extra_scale_y[N_DECK_DECORATIONS - 1];
+    int sounds_enabled;
+    char background_path[512];
+    char header_texture_path[512];
+    char status_texture_path[512];
+    char button_texture_path[512]; /* Legacy fallback for all action buttons. */
+    char button_texture_by_action[6][512]; /* Save, Load, Pause/Resume, Rewind, Background, Close Game. */
+    char item_texture_path[512]; /* Legacy generic item image, used as fallback. */
+    char item_texture_by_id[N_DECK_ITEM_TEXTURE_IDS][512];
+    char decoration_path[512]; /* First decoration; retained for old configs. */
+    char decoration_extra_path[N_DECK_DECORATIONS - 1][512];
+    /* 1 = stretch to the assigned box; 0 = contain the full image without cropping.
+       Indexed by the stable Companion Deck asset path table. */
+    int asset_stretch[N_DECK_ASSET_PATHS];
+    char button_sound_path[N_DECK_BUTTON_SOUNDS][512];
+    char item_sound_path[512];
+    char empty_item_sound_path[512];
+} CompanionLayoutCfg;
 
 typedef struct {
     int volume;                         /* game volume 0..200 percent */
@@ -107,11 +155,21 @@ typedef struct {
     int launcher_ui_scale;              /* 75..125 percent, persisted UI zoom */
     int launcher_window_size;           /* 0 = compact, 1 = default, 2 = large */
     int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
+    int launcher_dual_screen;            /* Android: use the second display; desktop: open the Companion Deck simulator window. */
+    int launcher_pipe_screen_swap;        /* Android: swap SML1 gameplay to the companion screen in pipes/bonus rooms. */
+    int museum_discovery_notifications;   /* Show a launcher toast when a new Museum entry is unlocked. */
+    int recent_played_count;
+    int recent_played[N_RECENT_PLAYED];  /* Game indices, most recent first; -1 = unused. */
+    int game_play_seconds[N_GAMES];      /* Accumulated played time, persisted in whole seconds. */
+    int menu_playlist_count;
+    int menu_playlist_selected;
+    char menu_playlist[MAX_MENU_TRACKS][512];
     char online_name[32];
     char online_server[160];          /* direct peer or traversal host:port */
     int online_connection_mode;          /* 0 = direct connection, 1 = traversal server */
     int online_color;                /* default profile colour, 0xRRGGBB */
     int touch_controls;                   /* on-screen controls are enabled */
+    CompanionLayoutCfg deck_layout[N_GAMES];
     FilterCfg flt;
     GameCfg g[N_GAMES];
 } Settings;

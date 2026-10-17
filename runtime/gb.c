@@ -109,6 +109,11 @@ static size_t wram_offset(uint16_t a)
     return 0x1000u + (size_t)((cgb_mode ? cgb_svbk : 1u) - 1u) * 0x1000u + (size_t)(a - 0xD000);
 }
 
+uint8_t gb_wram_peek(size_t offset)
+{
+    return offset < sizeof wram ? wram[offset] : 0xFF;
+}
+
 static void io_write(uint8_t r, uint8_t v)
 {
     switch (r) {
@@ -230,6 +235,9 @@ void wr8(uint16_t a, uint8_t v)
         v = watch_override_value;
         watch_override_pending = 0;
     }
+    if (wide_wl3_trace_active &&
+        ((a >= 0xA000u && a < 0xC000u) || (a >= 0xC000u && a < 0xE000u)))
+        wide_wl3_trace_memory_write(a, rd8(a), v);
     switch (a >> 12) {
     case 0: case 1: case 2: case 3:
     case 4: case 5: case 6: case 7: cart_write_ctrl(a, v); return;     /* mapper registers */
@@ -343,6 +351,8 @@ void cpu_step_checked(void)
     /* The callback may emulate a helper routine, but must return with the
      * same PC so the interrupted guest instruction still executes normally. */
     if (cpu_instruction_hook) cpu_instruction_hook(cpu.pc);
+    if (wide_wl2_trace_active) wide_wl2_trace_instruction(cpu.pc);
+    if (wide_wl3_trace_active) wide_wl3_trace_instruction(cpu.pc);
     uint16_t pc_before = cpu.pc;
     uint8_t opcode = rd8(cpu.pc);
     cpu_step();

@@ -6,6 +6,18 @@ def sdl2Dir = new File(rootProject.projectDir, "deps/SDL")
 def sdl2ImageDir = new File(rootProject.projectDir, "deps/SDL_image")
 def mbedtlsDir = new File(rootProject.projectDir, "deps/mbedtls")
 
+def pipeCleanBuildNumber = providers.gradleProperty("pipeCleanBuildNumber").getOrElse("1").toInteger()
+def pipeCleanSigningPath = System.getenv("PIPECLEAN_ANDROID_KEYSTORE_PATH")
+def pipeCleanSigningStorePassword = System.getenv("PIPECLEAN_ANDROID_KEYSTORE_PASSWORD")
+def pipeCleanSigningAlias = System.getenv("PIPECLEAN_ANDROID_KEY_ALIAS")
+def pipeCleanSigningKeyPassword = System.getenv("PIPECLEAN_ANDROID_KEY_PASSWORD")
+
+if (pipeCleanSigningPath && (!pipeCleanSigningStorePassword ||
+        !pipeCleanSigningAlias || !pipeCleanSigningKeyPassword)) {
+    throw new GradleException("Persistent PipeClean Android signing is partially configured.")
+}
+
+
 android {
     namespace "com.pipeclean.app"
     compileSdk 35
@@ -15,8 +27,8 @@ android {
         applicationId "com.pipeclean.app"
         minSdk 21
         targetSdk 35
-        versionCode 1
-        versionName "0.1.0-dev"
+        versionCode pipeCleanBuildNumber
+        versionName "0.1.0-dev.${pipeCleanBuildNumber}"
 
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a"
@@ -29,6 +41,25 @@ android {
                           "-DPIPECLEAN_MBEDTLS_SOURCE_DIR=" + mbedtlsDir.absolutePath,
                           "-DANDROID_STL=c++_static"
                 targets "main"
+            }
+        }
+    }
+
+    signingConfigs {
+        pipecleanDev {
+            if (pipeCleanSigningPath) {
+                storeFile file(pipeCleanSigningPath)
+                storePassword pipeCleanSigningStorePassword
+                keyAlias pipeCleanSigningAlias
+                keyPassword pipeCleanSigningKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (pipeCleanSigningPath) {
+                signingConfig signingConfigs.pipecleanDev
             }
         }
     }

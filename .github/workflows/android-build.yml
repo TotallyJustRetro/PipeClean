@@ -2,9 +2,9 @@ name: PipeClean Android APK
 
 on:
   push:
-    branches: [feature/online-android-foundation]
+    branches: [feature/online-android-foundation, feature/android-pipe-screen-swap]
   pull_request:
-    branches: [fix/sml-dx-widescreen-revision, feature/online-android-foundation]
+    branches: [fix/sml-dx-widescreen-revision, feature/online-android-foundation, feature/android-pipe-screen-swap]
   workflow_dispatch:
 
 permissions:
@@ -34,12 +34,36 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
 
+      - name: Configure persistent PipeClean signing key
+        shell: bash
+        env:
+          PIPECLEAN_KEYSTORE_BASE64: ${{ secrets.PIPECLEAN_ANDROID_KEYSTORE_BASE64 }}
+          PIPECLEAN_KEYSTORE_PASSWORD: ${{ secrets.PIPECLEAN_ANDROID_KEYSTORE_PASSWORD }}
+          PIPECLEAN_KEY_ALIAS: ${{ secrets.PIPECLEAN_ANDROID_KEY_ALIAS }}
+          PIPECLEAN_KEY_PASSWORD: ${{ secrets.PIPECLEAN_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PIPECLEAN_KEYSTORE_BASE64}" || -z "${PIPECLEAN_KEYSTORE_PASSWORD}" || -z "${PIPECLEAN_KEY_ALIAS}" || -z "${PIPECLEAN_KEY_PASSWORD}" ]]; then
+            echo "::error::Missing persistent signing secrets. Configure PIPECLEAN_ANDROID_KEYSTORE_BASE64, PIPECLEAN_ANDROID_KEYSTORE_PASSWORD, PIPECLEAN_ANDROID_KEY_ALIAS, and PIPECLEAN_ANDROID_KEY_PASSWORD in repository Actions secrets."
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/pipeclean-dev-signing.keystore"
+          printf '%s' "$PIPECLEAN_KEYSTORE_BASE64" | base64 --decode > "$key_path"
+          test -s "$key_path"
+          keytool -list -keystore "$key_path" -storepass "$PIPECLEAN_KEYSTORE_PASSWORD" -alias "$PIPECLEAN_KEY_ALIAS" >/dev/null
+          chmod 600 "$key_path"
+          echo "PIPECLEAN_ANDROID_KEYSTORE_PATH=$key_path" >> "$GITHUB_ENV"
+
       - name: Fetch pinned SDL dependencies and Gradle wrapper
         run: bash ./android/setup-android.sh
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --stacktrace
+        env:
+          PIPECLEAN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.PIPECLEAN_ANDROID_KEYSTORE_PASSWORD }}
+          PIPECLEAN_ANDROID_KEY_ALIAS: ${{ secrets.PIPECLEAN_ANDROID_KEY_ALIAS }}
+          PIPECLEAN_ANDROID_KEY_PASSWORD: ${{ secrets.PIPECLEAN_ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleDebug -PpipeCleanBuildNumber="$GITHUB_RUN_NUMBER" --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

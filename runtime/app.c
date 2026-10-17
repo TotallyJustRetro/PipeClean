@@ -4,6 +4,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <ctype.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -19,6 +20,8 @@
 #include "rom.h"
 #include "cart.h"
 #include "emu.h"
+#include "wario_land2_state.h"
+#include "wario_land3_state.h"
 #include "netplay.h"
 #include "render.h"
 #include "bgimg.h"
@@ -30,6 +33,9 @@
 #include "branding.h"
 #include "dev_diag.h"
 #include "widescreen.h"
+#if !defined(__ANDROID__)
+#include "companion_sim.h"
+#endif
 #include <SDL_image.h>
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -40,6 +46,53 @@ static SDL_Window *win;
 static SDL_Renderer *ren;
 static int win_w = 1100, win_h = 720;
 static int companion_rewind_held;
+static int companion_pipe_swap_active;
+static int companion_pipe_swap_exit_pending;
+static SDL_atomic_t companion_display_available;
+static Uint32 companion_last_frame_tick;
+static int companion_slots_dirty = 1;
+static int game_session_active = -1;
+static Uint64 game_session_started;
+
+static void game_session_begin(int game)
+{
+    int next[N_RECENT_PLAYED];
+    int count = 0;
+    if (game < 0 || game >= N_GAMES) return;
+    if (game_session_active >= 0) return;
+    for (int i = 0; i < N_RECENT_PLAYED; i++) next[i] = -1;
+    next[count++] = game;
+    for (int i = 0; i < settings.recent_played_count && i < N_RECENT_PLAYED; i++) {
+        int old = settings.recent_played[i];
+        if (old < 0 || old >= N_GAMES || old == game) continue;
+        int duplicate = 0;
+        for (int j = 0; j < count; j++) if (next[j] == old) duplicate = 1;
+        if (!duplicate && count < N_RECENT_PLAYED) next[count++] = old;
+    }
+    for (int i = 0; i < N_RECENT_PLAYED; i++) settings.recent_played[i] = next[i];
+    settings.recent_played_count = count;
+    game_session_active = game;
+    game_session_started = SDL_GetPerformanceCounter();
+}
+
+static void game_session_end(void)
+{
+    if (game_session_active < 0 || game_session_active >= N_GAMES) return;
+    Uint64 now = SDL_GetPerformanceCounter();
+    Uint64 freq = SDL_GetPerformanceFrequency();
+    if (freq && now >= game_session_started) {
+        Uint64 elapsed = (now - game_session_started) / freq;
+        int current = settings.game_play_seconds[game_session_active];
+        if (elapsed > (Uint64)(2147483647 - current))
+            settings.game_play_seconds[game_session_active] = 2147483647;
+        else
+            settings.game_play_seconds[game_session_active] = current + (int)elapsed;
+    }
+    game_session_active = -1;
+    game_session_started = 0;
+    settings_save();
+}
+
 #define PIPECLEAN_COMPANION_EVENT_CODE 0x5043
 #define PIPECLEAN_COMPANION_SAVE 1
 #define PIPECLEAN_COMPANION_LOAD 2
@@ -51,6 +104,7 @@ static int companion_rewind_held;
 #define PIPECLEAN_COMPANION_SLOT_NEXT 8
 #define PIPECLEAN_COMPANION_ITEM_USE 9
 #define PIPECLEAN_COMPANION_CLOSE_GAME 12
+#define PIPECLEAN_COMPANION_SLOT_SELECT_BASE 20
 
 #if defined(__ANDROID__)
 JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionAction(
@@ -66,6 +120,195 @@ JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionA
     (void)SDL_PushEvent(&event);
 }
 
+JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionDisplayAvailable(
+    JNIEnv *env, jclass cls, jint available)
+{
+    (void)env; (void)cls;
+    SDL_AtomicSet(&companion_display_available, available ? 1 : 0);
+}
+
+#define PIPECLEAN_LAYOUT_PICKER_EVENT_CODE 0x5044
+typedef struct {
+    int game;
+    char path[1024];
+} CompanionLayoutPickerResult;
+
+JNIEXPORT void JNICALL Java_com_pipeclean_app_PipeCleanActivity_nativeCompanionLayoutPickerResult(
+    JNIEnv *env, jclass cls, jint kind, jint game, jstring path)
+{
+    (void)cls;
+    const char *utf = path ? (*env)->GetStringUTFChars(env, path, NULL) : NULL;
+    CompanionLayoutPickerResult *payload =
+        (CompanionLayoutPickerResult *)calloc(1, sizeof *payload);
+    if (!payload) {
+        if (utf) (*env)->ReleaseStringUTFChars(env, path, utf);
+        return;
+    }
+    payload->game = (int)game;
+    if (utf) {
+        snprintf(payload->path, sizeof payload->path, "%s", utf);
+        (*env)->ReleaseStringUTFChars(env, path, utf);
+    }
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_USEREVENT;
+    event.user.code = PIPECLEAN_LAYOUT_PICKER_EVENT_CODE;
+    event.user.data1 = (void *)(intptr_t)kind;
+    event.user.data2 = payload;
+    if (SDL_PushEvent(&event) < 0) free(payload);
+}
+
+static const char *companion_layout_asset_paths(const CompanionLayoutCfg *d, int i)
+{
+    if (!d) return "";
+    if (i == 0) return d->background_path;
+    if (i == 1) return d->button_texture_path;
+    if (i == 2) return d->item_texture_path;
+    if (i == 3) return d->decoration_path;
+    if (i >= 4 && i < 4 + N_DECK_BUTTON_SOUNDS) return d->button_sound_path[i - 4];
+    if (i == 10) return d->item_sound_path;
+    if (i == 11) return d->empty_item_sound_path;
+    if (i == 12) return d->item_texture_by_id[1];
+    if (i == 13) return d->item_texture_by_id[2];
+    if (i == 14) return d->item_texture_by_id[3];
+    if (i == 15) return d->header_texture_path;
+    if (i == 16) return d->status_texture_path;
+    if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
+    if (i >= 21 && i < 28) return d->decoration_extra_path[i - 21];
+    if (i == 28) return d->button_texture_by_action[4];
+    if (i == 29) return d->button_texture_by_action[5];
+    if (i >= 30 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 23];
+    return "";
+}
+
+/* Opens an Android SAF picker. The bundle manifest contains only portable
+   layout values; asset paths are supplied separately so export can package them. */
+void launcher_open_companion_layout_picker(int kind, int game)
+{
+    if (game < 0 || game >= N_GAMES) return;
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+
+    CompanionLayoutCfg *d = &settings.deck_layout[game];
+    char manifest[4096];
+    snprintf(manifest, sizeof manifest,
+        "layout_version=1\n"
+        "header_dx=%d\nheader_dy=%d\nheader_scale=%d\nheader_scale_y=%d\n"
+        "item_dx=%d\nitem_dy=%d\nitem_scale=%d\nitem_scale_y=%d\n"
+        "controls_dx=%d\ncontrols_dy=%d\ncontrols_scale=%d\ncontrols_scale_y=%d\n"
+        "timeline_dx=%d\ntimeline_dy=%d\ntimeline_scale=%d\ntimeline_scale_y=%d\n"
+        "status_dx=%d\nstatus_dy=%d\nstatus_scale=%d\nstatus_scale_y=%d\n"
+        "decoration_dx=%d\ndecoration_dy=%d\ndecoration_scale=%d\ndecoration_scale_y=%d\n"
+        "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\ndecoration_2_scale_y=%d\n"
+        "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\ndecoration_3_scale_y=%d\n"
+        "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\ndecoration_4_scale_y=%d\n"
+        "decoration_5_dx=%d\ndecoration_5_dy=%d\ndecoration_5_scale=%d\ndecoration_5_scale_y=%d\n"
+        "decoration_6_dx=%d\ndecoration_6_dy=%d\ndecoration_6_scale=%d\ndecoration_6_scale_y=%d\n"
+        "decoration_7_dx=%d\ndecoration_7_dy=%d\ndecoration_7_scale=%d\ndecoration_7_scale_y=%d\n"
+        "decoration_8_dx=%d\ndecoration_8_dy=%d\ndecoration_8_scale=%d\ndecoration_8_scale_y=%d\n"
+        "sounds_enabled=%d\n",
+        d->header_dx, d->header_dy, d->header_scale, d->header_scale_y,
+        d->item_dx, d->item_dy, d->item_scale, d->item_scale_y,
+        d->controls_dx, d->controls_dy, d->controls_scale, d->controls_scale_y,
+        d->timeline_dx, d->timeline_dy, d->timeline_scale, d->timeline_scale_y,
+        d->status_dx, d->status_dy, d->status_scale, d->status_scale_y,
+        d->decoration_dx, d->decoration_dy, d->decoration_scale, d->decoration_scale_y,
+        d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0], d->decoration_extra_scale_y[0],
+        d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1], d->decoration_extra_scale_y[1],
+        d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2], d->decoration_extra_scale_y[2],
+        d->decoration_extra_dx[3], d->decoration_extra_dy[3], d->decoration_extra_scale[3], d->decoration_extra_scale_y[3],
+        d->decoration_extra_dx[4], d->decoration_extra_dy[4], d->decoration_extra_scale[4], d->decoration_extra_scale_y[4],
+        d->decoration_extra_dx[5], d->decoration_extra_dy[5], d->decoration_extra_scale[5], d->decoration_extra_scale_y[5],
+        d->decoration_extra_dx[6], d->decoration_extra_dy[6], d->decoration_extra_scale[6], d->decoration_extra_scale_y[6],
+        d->sounds_enabled);
+    size_t manifest_used = strlen(manifest);
+    for (int slot = 7; slot < N_DECK_DECORATIONS - 1; slot++) {
+        int layer = slot + 2;
+        int wrote = snprintf(manifest + manifest_used, sizeof manifest - manifest_used,
+            "decoration_%d_dx=%d\ndecoration_%d_dy=%d\ndecoration_%d_scale=%d\ndecoration_%d_scale_y=%d\n",
+            layer, d->decoration_extra_dx[slot], layer, d->decoration_extra_dy[slot],
+            layer, d->decoration_extra_scale[slot], layer, d->decoration_extra_scale_y[slot]);
+        if (wrote < 0 || (size_t)wrote >= sizeof manifest - manifest_used) {
+            manifest[0] = 0;
+            break;
+        }
+        manifest_used += (size_t)wrote;
+    }
+    for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++) {
+        int wrote = snprintf(manifest + manifest_used, sizeof manifest - manifest_used,
+            "asset_stretch_%d=%d\n", asset, d->asset_stretch[asset] ? 1 : 0);
+        if (wrote < 0 || (size_t)wrote >= sizeof manifest - manifest_used) {
+            manifest[0] = 0;
+            break;
+        }
+        manifest_used += (size_t)wrote;
+    }
+    jstring text = (*env)->NewStringUTF(env, manifest);
+    jclass string_class = (*env)->FindClass(env, "java/lang/String");
+    jobjectArray paths = string_class
+        ? (*env)->NewObjectArray(env, N_DECK_ASSET_PATHS, string_class, NULL) : NULL;
+    if (paths) {
+        for (int i = 0; i < N_DECK_ASSET_PATHS; i++) {
+            jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(d, i));
+            if (path) {
+                (*env)->SetObjectArrayElement(env, paths, i, path);
+                (*env)->DeleteLocalRef(env, path);
+            }
+        }
+    }
+    jmethodID method = (*env)->GetMethodID(
+        env, cls, "openCompanionLayoutPicker", "(IILjava/lang/String;[Ljava/lang/String;)V");
+    if (method && text && paths) {
+        /* Activity chooses a suitable title based on kind. */
+        (void)(*env)->CallVoidMethod(env, activity, method, (jint)kind, (jint)game, text, paths);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    if (paths) (*env)->DeleteLocalRef(env, paths);
+    if (string_class) (*env)->DeleteLocalRef(env, string_class);
+    if (text) (*env)->DeleteLocalRef(env, text);
+    (*env)->DeleteLocalRef(env, cls);
+}
+
+/* Wario Land keeps the expedition counters in its 8 KiB cartridge RAM as BCD
+ * digits. Read the backing RAM directly because the game often disables SRAM
+ * between accesses; its original and DX profiles both use one RAM bank. */
+extern uint8_t *cart_ram;
+static uint8_t wario_ram_read(uint16_t address)
+{
+    return cart_ram ? cart_ram[address & 0x1FFFu] : 0xFF;
+}
+
+static int wario_bcd_pair(uint8_t value)
+{
+    int tens = (value >> 4) & 0x0F, ones = value & 0x0F;
+    return tens <= 9 && ones <= 9 ? tens * 10 + ones : -1;
+}
+
+static int wario_read_companion_coins(void)
+{
+    uint8_t high = wario_ram_read(0xA805);
+    uint8_t mid  = wario_ram_read(0xA806);
+    uint8_t low  = wario_ram_read(0xA807);
+    int d0 = high & 0x0F, d1 = (mid >> 4) & 0x0F;
+    int d2 = mid & 0x0F, d3 = (low >> 4) & 0x0F, d4 = low & 0x0F;
+    if (d0 > 9 || d1 > 9 || d2 > 9 || d3 > 9 || d4 > 9) return -1;
+    return d0 * 10000 + d1 * 1000 + d2 * 100 + d3 * 10 + d4;
+}
+
+static int wario_read_companion_time(void)
+{
+    uint8_t high = wario_ram_read(0xA964);
+    uint8_t low = wario_ram_read(0xA965);
+    int hundreds = high & 0x0F;
+    int tens = (low >> 4) & 0x0F, ones = low & 0x0F;
+    if (high == 0xFF || low == 0xFF ||
+        hundreds > 9 || tens > 9 || ones > 9) return -1;
+    return hundreds * 100 + tens * 10 + ones;
+}
+
 static void companion_publish_state(int game, const Frame *frame, int paused)
 {
     static unsigned tick;
@@ -76,11 +319,18 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
     if (!env || !activity) return;
     jclass cls = (*env)->GetObjectClass(env, activity);
     if (!cls) return;
-    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIII)V");
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionState", "(IIIIIIIIIIIIIIIIIIIIII)V");
     if (method) {
         int lives = 0, stage = -1, world = -1;
-        int dual_screen = (game == GAME_SML || game == GAME_SML2)
-            ? settings.g[game].dual_screen : 0;
+        int wario_coins = -1, wario_hearts = -1, wario_power = -1;
+        int wario_treasures = -1, wario_time = -1;
+        int wl2_treasure_lo = -1, wl2_treasure_hi = -1;
+        int wl2_picture_lo = -1, wl2_picture_hi = -1;
+        int wl3_key_mask = -1, wl3_music_coin_mask = -1, wl3_scene = -1;
+        int dual_screen = settings.launcher_dual_screen &&
+            (game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
+             game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND3_GBC ||
+             wario_land2_supported_game(game));
         if (frame && (game == GAME_SML || game == GAME_SML2)) {
             uint8_t bcd = frame->p1_lives;
             int tens = (bcd >> 4) & 0x0F, ones = bcd & 0x0F;
@@ -88,21 +338,699 @@ static void companion_publish_state(int game, const Frame *frame, int paused)
             if (frame->level_id != 0xFF) stage = frame->level_id;
             if (game == GAME_SML && frame->level_bank != 0xFF) world = frame->level_bank;
         }
+        if (frame && game == GAME_WARIO_SML3) {
+            int course = wario_ram_read(0xA804);
+            int heart_byte = wario_ram_read(0xA808);
+            int life_byte = wario_ram_read(0xA809);
+            int power = wario_ram_read(0xA80A);
+            int treasure_low = wario_ram_read(0xA80E);
+            int treasure_high = wario_ram_read(0xA80F);
+            lives = wario_bcd_pair((uint8_t)life_byte);
+            stage = course == 0xFF ? -1 : course;
+            wario_hearts = wario_bcd_pair((uint8_t)heart_byte);
+            wario_power = power <= 4 ? power : -1;
+            if (treasure_low != 0xFF && treasure_high != 0xFF)
+                wario_treasures = treasure_low | (treasure_high << 8);
+            wario_coins = wario_read_companion_coins();
+            wario_time = wario_read_companion_time();
+        }
+        if (frame && game == GAME_WARIO_LAND3_GBC) {
+            int scene = gb_wram_peek(0x009B); /* C09B: current scene */
+            int course = gb_wram_peek(0x0A06); /* CA06: active course */
+            int keys = gb_wram_peek(0x0A5B); /* CA5B: four course keys */
+            int music_coins = gb_wram_peek(0x0A5C); /* CA5C: eight music coins */
+            int treasure_count = wario_land3_read_counter3(
+                gb_wram_peek(0x0A39), gb_wram_peek(0x0A3A));
+            int valid_course = (scene == 2 || scene == 3 || scene == 4 || scene == 8) &&
+                               course != 0xFF;
+
+            lives = -1;
+            stage = course == 0xFF ? -1 : course;
+            world = (gb_wram_peek(0x0A3B) == 0xFF) ? -1 :
+                    (gb_wram_peek(0x0A3B) & 0x01); /* 0=day, 1=night */
+            wario_coins = wario_land3_read_counter3(
+                gb_wram_peek(0x0A04), gb_wram_peek(0x0A05));
+            wario_hearts = -1;
+            wario_power = -1;
+            wario_treasures = treasure_count >= 0 && treasure_count <= 100
+                ? treasure_count : -1;
+            wario_time = -1;
+            wl3_key_mask = valid_course && keys != 0xFF ? (keys & 0x0F) : -1;
+            wl3_music_coin_mask = valid_course ? (music_coins & 0xFF) : -1;
+            wl3_scene = scene <= 0x0E ? scene : -1;
+        }
+        if (frame && wario_land2_supported_game(game)) {
+            WarioLand2Snapshot w2 = wario_land2_read_snapshot(game, gb_wram_peek);
+            lives = -1;
+            stage = w2.stage;
+            wario_coins = w2.bank_coins;
+            wario_hearts = w2.overworld_coins;
+            wario_power = -1; /* No verified transformation-state byte in the current RAM map. */
+            wario_treasures = -1;
+            wario_time = -1;
+            wl2_treasure_lo = (int)(uint32_t)(w2.treasures & UINT64_C(0xFFFFFFFF));
+            wl2_treasure_hi = (int)((w2.treasures >> 32) & UINT64_C(0x3FFFF));
+            wl2_picture_lo = (int)(uint32_t)(w2.picture_panels & UINT64_C(0xFFFFFFFF));
+            wl2_picture_hi = (int)((w2.picture_panels >> 32) & UINT64_C(0x3FFFF));
+        }
         (void)(*env)->CallVoidMethod(env, activity, method,
             (jint)game, (jint)lives, (jint)stage, (jint)world,
             (jint)paused, (jint)settings.g[game].state_slot,
             (jint)settings.g[game].palette, (jint)settings.flt.preset,
-            (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen);
+            (jint)(frame ? frame->reserve_item : 0), (jint)dual_screen,
+            (jint)(wario_land2_supported_game(game) ? wl2_treasure_lo :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_score : -1)),
+            (jint)(wario_land2_supported_game(game) ? wl2_treasure_hi :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_level : -1)),
+            (jint)(wario_land2_supported_game(game) ? wl2_picture_lo :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_speed : -1)),
+            (jint)(wario_land2_supported_game(game) ? wl2_picture_hi :
+                   (frame && game == GAME_DRMARIO ? frame->dr_mario_capsule : 0xFF)),
+            (jint)wario_coins, (jint)wario_hearts, (jint)wario_power,
+            (jint)wario_treasures, (jint)wario_time,
+            (jint)wl3_key_mask, (jint)wl3_music_coin_mask, (jint)wl3_scene);
         if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+        /* Send save-state paths, not pixel buffers. Java caches thumbnails and
+         * decodes again only after a state file or thumbnail changes. */
+        static unsigned slot_refresh_tick;
+        static int last_slot_game = -1, last_selected_slot = -1;
+        int selected_slot = settings.g[game].state_slot;
+        if (dual_screen) slot_refresh_tick++;
+        int publish_slots = dual_screen &&
+            (companion_slots_dirty || game != last_slot_game ||
+             selected_slot != last_selected_slot || slot_refresh_tick >= 20);
+        if (publish_slots) {
+            slot_refresh_tick = 0;
+            jmethodID slots_method = (*env)->GetMethodID(
+                env, cls, "updateCompanionSaveSlots",
+                "(II[Ljava/lang/String;[Ljava/lang/String;)V");
+            if (slots_method) {
+                jclass string_class = (*env)->FindClass(env, "java/lang/String");
+                jobjectArray state_paths = string_class
+                    ? (*env)->NewObjectArray(env, 10, string_class, NULL) : NULL;
+                jobjectArray thumb_paths = string_class
+                    ? (*env)->NewObjectArray(env, 10, string_class, NULL) : NULL;
+                char game_id[128], state_dir[1200], state_file[1200], thumb_file[1200];
+                launcher_game_file_id(game, game_id, sizeof game_id);
+                snprintf(state_dir, sizeof state_dir, "%sstates/", settings_dir());
+                (void)mkdir_u(state_dir);
+                if (state_paths && thumb_paths) {
+                    for (int slot_i = 0; slot_i < 10; slot_i++) {
+                        snprintf(state_file, sizeof state_file, "%s%s.slot%d.pcs",
+                                 state_dir, game_id, slot_i);
+                        snprintf(thumb_file, sizeof thumb_file, "%s%s.slot%d.thumb.png",
+                                 state_dir, game_id, slot_i);
+                        jstring state_string = (*env)->NewStringUTF(env, state_file);
+                        jstring thumb_string = (*env)->NewStringUTF(env, thumb_file);
+                        if (state_string)
+                            (*env)->SetObjectArrayElement(env, state_paths, slot_i, state_string);
+                        if (thumb_string)
+                            (*env)->SetObjectArrayElement(env, thumb_paths, slot_i, thumb_string);
+                        if (state_string) (*env)->DeleteLocalRef(env, state_string);
+                        if (thumb_string) (*env)->DeleteLocalRef(env, thumb_string);
+                    }
+                    (void)(*env)->CallVoidMethod(env, activity, slots_method,
+                        (jint)game, (jint)selected_slot, state_paths, thumb_paths);
+                    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+                    last_slot_game = game;
+                    last_selected_slot = selected_slot;
+                    companion_slots_dirty = 0;
+                }
+                if (state_paths) (*env)->DeleteLocalRef(env, state_paths);
+                if (thumb_paths) (*env)->DeleteLocalRef(env, thumb_paths);
+                if (string_class) (*env)->DeleteLocalRef(env, string_class);
+            } else if ((*env)->ExceptionCheck(env)) {
+                (*env)->ExceptionClear(env);
+            }
+        }
     } else if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
     }
     (*env)->DeleteLocalRef(env, cls);
 }
+
+static void companion_music_title(const char *path, char *out, size_t n)
+{
+    const char *base = path ? path : "";
+    const char *slash1 = strrchr(base, '/');
+    const char *slash2 = strrchr(base, '\\');
+    if (slash1 && (!slash2 || slash1 > slash2)) base = slash1 + 1;
+    else if (slash2) base = slash2 + 1;
+    if (!base[0]) {
+        snprintf(out, n, "PipeClean Chiptune");
+        return;
+    }
+    size_t len = strlen(base);
+    const char *dot = strrchr(base, '.');
+    if (dot && dot > base) len = (size_t)(dot - base);
+    if (len >= n) len = n - 1;
+    size_t w = 0;
+    for (size_t i = 0; i < len && w + 1 < n; i++) {
+        char ch = base[i];
+        if (ch == '_') ch = ' ';
+        out[w++] = ch;
+    }
+    out[w] = 0;
+    if (!w) snprintf(out, n, "Untitled track");
+}
+
+/* Publish launcher selection, recent history, play-time statistics and preview
+ * to the Companion Deck at a modest rate; large preview pixels are sent only on
+ * a game change or once every few seconds. */
+static void companion_publish_launcher_dashboard(int selected_game)
+{
+    static Uint32 last_publish_tick;
+    static Uint32 last_preview_tick;
+    static int last_dashboard_game = -2;
+    Uint32 now = SDL_GetTicks();
+    if ((Uint32)(now - last_publish_tick) < 400) return;
+    last_publish_tick = now;
+
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jclass string_class = (*env)->FindClass(env, "java/lang/String");
+    jobjectArray game_names = string_class
+        ? (*env)->NewObjectArray(env, N_GAMES, string_class, NULL) : NULL;
+    jintArray recent = (*env)->NewIntArray(env, N_RECENT_PLAYED);
+    jintArray seconds = (*env)->NewIntArray(env, N_GAMES);
+    int layout_game = launcher_companion_layout_target_game(selected_game);
+    if (layout_game < 0 || layout_game >= N_GAMES) layout_game = selected_game;
+    int editor_preview = launcher_companion_layout_preview_enabled();
+    jintArray layout_values = (*env)->NewIntArray(env, N_GAMES * N_DECK_LAYOUT_VALUES);
+    jobjectArray layout_paths = string_class
+        ? (*env)->NewObjectArray(env, N_GAMES * N_DECK_ASSET_PATHS, string_class, NULL) : NULL;
+    if (layout_values) {
+        jint values[N_GAMES * N_DECK_LAYOUT_VALUES] = {0};
+        for (int g = 0; g < N_GAMES; g++) {
+            CompanionLayoutCfg *layout = &settings.deck_layout[g];
+            int base = g * N_DECK_LAYOUT_VALUES;
+            values[base + 0] = layout->header_dx;
+            values[base + 1] = layout->header_dy;
+            values[base + 2] = layout->header_scale;
+            values[base + 3] = layout->item_dx;
+            values[base + 4] = layout->item_dy;
+            values[base + 5] = layout->item_scale;
+            values[base + 6] = layout->controls_dx;
+            values[base + 7] = layout->controls_dy;
+            values[base + 8] = layout->controls_scale;
+            values[base + 9] = layout->timeline_dx;
+            values[base + 10] = layout->timeline_dy;
+            values[base + 11] = layout->timeline_scale;
+            values[base + 12] = layout->decoration_dx;
+            values[base + 13] = layout->decoration_dy;
+            values[base + 14] = layout->decoration_scale;
+            values[base + 15] = layout->sounds_enabled;
+            for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+                if (slot < 7) {
+                    values[base + 16 + slot * 3] = layout->decoration_extra_dx[slot];
+                    values[base + 17 + slot * 3] = layout->decoration_extra_dy[slot];
+                    values[base + 18 + slot * 3] = layout->decoration_extra_scale[slot];
+                } else {
+                    int at = N_DECK_EXTENDED_DECORATION_VALUE_BASE + (slot - 7) * 3;
+                    values[base + at] = layout->decoration_extra_dx[slot];
+                    values[base + at + 1] = layout->decoration_extra_dy[slot];
+                    values[base + at + 2] = layout->decoration_extra_scale[slot];
+                }
+            }
+            for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++)
+                values[base + N_DECK_LAYOUT_ASSET_MODE_BASE + asset] = layout->asset_stretch[asset] ? 1 : 0;
+            /* Vertical scales occupy 37..48, matching applyLayoutTransform().
+               Keep indices 16..36 reserved for the seven extra layer transforms. */
+            values[base + 37] = layout->header_scale_y;
+            values[base + 38] = layout->item_scale_y;
+            values[base + 39] = layout->controls_scale_y;
+            values[base + 40] = layout->timeline_scale_y;
+            values[base + 41] = layout->decoration_scale_y;
+            for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+                if (slot < 7)
+                    values[base + 42 + slot] = layout->decoration_extra_scale_y[slot];
+                else
+                    values[base + N_DECK_EXTENDED_DECORATION_SCALE_Y_BASE + (slot - 7)] =
+                        layout->decoration_extra_scale_y[slot];
+            }
+            /* Status and extended decorations follow the existing asset-mode range. */
+            values[base + N_DECK_STATUS_VALUE_BASE] = layout->status_dx;
+            values[base + N_DECK_STATUS_VALUE_BASE + 1] = layout->status_dy;
+            values[base + N_DECK_STATUS_VALUE_BASE + 2] = layout->status_scale;
+            values[base + N_DECK_STATUS_VALUE_BASE + 3] = layout->status_scale_y;
+        }
+        (*env)->SetIntArrayRegion(env, layout_values, 0, N_GAMES * N_DECK_LAYOUT_VALUES, values);
+    }
+    if (layout_paths) {
+        for (int g = 0; g < N_GAMES; g++) {
+            CompanionLayoutCfg *layout = &settings.deck_layout[g];
+            for (int i = 0; i < N_DECK_ASSET_PATHS; i++) {
+                jstring path = (*env)->NewStringUTF(env, companion_layout_asset_paths(layout, i));
+                if (path) {
+                    (*env)->SetObjectArrayElement(env, layout_paths, g * N_DECK_ASSET_PATHS + i, path);
+                    (*env)->DeleteLocalRef(env, path);
+                }
+            }
+        }
+    }
+    if (game_names) {
+        for (int i = 0; i < N_GAMES; i++) {
+            jstring name = (*env)->NewStringUTF(env, games[i].name ? games[i].name : "Game");
+            if (name) {
+                (*env)->SetObjectArrayElement(env, game_names, i, name);
+                (*env)->DeleteLocalRef(env, name);
+            }
+        }
+    }
+    if (recent) {
+        jint values[N_RECENT_PLAYED];
+        for (int i = 0; i < N_RECENT_PLAYED; i++) values[i] = settings.recent_played[i];
+        (*env)->SetIntArrayRegion(env, recent, 0, N_RECENT_PLAYED, values);
+    }
+    if (seconds) {
+        jint values[N_GAMES];
+        for (int i = 0; i < N_GAMES; i++) values[i] = settings.game_play_seconds[i];
+        (*env)->SetIntArrayRegion(env, seconds, 0, N_GAMES, values);
+    }
+
+    int preview_w = 0, preview_h = 0;
+    jintArray preview = NULL;
+    int game_changed = selected_game != last_dashboard_game;
+    int want_preview = game_changed || (Uint32)(now - last_preview_tick) >= 5000;
+    if (want_preview) {
+        const uint32_t *pixels = NULL;
+        if (launcher_preview_pixels(selected_game, &pixels, &preview_w, &preview_h) &&
+            pixels && preview_w > 0 && preview_h > 0 &&
+            (uint64_t)preview_w * (uint64_t)preview_h <= 1048576u) {
+            jsize count = (jsize)(preview_w * preview_h);
+            preview = (*env)->NewIntArray(env, count);
+            if (preview) (*env)->SetIntArrayRegion(env, preview, 0, count, (const jint *)pixels);
+        }
+        last_preview_tick = now;
+    }
+    jmethodID dashboard_method = (*env)->GetMethodID(
+        env, cls, "updateLauncherDashboard",
+        "(I[Ljava/lang/String;[I[III[II[I[Ljava/lang/String;ZZI)V");
+    if (dashboard_method && game_names && recent && seconds && layout_values && layout_paths) {
+        (void)(*env)->CallVoidMethod(env, activity, dashboard_method,
+            (jint)selected_game, game_names, recent, seconds,
+            (jint)preview_w, (jint)preview_h, preview,
+            (jint)layout_game, layout_values, layout_paths,
+            settings.launcher_dual_screen ? JNI_TRUE : JNI_FALSE,
+            editor_preview ? JNI_TRUE : JNI_FALSE,
+            (jint)launcher_companion_layout_preview_item());
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    /* Publish the song identity and a one-shot notification serial. The deck
+     * shows the vinyl banner only when dual-screen mode is active and the
+     * launcher is not on the Audio & Menu management page. */
+    jmethodID music_method = (*env)->GetMethodID(
+        env, cls, "updateCompanionMusicPlaylist",
+        "(Ljava/lang/String;[Ljava/lang/String;IZIZ)V");
+    if (music_method && string_class) {
+        int count = settings.menu_playlist_count;
+        if (count < 0) count = 0;
+        if (count > MAX_MENU_TRACKS) count = MAX_MENU_TRACKS;
+        jobjectArray tracks = (*env)->NewObjectArray(env, count, string_class, NULL);
+        char title[512];
+        companion_music_title(settings.menu_music_path, title, sizeof title);
+        jstring current_title = (*env)->NewStringUTF(env, title);
+        if (tracks) {
+            for (int i = 0; i < count; i++) {
+                char track_title[512];
+                companion_music_title(settings.menu_playlist[i], track_title, sizeof track_title);
+                jstring item = (*env)->NewStringUTF(env, track_title);
+                if (item) {
+                    (*env)->SetObjectArrayElement(env, tracks, i, item);
+                    (*env)->DeleteLocalRef(env, item);
+                }
+            }
+        }
+        if (current_title && tracks) {
+            int selected = settings.menu_playlist_selected;
+            if (selected < 0 || selected >= count) selected = 0;
+            (void)(*env)->CallVoidMethod(env, activity, music_method,
+                current_title, tracks, (jint)selected,
+                settings.menu_music ? JNI_TRUE : JNI_FALSE,
+                (jint)launcher_music_notification_serial(),
+                launcher_music_notification_allowed() ? JNI_TRUE : JNI_FALSE);
+        }
+        if (current_title) (*env)->DeleteLocalRef(env, current_title);
+        if (tracks) (*env)->DeleteLocalRef(env, tracks);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+
+    last_dashboard_game = selected_game;
+    if (preview) (*env)->DeleteLocalRef(env, preview);
+    if (game_names) (*env)->DeleteLocalRef(env, game_names);
+    if (recent) (*env)->DeleteLocalRef(env, recent);
+    if (seconds) (*env)->DeleteLocalRef(env, seconds);
+    if (layout_values) (*env)->DeleteLocalRef(env, layout_values);
+    if (layout_paths) (*env)->DeleteLocalRef(env, layout_paths);
+    if (string_class) (*env)->DeleteLocalRef(env, string_class);
+    (*env)->DeleteLocalRef(env, cls);
+}
+
 #else
+#if defined(PIPECLEAN_DEV_BUILD)
+#include "miniz.h"
+#include <time.h>
+#include <sys/stat.h>
+
+static const char *desktop_deck_asset_path(const CompanionLayoutCfg *d, int i)
+{
+    if (!d) return "";
+    if (i == 0) return d->background_path;
+    if (i == 1) return d->button_texture_path;
+    if (i == 2) return d->item_texture_path;
+    if (i == 3) return d->decoration_path;
+    if (i >= 4 && i < 4 + N_DECK_BUTTON_SOUNDS) return d->button_sound_path[i - 4];
+    if (i == 10) return d->item_sound_path;
+    if (i == 11) return d->empty_item_sound_path;
+    if (i == 12) return d->item_texture_by_id[1];
+    if (i == 13) return d->item_texture_by_id[2];
+    if (i == 14) return d->item_texture_by_id[3];
+    if (i == 15) return d->header_texture_path;
+    if (i == 16) return d->status_texture_path;
+    if (i >= 17 && i <= 20) return d->button_texture_by_action[i - 17];
+    if (i >= 21 && i < 28) return d->decoration_extra_path[i - 21];
+    if (i == 28) return d->button_texture_by_action[4];
+    if (i == 29) return d->button_texture_by_action[5];
+    if (i >= 30 && i < N_DECK_ASSET_PATHS) return d->decoration_extra_path[i - 23];
+    return "";
+}
+
+static const char *desktop_deck_picker_title(int kind)
+{
+    switch (kind) {
+    case 1: return "Choose Companion Deck background (PNG/GIF)";
+    case 2: return "Choose Companion Deck button texture (PNG/GIF)";
+    case 3: return "Choose legacy generic item texture (PNG/GIF)";
+    case 4: return "Choose Companion Deck decoration (PNG/GIF)";
+    case 5: return "Choose save button sound";
+    case 6: return "Choose load button sound";
+    case 7: return "Choose pause button sound";
+    case 8: return "Choose rewind button sound";
+    case 9: return "Choose background button sound";
+    case 10: return "Choose close button sound";
+    case 24: return "Choose Background button texture (PNG/GIF)";
+    case 25: return "Choose Close Game button texture (PNG/GIF)";
+    case 11: return "Choose item-use sound";
+    case 12: return "Choose empty-item-slot sound";
+    case 15: return "Choose Mushroom texture (PNG/GIF)";
+    case 16: return "Choose Fire Flower / Superball Flower texture (PNG/GIF)";
+    case 17: return "Choose Carrot texture (PNG/GIF)";
+    case 18: return "Choose header texture (PNG/GIF)";
+    case 19: return "Choose Adventure Status texture (PNG/GIF)";
+    case 20: return "Choose Save button texture (PNG/GIF)";
+    case 21: return "Choose Load button texture (PNG/GIF)";
+    case 22: return "Choose Pause/Resume button texture (PNG/GIF)";
+    case 23: return "Choose Rewind button texture (PNG/GIF)";
+    case 13: return "Import Companion Deck ZIP bundle";
+    case 14: return "Export Companion Deck ZIP bundle";
+    default: return "Choose Companion Deck asset";
+    }
+}
+
+static const char *desktop_deck_game_slug(int game)
+{
+    if (game < 0 || game >= N_GAMES || !games[game].id) return "game";
+    return games[game].id;
+}
+
+static int desktop_bundle_entry_safe(const char *name)
+{
+    if (!name || !name[0] || name[0] == '/' || name[0] == '\\' ||
+        strchr(name, '\\') || strchr(name, ':') || strlen(name) >= 768) return 0;
+    const char *segment = name;
+    for (const char *p = name; ; ++p) {
+        unsigned char ch = (unsigned char)*p;
+        if (ch && !(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z') &&
+            !(ch >= '0' && ch <= '9') && ch != '_' && ch != '-' && ch != '.' && ch != '/')
+            return 0;
+        if (ch == '/' || ch == 0) {
+            size_t n = (size_t)(p - segment);
+            if (n == 0 || (n == 1 && segment[0] == '.') ||
+                (n == 2 && segment[0] == '.' && segment[1] == '.')) return 0;
+            if (!ch) break;
+            segment = p + 1;
+        }
+    }
+    return 1;
+}
+
+static int desktop_bundle_make_parents(const char *path, const char *root)
+{
+    char parent[2400];
+    size_t n = strlen(path), root_len = strlen(root);
+    if (!n || n >= sizeof parent || n <= root_len ||
+        strncmp(path, root, root_len) != 0 ||
+        (path[root_len] != '/' && path[root_len] != '\\')) return 0;
+    memcpy(parent, path, n + 1);
+    for (char *p = parent + root_len + 1; *p; ++p) {
+        if (*p == '/' || *p == '\\') {
+            char save = *p;
+            *p = 0;
+            if (mkdir_u(parent) != 0 && !file_exists(parent)) return 0;
+            *p = save;
+        }
+    }
+    return 1;
+}
+
+static int desktop_bundle_import(int game, const char *zip_path, char *manifest_out, size_t manifest_cap)
+{
+    if (game < 0 || game >= N_GAMES || !zip_path || !zip_path[0] ||
+        !manifest_out || manifest_cap == 0) return 0;
+    manifest_out[0] = 0;
+
+    char container[1200], root[1600];
+    snprintf(container, sizeof container, "%sCompanionDeckBundles", settings_dir());
+    if (mkdir_u(container) != 0 && !file_exists(container)) return 0;
+    snprintf(root, sizeof root, "%s/%s-import-%lu-%u", container,
+        desktop_deck_game_slug(game), (unsigned long)time(NULL), (unsigned)SDL_GetTicks());
+    if (mkdir_u(root) != 0 && !file_exists(root)) return 0;
+    const size_t root_len = strlen(root);
+
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof zip);
+    if (!mz_zip_reader_init_file(&zip, zip_path, 0)) return 0;
+    mz_uint entries = mz_zip_reader_get_num_files(&zip);
+    if (entries == 0 || entries > 128) {
+        mz_zip_reader_end(&zip);
+        return 0;
+    }
+
+    uint64_t total = 0;
+    int ok = 1;
+    for (mz_uint i = 0; i < entries && ok; i++) {
+        char name[768], dst[2400];
+        if (!mz_zip_reader_get_filename(&zip, i, name, sizeof name)) { ok = 0; break; }
+        /* Directory entries are never extracted. Ignore their trailing slash
+           here; all file names are strictly validated before joining to root. */
+        if (mz_zip_reader_is_file_a_directory(&zip, i)) continue;
+        if (!desktop_bundle_entry_safe(name)) { ok = 0; break; }
+        mz_zip_archive_file_stat st;
+        if (!mz_zip_reader_file_stat(&zip, i, &st) || st.m_uncomp_size > 40u * 1024u * 1024u) {
+            ok = 0; break;
+        }
+        total += st.m_uncomp_size;
+        if (total > 40u * 1024u * 1024u) { ok = 0; break; }
+        int written = snprintf(dst, sizeof dst, "%s/%s", root, name);
+        if (written < 0 || (size_t)written >= sizeof dst ||
+            strncmp(dst, root, root_len) != 0 || dst[root_len] != '/') { ok = 0; break; }
+        if (!desktop_bundle_make_parents(dst, root) ||
+            !mz_zip_reader_extract_to_file(&zip, i, dst, 0)) { ok = 0; break; }
+    }
+    mz_zip_reader_end(&zip);
+    if (!ok) return 0;
+
+    int n = snprintf(manifest_out, manifest_cap, "%s/manifest.ini", root);
+    if (n < 0 || (size_t)n >= manifest_cap) return 0;
+    struct stat st;
+    return stat(manifest_out, &st) == 0 && st.st_size > 0;
+}
+
+static const char *desktop_deck_manifest_field(int i)
+{
+    static const char *fields[N_DECK_ASSET_PATHS] = {
+        "background_path", "button_texture_path", "item_texture_path", "decoration_path",
+        "button_sound_path0", "button_sound_path1", "button_sound_path2", "button_sound_path3",
+        "button_sound_path4", "button_sound_path5", "item_sound_path", "empty_item_sound_path",
+        "item_texture_path_1", "item_texture_path_2", "item_texture_path_3",
+        "header_texture_path", "status_texture_path", "button_texture_save_path",
+        "button_texture_load_path", "button_texture_pause_path", "button_texture_rewind_path",
+        "decoration_path_1", "decoration_path_2", "decoration_path_3",
+        "decoration_path_4", "decoration_path_5", "decoration_path_6", "decoration_path_7",
+        "button_texture_background_path", "button_texture_close_path",
+        "decoration_path_8", "decoration_path_9", "decoration_path_10", "decoration_path_11",
+        "decoration_path_12", "decoration_path_13", "decoration_path_14", "decoration_path_15"
+    };
+    return i >= 0 && i < N_DECK_ASSET_PATHS ? fields[i] : "";
+}
+
+static const char *desktop_deck_entry_stem(int i)
+{
+    static const char *stems[N_DECK_ASSET_PATHS] = {
+        "background", "button-texture", "item-texture", "decoration-1",
+        "save-sound", "load-sound", "pause-sound", "rewind-sound",
+        "background-sound", "close-sound", "item-sound", "empty-item-sound",
+        "mushroom-texture", "special-item-texture", "carrot-texture",
+        "header-texture", "status-texture", "save-button-texture",
+        "load-button-texture", "pause-button-texture", "rewind-button-texture",
+        "decoration-2", "decoration-3", "decoration-4", "decoration-5",
+        "decoration-6", "decoration-7", "decoration-8",
+        "background-button-texture", "close-button-texture",
+        "decoration-9", "decoration-10", "decoration-11", "decoration-12",
+        "decoration-13", "decoration-14", "decoration-15", "decoration-16"
+    };
+    return i >= 0 && i < N_DECK_ASSET_PATHS ? stems[i] : "asset";
+}
+
+static void desktop_deck_extension(const char *path, char out[12])
+{
+    const char *dot = strrchr(path ? path : "", '.');
+    const char *slash = path ? strrchr(path, '/') : NULL;
+    const char *backslash = path ? strrchr(path, '\\') : NULL;
+    if (backslash && (!slash || backslash > slash)) slash = backslash;
+    if (!dot || (slash && dot < slash) || strlen(dot) > 10) {
+        snprintf(out, 12, ".bin");
+        return;
+    }
+    size_t i = 0;
+    for (; dot[i] && i < 10; i++) out[i] = (char)tolower((unsigned char)dot[i]);
+    out[i] = 0;
+    if (strcmp(out, ".png") && strcmp(out, ".gif") && strcmp(out, ".wav") &&
+        strcmp(out, ".mp3") && strcmp(out, ".ogg") && strcmp(out, ".flac") &&
+        strcmp(out, ".bmp") && strcmp(out, ".jpg") && strcmp(out, ".jpeg") &&
+        strcmp(out, ".tga")) snprintf(out, 12, ".bin");
+}
+
+static int desktop_bundle_export(int game, const char *zip_path)
+{
+    if (game < 0 || game >= N_GAMES || !zip_path || !zip_path[0]) return 0;
+    const CompanionLayoutCfg *d = &settings.deck_layout[game];
+    char manifest[8192];
+    int len = snprintf(manifest, sizeof manifest,
+        "layout_version=2\n"
+        "header_dx=%d\nheader_dy=%d\nheader_scale=%d\nheader_scale_y=%d\n"
+        "item_dx=%d\nitem_dy=%d\nitem_scale=%d\nitem_scale_y=%d\n"
+        "controls_dx=%d\ncontrols_dy=%d\ncontrols_scale=%d\ncontrols_scale_y=%d\n"
+        "timeline_dx=%d\ntimeline_dy=%d\ntimeline_scale=%d\ntimeline_scale_y=%d\n"
+        "status_dx=%d\nstatus_dy=%d\nstatus_scale=%d\nstatus_scale_y=%d\n"
+        "decoration_dx=%d\ndecoration_dy=%d\ndecoration_scale=%d\ndecoration_scale_y=%d\n"
+        "decoration_2_dx=%d\ndecoration_2_dy=%d\ndecoration_2_scale=%d\ndecoration_2_scale_y=%d\n"
+        "decoration_3_dx=%d\ndecoration_3_dy=%d\ndecoration_3_scale=%d\ndecoration_3_scale_y=%d\n"
+        "decoration_4_dx=%d\ndecoration_4_dy=%d\ndecoration_4_scale=%d\ndecoration_4_scale_y=%d\n"
+        "decoration_5_dx=%d\ndecoration_5_dy=%d\ndecoration_5_scale=%d\ndecoration_5_scale_y=%d\n"
+        "decoration_6_dx=%d\ndecoration_6_dy=%d\ndecoration_6_scale=%d\ndecoration_6_scale_y=%d\n"
+        "decoration_7_dx=%d\ndecoration_7_dy=%d\ndecoration_7_scale=%d\ndecoration_7_scale_y=%d\n"
+        "decoration_8_dx=%d\ndecoration_8_dy=%d\ndecoration_8_scale=%d\ndecoration_8_scale_y=%d\n"
+        "sounds_enabled=%d\n",
+        d->header_dx, d->header_dy, d->header_scale, d->header_scale_y,
+        d->item_dx, d->item_dy, d->item_scale, d->item_scale_y,
+        d->controls_dx, d->controls_dy, d->controls_scale, d->controls_scale_y,
+        d->timeline_dx, d->timeline_dy, d->timeline_scale, d->timeline_scale_y,
+        d->status_dx, d->status_dy, d->status_scale, d->status_scale_y,
+        d->decoration_dx, d->decoration_dy, d->decoration_scale, d->decoration_scale_y,
+        d->decoration_extra_dx[0], d->decoration_extra_dy[0], d->decoration_extra_scale[0], d->decoration_extra_scale_y[0],
+        d->decoration_extra_dx[1], d->decoration_extra_dy[1], d->decoration_extra_scale[1], d->decoration_extra_scale_y[1],
+        d->decoration_extra_dx[2], d->decoration_extra_dy[2], d->decoration_extra_scale[2], d->decoration_extra_scale_y[2],
+        d->decoration_extra_dx[3], d->decoration_extra_dy[3], d->decoration_extra_scale[3], d->decoration_extra_scale_y[3],
+        d->decoration_extra_dx[4], d->decoration_extra_dy[4], d->decoration_extra_scale[4], d->decoration_extra_scale_y[4],
+        d->decoration_extra_dx[5], d->decoration_extra_dy[5], d->decoration_extra_scale[5], d->decoration_extra_scale_y[5],
+        d->decoration_extra_dx[6], d->decoration_extra_dy[6], d->decoration_extra_scale[6], d->decoration_extra_scale_y[6],
+        d->sounds_enabled);
+    if (len < 0 || (size_t)len >= sizeof manifest) return 0;
+    for (int slot = 7; slot < N_DECK_DECORATIONS - 1; slot++) {
+        int layer = slot + 2;
+        int extra = snprintf(manifest + len, sizeof manifest - (size_t)len,
+            "decoration_%d_dx=%d\ndecoration_%d_dy=%d\ndecoration_%d_scale=%d\ndecoration_%d_scale_y=%d\n",
+            layer, d->decoration_extra_dx[slot], layer, d->decoration_extra_dy[slot],
+            layer, d->decoration_extra_scale[slot], layer, d->decoration_extra_scale_y[slot]);
+        if (extra < 0 || (size_t)extra >= sizeof manifest - (size_t)len) return 0;
+        len += extra;
+    }
+
+    mz_zip_archive zip;
+    memset(&zip, 0, sizeof zip);
+    if (!mz_zip_writer_init_file(&zip, zip_path, 0)) return 0;
+    int ok = 1;
+    for (int i = 0; i < N_DECK_ASSET_PATHS && ok; i++) {
+        const char *path = desktop_deck_asset_path(d, i);
+        if (!path || !path[0] || !file_exists(path)) continue;
+        struct stat st;
+        if (stat(path, &st) != 0 || st.st_size <= 0) continue;
+        char ext[12], entry[128];
+        desktop_deck_extension(path, ext);
+        snprintf(entry, sizeof entry, "assets/%s%s", desktop_deck_entry_stem(i), ext);
+        if (!mz_zip_writer_add_file(&zip, entry, path, NULL, 0, MZ_BEST_COMPRESSION)) {
+            ok = 0; break;
+        }
+        int extra = snprintf(manifest + len, sizeof manifest - (size_t)len,
+                             "%s=%s\n", desktop_deck_manifest_field(i), entry);
+        if (extra < 0 || (size_t)extra >= sizeof manifest - (size_t)len) {
+            ok = 0; break;
+        }
+        len += extra;
+    }
+    for (int asset = 0; asset < N_DECK_ASSET_PATHS && ok; asset++) {
+        int extra = snprintf(manifest + len, sizeof manifest - (size_t)len,
+            "asset_stretch_%d=%d\n", asset, d->asset_stretch[asset] ? 1 : 0);
+        if (extra < 0 || (size_t)extra >= sizeof manifest - (size_t)len) {
+            ok = 0;
+            break;
+        }
+        len += extra;
+    }
+    if (ok && !mz_zip_writer_add_mem(&zip, "manifest.ini", manifest, (size_t)len,
+                                     MZ_BEST_COMPRESSION)) ok = 0;
+    if (ok && !mz_zip_writer_finalize_archive(&zip)) ok = 0;
+    if (!mz_zip_writer_end(&zip)) ok = 0;
+    return ok;
+}
+
+void launcher_open_companion_layout_picker(int kind, int game)
+{
+    if (game < 0 || game >= N_GAMES) return;
+    char selected[2048];
+    int dialog_kind;
+    if (kind == 14) dialog_kind = DLG_ZIP_SAVE;
+    else if (kind == 13) dialog_kind = DLG_ZIP_OPEN;
+    else if ((kind >= 1 && kind <= 4) || (kind >= 15 && kind <= 25)) dialog_kind = DLG_IMAGE;
+    else dialog_kind = DLG_AUDIO;
+    if (!dlg_pick(dialog_kind, desktop_deck_picker_title(kind), selected, sizeof selected)) return;
+
+    if (kind == 14) {
+        if (desktop_bundle_export(game, selected))
+            launcher_companion_layout_picker_result(kind, game, "EXPORTED");
+        else launcher_toast("Couldn't export the Companion Deck ZIP bundle.");
+        return;
+    }
+    if (kind == 13) {
+        char manifest[4096];
+        if (desktop_bundle_import(game, selected, manifest, sizeof manifest))
+            launcher_companion_layout_picker_result(kind, game, manifest);
+        else launcher_toast("That ZIP has no valid layout manifest or contains unsafe/oversized entries.");
+        return;
+    }
+    launcher_companion_layout_picker_result(kind, game, selected);
+}
+
+#else
+void launcher_open_companion_layout_picker(int kind, int game)
+{
+    (void)kind; (void)game;
+}
+#endif
+
 static void companion_publish_state(int game, const Frame *frame, int paused)
 {
     (void)game; (void)frame; (void)paused;
+}
+static void companion_publish_launcher_dashboard(int selected_game)
+{
+    (void)selected_game;
 }
 #endif
 
@@ -123,9 +1051,116 @@ static void companion_set_display_enabled(int enabled)
     }
     (*env)->DeleteLocalRef(env, cls);
 }
+
+static void companion_set_pipe_swap(int enabled)
+{
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "setCompanionPipeSwapMode", "(Z)V");
+    if (method) {
+        (*env)->CallVoidMethod(env, activity, method, enabled ? JNI_TRUE : JNI_FALSE);
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+
+static void companion_publish_game_frame(void)
+{
+    if (!companion_pipe_swap_active || !SDL_AtomicGet(&companion_display_available)) return;
+    /* Read the filtered CPU frame, not the SDL backbuffer, to avoid a GPU readback. */
+    Uint32 now = SDL_GetTicks();
+    if ((Uint32)(now - companion_last_frame_tick) < 33) return;
+    companion_last_frame_tick = now;
+
+    const uint32_t *pixels = NULL;
+    int w = 0, h = 0;
+    if (!render_pixels(&pixels, &w, &h) || !pixels ||
+        w <= 0 || h <= 0 || w > 2048 || h > 512 ||
+        (size_t)w * (size_t)h > 1048576u) return;
+
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    jobject activity = (jobject)SDL_AndroidGetActivity();
+    if (!env || !activity) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) return;
+    jmethodID method = (*env)->GetMethodID(env, cls, "updateCompanionGameFrame", "(II[I)V");
+    if (method) {
+        jsize count = (jsize)(w * h);
+        jintArray frame = (*env)->NewIntArray(env, count);
+        if (frame) {
+            (*env)->SetIntArrayRegion(env, frame, 0, count, (const jint *)pixels);
+            if (!(*env)->ExceptionCheck(env))
+                (*env)->CallVoidMethod(env, activity, method, (jint)w, (jint)h, frame);
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+            (*env)->DeleteLocalRef(env, frame);
+        } else if ((*env)->ExceptionCheck(env)) {
+            (*env)->ExceptionClear(env);
+        }
+    } else if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionClear(env);
+    }
+    (*env)->DeleteLocalRef(env, cls);
+}
+
 #else
 static void companion_set_display_enabled(int enabled) { (void)enabled; }
+static void companion_set_pipe_swap(int enabled) { (void)enabled; }
+static void companion_publish_game_frame(void) {}
 #endif
+
+static void companion_update_pipe_swap(int game, const Frame *frame, int enabled)
+{
+#if defined(__ANDROID__)
+    int next = companion_pipe_swap_active;
+    if (!enabled || !SDL_AtomicGet(&companion_display_available) || game != GAME_SML) {
+        next = 0;
+        companion_pipe_swap_exit_pending = 0;
+    } else if (frame) {
+        const uint8_t state = frame->game_state;
+        /* SML1 HRAM states: 09=down pipe, 0A=warp underground, 0C=up out;
+           12..1A cover entering/playing/leaving the pipe bonus room. */
+        if (state == 0x09 || state == 0x0A || state == 0x0B ||
+            (state >= 0x12 && state <= 0x1A)) {
+            next = 1;
+            companion_pipe_swap_exit_pending = 0;
+        } else if (state == 0x0C || state == 0x1B) {
+            /* Keep the game on the secondary screen throughout the climb out
+               or bonus-room return. Normal state (00) marks the completed return. */
+            if (next) companion_pipe_swap_exit_pending = 1;
+        } else if (state == 0x00 && companion_pipe_swap_exit_pending) {
+            next = 0;
+            companion_pipe_swap_exit_pending = 0;
+        } else if (state == 0x06 || state == 0x07 ||
+                   state == 0x08 || state == 0x0E || state == 0x0F || state == 0x11) {
+            next = 0;
+            companion_pipe_swap_exit_pending = 0;
+        }
+    }
+    if (next != companion_pipe_swap_active) {
+        companion_pipe_swap_active = next;
+        companion_last_frame_tick = 0;
+        companion_set_pipe_swap(next);
+        dev_diag_event(next ? "ANDROID_PIPE_SCREEN_SWAP_ON" : "ANDROID_PIPE_SCREEN_SWAP_OFF");
+    }
+#else
+    (void)game; (void)frame; (void)enabled;
+    companion_pipe_swap_active = 0;
+#endif
+}
+
+static void companion_reset_pipe_swap(void)
+{
+    companion_pipe_swap_active = 0;
+    companion_pipe_swap_exit_pending = 0;
+    companion_last_frame_tick = 0;
+    companion_set_pipe_swap(0);
+}
+
 static SDL_FingerID launcher_touch_finger;
 static int launcher_touch_active, launcher_touch_pointer;
 
@@ -380,7 +1415,7 @@ static void state_thumb_path(int g, int slot, char *out, size_t n)
     snprintf(dir, sizeof dir, "%sstates/", settings_dir());
     mkdir_u(dir);
     launcher_game_file_id(g, id, sizeof id);
-    snprintf(out, n, "%s%s.slot%d.thumb.bmp", dir, id, slot);
+    snprintf(out, n, "%s%s.slot%d.thumb.png", dir, id, slot);
 }
 
 static void queue_state_thumbnail(int g, int slot)
@@ -417,7 +1452,7 @@ static void capture_pending_state_thumbnail(void)
         SDL_BlitScaled(src, NULL, dst, &dr);
         char path[1200];
         state_thumb_path(thumb_pending_game, thumb_pending_slot, path, sizeof path);
-        SDL_SaveBMP(dst, path);
+        if (IMG_SavePNG(dst, path) == 0) companion_slots_dirty = 1;
     }
     SDL_FreeSurface(src);
     SDL_FreeSurface(dst);
@@ -454,6 +1489,7 @@ static int game_state_save(int g, int paused)
         return -1;
     }
     queue_state_thumbnail(g, settings.g[g].state_slot);
+    companion_slots_dirty = 1;
     emu_set_paused(paused);
     char msg[96];
     snprintf(msg, sizeof msg, "State saved — Slot %d", settings.g[g].state_slot + 1);
@@ -621,6 +1657,14 @@ static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *q
         return 1;
     }
     if (!pressed) return 1;
+    if (action >= PIPECLEAN_COMPANION_SLOT_SELECT_BASE &&
+        action < PIPECLEAN_COMPANION_SLOT_SELECT_BASE + 10) {
+        settings.g[g].state_slot = action - PIPECLEAN_COMPANION_SLOT_SELECT_BASE;
+        companion_slots_dirty = 1;
+        settings_save();
+        game_notice("Save slot selected.");
+        return 1;
+    }
     switch (action) {
     case PIPECLEAN_COMPANION_SAVE:
         if (netplay_is_connected()) game_notice("Save from the second screen is disabled during online co-op.");
@@ -648,10 +1692,12 @@ static int companion_handle_event(int g, const SDL_Event *e, int *paused, int *q
         break;
     case PIPECLEAN_COMPANION_SLOT_PREV:
         settings.g[g].state_slot = (settings.g[g].state_slot + 9) % 10;
+        companion_slots_dirty = 1;
         settings_save(); game_notice("Previous save slot selected.");
         break;
     case PIPECLEAN_COMPANION_SLOT_NEXT:
         settings.g[g].state_slot = (settings.g[g].state_slot + 1) % 10;
+        companion_slots_dirty = 1;
         settings_save(); game_notice("Next save slot selected.");
         break;
     case PIPECLEAN_COMPANION_ITEM_USE:
@@ -1000,6 +2046,7 @@ static void draw_coop_hud(int game, const Frame *f)
 static int play_multiplayer(int g)
 {
     touch_reset_all();
+    companion_reset_pipe_swap();
     companion_rewind_held = 0;
     ds_menu_close();
     GameCfg *c = &settings.g[g];
@@ -1104,6 +2151,9 @@ static int play_multiplayer(int g)
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (companion_handle_event(g, &e, &paused, &quit)) continue;
+#if !defined(__ANDROID__)
+            if (companion_sim_handle_event(&e, &settings)) continue;
+#endif
             if (dev_diag_handle_event(&e)) continue;
             if (e.type == SDL_WINDOWEVENT &&
                 e.window.event == SDL_WINDOWEVENT_CLOSE &&
@@ -1377,15 +2427,22 @@ static int play_multiplayer(int g)
         SDL_Rect game_rect = {0, 0, 0, 0};
         if (have) {
             render_build(f, g, 1);
+            companion_update_pipe_swap(g, f, g == GAME_SML &&
+                settings.launcher_dual_screen && settings.launcher_pipe_screen_swap);
+            companion_publish_game_frame();
             render_fit(W, H, c->aspect, c->scaling, &game_rect);
-            render_draw(&game_rect, c->scaling);
+            if (!companion_pipe_swap_active) render_draw(&game_rect, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
 
         companion_publish_state(g, f, paused);
+#if !defined(__ANDROID__)
+        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot, 1);
+        companion_sim_render(&settings, win);
+#endif
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
-        if (have) {
+        if (have && !companion_pipe_swap_active) {
             sml1_draw_player_tag(f, f->mp_player_oam[0], &game_rect, "Mario", C_ACCENT);
             for (int player = 1; player < player_count; player++) {
                 if (!f->mp_player_visible[player] || f->mp_player_blink_hidden[player]) continue;
@@ -1399,6 +2456,7 @@ static int play_multiplayer(int g)
             ui_text_c(F_BOLD, 32, UI_W / 2, UI_H / 2 - 20, C_TEXT, "Paused");
         }
         game_notice_draw(dt);
+        launcher_museum_notification_draw(dt);
         touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
@@ -1422,6 +2480,7 @@ static int play_multiplayer(int g)
         SDL_RenderPresent(ren);
     }
 
+    companion_reset_pipe_swap();
     companion_set_display_enabled(0);
     touch_reset_game(g);
     if (online) netplay_game_end();
@@ -1429,6 +2488,7 @@ static int play_multiplayer(int g)
     emu_set_turbo(0);
     audio_game_end();
     emu_mp_end();
+    wide_wl2_trace_finish();
     tex_collect_save();
     free(f);
     for (int i = 0; i < MAX_MP_PLAYERS - 1; i++) free(player_frames[i]);
@@ -1499,8 +2559,25 @@ static int play_external_game(int g)
         return 0;
     }
     fclose(test);
+    game_session_begin(g);
     settings_save();
     audio_menu_music(0);
+#if !defined(__ANDROID__)
+    /* These Wario ROMs own their Deck inside gbplayer. Wario Land II's GB and
+       GBC headers select a shared layout in the player; don't route them through
+       PipeClean's inactive simulator while the separate process is running. */
+    int launch_companion = settings.launcher_dual_screen != 0 &&
+        (g == GAME_WARIO_SML3 || g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC);
+    /* The Wario player owns the live deck while it runs as a separate process.
+     * Close PipeClean's idle simulator first so it won't remain frozen underneath. */
+    if (launch_companion) companion_sim_shutdown();
+#else
+    int launch_companion = 0;
+#endif
+    /* gbplayer owns the controller rumble and DualSense speaker while the
+     * external Wario game runs. Release PipeClean's handles first, then
+     * reacquire/re-sync them after the child exits. */
+    pad_shutdown();
     int ok = 1;
 #ifdef _WIN32
     char command[4096];
@@ -1510,7 +2587,8 @@ static int play_external_game(int g)
     memset(&pi, 0, sizeof pi);
     si.cb = sizeof si;
     /* ROM paths are ordinary Windows paths and are quoted to preserve spaces. */
-    snprintf(command, sizeof command, "\"%s\" \"%s\"", player, launch_rom);
+    snprintf(command, sizeof command, "\"%s\" \"%s\"%s",
+             player, launch_rom, launch_companion ? " --companion" : "");
     if (CreateProcessA(player, command, NULL, NULL, FALSE, 0, NULL, base[0] ? base : NULL, &si, &pi)) {
         WaitForSingleObject(pi.hProcess, INFINITE);
         CloseHandle(pi.hThread);
@@ -1522,7 +2600,8 @@ static int play_external_game(int g)
 #else
     pid_t pid = fork();
     if (pid == 0) {
-        execl(player, player, launch_rom, (char *)NULL);
+        if (launch_companion) execl(player, player, launch_rom, "--companion", (char *)NULL);
+        else execl(player, player, launch_rom, (char *)NULL);
         _exit(127);
     }
     if (pid < 0) {
@@ -1538,7 +2617,9 @@ static int play_external_game(int g)
         }
     }
 #endif
+    pad_init();
     audio_menu_music(1);
+    game_session_end();
     if (ok) settings_save();
     return 0;
 }
@@ -1547,6 +2628,7 @@ static int play_external_game(int g)
 static int play(int g)
 {
     touch_reset_all();
+    companion_reset_pipe_swap();
     companion_rewind_held = 0;
     ds_menu_close();
     if (g < 0 || g >= N_GAMES) return 0;
@@ -1593,7 +2675,12 @@ static int play(int g)
         }
     }
     audio_menu_music(0);
-    if ((g == GAME_SML || g == GAME_SML2) && (c->multiplayer || online)) return play_multiplayer(g);
+    if ((g == GAME_SML || g == GAME_SML2) && (c->multiplayer || online)) {
+        game_session_begin(g);
+        int multiplayer_result = play_multiplayer(g);
+        game_session_end();
+        return multiplayer_result;
+    }
     char sp[1200], save_id[128];
     launcher_game_file_id(g, save_id, sizeof save_id);
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
@@ -1611,6 +2698,7 @@ static int play(int g)
     suspend_path(g, suspended, sizeof suspended);
     int has_suspend = state_file_exists(suspended);
     if (emu_start(0)) { launcher_toast("Couldn't start the game."); return 0; }
+    game_session_begin(g);
     if (requested_load >= 0) {
         c->state_slot = requested_load;
         (void)game_state_load(g, 0);
@@ -1628,6 +2716,9 @@ static int play(int g)
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (companion_handle_event(g, &e, &paused, &quit)) continue;
+#if !defined(__ANDROID__)
+            if (companion_sim_handle_event(&e, &settings)) continue;
+#endif
             touch_handle_event(&e);
             pad_event(&e);
             int ds_consumed = ds_menu_event(g, &e, &paused, &quit);
@@ -1695,12 +2786,19 @@ static int play(int g)
         bg_update(dt);
         if (have) {
             render_build(f, g, 1);
+            companion_update_pipe_swap(g, f, g == GAME_SML &&
+                settings.launcher_dual_screen && settings.launcher_pipe_screen_swap);
+            companion_publish_game_frame();
             SDL_Rect r;
             render_fit(W, H, c->aspect, c->scaling, &r);
-            render_draw(&r, c->scaling);
+            if (!companion_pipe_swap_active) render_draw(&r, c->scaling);
             pad_set_screen_color(render_avg_color());
         }
         companion_publish_state(g, f, paused);
+#if !defined(__ANDROID__)
+        companion_sim_set_state(g, have ? f : NULL, paused, c->state_slot, 1);
+        companion_sim_render(&settings, win);
+#endif
         capture_pending_state_thumbnail();
         ui_begin(W, H, dt);
         if (paused) {
@@ -1712,6 +2810,7 @@ static int play(int g)
             ui_text_c(F_BOLD, 13, UI_W / 2, 26, C_TEXT, "REWIND");
         }
         game_notice_draw(dt);
+        launcher_museum_notification_draw(dt);
         touch_draw_overlay(paused);
         ds_menu_draw(g);
         ui_end();
@@ -1721,6 +2820,7 @@ static int play(int g)
                              char p[1200]; snprintf(p, sizeof p, "%sscreenshot_%u.bmp", settings_dir(), SDL_GetTicks()); SDL_SaveBMP(s, p); SDL_FreeSurface(s); } }
         SDL_RenderPresent(ren);
     }
+    companion_reset_pipe_swap();
     companion_set_display_enabled(0);
     touch_reset_game(g);
     emu_stop();
@@ -1733,6 +2833,7 @@ static int play(int g)
     SDL_free(f);
     tex_collect_save();
     pad_set_context(g, 0);
+    game_session_end();
     SDL_SetWindowFullscreen(win, 0);
     SDL_SetWindowSize(win, win_w, win_h);
     SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
@@ -1749,16 +2850,21 @@ int app_run(const char *autorun, const char *hack)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-    /* Finger events drive the touch overlay directly. Prevent SDL's synthetic
-       touch-as-mouse events from leaving the launcher pointer in a held state. */
-    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+    /* Support both native finger events and SDL's touch-as-mouse fallback.
+       The launcher deduplicates their button transitions, so Android devices
+       that expose only one input path still get clickable UI controls. */
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_EVENTS)) {
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
+    /* Keep native touch events enabled even when SDL also emits mouse events. */
+    SDL_EventState(SDL_FINGERDOWN, SDL_ENABLE);
+    SDL_EventState(SDL_FINGERMOTION, SDL_ENABLE);
+    SDL_EventState(SDL_FINGERUP, SDL_ENABLE);
     int img_flags = IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP;
     if ((IMG_Init(img_flags) & img_flags) != img_flags) {
-        fprintf(stderr, "SDL_image: %s\\n", IMG_GetError());
+        fprintf(stderr, "SDL_image: %s\n", IMG_GetError());
     }
     settings_load();
 #if !defined(__ANDROID__)
@@ -1800,20 +2906,56 @@ int app_run(const char *autorun, const char *hack)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            launcher_touch_event(&e);
-            pad_event(&e);
-            launcher_event(&e);
+#if !defined(__ANDROID__)
+            if (companion_sim_handle_event(&e, &settings)) continue;
+#endif
+            /* Let the launcher relinquish its virtual controller cursor before
+               the direct finger path presses the UI. Mouse events retain their
+               existing dispatch order for normal desktop interaction. */
+            if (e.type == SDL_FINGERDOWN || e.type == SDL_FINGERMOTION ||
+                e.type == SDL_FINGERUP) {
+                launcher_event(&e);
+                launcher_touch_event(&e);
+                pad_event(&e);
+            } else {
+                launcher_touch_event(&e);
+                pad_event(&e);
+                launcher_event(&e);
+            }
             switch (e.type) {
             case SDL_QUIT: quit = 1; break;
+#if defined(__ANDROID__)
+            case SDL_USEREVENT:
+                if (e.user.code == PIPECLEAN_LAYOUT_PICKER_EVENT_CODE) {
+                    CompanionLayoutPickerResult *picked = (CompanionLayoutPickerResult *)e.user.data2;
+                    launcher_companion_layout_picker_result((int)(intptr_t)e.user.data1,
+                        picked ? picked->game : -1, picked ? picked->path : "");
+                    free(picked);
+                }
+                break;
+#endif
             case SDL_MOUSEBUTTONDOWN: if (e.button.button == SDL_BUTTON_LEFT) { mouse_sync(); ui_mouse_button(1); } break;
             case SDL_MOUSEBUTTONUP: if (e.button.button == SDL_BUTTON_LEFT) { mouse_sync(); ui_mouse_button(0); } break;
             case SDL_MOUSEWHEEL: ui_mouse.wheel += e.wheel.y; break;
             case SDL_DROPFILE: launcher_drop(e.drop.file); SDL_free(e.drop.file); break;
             case SDL_WINDOWEVENT:
                 if (e.window.event == SDL_WINDOWEVENT_LEAVE) ui_mouse.inside = 0;
+                if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                    if (launcher_touch_active) ui_mouse_button(0);
+                    launcher_touch_active = 0;
+                    launcher_touch_pointer = 0;
+                }
+                break;
+            case SDL_APP_WILLENTERBACKGROUND:
+            case SDL_APP_TERMINATING:
+                if (launcher_touch_active) ui_mouse_button(0);
+                launcher_touch_active = 0;
+                launcher_touch_pointer = 0;
+                ui_mouse.inside = 0;
                 break;
             }
         }
+        if (audio_music_take_finished()) launcher_menu_music_step(1);
         if (!launcher_touch_pointer) mouse_sync();
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = (float)(now - last) / SDL_GetPerformanceFrequency();
@@ -1838,6 +2980,15 @@ int app_run(const char *autorun, const char *hack)
             }
         }
         SDL_RenderPresent(ren);
+#if !defined(__ANDROID__)
+        int simulator_game = launcher_current_game();
+#if defined(PIPECLEAN_DEV_BUILD)
+        simulator_game = launcher_companion_layout_target_game(simulator_game);
+#endif
+        companion_sim_set_state(simulator_game, NULL, 0, 0, 0);
+        companion_sim_render(&settings, win);
+#endif
+        companion_publish_launcher_dashboard(launcher_current_game());
         if (r.play >= 0) {
             audio_sfx(SFX_CONFIRM);
             settings_save();
@@ -1848,6 +2999,9 @@ int app_run(const char *autorun, const char *hack)
         }
         if (!(SDL_GetWindowFlags(win) & SDL_WINDOW_SHOWN)) SDL_Delay(30);
     }
+#if !defined(__ANDROID__)
+    companion_sim_shutdown();
+#endif
     launcher_shutdown();
     branding_shutdown();
     settings_save();
