@@ -322,10 +322,11 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x02, 0x44, "sml2_noko_bombette"},
     {0x02, 0x58, "sml2_moofish"},
 
-    /* Leaf Course includes the mapped beetle, ant, and egg-like Tamara
-     * enemy; their original course object IDs persist in the live actor source. */
-    {0x03, 0x40, "sml2_battle_beetle"},
+    /* Leaf Course: the broad-winged sprite is Bigbee, the segmented crawler
+     * is Ant, the spiky beetle sprite is Battle Beetle, and type 43 is Tamara. */
+    {0x03, 0x40, "sml2_bigbee"},
     {0x03, 0x41, "sml2_ant"},
+    {0x03, 0x42, "sml2_battle_beetle"},
     {0x03, 0x43, "sml2_tamara"},
 
     /* Tree Zone 4's type 39 composes into the swooping bird sprite. */
@@ -377,23 +378,21 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x13, 0x5E, "sml2_star_enemy"},
     {0x13, 0x5F, "sml2_star_enemy"},
 
-    /* Macro Zone 3/4 reuse the visible classic enemy mappings in their
-     * own course tables; keep them separate from other courses' object IDs. */
+    /* Macro Zone courses use the same classic enemy mappings in their own
+     * course tables. Sewer Rat's drill-nosed sprite is type 42 in course 16. */
     {0x16, 0x01, "sml2_koopa_troopa"},
     {0x16, 0x08, "sml2_paragoomba"},
     {0x16, 0x09, "sml2_goomba"},
     {0x16, 0x0C, "sml2_piranha_plant"},
+    {0x16, 0x42, "sml2_sewer_rat"},
     {0x17, 0x01, "sml2_koopa_troopa"},
-    {0x17, 0x08, "sml2_paragoomba"},
+    {0x17, 0x08, "sml2_mechanical_fist"},
     {0x17, 0x09, "sml2_goomba"},
     {0x17, 0x0C, "sml2_piranha_plant"},
     {0x17, 0x0D, "sml2_fire_piranha_plant"},
 
-    /* Macro Zone 4 has a single special actor using the drill-nosed rat map. */
-    {0x17, 0x42, "sml2_sewer_rat"},
-
-    /* Wario's Castle type 64 composes into the mechanical fist. */
-    {0x18, 0x64, "sml2_mechanical_fist"},
+    /* Space Zone boss course: type 67 maps to the Tatanga/ship sprite. */
+    {0x18, 0x67, "sml2_tatanga"},
 };
 
 static const char *sml2_museum_enemy_id(uint8_t level, uint8_t object_type)
