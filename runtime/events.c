@@ -280,17 +280,29 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x1F, 0x08, "sml2_paragoomba"},
     {0x1F, 0x0C, "sml2_piranha_plant"},
 
-    /* The Cheep Cheep Course also contains three Goombas and one Para-Goomba. */
+    /* The Cheep Cheep Course enemy roster is count-checkable against its
+     * ROM spawn list: 7 Blurps, 5 sharks, 8 Cheep-Cheeps, 3 Spiny Cheep-Cheeps,
+     * 3 Goombas, and 1 Para-Goomba. Types 07 and 3D share the fish mapping. */
+    {0x0E, 0x05, "sml2_blurp"},
+    {0x0E, 0x06, "sml2_shark"},
+    {0x0E, 0x07, "sml2_cheep_cheep"},
+    {0x0E, 0x0B, "sml2_spiny_cheep_cheep"},
+    {0x0E, 0x3D, "sml2_cheep_cheep"},
     {0x0E, 0x08, "sml2_paragoomba"},
     {0x0E, 0x09, "sml2_goomba"},
 
-    /* The Sunken Ship Course has Koopas and sharks; the Whale Course adds
-     * Aqua Goombas, alongside Koopas and Para-Goombas. */
+    /* Sunken Ship Course: type 01 is Koopa, 06 is Shark, and the spiky
+     * round sprite on type 56 matches Unibo (also listed for Turtle Zone). */
     {0x0F, 0x01, "sml2_koopa_troopa"},
     {0x0F, 0x06, "sml2_shark"},
+    {0x0F, 0x56, "sml2_unibo"},
+
+    /* Whale Course: the helmeted aquatic Goomba occupies type 20; types 08
+     * and 3A both use the same winged Goomba sprite mapping. */
     {0x10, 0x01, "sml2_koopa_troopa"},
     {0x10, 0x08, "sml2_paragoomba"},
-    {0x10, 0x3A, "sml2_aqua_goomba"},
+    {0x10, 0x20, "sml2_aqua_goomba"},
+    {0x10, 0x3A, "sml2_paragoomba"},
 
     /* Piranha Plant and Fire Piranha Plant use separate type IDs. */
     {0x04, 0x0C, "sml2_piranha_plant"},
@@ -300,20 +312,21 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x08, 0x0D, "sml2_fire_piranha_plant"},
     {0x09, 0x0C, "sml2_piranha_plant"},
 
-    /* Roots Course: type 1F is the burrowing Ragumo, type 21 uses the
-     * flying-insect mapping, and type 22 is the spiked hedgehog. */
+    /* Roots Course: the composed sprite sheet shows the spiked hedgehog
+     * on type 21 and the flying insect on type 22. */
     {0x01, 0x1F, "sml2_ragumo"},
-    {0x01, 0x21, "sml2_kyotonbo"},
-    {0x01, 0x22, "sml2_spikey"},
+    {0x01, 0x21, "sml2_spikey"},
+    {0x01, 0x22, "sml2_kyotonbo"},
 
     /* Tree Trunk Course: the atlas and named course roster agree on these. */
     {0x02, 0x44, "sml2_noko_bombette"},
     {0x02, 0x58, "sml2_moofish"},
 
-    /* Leaf Course has the beetle and ant sprites; keep other types locked
-     * until their mapping is distinguished from plants and stage objects. */
+    /* Leaf Course includes the mapped beetle, ant, and egg-like Tamara
+     * enemy; their original course object IDs persist in the live actor source. */
     {0x03, 0x40, "sml2_battle_beetle"},
     {0x03, 0x41, "sml2_ant"},
+    {0x03, 0x43, "sml2_tamara"},
 
     /* Manhole Course ant variant. */
     {0x04, 0x5D, "sml2_ant"},
