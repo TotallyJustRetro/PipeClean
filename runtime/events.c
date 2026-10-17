@@ -287,6 +287,15 @@ static const Sml2MuseumEnemyMap sml2_museum_enemy_map[] = {
     {0x03, 0x40, "sml2_battle_beetle"},
     {0x03, 0x41, "sml2_ant"},
 
+    /* Cheep Cheep Course: object counts in its ROM spawn list line up with
+     * the reference enemy tally (7 Blurps, 5 sharks, 8 Cheep-Cheeps, and
+     * 3 Spiny Cheep-Cheeps), including the alternate Cheep-Cheep object ID. */
+    {0x0E, 0x05, "sml2_blurp"},
+    {0x0E, 0x06, "sml2_shark"},
+    {0x0E, 0x07, "sml2_cheep_cheep"},
+    {0x0E, 0x0B, "sml2_spiny_cheep_cheep"},
+    {0x0E, 0x3D, "sml2_cheep_cheep"},
+
     /* The chain-mounted spiked ball is specific to Pumpkin Zone. */
     {0x06, 0x4F, "sml2_spiked_ball_pumpkin"},
 };
@@ -319,7 +328,15 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
         const uint8_t y = sml2_ram_read((uint16_t)(base + 9u));
         if (y < 0x08u || y > 0xA0u) continue;
 
-        const uint8_t object_type = sml2_ram_read((uint16_t)(base + 5u));
+        /* The live actor's +5 field changes during transitions (for example,
+         * a collected item can change its runtime type). Its source pointer
+         * addresses descriptor byte +2, so +3 from that pointer is the
+         * original object ID used by the course spawn list. */
+        const uint16_t source_ref = (uint16_t)(
+            ((uint16_t)sml2_ram_read((uint16_t)(base + 6u)) << 8) |
+            sml2_ram_read((uint16_t)(base + 7u)));
+        if (source_ref < 0xA002u || source_ref > 0xBFFCu) continue;
+        const uint8_t object_type = sml2_ram_read((uint16_t)(source_ref + 3u));
         const char *museum_id = sml2_museum_enemy_id(level, object_type);
         if (!museum_id) continue;
 
