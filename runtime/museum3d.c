@@ -33,6 +33,7 @@ static uint32_t m3d_pixels[M3D_PIXELS];
 static float m3d_depth[M3D_PIXELS];
 static SDL_Texture *m3d_texture;
 static SDL_Renderer *m3d_renderer;
+static float m3d_projection_x_offset;
 
 static const float m3d_cam_y = 4.6f;
 static const float m3d_cam_z = 10.5f;
@@ -104,7 +105,7 @@ static int m3d_project(M3DVec3 p, M3DProjected *out)
     float view_y = dy * m3d_pitch_cos - dz * m3d_pitch_sin;
     float view_z = (m3d_cam_z - p.z) * m3d_pitch_cos - dy * m3d_pitch_sin;
     if (view_z <= M3D_NEAR) return 0;
-    out->x = (float)M3D_W * 0.5f + p.x * m3d_focal / view_z;
+    out->x = (float)M3D_W * 0.5f + (p.x + m3d_projection_x_offset) * m3d_focal / view_z;
     out->y = m3d_center_y - view_y * m3d_focal / view_z;
     out->z = view_z;
     out->invz = 1.0f / view_z;
@@ -380,8 +381,9 @@ static void m3d_train(float elapsed)
  * perspective, depth, crown, side cheeks, brass inlay and weighted plinth
  * that the flat panel layer cannot provide on its own.
  */
-static void m3d_cabinet(void)
+static void m3d_cabinet(float horizontal_offset)
 {
+    m3d_projection_x_offset = horizontal_offset;
     const float front_z = 4.72f;
     const float rear_z = 2.30f;
 
@@ -405,8 +407,8 @@ static void m3d_cabinet(void)
     m3d_quad(front_bl, front_br, front_tr, front_tl, HEX(0x63351D));
 
     /* Crown fascia sits proud of the front face, above the UI's top edge. */
-    M3DVec3 crown_bl = m3d_v(-2.48f, 3.30f, 4.77f);
-    M3DVec3 crown_br = m3d_v( 4.18f, 3.30f, 4.77f);
+    M3DVec3 crown_bl = m3d_v(-2.22f, 3.30f, 4.77f);
+    M3DVec3 crown_br = m3d_v( 3.89f, 3.30f, 4.77f);
     M3DVec3 crown_tl = m3d_v(-2.28f, 3.53f, 4.77f);
     M3DVec3 crown_tr = m3d_v( 3.93f, 3.53f, 4.77f);
     m3d_quad(front_tl, front_tr, crown_br, crown_bl, HEX(0x89532D));
@@ -456,9 +458,10 @@ static void m3d_cabinet(void)
     m3d_box( 3.38f, -0.52f, 3.45f,  3.96f, -0.32f, 4.69f, HEX(0x442516));
     m3d_box(-1.98f, -0.49f, 4.69f, -1.50f, -0.445f, 4.75f, HEX(0x94633A));
     m3d_box( 3.43f, -0.49f, 4.69f,  3.91f, -0.445f, 4.75f, HEX(0x94633A));
+    m3d_projection_x_offset = 0.0f;
 }
 
-static void m3d_scene(float elapsed)
+static void m3d_scene(float elapsed, float cabinet_x_offset)
 {
     m3d_clear();
 
@@ -491,7 +494,7 @@ static void m3d_scene(float elapsed)
     m3d_box(-8.8f, 0.03f, 7.5f, 8.8f, 0.10f, 7.7f, HEX(0xA36C3D));
 
     /* The museum furniture is real perspective geometry; controls are layered later. */
-    m3d_cabinet();
+    m3d_cabinet(cabinet_x_offset);
 
     /* Physical green pipe models sit beside the display housing. */
     m3d_pipe(-6.65f, 0.80f);
@@ -533,7 +536,7 @@ static void m3d_scene(float elapsed)
 
 void museum3d_draw_background(SDL_Renderer *renderer,
                               float x, float y, float width, float height,
-                              float elapsed_seconds)
+                              float elapsed_seconds, float cabinet_x_offset)
 {
     if (!renderer || width <= 0.0f || height <= 0.0f) return;
 
@@ -552,7 +555,7 @@ void museum3d_draw_background(SDL_Renderer *renderer,
 #endif
     }
 
-    m3d_scene(elapsed_seconds);
+    m3d_scene(elapsed_seconds, cabinet_x_offset);
     if (SDL_UpdateTexture(m3d_texture, NULL, m3d_pixels, M3D_W * (int)sizeof(uint32_t)) != 0)
         return;
 
