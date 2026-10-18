@@ -386,19 +386,21 @@ static void m3d_pipe(float x, float z)
 
     /* The shaft and widened mouth have open ends; their top is not a filled
        cylinder cap. A separate annulus forms the upper surface of the rim. */
-    m3d_cylinder_y_open(x, base, z, radius, height, HEX(0x139B3B), 18);
+    /* Extra radial segments keep the glossy pipe silhouette smooth at the
+       Museum's full-screen scale instead of reading as a low-poly tube. */
+    m3d_cylinder_y_open(x, base, z, radius, height, HEX(0x139B3B), 28);
     m3d_cylinder_y_open(x, base + height - 0.26f, z, lip_outer, 0.28f,
-                        HEX(0x38CE51), 18);
+                        HEX(0x38CE51), 28);
     m3d_ring_horizontal(x, base + height + 0.02f, z,
-                        bore_radius, lip_outer, HEX(0x43D65A), 18);
+                        bore_radius, lip_outer, HEX(0x43D65A), 28);
 
-    /* The bore is a deep cavity, not a straight tunnel. Its inner wall
-       continues almost to the base and ends at a recessed dark floor, so the
-       moving train cannot show through the pipe shaft like a background card. */
+    /* The bore is a deep cavity with an opaque dark throat. The raised floor
+       is still well down inside the shaft, but it blocks the distant railway
+       from appearing to run through the pipe when the camera looks into it. */
     m3d_cylinder_y_open(x, base + 0.16f, z, bore_radius, height - 0.30f,
-                        HEX(0x0B5729), 18);
-    m3d_disk_horizontal(x, base + 0.165f, z, bore_radius * 0.98f,
-                        HEX(0x042914), 18);
+                        HEX(0x0B5729), 28);
+    m3d_disk_horizontal(x, base + 1.42f, z, bore_radius * 0.98f,
+                        HEX(0x042914), 28);
 
     m3d_cylinder_y(x - 0.12f, 0.11f, z + 0.46f, 0.025f, 3.95f,
                    HEX(0xA4F47E), 6);
@@ -443,12 +445,11 @@ static void m3d_train_wheel(float cx, float cy, float cz, float radius,
                             float rotation)
 {
     const float half_depth = 0.045f;
-    /* The outer-side wheel face sits just proud of the chassis, while the
-       far-side wheel stays tucked behind it. Both still straddle their rail. */
-    const float z_bias = cz > 3.5f ? 0.10f : 0.0f;
-    const float z0 = cz - half_depth + z_bias;
-    const float z1 = cz + half_depth + z_bias;
-    const int segments = 14;
+    /* Keep each wheel centered on its matching rail. Offsetting the far set
+       toward the viewer made the wheel and rail look disconnected in motion. */
+    const float z0 = cz - half_depth;
+    const float z1 = cz + half_depth;
+    const int segments = 20;
     M3DVec3 front_center = m3d_v(cx, cy, z1);
 
     for (int i = 0; i < segments; ++i) {
@@ -493,8 +494,8 @@ static void m3d_train(float elapsed)
     m3d_translate_x = travel;
     m3d_translate_z = far_track_z;
 
-    /* Two coupled carriages behind the locomotive. The wheels line up with
-       both rails and meet their tops at y=0.14; there is no artificial bob. */
+    /* Two coupled carriages behind the locomotive. Wheel bottoms overlap the
+       rail tops by a fraction of a unit to avoid a sub-pixel floating gap. */
     for (int car = 0; car < 2; ++car) {
         float cx = 0.62f + (float)car * 0.88f;
         uint32_t paint = car == 0 ? HEX(0x2D9D55) : HEX(0x3975C7);
@@ -506,8 +507,8 @@ static void m3d_train(float elapsed)
                 cx + 0.34f, 0.62f, 3.852f, HEX(0x6C9DB1));
         for (int axle = 0; axle < 2; ++axle) {
             float wx = cx + (axle == 0 ? -0.25f : 0.25f);
-            m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, wheel_rotation);
-            m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, wheel_rotation);
+            m3d_train_wheel(wx, 0.275f, 3.22f, 0.15f, wheel_rotation);
+            m3d_train_wheel(wx, 0.275f, 3.76f, 0.15f, wheel_rotation);
         }
     }
 
@@ -516,8 +517,8 @@ static void m3d_train(float elapsed)
     m3d_box(2.12f, 0.29f, 3.15f, 3.40f, 0.40f, 3.83f, HEX(0x8A3927));
 
     /* Rounded boiler, cab, window, smokestack, cowcatcher, and brass lamp. */
-    m3d_cylinder_x(2.08f, 0.53f, 3.49f, 0.28f, 1.12f, HEX(0xC94B31), 16);
-    m3d_cylinder_x(3.08f, 0.53f, 3.49f, 0.292f, 0.12f, HEX(0xE7B948), 16);
+    m3d_cylinder_x(2.08f, 0.53f, 3.49f, 0.28f, 1.12f, HEX(0xC94B31), 24);
+    m3d_cylinder_x(3.08f, 0.53f, 3.49f, 0.292f, 0.12f, HEX(0xE7B948), 24);
     m3d_box(3.00f, 0.57f, 3.17f, 3.66f, 1.23f, 3.82f, HEX(0xE7B948));
     m3d_box(3.10f, 0.82f, 3.832f, 3.53f, 1.08f, 3.848f, HEX(0x4D7890));
     m3d_box(3.10f, 0.82f, 3.849f, 3.53f, 0.86f, 3.856f, HEX(0xA5D0D8));
@@ -529,8 +530,8 @@ static void m3d_train(float elapsed)
     /* Leading engine axles sit on both rails as well, not a single row of balls. */
     for (int axle = 0; axle < 3; ++axle) {
         float wx = 2.30f + (float)axle * 0.43f;
-        m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, wheel_rotation);
-        m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, wheel_rotation);
+        m3d_train_wheel(wx, 0.275f, 3.22f, 0.15f, wheel_rotation);
+        m3d_train_wheel(wx, 0.275f, 3.76f, 0.15f, wheel_rotation);
     }
 
     m3d_translate_x = 0.0f;
@@ -612,6 +613,14 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     HEX(0xD0A15D), layout);
     m3d_screen_quad(left + 9.0f, top + 1.2f, right - 9.0f, top + 2.2f,
                     5.075f, HEX(0xF3D28A), layout);
+    /* Double moulding and hairline brass inlays make the crown read as carved
+       hardwood rather than a single extruded slab. */
+    m3d_screen_prism(left + 4.0f, top + 5.8f, right - 4.0f, top + 9.0f,
+                     4.98f, 4.28f, HEX(0x4A2615), layout);
+    m3d_screen_quad(left + 9.0f, top + 6.2f, right - 9.0f, top + 7.0f,
+                    5.015f, HEX(0xDDB06A), layout);
+    m3d_screen_quad(left + 10.0f, top + 8.0f, right - 10.0f, top + 8.7f,
+                    5.015f, HEX(0x281207), layout);
 
     /* A weighted plinth projects beyond the face at the bottom. */
     m3d_screen_face(left - 2.0f, bottom - 7.0f, 4.97f,
@@ -627,6 +636,13 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     4.75f, HEX(0x3F2114), layout);
     m3d_screen_quad(right - 130.0f, bottom + 7.0f, right - 75.0f, bottom + 17.0f,
                     4.75f, HEX(0x3F2114), layout);
+    /* Recessed screws and narrow metallic linework anchor the plinth hardware. */
+    m3d_screen_quad(left + 88.0f, bottom + 9.0f, left + 92.0f, bottom + 13.0f,
+                    4.79f, HEX(0xB98945), layout);
+    m3d_screen_quad(right - 92.0f, bottom + 9.0f, right - 88.0f, bottom + 13.0f,
+                    4.79f, HEX(0xB98945), layout);
+    m3d_screen_quad(left + 12.0f, bottom + 4.7f, right - 12.0f, bottom + 5.5f,
+                    5.09f, HEX(0xF2D48B), layout);
 }
 
 
@@ -734,6 +750,50 @@ static void m3d_screen_prism(float x0, float y0, float x1, float y1,
 }
 
 
+static void m3d_screen_gold_plate(float x, float y, float width, float height,
+                                  float front_z, float body_depth,
+                                  const M3DMuseumLayout *layout)
+{
+    if (!layout || width < 12.0f || height < 7.0f) return;
+    const float right = x + width, bottom = y + height;
+    const float highlight_z = front_z + 0.055f;
+
+    /* Dark reveal, raised bronze bezel, and inset gold face are three separate
+       extrusions. The slim light bands simulate a broad studio reflection. */
+    m3d_screen_prism(x - 1.0f, y - 1.0f, right + 1.0f, bottom + 1.0f,
+                     front_z - 0.015f, front_z - body_depth,
+                     HEX(0x462511), layout);
+    m3d_screen_prism(x, y, right, bottom,
+                     front_z + 0.015f, front_z - body_depth + 0.04f,
+                     HEX(0xA56D27), layout);
+    m3d_screen_prism(x + 1.6f, y + 1.3f, right - 1.6f, bottom - 1.3f,
+                     front_z + 0.035f, front_z - body_depth + 0.11f,
+                     HEX(0xD8B45C), layout);
+    m3d_screen_quad(x + 4.0f, y + 1.9f, right - 4.0f, y + 2.7f,
+                    highlight_z, HEX(0xFFF1B9), layout);
+    m3d_screen_quad(x + 4.0f, bottom - 2.7f, right - 4.0f, bottom - 1.9f,
+                    highlight_z, HEX(0x79501D), layout);
+    m3d_screen_quad(x + 5.0f, y + 3.3f, right - 5.0f, y + 4.0f,
+                    highlight_z, HEX(0xF3D17B), layout);
+    m3d_screen_face(x + width * 0.28f, y + 2.5f, highlight_z,
+                    x + width * 0.68f, y + 2.5f, highlight_z,
+                    x + width * 0.57f, y + height * 0.47f, highlight_z,
+                    x + width * 0.22f, y + height * 0.47f, highlight_z,
+                    HEX(0xFFF4CF), layout);
+
+    /* Flush square-headed brass fasteners with a tiny reflected edge. */
+    for (int side = 0; side < 2; ++side) {
+        const float bx = side ? right - 5.0f : x + 3.0f;
+        for (int row = 0; row < 2; ++row) {
+            const float by = row ? bottom - 5.0f : y + 3.1f;
+            m3d_screen_quad(bx, by, bx + 1.9f, by + 1.9f,
+                            highlight_z + 0.004f, HEX(0x76501F), layout);
+            m3d_screen_quad(bx + 0.35f, by + 0.25f, bx + 1.15f, by + 0.75f,
+                            highlight_z + 0.007f, HEX(0xFFF1B2), layout);
+        }
+    }
+}
+
 static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                              const M3DMuseumLayout *layout)
 {
@@ -754,7 +814,13 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
     M3DVec3 rb_r = m3d_v(fb_r.x, fb_r.y, rear_z);
     M3DVec3 rb_l = m3d_v(fb_l.x, fb_l.y, rear_z);
 
-    /* Dark back and four solid interior walls: the opening has real depth. */
+    /* Close the sightline behind the whole opening first. The inset core below
+       still shrinks in world space to sell depth, but this rear apron is sized
+       on the camera plane so the moving room/train cannot leak around it. */
+    m3d_screen_quad(opening_left, opening_top, opening_right, opening_bottom,
+                    2.92f, HEX(0x342012), layout);
+
+    /* Dark recessed core and four solid interior walls: the opening has depth. */
     m3d_quad(rt_l, rt_r, rb_r, rb_l, HEX(0x110704));
     m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0xB7824C));
     m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x88552F));
@@ -774,6 +840,12 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
     /* Bright wood edge on the front is an inlay; the bulk behind it is a solid beam. */
     m3d_screen_quad(x + 2.0f, y + 1.0f, x + w - 2.0f, y + 2.2f,
                     5.31f, HEX(0xE7BC78), layout);
+    m3d_screen_quad(x + 2.0f, y + 7.0f, x + 3.0f, y + h - 28.0f,
+                    5.31f, HEX(0xD5A164), layout);
+    m3d_screen_quad(x + w - 3.0f, y + 7.0f, x + w - 2.0f, y + h - 28.0f,
+                    5.31f, HEX(0x2C1509), layout);
+    m3d_screen_quad(x + 7.0f, y + h - 27.0f, x + w - 7.0f, y + h - 26.0f,
+                    5.31f, HEX(0x3A200F), layout);
 
     /* Closed compartments use chunky, separately extruded metal shutter slats. */
     if (locked) {
@@ -806,12 +878,8 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
     const float plaque_w = w * 0.78f;
     const float plaque_x = x + (w - plaque_w) * 0.5f;
     const float plaque_y = y + h - 17.0f;
-    m3d_screen_prism(plaque_x - 1.0f, plaque_y - 1.0f,
-                     plaque_x + plaque_w + 1.0f, plaque_y + 15.0f,
-                     5.31f, 4.96f, HEX(0x543018), layout);
-    m3d_screen_quad(plaque_x + 1.0f, plaque_y + 1.0f,
-                    plaque_x + plaque_w - 1.0f, plaque_y + 13.0f,
-                    5.34f, HEX(0xE5C982), layout);
+    m3d_screen_gold_plate(plaque_x - 1.0f, plaque_y, plaque_w + 2.0f, 14.0f,
+                          5.30f, 0.38f, layout);
 }
 
 static void m3d_museum_grid(const M3DMuseumLayout *layout)
@@ -874,14 +942,8 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
     const float plaque_w = 154.0f;
     const float plaque_x = panel_x + (panel_w - plaque_w) * 0.5f;
     const float plaque_y = panel_y + 10.0f;
-    m3d_screen_prism(plaque_x - 3.0f, plaque_y, plaque_x + plaque_w + 3.0f,
-                     plaque_y + 24.0f, 5.19f, 4.52f, HEX(0xA9763B), layout);
-    m3d_screen_prism(plaque_x + 2.0f, plaque_y + 2.5f,
-                     plaque_x + plaque_w - 2.0f, plaque_y + 21.5f,
-                     5.225f, 4.82f, HEX(0xD7B46D), layout);
-    m3d_screen_quad(plaque_x + 7.0f, plaque_y + 4.0f,
-                    plaque_x + plaque_w - 7.0f, plaque_y + 5.0f,
-                    5.24f, HEX(0xF8E0A5), layout);
+    m3d_screen_gold_plate(plaque_x - 3.0f, plaque_y, plaque_w + 6.0f, 24.0f,
+                          5.19f, 0.67f, layout);
 
     /* Three raised wooden filter keys sit exactly behind their clickable labels. */
     const float filter_x = panel_x + 9.0f;
@@ -909,6 +971,13 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                      5.04f, 3.76f, HEX(0x3A1D10), layout);
     m3d_screen_prism(grid_x - 4.0f, grid_y + grid_h, grid_x + grid_w + 4.0f, grid_y + grid_h + 4.0f,
                      5.04f, 3.76f, HEX(0x5A351E), layout);
+    /* Narrow double highlights define the bevel transitions on the shelf lip. */
+    m3d_screen_quad(grid_x - 1.0f, grid_y - 2.5f, grid_x + grid_w + 1.0f, grid_y - 1.5f,
+                    5.075f, HEX(0xE5BF7D), layout);
+    m3d_screen_quad(grid_x - 2.5f, grid_y + 3.0f, grid_x - 1.5f, grid_y + grid_h - 3.0f,
+                    5.075f, HEX(0xD09A58), layout);
+    m3d_screen_quad(grid_x + grid_w + 1.5f, grid_y + 3.0f, grid_x + grid_w + 2.5f,
+                    grid_y + grid_h - 3.0f, 5.075f, HEX(0x2A1409), layout);
     m3d_screen_prism(grid_x - 1.0f, grid_y, grid_x + grid_w + 1.0f,
                      grid_y + grid_h, 3.08f, 2.54f,
                      HEX(0x1D0D06), layout);
