@@ -1324,13 +1324,24 @@ static void m3d_track_sleeper(M3DVec3 center, float nx, float nz,
     if (length < 0.0001f) return;
     nx /= length;
     nz /= length;
-    const float ax = center.x + nx * half_gauge;
-    const float az = center.z + nz * half_gauge;
-    const float bx = center.x - nx * half_gauge;
-    const float bz = center.z - nz * half_gauge;
-    m3d_box(fminf(ax, bx) - 0.045f, 0.025f, fminf(az, bz) - 0.045f,
-            fmaxf(ax, bx) + 0.045f, 0.095f, fmaxf(az, bz) + 0.045f,
-            color);
+    const float tx = -nz, tz = nx;
+    const float across = half_gauge + 0.085f;
+    const float along = 0.052f;
+    const float base_y = 0.025f, top_y = 0.105f;
+    M3DVec3 base[4], top[4];
+    const float nxv[4] = { across, across, -across, -across };
+    const float txv[4] = { along, -along, -along, along };
+    for (int i = 0; i < 4; ++i) {
+        const float px = center.x + nx * nxv[i] + tx * txv[i];
+        const float pz = center.z + nz * nxv[i] + tz * txv[i];
+        base[i] = m3d_v(px, base_y, pz);
+        top[i] = m3d_v(px, top_y, pz);
+    }
+    m3d_quad(top[0], top[1], top[2], top[3], color);
+    m3d_quad(base[0], base[1], top[1], top[0], m3d_tint(color, 0.80f));
+    m3d_quad(base[1], base[2], top[2], top[1], m3d_tint(color, 0.58f));
+    m3d_quad(base[2], base[3], top[3], top[2], m3d_tint(color, 0.68f));
+    m3d_quad(base[3], base[0], top[0], top[3], m3d_tint(color, 0.88f));
 }
 
 static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
@@ -1442,35 +1453,61 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
      */
     {
         const float rear_z = -1.71f;
-        const float front_z = 3.60f;
+        const float front_z = 6.05f;
         const float half_gauge = 0.095f;
         const float rail_y = 0.090f;
         const uint32_t tie_color = HEX(0x624329);
         const uint32_t rail_color = HEX(0xB7BFC0);
         const uint32_t dark_rail_color = HEX(0x666D70);
-        M3DVec3 path[] = {
+        /* These are broad route landmarks. Catmull-Rom sampling rounds the
+           corners into a smooth model railway while keeping every segment on
+           the same closed route. The front return is deliberately deeper in
+           the room so it reads as a foreground track, not a cabinet underline. */
+        const M3DVec3 control[] = {
             {-6.85f, rail_y, rear_z},
             { 6.85f, rail_y, rear_z},
             { 7.10f, rail_y, -1.65f},
             { 7.32f, rail_y, -1.45f},
             { 7.45f, rail_y, -1.12f},
             { 7.45f, rail_y, -0.50f},
-            { 7.30f, rail_y,  0.30f},
-            { 6.95f, rail_y,  1.10f},
-            { 6.40f, rail_y,  1.90f},
-            { 5.80f, rail_y,  2.65f},
-            { 5.20f, rail_y,  front_z},
-            {-5.20f, rail_y,  front_z},
-            {-5.80f, rail_y,  2.65f},
-            {-6.40f, rail_y,  1.90f},
-            {-6.95f, rail_y,  1.10f},
-            {-7.30f, rail_y,  0.30f},
+            { 7.30f, rail_y,  0.65f},
+            { 6.95f, rail_y,  2.00f},
+            { 6.40f, rail_y,  3.20f},
+            { 5.80f, rail_y,  4.20f},
+            { 5.15f, rail_y,  front_z},
+            {-5.15f, rail_y,  front_z},
+            {-5.80f, rail_y,  4.20f},
+            {-6.40f, rail_y,  3.20f},
+            {-6.95f, rail_y,  2.00f},
+            {-7.30f, rail_y,  0.65f},
             {-7.45f, rail_y, -0.50f},
             {-7.45f, rail_y, -1.12f},
             {-7.32f, rail_y, -1.45f},
             {-7.10f, rail_y, -1.65f}
         };
-        enum { PATH_COUNT = (int)(sizeof(path) / sizeof(path[0])) };
+        enum { CONTROL_COUNT = (int)(sizeof(control) / sizeof(control[0])) };
+        enum { PATH_STEPS = 5, PATH_COUNT = CONTROL_COUNT * PATH_STEPS };
+        M3DVec3 path[PATH_COUNT];
+        for (int i = 0; i < CONTROL_COUNT; ++i) {
+            const M3DVec3 p0 = control[(i + CONTROL_COUNT - 1) % CONTROL_COUNT];
+            const M3DVec3 p1 = control[i];
+            const M3DVec3 p2 = control[(i + 1) % CONTROL_COUNT];
+            const M3DVec3 p3 = control[(i + 2) % CONTROL_COUNT];
+            for (int step = 0; step < PATH_STEPS; ++step) {
+                const float t = (float)step / (float)PATH_STEPS;
+                const float t2 = t * t, t3 = t2 * t;
+                const int idx = i * PATH_STEPS + step;
+                path[idx].x = 0.5f * ((2.0f * p1.x) +
+                    (-p0.x + p2.x) * t +
+                    (2.0f*p0.x - 5.0f*p1.x + 4.0f*p2.x - p3.x) * t2 +
+                    (-p0.x + 3.0f*p1.x - 3.0f*p2.x + p3.x) * t3);
+                path[idx].y = rail_y;
+                path[idx].z = 0.5f * ((2.0f * p1.z) +
+                    (-p0.z + p2.z) * t +
+                    (2.0f*p0.z - 5.0f*p1.z + 4.0f*p2.z - p3.z) * t2 +
+                    (-p0.z + 3.0f*p1.z - 3.0f*p2.z + p3.z) * t3);
+            }
+        }
         M3DVec3 normal[PATH_COUNT];
         M3DVec3 rail_a[PATH_COUNT], rail_b[PATH_COUNT];
 
