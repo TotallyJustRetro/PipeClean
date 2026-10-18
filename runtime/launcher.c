@@ -4542,6 +4542,35 @@ static int museum_sprite_file(int game, const MuseumEntry *entry, char *path, si
            rs[game].ok && museum_sprite_asset_path(game, entry->id, path, cap);
 }
 
+
+/* Draw a Museum sprite only when SDL can actually load/query it. The legacy
+   SML sprite pack is used when an on-disk v2 PNG exists but fails to decode. */
+static int museum_draw_sprite_fit_pixel(int game, const char *path,
+                                        float x, float y, float w, float h)
+{
+    if (!path || !path[0]) return 0;
+    if (ui_image_file_fit_pixel_checked(path, x, y, w, h)) return 1;
+    if (game != GAME_SML) return 0;
+
+    static const char v2_suffix[] = ".v2.png";
+    const size_t path_len = strlen(path);
+    const size_t suffix_len = sizeof(v2_suffix) - 1u;
+    if (path_len <= suffix_len ||
+        strcmp(path + path_len - suffix_len, v2_suffix) != 0)
+        return 0;
+
+    char legacy[1200];
+    const size_t prefix_len = path_len - suffix_len;
+    if (prefix_len + sizeof(".png") > sizeof(legacy)) return 0;
+    memcpy(legacy, path, prefix_len);
+    memcpy(legacy + prefix_len, ".png", sizeof(".png"));
+
+    FILE *asset = fopen(legacy, "rb");
+    if (!asset) return 0;
+    fclose(asset);
+    return ui_image_file_fit_pixel_checked(legacy, x, y, w, h);
+}
+
 static void museum_lock_glyph(float x, float y, float w, float h, int large)
 {
     const float shackle_w = w * 0.44f;
@@ -4604,15 +4633,21 @@ static void museum_draw_entry_art(int game, const MuseumEntry *entry,
     if (museum_sprite_file(game, entry, path, sizeof path)) {
         ui_rrect(x + 5, y + 5, w - 10, h - 10, 2, HEX(0xE8D2A0));
         ui_vgrad(x + 6, y + 6, w - 12, h - 12, HEX(0xF8E8BF), HEX(0xB98B4E));
-        ui_image_file_fit_pixel(path, x + 7, y + 7, w - 14, h - 14);
-        /* Subtle glass reflections stay faint enough to preserve pixel art. */
-        ui_tri(x + 7, y + 7, x + w * 0.42f, y + 7,
-               x + 7, y + h * 0.35f, RGBA(255, 246, 218, 18));
-        ui_line(x + 8, y + 8, x + w - 9, y + 8, 0.8f, RGBA(255, 246, 218, 90));
-        if (w >= 80.0f) {
-            float glint_x = x + 10.0f + fmodf(anim_clock * 4.0f, w - 24.0f);
-            ui_line(glint_x, y + 10, glint_x + 7.0f, y + h - 11,
-                    1.0f, RGBA(255, 255, 235, 28));
+        if (museum_draw_sprite_fit_pixel(game, path, x + 7, y + 7, w - 14, h - 14)) {
+            /* Subtle glass reflections stay faint enough to preserve pixel art. */
+            ui_tri(x + 7, y + 7, x + w * 0.42f, y + 7,
+                   x + 7, y + h * 0.35f, RGBA(255, 246, 218, 18));
+            ui_line(x + 8, y + 8, x + w - 9, y + 8, 0.8f, RGBA(255, 246, 218, 90));
+            if (w >= 80.0f) {
+                float glint_x = x + 10.0f + fmodf(anim_clock * 4.0f, w - 24.0f);
+                ui_line(glint_x, y + 10, glint_x + 7.0f, y + h - 11,
+                        1.0f, RGBA(255, 255, 235, 28));
+            }
+        } else {
+            ui_text_c(F_BOLD, 7.5f, x + w * 0.5f, y + h * 0.44f,
+                      HEX(0xE6B58A), "ART LOAD FAILED");
+            ui_text_c(F_REG, 6.5f, x + w * 0.5f, y + h * 0.57f,
+                      HEX(0xC39772), "CHECK ASSET PACK");
         }
         ui_stroke(x + 6, y + 6, w - 12, h - 12, 2,
                   0.8f, RGBA(255, 224, 151, 125));
@@ -4820,7 +4855,11 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
             /* Keep the full pixel-art bounds inside the physical cavity.
                The previous box met the shelf lip at its bottom edge, making
                tall sprites look sliced by the cabinet front. */
-            ui_image_file_fit_pixel(path, x + 12, y + 11, w - 24, h - 41);
+            if (!museum_draw_sprite_fit_pixel(game, path,
+                                              x + 12, y + 11, w - 24, h - 41)) {
+                ui_text_c(F_BOLD, 7.0f, x + w * 0.5f, y + 23,
+                          HEX(0xE6B58A), "ART LOAD FAILED");
+            }
         } else {
             ui_text_c(F_BOLD, 7.0f, x + w * 0.5f, y + 23,
                       HEX(0xD3B17B), "ART PENDING");
