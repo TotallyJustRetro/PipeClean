@@ -5419,17 +5419,12 @@ LauncherResult launcher_frame(float dt)
      * so fullscreen, resize, and compact layouts keep the scene aligned.
      * Navigation, header, cabinet, and all clickable controls are drawn later. */
     if (tab == TAB_MUSEUM) {
-        const float museum_scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 308.0f;
+        const float museum_scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
         const float museum_scene_y = 166.0f;
-        const float museum_scene_scale_x = compact_layout ? 1.0f : 0.82f;
-        const float museum_scene_scale_y = compact_layout ? 1.0f : 0.76f;
-        const float museum_transform_origin_y = compact_layout ? museum_scene_y : 70.0f;
         const int museum_scene_entries = museum_scene_build_locked_flags();
         museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock,
-                                 museum_scene_x, museum_scene_y,
-                                 museum_scene_x, museum_transform_origin_y,
-                                 museum_scene_scale_x, museum_scene_scale_y,
-                                 museum_scroll, museum_scene_locked_flags,
+                                 museum_scene_x, museum_scene_y, museum_scroll,
+                                 museum_scene_locked_flags,
                                  museum_scene_entries, !museum_hacks_view);
     }
 
