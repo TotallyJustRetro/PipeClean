@@ -32,6 +32,7 @@ typedef struct { float x, y, invz, z; } M3DProjected;
 typedef struct {
     float view_x, view_y, view_w, view_h;
     float museum_x, museum_y, scroll;
+    float elapsed_seconds;
     const int *entry_locked;
     int visible_entries;
     int draw_cubby_grid;
@@ -787,11 +788,19 @@ static void m3d_screen_gold_plate(float x, float y, float width, float height,
                     highlight_z, HEX(0x79501D), layout);
     m3d_screen_quad(x + 5.0f, y + 3.3f, right - 5.0f, y + 4.0f,
                     highlight_z, HEX(0xF3D17B), layout);
-    m3d_screen_face(x + width * 0.28f, y + 2.5f, highlight_z,
-                    x + width * 0.68f, y + 2.5f, highlight_z,
-                    x + width * 0.57f, y + height * 0.47f, highlight_z,
-                    x + width * 0.22f, y + height * 0.47f, highlight_z,
-                    HEX(0xFFF4CF), layout);
+
+    /* A narrow specular streak travels slowly over the polished gold face,
+       borrowing the same warm, restrained glint used in the field-guide art. */
+    float glint_span = width - 12.0f - height * 0.22f - 2.0f;
+    if (glint_span < 1.0f) glint_span = 1.0f;
+    const float glint_x = x + 5.0f +
+        fmodf(layout->elapsed_seconds * 7.0f, glint_span);
+    const float glint_z = highlight_z + 0.012f;
+    m3d_screen_face(glint_x, y + 2.5f, glint_z,
+                    glint_x + 2.0f, y + 2.5f, glint_z,
+                    glint_x + 2.0f + height * 0.22f, bottom - 2.8f, glint_z,
+                    glint_x + height * 0.22f, bottom - 2.8f, glint_z,
+                    HEX(0xFFF7D9), layout);
 
     /* Flush square-headed brass fasteners with a tiny reflected edge. */
     for (int side = 0; side < 2; ++side) {
@@ -1203,6 +1212,7 @@ void museum3d_draw_background(SDL_Renderer *renderer,
     layout.view_w = width; layout.view_h = height;
     layout.museum_x = museum_x; layout.museum_y = museum_y;
     layout.scroll = museum_scroll;
+    layout.elapsed_seconds = elapsed_seconds;
     layout.entry_locked = entry_locked;
     layout.visible_entries = visible_entries < 0 ? 0 : visible_entries;
     layout.draw_cubby_grid = draw_cubby_grid;
