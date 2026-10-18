@@ -5305,10 +5305,11 @@ LauncherResult launcher_frame(float dt)
      * the actual Museum panels are painted later, so never lose hit targets. */
     if (tab == TAB_MUSEUM) {
         const float scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
-        /* Render the real perspective/depth-tested 3D room first. The small
-         * SDL-drawn accents stay in the back layer for the current pass; every
-         * clickable panel is still drawn afterward. */
-        museum3d_draw_background(ren_get(), scene_x, 100.0f, 808.0f, 520.0f, anim_clock);
+        /* The background extends beyond the cabinet and below the shelves.
+         * Keep its center aligned to the fixed 808dp Museum panel on every
+         * window size; the renderer converts logical coords to output pixels. */
+        museum3d_draw_background(ren_get(), scene_x - 60.0f, 100.0f,
+                                928.0f, 590.0f, anim_clock);
     }
 
     /* Use only the supplied transparent PipeClean logo in the header. */
