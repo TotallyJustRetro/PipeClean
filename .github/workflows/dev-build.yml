@@ -76,6 +76,8 @@ jobs:
           GBL_SIZE: 1100x720
           GBL_MOUSE: 140,650
           GBL_CLICK: 1
+          GBL_SHOT_FRAMES: 240
+          GBL_SHOT_DELAY_MS: 16
           GBL_SHOT: museum-ui-smoke.bmp
         run: |
           xvfb-run -a -s "-screen 0 1280x720x24" build-dev/PipeClean
