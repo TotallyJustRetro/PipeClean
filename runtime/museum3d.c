@@ -40,15 +40,15 @@ enum { M3D_TRACK_CONTROL_COUNT = 20, M3D_TRACK_PATH_STEPS = 5,
        M3D_TRACK_PATH_COUNT = M3D_TRACK_CONTROL_COUNT * M3D_TRACK_PATH_STEPS };
 static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
     {-6.35f, 4.225f, -1.71f},
-    { 6.35f, 4.225f, -1.71f},
-    { 6.58f, 3.55f,  -1.55f},
-    { 6.72f, 2.25f,  -1.00f},
-    { 6.78f, 0.65f,  -0.35f},
-    { 6.80f, 0.090f,  0.15f},
-    { 6.95f, 0.090f,  0.45f},
-    { 6.85f, 0.090f,  1.45f},
-    { 6.65f, 0.090f,  2.55f},
-    { 5.35f, 0.090f,  3.40f},
+    { 5.95f, 4.225f, -1.71f},
+    { 6.02f, 3.55f,  -1.55f},
+    { 5.98f, 2.25f,  -1.00f},
+    { 5.92f, 0.65f,  -0.35f},
+    { 5.90f, 0.090f,  0.15f},
+    { 5.92f, 0.090f,  0.45f},
+    { 5.96f, 0.090f,  1.45f},
+    { 5.94f, 0.090f,  2.55f},
+    { 4.90f, 0.090f,  3.40f},
     { 3.60f, 0.090f,  4.85f},
     {-3.60f, 0.090f,  4.85f},
     {-5.35f, 0.090f,  3.40f},
@@ -1673,9 +1673,9 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
-    m3d_box(5.05f, 0.03f, 1.2f, 6.35f, 0.48f, 2.7f, HEX(0x8C6038));
+    m3d_box(4.65f, 0.03f, 1.2f, 5.65f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_toad_figure(-6.05f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
-    m3d_goomba_figure(5.35f, 2.35f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
+    m3d_goomba_figure(5.00f, 2.35f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
