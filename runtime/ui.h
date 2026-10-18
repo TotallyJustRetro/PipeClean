@@ -56,6 +56,7 @@ void ui_image(SDL_Texture *t, const SDL_Rect *src, float x, float y, float w, fl
 /* Load/cache an image on the UI renderer and draw it fully visible with preserved aspect ratio. */
 void ui_image_file_fit(const char *path, float x, float y, float w, float h);
 void ui_image_file_fit_pixel(const char *path, float x, float y, float w, float h);
+int ui_image_file_fit_pixel_checked(const char *path, float x, float y, float w, float h);
 void ui_image_file_stretch(const char *path, float x, float y, float w, float h);
 /* Interactive-ready HSV hue/saturation wheel (selection marker uses 0xRRGGBB). */
 void ui_color_wheel(float cx, float cy, float radius, uint32_t selected_rgb);
