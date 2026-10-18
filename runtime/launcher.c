@@ -5221,11 +5221,7 @@ static void tab_museum(float x, float y)
 
     /* The right cabinet backboard and its beveled surround are rendered in 3D. */
     const float shelf_plaque_w = 154.0f;
-    /* The 3D cabinet is eight logical pixels narrower than the outer panel
-       layout so that its right stile remains visible. Center live text on the
-       actual modeled shelf face, not on that outer panel's wider bounds. */
-    const float shelf_face_w = right_w - 8.0f;
-    const float shelf_plaque_x = right_x + (shelf_face_w - shelf_plaque_w) * 0.5f;
+    const float shelf_plaque_x = right_x + (right_w - shelf_plaque_w) * 0.5f;
     /* The title plate is 3D geometry in museum3d.c; render only live text. */
     ui_text_c(F_BOLD, 11, shelf_plaque_x + shelf_plaque_w * 0.5f,
               body_y + 16, HEX(0x3F210E), "COLLECTION SHELF");
@@ -5233,7 +5229,7 @@ static void tab_museum(float x, float y)
     snprintf(progress, sizeof progress, "%d / %d", found_count, all_count);
     ui_text_r(F_BOLD, 11, right_x + right_w - 13, body_y + 16, HEX(0xF6D19A), progress);
     const float filter_x = right_x + 9, filter_y = body_y + 40;
-    const float filter_w = (shelf_face_w - 35.0f) / 3.0f;
+    const float filter_w = (right_w - 27 - 8.0f) / 3.0f;
     for (int f = 0; f < 3; ++f) {
         if (museum_shelf_filter_chip(filter_x + f * (filter_w + 4.0f), filter_y,
                                      filter_w, 24, filter_labels[f],
@@ -5244,7 +5240,7 @@ static void tab_museum(float x, float y)
     }
 
     const float grid_x = right_x + 9, grid_y = body_y + 71;
-    const float grid_w = shelf_face_w - 27.0f, grid_h = body_h - 83;
+    const float grid_w = right_w - 27, grid_h = body_h - 83;
     /* The backboard, shelf rails, dividers and deep wells are 3D geometry. */
     const float tile_gap_x = 7.0f, tile_gap_y = 7.0f;
     const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
