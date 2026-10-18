@@ -4817,7 +4817,10 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
     if (found) {
         char path[1200];
         if (museum_sprite_file(game, entry, path, sizeof path)) {
-            ui_image_file_fit_pixel(path, x + 13, y + 12, w - 26, h - 37);
+            /* Keep the full pixel-art bounds inside the physical cavity.
+               The previous box met the shelf lip at its bottom edge, making
+               tall sprites look sliced by the cabinet front. */
+            ui_image_file_fit_pixel(path, x + 12, y + 11, w - 24, h - 41);
         } else {
             ui_text_c(F_BOLD, 7.0f, x + w * 0.5f, y + 23,
                       HEX(0xD3B17B), "ART PENDING");
