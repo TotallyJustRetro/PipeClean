@@ -513,7 +513,7 @@ static void m3d_goomba_figure(float x, float z, float bob)
     m3d_prop_anchor_x = m3d_prop_target_x = x;
     m3d_prop_anchor_y = m3d_prop_target_y = 0.50f + b;
     m3d_prop_anchor_z = m3d_prop_target_z = z;
-    m3d_prop_scale = 0.68f;
+    m3d_prop_scale = 0.90f;
     /* Stubby mushroom body, tan muzzle, and two dark feet. */
     m3d_sphere(x - 0.205f, 0.535f + b, z + 0.015f, 0.145f,
                HEX(0x593225), 10, 6);
@@ -1704,9 +1704,9 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
-    m3d_box(3.82f, 0.03f, 4.70f, 4.38f, 0.48f, 5.25f, HEX(0x8C6038));
+    m3d_box(4.95f, 0.03f, 1.15f, 5.95f, 0.48f, 2.65f, HEX(0x8C6038));
     m3d_toad_figure(-6.15f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
-    m3d_goomba_figure(4.05f, 4.90f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
+    m3d_goomba_figure(5.45f, 1.85f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
