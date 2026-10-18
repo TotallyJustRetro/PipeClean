@@ -45,6 +45,7 @@ static SDL_Renderer *m3d_renderer;
 /* Temporary model-space translation used for the track and moving train.
    Applied at projection time so normals and model-local geometry stay intact. */
 static float m3d_translate_x;
+static float m3d_translate_y;
 static float m3d_translate_z;
 static int m3d_clip_active;
 static int m3d_clip_left, m3d_clip_top, m3d_clip_right, m3d_clip_bottom;
@@ -116,6 +117,7 @@ static void m3d_clear(void)
 static int m3d_project(M3DVec3 p, M3DProjected *out)
 {
     p.x += m3d_translate_x;
+    p.y += m3d_translate_y;
     p.z += m3d_translate_z;
     float dy = p.y - m3d_cam_y;
     float dz = p.z - m3d_cam_z;
@@ -1136,6 +1138,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 {
     m3d_clip_active = 0;
     m3d_translate_x = 0.0f;
+    m3d_translate_y = 0.0f;
     m3d_translate_z = 0.0f;
     m3d_clear();
 
@@ -1192,10 +1195,13 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_coin(-3.6f, 3.72f + sinf(elapsed * 1.7f) * 0.08f,
              0.2f, 0.47f, elapsed * 1.15f);
 
-    /* Full-width rear railway. It shares the train's world depth and sits
-       behind the display backboard and the green pipes, so the foreground
-       geometry naturally occludes it instead of letting it cut through props. */
+    /* Full-width elevated rear railway. The polished reference places the
+       toy train high on the back wall, above the cabinet crown. Translate the
+       track and train together in world Y so they stay on one rail plane while
+       the cabinet and side pipes depth-occlude them instead of being crossed
+       in front of the shelf. */
     m3d_translate_x = 0.0f;
+    m3d_translate_y = 4.15f;
     m3d_translate_z = -5.2f;
     for (int i = 0; i < 42; ++i) {
         float x = -10.4f + (float)i * 0.5f;
@@ -1209,6 +1215,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_translate_z = 0.0f;
 
     m3d_train(elapsed);
+    m3d_translate_y = 0.0f;
 
     /* Small brass exhibit lights hang high on each side of the room. */
     m3d_box(-6.6f, 5.7f, -3.4f, -5.9f, 5.85f, -3.05f, HEX(0xB5803D));
