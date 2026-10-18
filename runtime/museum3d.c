@@ -93,6 +93,14 @@ static float m3d_train_scale = 1.0f;
 static float m3d_train_yaw;
 static float m3d_train_pitch;
 static int m3d_train_transform_active;
+
+/* Local transform for foreground display figures. Anchor at the feet so a
+   sculpted 3D character can be fitted into a narrow margin without replacing
+   its geometry with a flat picture. */
+static int m3d_prop_transform_active;
+static float m3d_prop_anchor_x, m3d_prop_anchor_y, m3d_prop_anchor_z;
+static float m3d_prop_target_x, m3d_prop_target_y, m3d_prop_target_z;
+static float m3d_prop_scale = 1.0f;
 static int m3d_clip_active;
 static int m3d_clip_left, m3d_clip_top, m3d_clip_right, m3d_clip_bottom;
 
@@ -201,6 +209,13 @@ static int m3d_project(M3DVec3 p, M3DProjected *out)
         p.x = pitched_x * cy - lz * sy + m3d_translate_x;
         p.y = pitched_y + m3d_translate_y;
         p.z = pitched_x * sy + lz * cy + m3d_translate_z;
+    } else if (m3d_prop_transform_active) {
+        p.x = m3d_prop_target_x + (p.x - m3d_prop_anchor_x) * m3d_prop_scale;
+        p.y = m3d_prop_target_y + (p.y - m3d_prop_anchor_y) * m3d_prop_scale;
+        p.z = m3d_prop_target_z + (p.z - m3d_prop_anchor_z) * m3d_prop_scale;
+        p.x += m3d_translate_x;
+        p.y += m3d_translate_y;
+        p.z += m3d_translate_z;
     } else {
         p.x += m3d_translate_x;
         p.y += m3d_translate_y;
@@ -492,6 +507,13 @@ static void m3d_toad_figure(float x, float z, float bob)
 static void m3d_goomba_figure(float x, float z, float bob)
 {
     const float b = bob;
+    /* Scale around its foot-line, preserving the shape while fitting the
+       character inside the narrow space beyond the cabinet's right edge. */
+    m3d_prop_transform_active = 1;
+    m3d_prop_anchor_x = m3d_prop_target_x = x;
+    m3d_prop_anchor_y = m3d_prop_target_y = 0.50f + b;
+    m3d_prop_anchor_z = m3d_prop_target_z = z;
+    m3d_prop_scale = 0.68f;
     /* Stubby mushroom body, tan muzzle, and two dark feet. */
     m3d_sphere(x - 0.205f, 0.535f + b, z + 0.015f, 0.145f,
                HEX(0x593225), 10, 6);
@@ -531,6 +553,8 @@ static void m3d_goomba_figure(float x, float z, float bob)
     m3d_triangle(m3d_v(x + 0.015f, 0.905f + b, z + 0.454f),
                  m3d_v(x + 0.065f, 0.905f + b, z + 0.454f),
                  m3d_v(x + 0.040f, 0.845f + b, z + 0.454f), HEX(0xFFF3D7));
+    m3d_prop_transform_active = 0;
+    m3d_prop_scale = 1.0f;
 }
 
 static void m3d_pipe(float x, float z)
@@ -695,7 +719,7 @@ static void m3d_train(float elapsed, const M3DVec3 *path, int path_count)
     if (total_length < 0.01f) return;
 
     /* Distance-based travel avoids speed changes at the smoothed corners. */
-    float distance = fmodf(elapsed * 2.50f + 20.00f, total_length);
+    float distance = fmodf(elapsed * 1.20f + 27.00f, total_length);
     if (distance < 0.0f) distance += total_length;
     M3DVec3 position = path[0], tangent = m3d_v(1.0f, 0.0f, 0.0f);
     for (int i = 0; i < path_count; ++i) {
@@ -1680,7 +1704,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
-    m3d_box(3.60f, 0.03f, 4.45f, 4.35f, 0.48f, 5.35f, HEX(0x8C6038));
+    m3d_box(3.82f, 0.03f, 4.70f, 4.38f, 0.48f, 5.25f, HEX(0x8C6038));
     m3d_toad_figure(-6.15f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
     m3d_goomba_figure(4.05f, 4.90f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
