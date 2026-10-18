@@ -51,14 +51,14 @@ static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
     { 7.05f, 2.30f,  0.10f},
     { 6.75f, 1.65f,  1.00f},
     { 6.45f, 1.00f,  1.90f},
-    { 6.20f, 0.40f,  2.75f},
-    { 5.95f, 0.090f, 3.30f},
+    { 6.35f, 0.40f,  2.75f},
+    { 6.25f, 0.090f, 3.30f},
     { 5.05f, 0.090f, 4.45f},
 
     /* One long foreground return links the two side descents. */
     {-5.05f, 0.090f, 4.45f},
-    {-5.95f, 0.090f, 3.30f},
-    {-6.20f, 0.40f,  2.75f},
+    {-6.25f, 0.090f, 3.30f},
+    {-6.35f, 0.40f,  2.75f},
     {-6.45f, 1.00f,  1.90f},
     {-6.75f, 1.65f,  1.00f},
     {-7.05f, 2.30f,  0.10f},
@@ -719,7 +719,7 @@ static void m3d_train(float elapsed, const M3DVec3 *path, int path_count)
     if (total_length < 0.01f) return;
 
     /* Distance-based travel avoids speed changes at the smoothed corners. */
-    float distance = fmodf(elapsed * 1.20f + 28.00f, total_length);
+    float distance = fmodf(elapsed * 1.20f + 29.00f, total_length);
     if (distance < 0.0f) distance += total_length;
     M3DVec3 position = path[0], tangent = m3d_v(1.0f, 0.0f, 0.0f);
     for (int i = 0; i < path_count; ++i) {
