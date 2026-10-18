@@ -48,10 +48,10 @@ static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
     { 6.95f, 0.090f,  0.45f},
     { 6.85f, 0.090f,  1.45f},
     { 6.65f, 0.090f,  2.55f},
-    { 5.85f, 0.090f,  3.40f},
-    { 4.00f, 0.090f,  4.85f},
-    {-4.00f, 0.090f,  4.85f},
-    {-5.85f, 0.090f,  3.40f},
+    { 5.35f, 0.090f,  3.40f},
+    { 3.60f, 0.090f,  4.85f},
+    {-3.60f, 0.090f,  4.85f},
+    {-5.35f, 0.090f,  3.40f},
     {-6.65f, 0.090f,  2.55f},
     {-6.85f, 0.090f,  1.45f},
     {-6.95f, 0.090f,  0.45f},
@@ -1674,8 +1674,8 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     /* Soft-lit museum plinths, then two original stylised toy figures. */
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_box(5.05f, 0.03f, 1.2f, 6.35f, 0.48f, 2.7f, HEX(0x8C6038));
-    m3d_toad_figure(-5.70f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
-    m3d_goomba_figure(5.70f, 1.82f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
+    m3d_toad_figure(-6.05f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
+    m3d_goomba_figure(5.35f, 1.82f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
