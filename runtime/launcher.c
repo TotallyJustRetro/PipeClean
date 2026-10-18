@@ -4525,40 +4525,68 @@ static int museum_sprite_file(int game, const MuseumEntry *entry, char *path, si
 
 static void museum_lock_glyph(float x, float y, float w, float h, int large)
 {
-    const float shackle_w = w * 0.42f;
+    const float shackle_w = w * 0.44f;
     const float shackle_h = h * 0.36f;
     const float sx = x + (w - shackle_w) * 0.5f;
-    const float sy = y + h * 0.11f;
+    const float sy = y + h * 0.07f;
     const float thick = large ? 4.0f : 2.0f;
-    const uint32_t gold = HEX(0xF4D49A), dark = HEX(0x542712);
-    ui_line(sx, sy + shackle_h, sx, sy + shackle_h * 0.52f, thick, gold);
-    ui_line(sx, sy + shackle_h * 0.52f, sx + shackle_w * 0.22f, sy, thick, gold);
-    ui_line(sx + shackle_w * 0.22f, sy, sx + shackle_w * 0.78f, sy, thick, gold);
-    ui_line(sx + shackle_w * 0.78f, sy, sx + shackle_w, sy + shackle_h * 0.52f, thick, gold);
-    ui_line(sx + shackle_w, sy + shackle_h * 0.52f, sx + shackle_w, sy + shackle_h, thick, gold);
-    ui_rrect(x + w * 0.20f, y + h * 0.43f, w * 0.60f, h * 0.43f, large ? 6 : 3, HEX(0xF0C16D));
-    ui_stroke(x + w * 0.20f, y + h * 0.43f, w * 0.60f, h * 0.43f, large ? 6 : 3,
-              large ? 2.0f : 1.0f, dark);
-    ui_rrect(x + w * 0.47f, y + h * 0.56f, w * 0.06f, h * 0.11f, 2, dark);
-    ui_line(x + w * 0.50f, y + h * 0.64f, x + w * 0.50f, y + h * 0.73f,
+    const float body_x = x + w * 0.18f, body_y = y + h * 0.42f;
+    const float body_w = w * 0.64f, body_h = h * 0.43f;
+    const uint32_t dark = HEX(0x28130A);
+
+    /* Cast shadow and dark iron backing make the shackle read as raised metal. */
+    ui_line(sx + 1, sy + shackle_h + 1, sx + 1, sy + shackle_h * 0.50f + 1, thick + 1, dark);
+    ui_line(sx + 1, sy + shackle_h * 0.50f + 1, sx + shackle_w * 0.22f + 1, sy + 1, thick + 1, dark);
+    ui_line(sx + shackle_w * 0.22f + 1, sy + 1, sx + shackle_w * 0.78f + 1, sy + 1, thick + 1, dark);
+    ui_line(sx + shackle_w * 0.78f + 1, sy + 1, sx + shackle_w + 1, sy + shackle_h * 0.50f + 1, thick + 1, dark);
+    ui_line(sx + shackle_w + 1, sy + shackle_h * 0.50f + 1, sx + shackle_w + 1, sy + shackle_h + 1, thick + 1, dark);
+
+    ui_line(sx, sy + shackle_h, sx, sy + shackle_h * 0.50f, thick, HEX(0x8D6638));
+    ui_line(sx, sy + shackle_h * 0.50f, sx + shackle_w * 0.22f, sy, thick, HEX(0xE8D09C));
+    ui_line(sx + shackle_w * 0.22f, sy, sx + shackle_w * 0.78f, sy, thick, HEX(0xF9E8BD));
+    ui_line(sx + shackle_w * 0.78f, sy, sx + shackle_w, sy + shackle_h * 0.50f, thick, HEX(0xD3AE6D));
+    ui_line(sx + shackle_w, sy + shackle_h * 0.50f, sx + shackle_w, sy + shackle_h, thick, HEX(0x8D6638));
+
+    ui_shadow(body_x, body_y, body_w, body_h, large ? 6 : 3, 2,
+              RGBA(0, 0, 0, 95));
+    ui_vgrad(body_x, body_y, body_w, body_h, HEX(0xFFE09A), HEX(0xB87731));
+    ui_stroke(body_x, body_y, body_w, body_h, large ? 6 : 3, large ? 2.0f : 1.0f, dark);
+    ui_line(body_x + 4, body_y + 2, body_x + body_w - 4, body_y + 2, 1, HEX(0xFFF0C6));
+    ui_rrect(x + w * 0.47f, y + h * 0.55f, w * 0.06f, h * 0.12f, 2, dark);
+    ui_rrect(x + w * 0.445f, y + h * 0.52f, w * 0.11f, h * 0.075f, large ? 3 : 2, dark);
+    ui_line(x + w * 0.50f, y + h * 0.63f, x + w * 0.50f, y + h * 0.74f,
             large ? 2.4f : 1.2f, dark);
 }
 
 static void museum_draw_entry_art(int game, const MuseumEntry *entry,
                                   float x, float y, float w, float h, int found)
 {
-    ui_rrect(x, y, w, h, 5, HEX(0x29170F));
-    ui_stroke(x, y, w, h, 5, 1, HEX(0xA86B3C));
+    /* A miniature framed display rather than a flat thumbnail. */
+    ui_shadow(x, y, w, h, 5, 3, RGBA(0, 0, 0, 100));
+    ui_vgrad(x, y, w, h, HEX(0xA77845), HEX(0x32180D));
+    ui_stroke(x, y, w, h, 5, 1.5f, HEX(0xE2B56B));
+    ui_rrect(x + 3, y + 3, w - 6, h - 6, 3, HEX(0x26140B));
+    ui_vgrad(x + 5, y + 5, w - 10, h - 10, HEX(0x302116), HEX(0x100A06));
+
     char path[1200];
     if (museum_sprite_file(game, entry, path, sizeof path)) {
-        ui_rrect(x + 4, y + 4, w - 8, h - 8, 3, HEX(0xF1E2B9));
-        ui_image_file_fit_pixel(path, x + 5, y + 5, w - 10, h - 10);
+        ui_rrect(x + 5, y + 5, w - 10, h - 10, 2, HEX(0xE8D2A0));
+        ui_vgrad(x + 6, y + 6, w - 12, h - 12, HEX(0xF8E8BF), HEX(0xB98B4E));
+        ui_image_file_fit_pixel(path, x + 7, y + 7, w - 14, h - 14);
     } else if (!found) {
-        museum_lock_glyph(x + 4, y + 4, w - 8, h - 8, w > 82);
+        /* Shutter grooves show through behind the lock in an undiscovered slot. */
+        for (int i = 0; i < 4; ++i) {
+            float sy = y + h * 0.17f + i * h * 0.14f;
+            ui_line(x + 7, sy, x + w - 7, sy, 1.2f, HEX(0x63472C));
+            ui_line(x + 7, sy + 2, x + w - 7, sy + 2, 1.0f, HEX(0x120B06));
+        }
+        museum_lock_glyph(x + w * 0.24f, y + h * 0.11f, w * 0.52f, h * 0.77f, w > 82);
     } else {
-        ui_rrect(x + 4, y + 4, w - 8, h - 8, 3, HEX(0xEAD8A8));
-        ui_text_c(F_BOLD, 8, x + w * 0.5f, y + h * 0.39f, HEX(0x80502D), "ARTWORK");
-        ui_text_c(F_BOLD, 8, x + w * 0.5f, y + h * 0.57f, HEX(0x80502D), "NOT CAPTURED");
+        ui_text_c(F_BOLD, w < 60 ? 6.5f : 8.0f, x + w * 0.5f,
+                  y + h * 0.43f, HEX(0xF0CF8F), w < 60 ? "ART PENDING" : "SPRITE NOT");
+        if (w >= 60)
+            ui_text_c(F_BOLD, 8, x + w * 0.5f, y + h * 0.56f,
+                      HEX(0xF0CF8F), "CAPTURED");
     }
 }
  
@@ -4682,6 +4710,81 @@ static void tab_museum_romhacks(float x, float y, float width)
                 "ROM hacks stay on your device · PipeClean does not bundle ROMs or patch files.");
 }
 
+static int museum_cabinet_chip(float x, float y, float w, float h,
+                                   const char *label, int selected, int accent_kind)
+{
+    int over = 0;
+    int clicked = clickable(x, y, w, h, &over);
+    ui_shadow(x, y, w, h, h * 0.46f, 3.5f, RGBA(0, 0, 0, 100));
+    ui_vgrad(x, y, w, h, HEX(0xA9784E), HEX(0x29150B));
+    ui_stroke(x, y, w, h, h * 0.46f, 1.0f, HEX(0x29140A));
+
+    uint32_t top = HEX(0x795038), bottom = HEX(0x3B2115);
+    if (selected && accent_kind == 0) { top = HEX(0xA5DD86); bottom = HEX(0x2D783F); }
+    else if (selected && accent_kind == 1) { top = HEX(0x739CE0); bottom = HEX(0x263F7A); }
+    else if (selected) { top = HEX(0xD7A45C); bottom = HEX(0x70401B); }
+    else if (over) { top = HEX(0x9A6A45); bottom = HEX(0x50301C); }
+
+    ui_vgrad(x + 3, y + 3, w - 6, h - 6, top, bottom);
+    ui_stroke(x + 3, y + 3, w - 6, h - 6, h * 0.42f, 1.0f,
+              selected ? HEX(0xF1D18C) : HEX(0xBE8B54));
+    ui_line(x + 8, y + 4, x + w - 8, y + 4, 1.0f,
+            selected ? HEX(0xFFF0C0) : HEX(0xD2A777));
+    ui_line(x + 8, y + h - 4, x + w - 8, y + h - 4, 1.0f, HEX(0x241108));
+    const float text_size = w < 80 ? 8.0f : (w < 105 ? 9.0f : 10.0f);
+    ui_text_c(F_BOLD, text_size, x + w * 0.5f, y + (h - 12.0f) * 0.5f,
+              HEX(0xFFF3D7), label ? label : "");
+    return clicked;
+}
+
+static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
+                                    float x, float y, float w, float h,
+                                    int found, int selected)
+{
+    ui_vgrad(x, y, w, h, HEX(0x8A5932), HEX(0x2B1309));
+    ui_stroke(x, y, w, h, 3, 1.0f, HEX(0xB7814B));
+    ui_rrect(x + 3, y + 3, w - 6, h - 6, 2, HEX(0x160B06));
+    ui_vgrad(x + 4, y + 4, w - 8, h - 24, HEX(0x3B2818), HEX(0x100804));
+
+    if (found) {
+        char path[1200];
+        if (museum_sprite_file(game, entry, path, sizeof path)) {
+            ui_image_file_fit_pixel(path, x + 7, y + 4, w - 14, h - 25);
+        } else {
+            ui_text_c(F_BOLD, 7.0f, x + w * 0.5f, y + 22,
+                      HEX(0xD3B17B), "ART PENDING");
+        }
+    } else {
+        /* Recessed wooden shutters above the lock. */
+        for (int i = 0; i < 5; ++i) {
+            float sy = y + 6 + i * 7.0f;
+            ui_line(x + 6, sy, x + w - 6, sy, 2.1f, HEX(0x59402A));
+            ui_line(x + 6, sy + 2, x + w - 6, sy + 2, 1.0f, HEX(0x100804));
+        }
+        museum_lock_glyph(x + w * 0.35f, y + 10, w * 0.30f, h * 0.58f, 0);
+    }
+
+    /* Tiny brass specimen plaque with two pin heads at the ends. */
+    const float plaque_w = w * 0.78f;
+    const float plaque_x = x + (w - plaque_w) * 0.5f;
+    const float plaque_y = y + h - 19;
+    ui_shadow(plaque_x, plaque_y, plaque_w, 15, 3, 2, RGBA(0, 0, 0, 115));
+    ui_vgrad(plaque_x, plaque_y, plaque_w, 15, HEX(0xF1D493), HEX(0x9A682E));
+    ui_stroke(plaque_x, plaque_y, plaque_w, 15, 3, 1.0f, HEX(0x4C2B12));
+    ui_rrect(plaque_x + 3, plaque_y + 3, 2.0f, 2.0f, 1, HEX(0x795026));
+    ui_rrect(plaque_x + plaque_w - 5, plaque_y + 3, 2.0f, 2.0f, 1, HEX(0x795026));
+    if (found && entry)
+        ui_text_fit(F_BOLD, 7.5f, plaque_x + 8, plaque_y + 3, plaque_w - 16,
+                    HEX(0x43240F), entry->name);
+    else
+        ui_text_c(F_BOLD, 8.0f, x + w * 0.5f, plaque_y + 3, HEX(0x43240F), "LOCKED");
+
+    if (selected) {
+        ui_stroke(x + 1, y + 1, w - 2, h - 2, 4, 2.0f, HEX(0xFFE6A1));
+        ui_line(x + 5, y + 2, x + w - 5, y + 2, 1.0f, HEX(0xFFF6D8));
+    }
+}
+
 static void tab_museum(float x, float y)
 {
     static const char *game_labels[N_GAMES] = {
@@ -4710,15 +4813,15 @@ static void tab_museum(float x, float y)
     const float game_w = (width - game_gap * N_GAMES) / (float)(N_GAMES + 1);
     for (int g = 0; g < N_GAMES; ++g) {
         float bx = x + g * (game_w + game_gap);
-        if (ui_chip(bx, y, game_w, game_h, game_labels[g],
-                    !museum_hacks_view && g == museum_game)) {
+        if (museum_cabinet_chip(bx, y, game_w, game_h, game_labels[g],
+                                !museum_hacks_view && g == museum_game, 0)) {
             museum_game = g; museum_hacks_view = 0; museum_scroll = 0.0f;
             museum_selected[g] = 0;
             museum_reset_confirm = 0;
         }
     }
     const float hacks_x = x + N_GAMES * (game_w + game_gap);
-    if (ui_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view)) {
+    if (museum_cabinet_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view, 2)) {
         museum_hacks_view = 1; museum_hack_scroll = 0.0f;
         museum_reset_confirm = 0;
     }
@@ -4745,8 +4848,9 @@ static void tab_museum(float x, float y)
         int category_index = i;
         if (!has_treasures && i >= 3) category_index = i + 1;
         float bx = x + i * (cat_w + cat_gap);
-        if (ui_chip(bx, y + 31, cat_w, 25, category_labels[category_index],
-                    museum_category == category_values[category_index])) {
+        if (museum_cabinet_chip(bx, y + 31, cat_w, 25, category_labels[category_index],
+                                museum_category == category_values[category_index],
+                                category_index == 0 ? 0 : 1)) {
             museum_category = category_values[category_index]; museum_scroll = 0.0f;
             museum_reset_confirm = 0;
         }
@@ -4792,13 +4896,21 @@ static void tab_museum(float x, float y)
     const float left_w = 450.0f, gap = 8.0f, right_x = x + left_w + gap;
     const float right_w = width - left_w - gap;
 
-    /* Original handheld palette: warm paper, dark ink and a timber header. */
-    ui_rrect(x, body_y, width, body_h, 9, HEX(0x302016));
-    ui_stroke(x, body_y, width, body_h, 9, 2, HEX(0x0E0A08));
+    /* The whole Museum sits inside a layered, bevelled hardwood housing. */
+    ui_shadow(x, body_y, width, body_h, 10, 8, RGBA(0, 0, 0, 150));
+    ui_vgrad(x, body_y, width, body_h, HEX(0xB17B4B), HEX(0x2D1409));
+    ui_stroke(x, body_y, width, body_h, 9, 2, HEX(0xE7B76D));
+    ui_rrect(x + 3, body_y + 3, width - 6, body_h - 6, 7, HEX(0x542A16));
+    ui_stroke(x + 4, body_y + 4, width - 8, body_h - 8, 6, 1, HEX(0xA56D3B));
 
-    /* Detail / field-guide side. */
-    ui_rrect(x + 5, body_y + 5, left_w - 10, body_h - 10, 5, HEX(0xF2E5B7));
-    ui_rrect(x + 5, body_y + 5, left_w - 10, 25, 4, HEX(0x84340F));
+    /* Left: recessed parchment field guide set into the timber frame. */
+    ui_vgrad(x + 6, body_y + 6, left_w - 12, body_h - 12, HEX(0x9B6940), HEX(0x3E1E0F));
+    ui_stroke(x + 6, body_y + 6, left_w - 12, body_h - 12, 5, 1, HEX(0x2B1308));
+    ui_rrect(x + 10, body_y + 10, left_w - 20, body_h - 20, 3, HEX(0x8C6038));
+    ui_vgrad(x + 12, body_y + 12, left_w - 24, body_h - 24, HEX(0xF5E6BD), HEX(0xD7B780));
+    ui_vgrad(x + 10, body_y + 10, left_w - 20, 25, HEX(0x9E6131), HEX(0x542510));
+    ui_stroke(x + 10, body_y + 10, left_w - 20, 25, 3, 1, HEX(0xE0AF65));
+    ui_line(x + 14, body_y + 12, x + left_w - 14, body_y + 12, 1, HEX(0xF6D397));
     ui_text(F_BOLD, 13, x + 16, body_y + 9, HEX(0xFFF3D4), "FIELD GUIDE");
     ui_text_r(F_BOLD, 11, x + left_w - 16, body_y + 10, HEX(0xF4D19A),
               selected_found ? museum_category_name(selected->category) :
@@ -4860,20 +4972,41 @@ static void tab_museum(float x, float y)
         ui_text(F_REG, 10, x + 15, body_y + 300, HEX(0x795A3B),
                 "Your discoveries will be catalogued here.");
 
-    /* Collection shelf. The unknown slots look like a retro museum display. */
-    ui_rrect(right_x, body_y + 5, right_w - 5, body_h - 10, 5, HEX(0xA75A2D));
-    ui_stroke(right_x, body_y + 5, right_w - 5, body_h - 10, 5, 1, HEX(0x552713));
-    ui_rrect(right_x + 5, body_y + 10, right_w - 15, 25, 4, HEX(0x81320F));
-    ui_text(F_BOLD, 12, right_x + 14, body_y + 15, HEX(0xFFF0D1), "COLLECTION SHELF");
+    /* Right: a deep mahogany cabinet with brass edging and a header plate. */
+    ui_vgrad(right_x, body_y + 5, right_w - 5, body_h - 10, HEX(0xA97645), HEX(0x34170B));
+    ui_stroke(right_x, body_y + 5, right_w - 5, body_h - 10, 5, 1.5f, HEX(0xD5A35F));
+    ui_rrect(right_x + 4, body_y + 9, right_w - 13, body_h - 18, 3, HEX(0x2C1409));
+    ui_vgrad(right_x + 6, body_y + 11, right_w - 17, body_h - 22, HEX(0x5A351F), HEX(0x201006));
+    ui_rrect(right_x + 7, body_y + 10, right_w - 19, 25, 3, HEX(0x4A2411));
+    const float shelf_plaque_w = 154.0f;
+    const float shelf_plaque_x = right_x + (right_w - shelf_plaque_w) * 0.5f;
+    ui_shadow(shelf_plaque_x, body_y + 10, shelf_plaque_w, 25, 4, 2, RGBA(0, 0, 0, 100));
+    ui_vgrad(shelf_plaque_x, body_y + 10, shelf_plaque_w, 25, HEX(0xE7C47B), HEX(0x91602B));
+    ui_stroke(shelf_plaque_x, body_y + 10, shelf_plaque_w, 25, 4, 1, HEX(0x4A2810));
+    ui_line(shelf_plaque_x + 8, body_y + 12, shelf_plaque_x + shelf_plaque_w - 8,
+            body_y + 12, 1, HEX(0xFFF0C0));
+    ui_text_c(F_BOLD, 11, shelf_plaque_x + shelf_plaque_w * 0.5f,
+              body_y + 16, HEX(0x3F210E), "COLLECTION SHELF");
     char progress[64];
     snprintf(progress, sizeof progress, "%d / %d", found_count, all_count);
     ui_text_r(F_BOLD, 11, right_x + right_w - 13, body_y + 16, HEX(0xF6D19A), progress);
-    if (ui_seg(right_x + 9, body_y + 40, right_w - 27, 24,
-               filter_labels, 3, &museum_filter_mode))
-        museum_scroll = 0.0f;
+    const float filter_x = right_x + 9, filter_y = body_y + 40;
+    const float filter_w = (right_w - 27 - 8.0f) / 3.0f;
+    for (int f = 0; f < 3; ++f) {
+        if (museum_cabinet_chip(filter_x + f * (filter_w + 4.0f), filter_y,
+                                filter_w, 24, filter_labels[f], museum_filter_mode == f,
+                                f == 0 ? 0 : 1)) {
+            museum_filter_mode = f;
+            museum_scroll = 0.0f;
+        }
+    }
 
     const float grid_x = right_x + 9, grid_y = body_y + 71;
     const float grid_w = right_w - 27, grid_h = body_h - 83;
+    /* Dark backboard and visible shelf rails sit behind the clickable cubbies. */
+    ui_rrect(grid_x - 3, grid_y - 3, grid_w + 6, grid_h + 6, 3, HEX(0x190B05));
+    ui_vgrad(grid_x - 1, grid_y - 1, grid_w + 2, grid_h + 2, HEX(0x321B0F), HEX(0x120804));
+    ui_stroke(grid_x - 3, grid_y - 3, grid_w + 6, grid_h + 6, 3, 1, HEX(0x986138));
     const float tile_gap_x = 7.0f, tile_gap_y = 7.0f;
     const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
     const float tile_h = 75.0f, row_step = tile_h + tile_gap_y;
@@ -4902,29 +5035,23 @@ static void tab_museum(float x, float y)
         if (ui_button(tx, ty, tile_w, tile_h, "", selected_tile ? B_PRIMARY : B_NORMAL, 1)) {
             museum_selected[museum_game] = i;
         }
-        ui_rrect(tx + 3, ty + 3, tile_w - 6, 51, 3,
-                 found ? HEX(0xE9D6A5) : HEX(0x814322));
-        if (found) {
-            museum_draw_entry_art(museum_game, entry, tx + 9, ty + 5, tile_w - 18, 47, 1);
-            ui_text_fit(F_BOLD, 9, tx + 4, ty + 57, tile_w - 8,
-                        HEX(0xFFF0D5), entry->name);
-        } else {
-            museum_lock_glyph(tx + 13, ty + 5, tile_w - 26, 46, 0);
-            ui_text_c(F_BOLD, 9, tx + tile_w * 0.5f, ty + 57, HEX(0xDDB98C), "LOCKED");
-        }
-        if (selected_tile)
-            ui_stroke(tx + 1, ty + 1, tile_w - 2, tile_h - 2, 5, 2, HEX(0xFFE39A));
+        museum_draw_shelf_cubby(museum_game, entry, tx, ty, tile_w, tile_h,
+                                found, selected_tile);
     }
     ui_unclip();
 
-    ui_text(F_BOLD, 10, x + 3, y + 486, HEX(0xD8B78A), "Discovery alerts");
+    ui_shadow(x + 1, y + 478, width - 2, 30, 4, 3, RGBA(0, 0, 0, 105));
+    ui_vgrad(x + 1, y + 478, width - 2, 30, HEX(0x83502D), HEX(0x3A1D0F));
+    ui_stroke(x + 1, y + 478, width - 2, 30, 4, 1, HEX(0xB7834C));
+    ui_line(x + 8, y + 480, x + width - 8, y + 480, 1, HEX(0xD7A56A));
+    ui_text(F_BOLD, 10, x + 8, y + 486, HEX(0xFFF0CE), "Discovery alerts");
     if (ui_toggle(x + 112, y + 481, &settings.museum_discovery_notifications)) {
         settings_save();
         launcher_toast(settings.museum_discovery_notifications
             ? "Museum discovery notifications enabled."
             : "Museum discovery notifications disabled.");
     }
-    ui_text_fit(F_REG, 10, x + 164, y + 486, 430, C_DIM,
+    ui_text_fit(F_REG, 10, x + 164, y + 486, 430, HEX(0xE5C89A),
                 settings.museum_discovery_notifications
                     ? "Pop-ups appear over gameplay."
                     : "Pop-ups off; progress still saves.");
