@@ -32,6 +32,7 @@ typedef struct { float x, y, invz, z; } M3DProjected;
 typedef struct {
     float view_x, view_y, view_w, view_h;
     float museum_x, museum_y, scroll;
+    const int *entry_locked;
     int visible_entries;
     int draw_cubby_grid;
 } M3DMuseumLayout;
@@ -512,7 +513,7 @@ static void m3d_screen_face(float x0, float y0, float z0,
 }
 
 
-static void m3d_screen_cubby(float x, float y, float w, float h,
+static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                              const M3DMuseumLayout *layout)
 {
     /* Back wall and four inner returns make a genuinely hollow exhibit box. */
@@ -561,6 +562,34 @@ static void m3d_screen_cubby(float x, float y, float w, float h,
                     5.14f, HEX(0xD6A15B), layout);
     m3d_screen_quad(x + w - 5.0f, y + 3.0f, x + w - 3.0f, opening_bottom - 1.0f,
                     5.14f, HEX(0xB0783D), layout);
+
+    /* Locked exhibits get five separate steel shutter slats with angled faces,
+       raised top edges, dark lower bevels and tiny brass rivets. These are
+       actual depth-tested 3D surfaces, not UI gradients. */
+    if (locked) {
+        const float shutter_x = x + 15.0f, shutter_w = w - 30.0f;
+        for (int i = 0; i < 5; ++i) {
+            float sy = y + 15.0f + i * 6.1f;
+            uint32_t face = i == 4 ? HEX(0x454945) : HEX(0x777B75);
+            m3d_screen_face(shutter_x, sy, 5.045f,
+                            shutter_x + shutter_w, sy, 5.045f,
+                            shutter_x + shutter_w, sy + 5.2f, 4.91f,
+                            shutter_x, sy + 5.2f, 4.91f,
+                            face, layout);
+            m3d_screen_quad(shutter_x + 1.2f, sy + 0.3f,
+                            shutter_x + shutter_w - 1.2f, sy + 1.0f,
+                            5.065f, HEX(0xD9D8CE), layout);
+            m3d_screen_quad(shutter_x + 1.2f, sy + 4.1f,
+                            shutter_x + shutter_w - 1.2f, sy + 4.8f,
+                            5.07f, HEX(0x303530), layout);
+            m3d_screen_quad(shutter_x + 3.0f, sy + 1.7f,
+                            shutter_x + 4.5f, sy + 3.0f,
+                            5.075f, HEX(0xE4C98E), layout);
+            m3d_screen_quad(shutter_x + shutter_w - 4.5f, sy + 1.7f,
+                            shutter_x + shutter_w - 3.0f, sy + 3.0f,
+                            5.075f, HEX(0xE4C98E), layout);
+        }
+    }
 
     /* A projecting shelf nose is a second piece of wood, not a painted line. */
     m3d_screen_face(x + 4.0f, y + h - 25.0f, 5.11f,
@@ -706,7 +735,8 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
             int index = row * 3 + col;
             if (index >= layout->visible_entries) break;
             float tx = grid_x + col * (tile_w + gap_x);
-            m3d_screen_cubby(tx, ty, tile_w, tile_h, layout);
+            int locked = layout->entry_locked ? layout->entry_locked[index] : 0;
+            m3d_screen_cubby(tx, ty, tile_w, tile_h, locked, layout);
         }
     }
 }
@@ -789,6 +819,7 @@ void museum3d_draw_background(SDL_Renderer *renderer,
                               float x, float y, float width, float height,
                               float elapsed_seconds,
                               float museum_x, float museum_y, float museum_scroll,
+                              const int *entry_locked,
                               int visible_entries, int draw_cubby_grid)
 {
     if (!renderer || width <= 0.0f || height <= 0.0f) return;
@@ -813,6 +844,7 @@ void museum3d_draw_background(SDL_Renderer *renderer,
     layout.view_w = width; layout.view_h = height;
     layout.museum_x = museum_x; layout.museum_y = museum_y;
     layout.scroll = museum_scroll;
+    layout.entry_locked = entry_locked;
     layout.visible_entries = visible_entries < 0 ? 0 : visible_entries;
     layout.draw_cubby_grid = draw_cubby_grid;
     /* The render target is stretched to the visible window viewport. Adjust horizontal
