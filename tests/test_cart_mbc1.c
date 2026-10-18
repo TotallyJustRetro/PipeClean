@@ -40,6 +40,19 @@ int main(void)
     const CartInfo *ci = cart_info();
     if (!ci || ci->cgb_flag != 0xC0)
         return fail(15, "CGB-only cartridge header flag was not detected");
+    if (cart_is_sml2dx_v181(ci))
+        return fail(19, "ordinary test ROM was misidentified as SML2 DX v1.8.1");
+
+    CartInfo dx_info = {0};
+    dx_info.size = 0x100000u;
+    dx_info.crc = 0xF0799017u;
+    dx_info.cgb_flag = 0xC0u;
+    dx_info.mapper = 5;
+    if (!cart_is_sml2dx_v181(&dx_info))
+        return fail(20, "exact SML2 DX v1.8.1 ROM identity was not recognized");
+    dx_info.crc ^= 1u;
+    if (cart_is_sml2dx_v181(&dx_info))
+        return fail(21, "SML2 DX detector accepted an unexpected ROM checksum");
 
     if (cart_rom_read_bank(0, 0x362A) != 0xFF)
         return fail(16, "bank-window reader accepted an address below 0x4000");

@@ -18,6 +18,13 @@ static uint32_t ram_crc_saved;
 
 const CartInfo *cart_info(void) { return &info; }
 
+/* CRC32 of the SML2 DX v1.8.1 patch applied to the supported World v1.0 ROM. */
+int cart_is_sml2dx_v181(const CartInfo *ci)
+{
+    return ci && ci->size == 0x100000u && ci->crc == 0xF0799017u &&
+           ci->cgb_flag == 0xC0u && ci->mapper == 5;
+}
+
 int cart_export_rom(const char *path)
 {
     if (!path || !path[0] || !rom || info.size < 0x150 || info.size > rom_len)

@@ -485,13 +485,27 @@ static const char *sml2_museum_scripted_boss_id(uint8_t level, uint8_t object_ty
     return NULL;
 }
 
+static const char *sml2_museum_item_id(uint8_t object_type)
+{
+    switch (object_type) {
+    case 0x0A: return "coin";
+    case 0x11: return "mushroom";
+    case 0x12: return "magic_carrot";
+    case 0x13: return "fire_flower";
+    case 0x14: return "starman";
+    case 0x15: return "extra_life";
+    default: return NULL;
+    }
+}
+
 /* The active marker is set to 2 once an object has been initialized and has
  * entered the live actor list. The v7 trace's field0B is byte +11 (animation/
  * mapping state); the actor's screen coordinates are +9=Y and +10=X. Require
  * a visible vertical position, but allow widescreen X values beyond 159. */
 /* Save a locally rendered SML2 sprite for an encountered, mapped enemy. */
 static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
-                                      const char *entry_id);
+                                      const char *entry_id, uint8_t object_x,
+                                      uint8_t object_y);
 /* Backfill artwork only for discoveries already recorded in the Museum. */
 static void sml2_museum_capture_discovered_sprites(void);
 
@@ -541,6 +555,13 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
                 museum_id = boss_id;
             }
         }
+        /* Colorized DX item sprites need their live OAM palette. Cache them
+         * when visible, but do not unlock an item before the normal tracker does. */
+        if (source_valid && cart_is_sml2dx_v181(cart_info())) {
+            const char *item_id = sml2_museum_item_id(object_type);
+            if (item_id)
+                (void)sml2_museum_capture_sprite(level, object_type, item_id, x, y);
+        }
         if (!museum_id) continue;
 
         /* Minikyura are spawned by Kurokyura, not by a course-list entry of
@@ -553,9 +574,12 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
          * enemy sprites. If saving failed, later visible frames retry the cache. */
         const char *mapped_id = source_valid ?
             sml2_museum_enemy_id(level, object_type) : NULL;
-        if (mapped_id && strcmp(mapped_id, museum_id) == 0 &&
+        const char *boss_capture_id = cart_is_sml2dx_v181(cart_info()) ?
+            sml2_museum_scripted_boss_id(level, object_type) : NULL;
+        if (((mapped_id && strcmp(mapped_id, museum_id) == 0) ||
+             (boss_capture_id && strcmp(boss_capture_id, museum_id) == 0)) &&
             museum_is_discovered(GAME_SML2, museum_id))
-            (void)sml2_museum_capture_sprite(level, object_type, museum_id);
+            (void)sml2_museum_capture_sprite(level, object_type, museum_id, x, y);
         if (source_valid && level == 0x06u && object_type == 0x51u) {
             int summoned_actor_visible = 0;
             for (int other = 0; other < 16; ++other) {
@@ -1761,9 +1785,18 @@ static int sml2_museum_asset_output(const char *entry_id, char *out, size_t cap)
     const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
     int n = snprintf(root, sizeof root, "%s%spipeclean-museum-assets", base, sep);
     if (n < 0 || (size_t)n >= sizeof root || !museum_make_dir(root)) return 0;
-    n = snprintf(game_dir, sizeof game_dir, "%s/%s", root, games[GAME_SML2].id);
+    const int dx_rom = cart_is_sml2dx_v181(cart_info());
+    if (dx_rom)
+        n = snprintf(game_dir, sizeof game_dir, "%s/%s-dx-v1.8.1",
+                     root, games[GAME_SML2].id);
+    else
+        n = snprintf(game_dir, sizeof game_dir, "%s/%s",
+                     root, games[GAME_SML2].id);
     if (n < 0 || (size_t)n >= sizeof game_dir || !museum_make_dir(game_dir)) return 0;
-    n = snprintf(out, cap, "%s/%s.v2.png", game_dir, entry_id);
+    if (dx_rom)
+        n = snprintf(out, cap, "%s/%s.png", game_dir, entry_id);
+    else
+        n = snprintf(out, cap, "%s/%s.v2.png", game_dir, entry_id);
     return n >= 0 && (size_t)n < cap;
 }
 
@@ -1803,8 +1836,70 @@ static int sml2_museum_read_tile_pixel(uint8_t level, uint8_t tile,
     return (int)(((lo >> bit) & 1u) | (((hi >> bit) & 1u) << 1));
 }
 
+static int sml2_museum_live_dx_palette(const uint8_t pieces[40][4],
+                                       unsigned piece_count, uint8_t object_x,
+                                       uint8_t object_y, uint32_t colors[32],
+                                       int *palette_out)
+{
+    if (!pieces || !piece_count || !colors || !palette_out ||
+        object_x == 0xFFu || object_y == 0xFFu || !ppu_cgb_mode_enabled())
+        return 0;
+
+    ppu_cgb_obj_palette_copy(colors);
+    int nonwhite = 0;
+    for (unsigned i = 0; i < 32u; ++i)
+        if (colors[i] != 0xFFFFFFu) ++nonwhite;
+    /* ppu_reset initializes unused CGB palette RAM to all white. Wait until
+     * the DX ROM has installed real palettes instead of caching that state. */
+    if (nonwhite < 8) return 0;
+
+    int score[8] = {0};
+    int hits[8] = {0};
+    for (int i = 0; i < 40; ++i) {
+        const int base = i * 4;
+        const uint8_t oy = oam[base];
+        const uint8_t ox = oam[base + 1];
+        const uint8_t tile = oam[base + 2];
+        const uint8_t attr = oam[base + 3];
+        if (!oy || !ox || oy == 0xFFu || ox == 0xFFu || tile < 0x80u)
+            continue;
+
+        int tile_matches = 0;
+        for (unsigned p = 0; p < piece_count; ++p) {
+            if (pieces[p][2] == tile) {
+                tile_matches = 1;
+                break;
+            }
+        }
+        if (!tile_matches) continue;
+
+        const int screen_x = (int)ox - 8;
+        const int screen_y = (int)oy - 16;
+        const int distance = abs(screen_x - (int)object_x) +
+                             abs(screen_y - (int)object_y);
+        /* Actor RAM and OAM origins differ slightly; only consider nearby
+         * tiles and weigh the closest matches most heavily. */
+        if (distance > 56) continue;
+        const unsigned palette = attr & 7u;
+        score[palette] += distance < 56 ? 56 - distance : 1;
+        ++hits[palette];
+    }
+
+    int best = -1;
+    for (int palette = 0; palette < 8; ++palette) {
+        if (hits[palette] == 0) continue;
+        if (best < 0 || score[palette] > score[best]) best = palette;
+    }
+    if (best < 0) return 0;
+    *palette_out = best;
+    return 1;
+}
+
+/* Save the sprite from its ROM composition, using the active DX object palette
+ * sampled from live OAM when this colorized ROM is running. */
 static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
-                                      const char *entry_id)
+                                      const char *entry_id, uint8_t object_x,
+                                      uint8_t object_y)
 {
     if (!entry_id || !entry_id[0] || level > 0x1Fu ||
         cur_game != GAME_SML2 || rom_loaded_game() != GAME_SML2)
@@ -1817,6 +1912,9 @@ static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
 
     const CartInfo *info = cart_info();
     if (!info || info->rom_banks <= 0x1Bu) return 0;
+    const int dx_rom = cart_is_sml2dx_v181(info);
+    if (dx_rom && (object_x == 0xFFu || object_y == 0xFFu))
+        return 0;
     const unsigned profile = level < 0x0Au ? 0u : 1u;
     const uint16_t type_table = (uint16_t)(profile == 0 ? 0x4B61u : 0x4BC1u);
     const uint8_t lookup_id = cart_rom_read_bank(2,
@@ -1862,6 +1960,12 @@ static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
     /* Reject corrupt mappings rather than caching a huge or mostly blank image. */
     if (width <= 0 || height <= 0 || width > 128 || height > 128) return 0;
 
+    uint32_t dx_obj_colors[32] = {0};
+    int dx_palette = -1;
+    if (dx_rom && !sml2_museum_live_dx_palette(
+            pieces, piece_count, object_x, object_y, dx_obj_colors, &dx_palette))
+        return 0;
+
     SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(
         0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
     if (!surface) return 0;
@@ -1893,7 +1997,16 @@ static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
                     continue;
                 Uint32 *row = (Uint32 *)((Uint8 *)surface->pixels +
                     (size_t)out_y * (size_t)surface->pitch);
-                row[out_x] = shades[color & 3];
+                if (dx_rom) {
+                    const uint32_t rgb = dx_obj_colors[(unsigned)dx_palette * 4u +
+                                                       ((unsigned)color & 3u)];
+                    row[out_x] = SDL_MapRGBA(surface->format,
+                                             (Uint8)(rgb >> 16),
+                                             (Uint8)(rgb >> 8),
+                                             (Uint8)rgb, 255);
+                } else {
+                    row[out_x] = shades[color & 3];
+                }
                 ++painted_pixels;
             }
         }
@@ -1915,6 +2028,10 @@ static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
 static void sml2_museum_capture_discovered_sprites(void)
 {
     if (cur_game != GAME_SML2 || rom_loaded_game() != GAME_SML2)
+        return;
+    /* DX assigns OBJ palettes dynamically at runtime. A hidden species does
+     * not have an inferable color palette yet, so wait until it is visible. */
+    if (cart_is_sml2dx_v181(cart_info()))
         return;
 
     for (size_t i = 0;

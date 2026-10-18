@@ -1,5 +1,6 @@
 #include "museum.h"
 #include "settings.h"
+#include "cart.h"
 #include <SDL.h>
 #include <stdio.h>
 #include <string.h>
@@ -716,7 +717,11 @@ int museum_sprite_asset_path(int game, const char *id, char *out, size_t out_siz
     size_t len = strlen(base);
     const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
     int n;
-    if (game == GAME_SML || game == GAME_SML2)
+    if (game == GAME_SML2 && cart_is_sml2dx_v181(cart_info()))
+        n = snprintf(out, out_size,
+                     "%s%spipeclean-museum-assets/%s-dx-v1.8.1/%s.png",
+                     base, sep, games[game].id, id);
+    else if (game == GAME_SML || game == GAME_SML2)
         n = snprintf(out, out_size, "%s%spipeclean-museum-assets/%s/%s.v2.png",
                      base, sep, games[game].id, id);
     else
