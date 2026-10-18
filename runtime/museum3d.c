@@ -392,10 +392,12 @@ static void m3d_pipe(float x, float z)
     m3d_ring_horizontal(x, base + height + 0.02f, z,
                         bore_radius, lip_outer, HEX(0x43D65A), 18);
 
-    /* A dark inner wall and recessed floor create an actual hollow throat. */
-    m3d_cylinder_y_open(x, base + height - 0.38f, z, bore_radius, 0.36f,
+    /* The bore is a deep cavity, not a straight tunnel. Its inner wall
+       continues almost to the base and ends at a recessed dark floor, so the
+       moving train cannot show through the pipe shaft like a background card. */
+    m3d_cylinder_y_open(x, base + 0.16f, z, bore_radius, height - 0.30f,
                         HEX(0x0B5729), 18);
-    m3d_disk_horizontal(x, base + height - 0.375f, z, bore_radius * 0.98f,
+    m3d_disk_horizontal(x, base + 0.165f, z, bore_radius * 0.98f,
                         HEX(0x042914), 18);
 
     m3d_cylinder_y(x - 0.12f, 0.11f, z + 0.46f, 0.025f, 3.95f,
