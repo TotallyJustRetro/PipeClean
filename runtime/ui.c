@@ -28,10 +28,18 @@ static float ui_map_y(float y)
     return ui_local_transform_active
         ? ui_local_origin_y + (y - ui_local_origin_y) * ui_local_scale_y : y;
 }
-static float ui_local_font_scale(void)
+static float ui_local_geometry_scale(void)
 {
     return ui_local_transform_active
         ? fminf(ui_local_scale_x, ui_local_scale_y) : 1.0f;
+}
+
+/* Keep typography a little larger than the shrinking panel so Museum labels
+   remain readable at the reference composition size. */
+static float ui_local_font_scale(void)
+{
+    return ui_local_transform_active
+        ? sqrtf(ui_local_geometry_scale()) : 1.0f;
 }
 void (*ui_sfx_cb)(int);
 uint32_t ui_accent = 0x4C8DFF;
@@ -435,7 +443,7 @@ float ui_anim(int id, float target, float speed)
 /* ------------------------------------------------------------ primitives */
 static inline int PXx(float x) { return (int)floorf(ox + ui_map_x(x) * ui_scale + 0.5f); }
 static inline int PXy(float y) { return (int)floorf(oy + ui_map_y(y) * ui_scale + 0.5f); }
-static inline int PXs(float v) { return (int)floorf(v * ui_scale * ui_local_font_scale() + 0.5f); }
+static inline int PXs(float v) { return (int)floorf(v * ui_scale * ui_local_geometry_scale() + 0.5f); }
 
 static int text_px_base(float logical_size)
 {
@@ -452,7 +460,8 @@ static int text_px_base(float logical_size)
    still follows the fitted scale; only the glyph atlas gets a small pixel floor. */
 static int text_px(float logical_size)
 {
-    int px = PXs(logical_size * UI_FONT_SCALE);
+    int px = (int)floorf(logical_size * UI_FONT_SCALE * ui_scale *
+                         ui_local_font_scale() + 0.5f);
 #if defined(__ANDROID__)
     if (ui_scale < 0.85f && px < 8) px = 8;
 #else
@@ -559,7 +568,7 @@ void ui_line(float x1, float y1, float x2, float y2, float t, uint32_t c)
 {
     x1 = ui_map_x(x1); x2 = ui_map_x(x2);
     y1 = ui_map_y(y1); y2 = ui_map_y(y2);
-    t *= ui_local_font_scale();
+    t *= ui_local_geometry_scale();
     float dx = x2 - x1, dy = y2 - y1, l = sqrtf(dx * dx + dy * dy);
     if (l < 0.001f) return;
     float nx = -dy / l * t * 0.5f, ny = dx / l * t * 0.5f;

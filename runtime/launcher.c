@@ -5558,7 +5558,8 @@ LauncherResult launcher_frame(float dt)
             ui_text_fit(F_BOLD, nav_h < 32.0f ? 12 : 14, sx + 18,
                         y + (nav_h - 21.0f) * 0.5f, 194,
                         tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
-        }        }
+        }
+        }
     }
     float cx = compact_layout ? vx + (vw - 808.0f) * 0.5f : 308.0f, cy = 108;
     if (tab < N_GAMES) {
