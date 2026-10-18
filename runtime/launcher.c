@@ -4741,48 +4741,147 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                                     float x, float y, float w, float h,
                                     int found, int selected)
 {
-    ui_vgrad(x, y, w, h, HEX(0x8A5932), HEX(0x2B1309));
-    ui_stroke(x, y, w, h, 3, 1.0f, HEX(0xB7814B));
-    ui_rrect(x + 3, y + 3, w - 6, h - 6, 2, HEX(0x160B06));
-    ui_vgrad(x + 4, y + 4, w - 8, h - 24, HEX(0x3B2818), HEX(0x100804));
+    /* Front frame casts a small hard shadow; the dark inset becomes the back
+     * wall of the compartment rather than another flat tile background. */
+    ui_rrect(x + 3, y + 4, w, h, 3, RGBA(0, 0, 0, 145));
+    ui_vgrad(x, y, w, h, HEX(0xBD8B57), HEX(0x35190C));
+    ui_stroke(x, y, w, h, 3, 1.2f, HEX(0xE2B773));
+
+    /* Three trapezoid planes create the illusion that the cubby recedes. */
+    ui_tri(x + 3, y + 3, x + w - 3, y + 3, x + w - 12, y + 12,
+           HEX(0xB8844D));
+    ui_tri(x + 3, y + 3, x + 12, y + 12, x + 12, y + h - 24,
+           HEX(0x8A572F));
+    ui_tri(x + w - 3, y + 3, x + w - 12, y + 12, x + w - 12, y + h - 24,
+           HEX(0x3B1D0F));
+    ui_vgrad(x + 12, y + 12, w - 24, h - 36, HEX(0x382315), HEX(0x100704));
+    ui_stroke(x + 12, y + 12, w - 24, h - 36, 1, 1.0f, HEX(0x120904));
+    ui_line(x + 14, y + 13, x + w - 14, y + 13, 1, HEX(0x68472D));
 
     if (found) {
         char path[1200];
         if (museum_sprite_file(game, entry, path, sizeof path)) {
-            ui_image_file_fit_pixel(path, x + 7, y + 4, w - 14, h - 25);
+            ui_image_file_fit_pixel(path, x + 13, y + 12, w - 26, h - 37);
         } else {
-            ui_text_c(F_BOLD, 7.0f, x + w * 0.5f, y + 22,
+            ui_text_c(F_BOLD, 7.0f, x + w * 0.5f, y + 23,
                       HEX(0xD3B17B), "ART PENDING");
         }
     } else {
-        /* Recessed wooden shutters above the lock. */
-        for (int i = 0; i < 5; ++i) {
-            float sy = y + 6 + i * 7.0f;
-            ui_line(x + 6, sy, x + w - 6, sy, 2.1f, HEX(0x59402A));
-            ui_line(x + 6, sy + 2, x + w - 6, sy + 2, 1.0f, HEX(0x100804));
+        /* The horizontal shutters have alternating bevel highlights/shadows. */
+        for (int i = 0; i < 4; ++i) {
+            float sy = y + 16 + i * 7.0f;
+            ui_line(x + 15, sy, x + w - 15, sy, 2.2f, HEX(0x63472D));
+            ui_line(x + 15, sy + 2.1f, x + w - 15, sy + 2.1f, 1.2f, HEX(0x0B0603));
         }
-        museum_lock_glyph(x + w * 0.35f, y + 10, w * 0.30f, h * 0.58f, 0);
+        museum_lock_glyph(x + w * 0.37f, y + 11, w * 0.26f, h * 0.49f, 0);
     }
 
-    /* Tiny brass specimen plaque with two pin heads at the ends. */
+    /* Thick shelf lip in front of the art; the brass tag hangs just below it. */
+    ui_vgrad(x + 4, y + h - 25, w - 8, 7, HEX(0xC18A50), HEX(0x4A2612));
+    ui_line(x + 5, y + h - 25, x + w - 5, y + h - 25, 1.2f, HEX(0xE7B775));
+    ui_line(x + 5, y + h - 19, x + w - 5, y + h - 19, 1, HEX(0x1A0B05));
+
     const float plaque_w = w * 0.78f;
     const float plaque_x = x + (w - plaque_w) * 0.5f;
-    const float plaque_y = y + h - 19;
-    ui_rrect(plaque_x + 1, plaque_y + 2, plaque_w, 15, 3, RGBA(0, 0, 0, 115));
-    ui_vgrad(plaque_x, plaque_y, plaque_w, 15, HEX(0xF1D493), HEX(0x9A682E));
-    ui_stroke(plaque_x, plaque_y, plaque_w, 15, 3, 1.0f, HEX(0x4C2B12));
-    ui_rrect(plaque_x + 3, plaque_y + 3, 2.0f, 2.0f, 1, HEX(0x795026));
-    ui_rrect(plaque_x + plaque_w - 5, plaque_y + 3, 2.0f, 2.0f, 1, HEX(0x795026));
+    const float plaque_y = y + h - 17;
+    ui_rrect(plaque_x + 1, plaque_y + 2, plaque_w, 14, 3, RGBA(0, 0, 0, 130));
+    ui_vgrad(plaque_x, plaque_y, plaque_w, 14, HEX(0xF5DDA0), HEX(0x8E5A25));
+    ui_stroke(plaque_x, plaque_y, plaque_w, 14, 3, 1.0f, HEX(0x47230E));
+    ui_line(plaque_x + 4, plaque_y + 2, plaque_x + plaque_w - 4,
+            plaque_y + 2, 1.0f, HEX(0xFFF0C7));
+    ui_rrect(plaque_x + 3, plaque_y + 4, 2, 2, 1, HEX(0x795026));
+    ui_rrect(plaque_x + plaque_w - 5, plaque_y + 4, 2, 2, 1, HEX(0x795026));
     if (found && entry)
-        ui_text_fit(F_BOLD, 7.5f, plaque_x + 8, plaque_y + 3, plaque_w - 16,
+        ui_text_fit(F_BOLD, 7.2f, plaque_x + 7, plaque_y + 3, plaque_w - 14,
                     HEX(0x43240F), entry->name);
     else
-        ui_text_c(F_BOLD, 8.0f, x + w * 0.5f, plaque_y + 3, HEX(0x43240F), "LOCKED");
+        ui_text_c(F_BOLD, 8.0f, x + w * 0.5f, plaque_y + 3,
+                  HEX(0x43240F), "LOCKED");
 
     if (selected) {
-        ui_stroke(x + 1, y + 1, w - 2, h - 2, 4, 2.0f, HEX(0xFFE6A1));
+        ui_stroke(x + 1, y + 1, w - 2, h - 2, 3, 2.0f, HEX(0xFFE6A1));
         ui_line(x + 5, y + 2, x + w - 5, y + 2, 1.0f, HEX(0xFFF6D8));
     }
+}
+
+static void museum_draw_question_block(float x, float y, float size)
+{
+    const float d = size * 0.19f;
+    ui_rrect(x + 2, y + 4, size + d, size + d, 2, RGBA(0, 0, 0, 105));
+    ui_tri(x, y, x + size, y, x + size + d, y - d, HEX(0xFBE391));
+    ui_tri(x + size, y, x + size + d, y - d,
+           x + size + d, y + size - d, HEX(0xA75A19));
+    ui_vgrad(x, y, size, size, HEX(0xFFE680), HEX(0xD88A23));
+    ui_stroke(x, y, size, size, 2, 1.3f, HEX(0x75401A));
+    ui_stroke(x + 3, y + 3, size - 6, size - 6, 1, 1, HEX(0xFFF0AE));
+    ui_line(x + 4, y + size * 0.32f, x + size - 4, y + size * 0.32f,
+            1, HEX(0xD9A246));
+    ui_line(x + 4, y + size * 0.68f, x + size - 4, y + size * 0.68f,
+            1, HEX(0xB7711F));
+    ui_text_c(F_BOLD, size * 0.68f, x + size * 0.5f, y + size * 0.12f,
+              HEX(0xFFF8D1), "?");
+    ui_text_c(F_BOLD, size * 0.64f, x + size * 0.5f + 0.5f, y + size * 0.12f + 1,
+              HEX(0x8C4C17), "?");
+}
+
+static void museum_draw_pipe_prop(float x, float y, float w, float h)
+{
+    /* Rear cylinder and lip use separate light/dark planes for a toy-plastic
+     * pipe appearance. It is intentionally tucked behind the cabinet frame. */
+    ui_vgrad(x + 5, y + 14, w - 10, h - 14, HEX(0x42D653), HEX(0x075C25));
+    ui_stroke(x + 5, y + 14, w - 10, h - 14, 2, 1.2f, HEX(0x064C21));
+    ui_line(x + 10, y + 18, x + 10, y + h - 5, 2, HEX(0x9BF878));
+    ui_line(x + w - 11, y + 18, x + w - 11, y + h - 5, 2, HEX(0x06441D));
+    ui_vgrad(x, y, w, 21, HEX(0xA0F66E), HEX(0x168D36));
+    ui_stroke(x, y, w, 21, 5, 1.5f, HEX(0x07501F));
+    ui_line(x + 6, y + 4, x + w - 6, y + 4, 1.5f, HEX(0xD0FF9C));
+    ui_vgrad(x + 7, y + 8, w - 14, 5, HEX(0x115D2A), HEX(0x063F1A));
+}
+
+static void museum_draw_train_prop(float x, float rail_y, float w)
+{
+    ui_shadow(x, rail_y - 7, w, 8, 2, 3, RGBA(0, 0, 0, 100));
+    /* Twin rails with regular timber sleepers. */
+    for (float sx = x; sx < x + w; sx += 11.0f) {
+        ui_vgrad(sx, rail_y - 8, 4, 17, HEX(0xB78650), HEX(0x4A2816));
+        ui_stroke(sx, rail_y - 8, 4, 17, 1, 0.7f, HEX(0x28150C));
+    }
+    ui_line(x, rail_y - 5, x + w, rail_y - 5, 2.5f, HEX(0xB7B9BA));
+    ui_line(x, rail_y + 5, x + w, rail_y + 5, 2.5f, HEX(0x595A5B));
+    ui_line(x, rail_y - 6, x + w, rail_y - 6, 0.8f, HEX(0xF0E2BB));
+
+    /* A tiny locomotive and two box cars: faceted roofs, lit sides, dark wheels. */
+    float ty = rail_y - 24.0f;
+    ui_tri(x + 5, ty + 8, x + 15, ty, x + 15, ty + 8, HEX(0xE6B84C));
+    ui_vgrad(x + 5, ty + 8, 23, 12, HEX(0xF3C54D), HEX(0xA65A1A));
+    ui_stroke(x + 5, ty + 8, 23, 12, 2, 0.8f, HEX(0x522A10));
+    ui_rrect(x + 15, ty + 1, 9, 9, 2, HEX(0xD8E6EB));
+    ui_rrect(x + 17, ty + 2, 5, 5, 1, HEX(0x496678));
+    ui_rrect(x + 27, ty + 2, 3, 7, 1, HEX(0x9DA5A7));
+    ui_vgrad(x + 31, ty + 7, 17, 13, HEX(0xE66A44), HEX(0x8B2B1D));
+    ui_stroke(x + 31, ty + 7, 17, 13, 2, 0.8f, HEX(0x522A10));
+    ui_vgrad(x + 50, ty + 7, 17, 13, HEX(0x5DCA68), HEX(0x1B6531));
+    ui_stroke(x + 50, ty + 7, 17, 13, 2, 0.8f, HEX(0x174523));
+    for (int i = 0; i < 6; ++i) {
+        float wx = x + 9 + i * 10.0f;
+        ui_rrect(wx, rail_y - 4, 5, 5, 2, HEX(0x23170F));
+        ui_stroke(wx, rail_y - 4, 5, 5, 2, 0.7f, HEX(0xA9A9A0));
+    }
+}
+
+static void museum_draw_3d_set_dressing(float x, float y, float width)
+{
+    /* The props live behind the real interactive UI, like toys in a cabinet
+     * diorama. They peek out at the edges rather than covering controls. */
+    museum_draw_pipe_prop(x - 21, y + 154, 43, 97);
+    museum_draw_pipe_prop(x + width - 8, y + 179, 44, 104);
+
+    const float rail_w = width * 0.24f;
+    museum_draw_train_prop(x + width * 0.55f, y - 65, rail_w);
+    museum_draw_question_block(x + width - 94, y - 84, 18);
+    museum_draw_question_block(x + width - 58, y - 90, 22);
+    ui_text_c(F_BOLD, 18, x + width * 0.48f, y - 88, HEX(0xE7CF8A), "♪");
+    ui_text_c(F_BOLD, 14, x + width * 0.51f, y - 78, HEX(0xF4DDB0), "♫");
 }
 
 static void tab_museum(float x, float y)
@@ -4902,6 +5001,11 @@ static void tab_museum(float x, float y)
     ui_stroke(x, body_y, width, body_h, 9, 2, HEX(0xE7B76D));
     ui_rrect(x + 3, body_y + 3, width - 6, body_h - 6, 7, HEX(0x542A16));
     ui_stroke(x + 4, body_y + 4, width - 8, body_h - 8, 6, 1, HEX(0xA56D3B));
+    /* Light catches the top edge; the lower and right edges fall into shadow. */
+    ui_line(x + 12, body_y + 5, x + width - 12, body_y + 5, 1.3f, HEX(0xF0C47C));
+    ui_line(x + 7, body_y + 12, x + 7, body_y + body_h - 12, 1.2f, HEX(0xD49A5C));
+    ui_line(x + 9, body_y + body_h - 5, x + width - 9, body_y + body_h - 5, 2.0f, HEX(0x210E07));
+    ui_line(x + width - 5, body_y + 10, x + width - 5, body_y + body_h - 10, 2.0f, HEX(0x241006));
 
     /* Left: recessed parchment field guide set into the timber frame. */
     ui_vgrad(x + 6, body_y + 6, left_w - 12, body_h - 12, HEX(0x9B6940), HEX(0x3E1E0F));
@@ -4911,6 +5015,11 @@ static void tab_museum(float x, float y)
     ui_vgrad(x + 10, body_y + 10, left_w - 20, 25, HEX(0x9E6131), HEX(0x542510));
     ui_stroke(x + 10, body_y + 10, left_w - 20, 25, 3, 1, HEX(0xE0AF65));
     ui_line(x + 14, body_y + 12, x + left_w - 14, body_y + 12, 1, HEX(0xF6D397));
+    for (int grain = 0; grain < 9; ++grain) {
+        float gy = body_y + 45 + grain * 38.0f;
+        ui_line(x + 16, gy, x + left_w - 16, gy + (grain % 2 ? 0.4f : -0.4f),
+                0.6f, RGBA(154, 105, 52, 38));
+    }
     ui_text(F_BOLD, 13, x + 16, body_y + 9, HEX(0xFFF3D4), "FIELD GUIDE");
     ui_text_r(F_BOLD, 11, x + left_w - 16, body_y + 10, HEX(0xF4D19A),
               selected_found ? museum_category_name(selected->category) :
@@ -5234,6 +5343,8 @@ LauncherResult launcher_frame(float dt)
     }
 
     float cx = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f, cy = 108;
+    if (tab == TAB_MUSEUM)
+        museum_draw_3d_set_dressing(cx, cy + 58.0f, 808.0f);
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
