@@ -2971,6 +2971,18 @@ int app_run(const char *autorun, const char *hack)
         if (getenv("GBL_SHOT")) {
             static int fr;
             static int release_test_click;
+            int capture_after = 8;
+            const char *capture_after_env = getenv("GBL_SHOT_FRAMES");
+            if (capture_after_env) {
+                int requested = atoi(capture_after_env);
+                if (requested >= 8 && requested <= 1200) capture_after = requested;
+            }
+            int capture_delay = 0;
+            const char *capture_delay_env = getenv("GBL_SHOT_DELAY_MS");
+            if (capture_delay_env) {
+                int requested = atoi(capture_delay_env);
+                if (requested > 0 && requested <= 100) capture_delay = requested;
+            }
             if (fr == 3 && getenv("GBL_MOUSE")) {
                 int mx = 0, my = 0;
                 sscanf(getenv("GBL_MOUSE"), "%d,%d", &mx, &my);
@@ -3004,12 +3016,16 @@ int app_run(const char *autorun, const char *hack)
                 SDL_PushEvent(&click);
                 release_test_click = 0;
             }
-            if (++fr == 8) {
+            if (capture_delay) SDL_Delay((Uint32)capture_delay);
+            if (++fr == capture_after) {
                 SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
-                SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch);
-                SDL_SaveBMP(s, getenv("GBL_SHOT"));
+                if (s && SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch) == 0) {
+                    SDL_SaveBMP(s, getenv("GBL_SHOT"));
+                } else {
+                    fprintf(stderr, "Couldn't capture screenshot: %s\\n", SDL_GetError());
+                }
+                if (s) SDL_FreeSurface(s);
                 printf("out %dx%d hint='%s' mouse=%.0f,%.0f\\n", W, H, ui_hint_text(), ui_mouse.x, ui_mouse.y);
-                SDL_FreeSurface(s);
                 quit = 1;
             }
         }
