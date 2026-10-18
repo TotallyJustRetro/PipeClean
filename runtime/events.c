@@ -488,6 +488,10 @@ static const char *sml2_museum_scripted_boss_id(uint8_t level, uint8_t object_ty
  * entered the live actor list. The v7 trace's field0B is byte +11 (animation/
  * mapping state); the actor's screen coordinates are +9=Y and +10=X. Require
  * a visible vertical position, but allow widescreen X values beyond 159. */
+/* Save a locally rendered SML2 sprite for an encountered, mapped enemy. */
+static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
+                                      const char *entry_id);
+
 static void sml2_museum_observe_visible_enemies(uint8_t level)
 {
     if (!cart_ram || level > 0x1Fu ||
@@ -541,6 +545,14 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
          * Kurokyura source descriptor; this avoids crediting Minikyura before a
          * bat has actually appeared. Do not classify from mutable field +5. */
         const int discovered = museum_discover_entry(GAME_SML2, museum_id);
+        /* Capture only a species backed by the actor's stable course descriptor.
+         * Scripted-boss/runtime-state aliases must not be mistaken for normal
+         * enemy sprites. If saving failed, later visible frames retry the cache. */
+        const char *mapped_id = source_valid ?
+            sml2_museum_enemy_id(level, object_type) : NULL;
+        if (mapped_id && strcmp(mapped_id, museum_id) == 0 &&
+            museum_is_discovered(GAME_SML2, museum_id))
+            (void)sml2_museum_capture_sprite(level, object_type, museum_id);
         if (source_valid && level == 0x06u && object_type == 0x51u) {
             int summoned_actor_visible = 0;
             for (int other = 0; other < 16; ++other) {
@@ -1717,6 +1729,163 @@ static int museum_make_dir(const char *path)
     if (mkdir(path, 0700) == 0 || errno == EEXIST) return 1;
 #endif
     return 0;
+}
+
+/* Build a local PNG from SML2's ROM sprite mapping. This deliberately uses the
+ * configured cartridge's own graphics and stores only a private cache; no
+ * sprite data is bundled with PipeClean or downloaded from a website. */
+static int sml2_museum_asset_output(const char *entry_id, char *out, size_t cap)
+{
+    char root[1200], game_dir[1200];
+    const char *base = settings_dir();
+    if (!base || !base[0] || !entry_id || !entry_id[0] || !out || cap == 0)
+        return 0;
+    size_t len = strlen(base);
+    const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
+    int n = snprintf(root, sizeof root, "%s%spipeclean-museum-assets", base, sep);
+    if (n < 0 || (size_t)n >= sizeof root || !museum_make_dir(root)) return 0;
+    n = snprintf(game_dir, sizeof game_dir, "%s/%s", root, games[GAME_SML2].id);
+    if (n < 0 || (size_t)n >= sizeof game_dir || !museum_make_dir(game_dir)) return 0;
+    n = snprintf(out, cap, "%s/%s.png", game_dir, entry_id);
+    return n >= 0 && (size_t)n < cap;
+}
+
+static int sml2_museum_read_tile_pixel(uint8_t level, uint8_t tile,
+                                       int px, int py, uint8_t attributes)
+{
+    if (tile < 0x80u) return 0;
+    const unsigned cache_tile = (unsigned)(tile - 0x80u);
+    int source_bank;
+    uint16_t source_address;
+    if (cache_tile < 48u) {
+        source_bank = 0x1B;
+        source_address = (uint16_t)(0x7000u + cache_tile * 16u);
+    } else if (cache_tile < 104u) {
+        const uint16_t table = (uint16_t)(0x362Au + (unsigned)level * 4u);
+        source_bank = cart_rom_read_bank(0, table);
+        source_address = (uint16_t)(
+            (uint16_t)cart_rom_read_bank(0, (uint16_t)(table + 2u)) |
+            ((uint16_t)cart_rom_read_bank(0, (uint16_t)(table + 3u)) << 8));
+        source_address = (uint16_t)(source_address + (cache_tile - 48u) * 16u);
+    } else {
+        source_bank = 7;
+        source_address = (uint16_t)(0x6A00u + (cache_tile - 104u) * 16u);
+    }
+    const CartInfo *info = cart_info();
+    if (!info || source_bank < 0 || source_bank >= info->rom_banks ||
+        source_address < 0x4000u || source_address >= 0x8000u ||
+        (unsigned)source_address + 15u >= 0x8000u)
+        return 0;
+
+    if (attributes & 0x20u) px = 7 - px;
+    if (attributes & 0x40u) py = 7 - py;
+    const uint16_t row_address = (uint16_t)(source_address + (unsigned)py * 2u);
+    const uint8_t lo = cart_rom_read_bank(source_bank, row_address);
+    const uint8_t hi = cart_rom_read_bank(source_bank, (uint16_t)(row_address + 1u));
+    const unsigned bit = (unsigned)(7 - px);
+    return (int)(((lo >> bit) & 1u) | (((hi >> bit) & 1u) << 1));
+}
+
+static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
+                                      const char *entry_id)
+{
+    if (!entry_id || !entry_id[0] || level > 0x1Fu ||
+        cur_game != GAME_SML2 || rom_loaded_game() != GAME_SML2)
+        return 0;
+
+    char existing[1200], path[1200];
+    if (museum_sprite_asset_path(GAME_SML2, entry_id, existing, sizeof existing))
+        return 1;
+    if (!sml2_museum_asset_output(entry_id, path, sizeof path)) return 0;
+
+    const CartInfo *info = cart_info();
+    if (!info || info->rom_banks <= 0x1Bu) return 0;
+    const unsigned profile = level < 0x0Au ? 0u : 1u;
+    const uint16_t type_table = (uint16_t)(profile == 0 ? 0x4B61u : 0x4BC1u);
+    const uint8_t lookup_id = cart_rom_read_bank(2,
+        (uint16_t)(type_table + object_type));
+    const unsigned lookup_count = profile == 0 ? 0xA8u : 0xE4u;
+    if (lookup_id >= lookup_count) return 0;
+
+    const uint16_t pointer_table = (uint16_t)(profile == 0 ? 0x40B1u : 0x4F11u);
+    const uint16_t pointer_entry = (uint16_t)(pointer_table + lookup_id * 2u);
+    const uint16_t map_ptr = (uint16_t)(
+        (uint16_t)cart_rom_read_bank(3, pointer_entry) |
+        ((uint16_t)cart_rom_read_bank(3, (uint16_t)(pointer_entry + 1u)) << 8));
+    if (map_ptr < 0x4000u || map_ptr >= 0x8000u) return 0;
+
+    uint8_t pieces[40][4];
+    unsigned piece_count = 0;
+    int terminated = 0;
+    for (unsigned i = 0; i < 40u; ++i) {
+        const unsigned address = (unsigned)map_ptr + i * 4u;
+        if (address + 3u >= 0x8000u) break;
+        for (unsigned j = 0; j < 4u; ++j)
+            pieces[i][j] = cart_rom_read_bank(3, (uint16_t)(address + j));
+        if (pieces[i][0] == 0x80u) {
+            terminated = 1;
+            break;
+        }
+        ++piece_count;
+    }
+    if (!terminated || piece_count == 0u) return 0;
+
+    int min_x = 127, min_y = 127, max_x = -128, max_y = -128;
+    for (unsigned i = 0; i < piece_count; ++i) {
+        const int py = pieces[i][0] < 0x80u ?
+            (int)pieces[i][0] : (int)pieces[i][0] - 256;
+        const int px = pieces[i][1] < 0x80u ?
+            (int)pieces[i][1] : (int)pieces[i][1] - 256;
+        if (px < min_x) min_x = px;
+        if (py < min_y) min_y = py;
+        if (px + 8 > max_x) max_x = px + 8;
+        if (py + 8 > max_y) max_y = py + 8;
+    }
+    const int width = max_x - min_x, height = max_y - min_y;
+    /* Reject corrupt mappings rather than caching a huge or mostly blank image. */
+    if (width <= 0 || height <= 0 || width > 128 || height > 128) return 0;
+
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(
+        0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
+    if (!surface) return 0;
+    const Uint32 transparent = SDL_MapRGBA(surface->format, 0, 0, 0, 0);
+    SDL_FillRect(surface, NULL, transparent);
+    const Uint32 shades[4] = {
+        transparent,
+        SDL_MapRGBA(surface->format, 245, 245, 245, 255),
+        SDL_MapRGBA(surface->format, 174, 174, 174, 255),
+        SDL_MapRGBA(surface->format, 92, 92, 92, 255)
+    };
+
+    for (unsigned i = 0; i < piece_count; ++i) {
+        const uint8_t tile = pieces[i][2];
+        if (tile < 0x80u) continue;
+        const int piece_y = pieces[i][0] < 0x80u ?
+            (int)pieces[i][0] : (int)pieces[i][0] - 256;
+        const int piece_x = pieces[i][1] < 0x80u ?
+            (int)pieces[i][1] : (int)pieces[i][1] - 256;
+        for (int py = 0; py < 8; ++py) {
+            for (int px = 0; px < 8; ++px) {
+                const int color = sml2_museum_read_tile_pixel(
+                    level, tile, px, py, pieces[i][3]);
+                if (color == 0) continue;
+                const int out_x = piece_x - min_x + px;
+                const int out_y = piece_y - min_y + py;
+                if (out_x < 0 || out_x >= width || out_y < 0 || out_y >= height)
+                    continue;
+                Uint32 *row = (Uint32 *)((Uint8 *)surface->pixels +
+                    (size_t)out_y * (size_t)surface->pitch);
+                row[out_x] = shades[color & 3];
+            }
+        }
+    }
+    const int ok = IMG_SavePNG(surface, path) == 0;
+    SDL_FreeSurface(surface);
+    if (!ok) {
+        remove(path);
+        return 0;
+    }
+    return 1;
 }
 
 static int museum_sml_asset_output(const char *entry_id, char *out, size_t cap)
