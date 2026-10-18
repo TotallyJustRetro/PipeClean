@@ -2046,7 +2046,7 @@ static void sml2_museum_capture_discovered_sprites(void)
             continue;
         /* Try alternate course/type mappings when one ROM mapping is absent. */
         (void)sml2_museum_capture_sprite(entry->level, entry->object_type,
-                                         entry->museum_id);
+                                         entry->museum_id, 0xFFu, 0xFFu);
     }
 
     /* Scripted bosses are not part of the ordinary course spawn lists, but
@@ -2078,7 +2078,7 @@ static void sml2_museum_capture_discovered_sprites(void)
                                      path, sizeof path))
             continue;
         (void)sml2_museum_capture_sprite(entry->level, entry->object_type,
-                                         entry->museum_id);
+                                         entry->museum_id, 0xFFu, 0xFFu);
     }
 
     /* Power-up and extra-life discoveries are tracked independently from
@@ -2101,7 +2101,7 @@ static void sml2_museum_capture_discovered_sprites(void)
                                      path, sizeof path))
             continue;
         (void)sml2_museum_capture_sprite(entry->level, entry->object_type,
-                                         entry->museum_id);
+                                         entry->museum_id, 0xFFu, 0xFFu);
     }
 }
 
