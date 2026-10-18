@@ -39,6 +39,15 @@ uint8_t cart_rom_read_bank(int bank, uint16_t address)
     return offset < rom_len ? rom[offset] : 0xFF;
 }
 
+/* Read from the cartridge's fixed 0000-3FFF ROM window. This is a physical
+ * bank-0 read for tables that live outside the switchable 4000-7FFF window. */
+uint8_t cart_rom_read_fixed(uint16_t address)
+{
+    if (!rom || address >= 0x4000u || (size_t)address >= rom_len)
+        return 0xFF;
+    return rom[address];
+}
+
 static size_t ram_size_from_code(int c)
 {
     static const size_t t[6] = {0, 2048, 8192, 32768, 131072, 65536};
