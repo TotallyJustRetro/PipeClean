@@ -886,6 +886,30 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
     m3d_screen_quad(x + 5.0f, y + h - 19.0f, x + w - 5.0f, y + h - 18.0f,
                     5.34f, HEX(0x38200F), layout);
 
+    /* Discovered objects sit on an individual brass-and-walnut display riser.
+       The SDL artwork is drawn afterward, so transparent pixel-art edges can
+       overlap the stand naturally without being baked into a flat sprite card. */
+    if (!locked) {
+        const float stand_left = x + 22.0f;
+        const float stand_right = x + w - 22.0f;
+        const float stand_top = y + h - 40.0f;
+        m3d_screen_prism(stand_left - 2.0f, stand_top + 4.0f,
+                         stand_right + 2.0f, y + h - 28.0f,
+                         5.285f, 4.62f, HEX(0x3A1C0D), layout);
+        m3d_screen_prism(stand_left, stand_top + 2.0f,
+                         stand_right, y + h - 31.0f,
+                         5.32f, 4.78f, HEX(0x7E4B25), layout);
+        m3d_screen_prism(stand_left + 2.0f, stand_top,
+                         stand_right - 2.0f, stand_top + 4.0f,
+                         5.35f, 4.94f, HEX(0xC18B45), layout);
+        m3d_screen_quad(stand_left + 4.0f, stand_top + 0.8f,
+                        stand_right - 4.0f, stand_top + 1.6f,
+                        5.375f, HEX(0xF7D68D), layout);
+        m3d_screen_quad(stand_left + 3.0f, y + h - 30.5f,
+                        stand_right - 3.0f, y + h - 29.7f,
+                        5.34f, HEX(0xE1B56C), layout);
+    }
+
     /* Undiscovered items have an actual recessed roller shutter in the pocket. */
     if (locked) {
         const float shutter_x = x + 14.0f, shutter_w = w - 28.0f;
@@ -1057,6 +1081,10 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                      3.10f, 2.54f, HEX(0x1D0D06), layout);
 
     int total_rows = (layout->visible_entries + 2) / 3;
+    /* Keep the physical cabinet dressed even when a filter currently exposes
+       fewer than twelve records. Empty positions are closed, locked specimen
+       drawers instead of bare vertical voids beneath the last populated row. */
+    if (total_rows < 4) total_rows = 4;
     for (int row = 0; row < total_rows; ++row) {
         const float sy = grid_y + row * row_step + tile_h - layout->scroll;
         if (sy < grid_y - 8.0f || sy > grid_y + grid_h) continue;
@@ -1088,8 +1116,14 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
             if (ty + tile_h < grid_y || ty > grid_y + grid_h) continue;
             for (int col = 0; col < 3; ++col) {
                 const int index = row * 3 + col;
-                if (index >= layout->visible_entries) break;
                 const float tx = grid_x + col * (tile_w + gap_x);
+                if (index >= layout->visible_entries) {
+                    if (layout->visible_entries > 0 &&
+                        layout->visible_entries < 12 && layout->scroll < 0.01f) {
+                        m3d_screen_cubby(tx, ty, tile_w, tile_h, 1, layout);
+                    }
+                    continue;
+                }
                 const int locked = layout->entry_locked ? layout->entry_locked[index] : 0;
                 m3d_screen_cubby(tx, ty, tile_w, tile_h, locked, layout);
             }
