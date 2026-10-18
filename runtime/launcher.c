@@ -4780,6 +4780,30 @@ static int museum_cabinet_chip(float x, float y, float w, float h,
     return clicked;
 }
 
+static int museum_shelf_filter_chip(float x, float y, float w, float h,
+                                    const char *label, int selected, int accent_kind)
+{
+    int over = 0;
+    int clicked = clickable(x, y, w, h, &over);
+
+    /* The button body is already modeled by museum3d.c. Keep this layer for
+       only hover/selection feedback and text so it can't flatten the 3D keys. */
+    if (selected || over) {
+        uint32_t edge = selected ? HEX(0xF5D79A) : HEX(0xC08A52);
+        ui_stroke(x + 1.0f, y + 1.0f, w - 2.0f, h - 2.0f, 3.0f,
+                  selected ? 1.6f : 1.0f, edge);
+    }
+    if (selected) {
+        uint32_t marker = accent_kind == 0 ? HEX(0xBEE7A0) :
+                          accent_kind == 1 ? HEX(0x9DBBFA) : HEX(0xF0C37D);
+        ui_rrect(x + 4.0f, y + 5.0f, 2.0f, h - 10.0f, 1.0f, marker);
+    }
+    ui_text_c(F_BOLD, w < 100.0f ? 8.0f : 9.0f,
+              x + w * 0.5f, y + (h - 12.0f) * 0.5f,
+              HEX(0xFFF0D4), label ? label : "");
+    return clicked;
+}
+
 static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                                     float x, float y, float w, float h,
                                     int found, int selected)
@@ -5028,11 +5052,7 @@ static void tab_museum(float x, float y)
     /* The right cabinet backboard and its beveled surround are rendered in 3D. */
     const float shelf_plaque_w = 154.0f;
     const float shelf_plaque_x = right_x + (right_w - shelf_plaque_w) * 0.5f;
-    ui_shadow(shelf_plaque_x, body_y + 10, shelf_plaque_w, 25, 4, 2, RGBA(0, 0, 0, 100));
-    ui_vgrad(shelf_plaque_x, body_y + 10, shelf_plaque_w, 25, HEX(0xE7C47B), HEX(0x91602B));
-    ui_stroke(shelf_plaque_x, body_y + 10, shelf_plaque_w, 25, 4, 1, HEX(0x4A2810));
-    ui_line(shelf_plaque_x + 8, body_y + 12, shelf_plaque_x + shelf_plaque_w - 8,
-            body_y + 12, 1, HEX(0xFFF0C0));
+    /* The title plate is 3D geometry in museum3d.c; render only live text. */
     ui_text_c(F_BOLD, 11, shelf_plaque_x + shelf_plaque_w * 0.5f,
               body_y + 16, HEX(0x3F210E), "COLLECTION SHELF");
     char progress[64];
@@ -5041,9 +5061,9 @@ static void tab_museum(float x, float y)
     const float filter_x = right_x + 9, filter_y = body_y + 40;
     const float filter_w = (right_w - 27 - 8.0f) / 3.0f;
     for (int f = 0; f < 3; ++f) {
-        if (museum_cabinet_chip(filter_x + f * (filter_w + 4.0f), filter_y,
-                                filter_w, 24, filter_labels[f], museum_filter_mode == f,
-                                f == 0 ? 0 : 1)) {
+        if (museum_shelf_filter_chip(filter_x + f * (filter_w + 4.0f), filter_y,
+                                     filter_w, 24, filter_labels[f],
+                                     museum_filter_mode == f, f == 0 ? 0 : 1)) {
             museum_filter_mode = f;
             museum_scroll = 0.0f;
         }

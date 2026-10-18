@@ -760,6 +760,51 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
 
     if (!layout->draw_cubby_grid) return;
 
+    /* A single physical fascia supports the shelf title and progress counter.
+       The inset brass sign and filter keys have their own extrusion, not a
+       flat gradient that floats over the cabinet. Text remains in the UI layer. */
+    const float fascia_x = panel_x + 4.0f;
+    const float fascia_y = panel_y + 8.0f;
+    const float fascia_w = panel_w - 8.0f;
+    const float fascia_h = 28.0f;
+    m3d_screen_prism(fascia_x, fascia_y, fascia_x + fascia_w, fascia_y + fascia_h,
+                     5.13f, 4.22f, HEX(0x6B3E21), layout);
+    m3d_screen_quad(fascia_x + 4.0f, fascia_y + 1.4f,
+                    fascia_x + fascia_w - 4.0f, fascia_y + 2.4f,
+                    5.155f, HEX(0xD9A15E), layout);
+    m3d_screen_quad(fascia_x + 4.0f, fascia_y + fascia_h - 2.0f,
+                    fascia_x + fascia_w - 4.0f, fascia_y + fascia_h - 1.0f,
+                    5.155f, HEX(0x3A1E10), layout);
+
+    const float plaque_w = 154.0f;
+    const float plaque_x = panel_x + (panel_w - plaque_w) * 0.5f;
+    const float plaque_y = panel_y + 10.0f;
+    m3d_screen_prism(plaque_x - 3.0f, plaque_y, plaque_x + plaque_w + 3.0f,
+                     plaque_y + 24.0f, 5.19f, 4.52f, HEX(0xA9763B), layout);
+    m3d_screen_prism(plaque_x + 2.0f, plaque_y + 2.5f,
+                     plaque_x + plaque_w - 2.0f, plaque_y + 21.5f,
+                     5.225f, 4.82f, HEX(0xD7B46D), layout);
+    m3d_screen_quad(plaque_x + 7.0f, plaque_y + 4.0f,
+                    plaque_x + plaque_w - 7.0f, plaque_y + 5.0f,
+                    5.24f, HEX(0xF8E0A5), layout);
+
+    /* Three raised wooden filter keys sit exactly behind their clickable labels. */
+    const float filter_x = panel_x + 9.0f;
+    const float filter_y = panel_y + 40.0f;
+    const float filter_w = (panel_w - 35.0f) / 3.0f;
+    for (int filter = 0; filter < 3; ++filter) {
+        const float key_x = filter_x + (filter_w + 4.0f) * (float)filter;
+        m3d_screen_prism(key_x, filter_y, key_x + filter_w, filter_y + 24.0f,
+                         5.16f, 4.40f,
+                         filter == 0 ? HEX(0x79502E) : HEX(0x57331E), layout);
+        m3d_screen_quad(key_x + 3.0f, filter_y + 1.4f,
+                        key_x + filter_w - 3.0f, filter_y + 2.3f,
+                        5.185f, HEX(0xD1A06A), layout);
+        m3d_screen_quad(key_x + 3.0f, filter_y + 21.7f,
+                        key_x + filter_w - 3.0f, filter_y + 22.6f,
+                        5.185f, HEX(0x31190D), layout);
+    }
+
     /* Outer shelf carcass: actual top/side/bottom returns and a recessed backboard. */
     m3d_screen_prism(grid_x - 4.0f, grid_y - 4.0f, grid_x + grid_w + 4.0f, grid_y,
                      5.04f, 3.76f, HEX(0xA77643), layout);
