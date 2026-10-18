@@ -41,6 +41,10 @@ static uint32_t m3d_pixels[M3D_PIXELS];
 static float m3d_depth[M3D_PIXELS];
 static SDL_Texture *m3d_texture;
 static SDL_Renderer *m3d_renderer;
+/* Temporary model-space translation used for the track and moving train.
+   Applied at projection time so normals and model-local geometry stay intact. */
+static float m3d_translate_x;
+static float m3d_translate_z;
 
 static const float m3d_cam_y = 4.6f;
 static const float m3d_cam_z = 10.5f;
@@ -108,6 +112,8 @@ static void m3d_clear(void)
 
 static int m3d_project(M3DVec3 p, M3DProjected *out)
 {
+    p.x += m3d_translate_x;
+    p.z += m3d_translate_z;
     float dy = p.y - m3d_cam_y;
     float dz = p.z - m3d_cam_z;
     float view_y = dy * m3d_pitch_cos - dz * m3d_pitch_sin;
@@ -352,34 +358,119 @@ static void m3d_question_block(float cx, float y, float cz, float size, float bo
     m3d_sphere(cx, y - 0.16f, cz + h + 0.03f, 0.045f, HEX(0xFFF4C8), 7, 4);
 }
 
-static void m3d_train(float elapsed)
+static void m3d_cylinder_x(float x0, float cy, float cz, float radius,
+                            float length, uint32_t color, int segments)
 {
-    float bob = sinf(elapsed * 1.6f) * 0.025f;
-    /* Engine and cab: multi-part solid geometry with wheels and a brass lamp. */
-    m3d_box(4.6f, 0.28f + bob, 2.7f, 5.65f, 0.78f + bob, 3.25f, HEX(0xC94B31));
-    m3d_cylinder_y(4.98f, 0.65f + bob, 2.97f, 0.34f, 0.38f, HEX(0xE3A33A), 12);
-    m3d_box(5.34f, 0.58f + bob, 2.78f, 5.69f, 1.25f + bob, 3.17f, HEX(0xE7B948));
-    m3d_box(5.42f, 0.84f + bob, 3.18f, 5.61f, 1.10f + bob, 3.205f, HEX(0x4D7890));
-    m3d_cylinder_y(5.45f, 1.24f + bob, 2.97f, 0.12f, 0.28f, HEX(0x8A4924), 10);
-    m3d_sphere(5.65f, 0.50f + bob, 3.27f, 0.095f, HEX(0xFFE5A0), 8, 4);
-    for (int i = 0; i < 3; ++i) {
-        float wx = 4.85f + i * 0.35f;
-        m3d_sphere(wx, 0.29f + bob, 3.29f, 0.17f, HEX(0x34302A), 10, 6);
-        m3d_sphere(wx, 0.29f + bob, 3.32f, 0.075f, HEX(0xB3A28A), 8, 5);
-    }
-    /* Two little carriages behind the engine, each with a raised rim. */
-    for (int car = 0; car < 2; ++car) {
-        float cx = 3.45f - car * 1.10f;
-        uint32_t paint = car == 0 ? HEX(0x2D9D55) : HEX(0x3975C7);
-        m3d_box(cx - 0.43f, 0.32f + bob, 2.78f,
-                cx + 0.43f, 0.75f + bob, 3.20f, paint);
-        m3d_box(cx - 0.47f, 0.70f + bob, 2.74f,
-                cx + 0.47f, 0.80f + bob, 3.24f, HEX(0xE4B653));
-        m3d_sphere(cx - 0.22f, 0.29f + bob, 3.24f, 0.14f, HEX(0x34302A), 9, 5);
-        m3d_sphere(cx + 0.22f, 0.29f + bob, 3.24f, 0.14f, HEX(0x34302A), 9, 5);
+    float x1 = x0 + length;
+    M3DVec3 cap0 = m3d_v(x0, cy, cz);
+    M3DVec3 cap1 = m3d_v(x1, cy, cz);
+    for (int i = 0; i < segments; ++i) {
+        float a0 = (float)i * 6.28318530718f / (float)segments;
+        float a1 = (float)(i + 1) * 6.28318530718f / (float)segments;
+        M3DVec3 p00 = m3d_v(x0, cy + cosf(a0) * radius, cz + sinf(a0) * radius);
+        M3DVec3 p01 = m3d_v(x0, cy + cosf(a1) * radius, cz + sinf(a1) * radius);
+        M3DVec3 p10 = m3d_v(x1, cy + cosf(a0) * radius, cz + sinf(a0) * radius);
+        M3DVec3 p11 = m3d_v(x1, cy + cosf(a1) * radius, cz + sinf(a1) * radius);
+        float face_light = 0.88f + 0.12f * (0.5f + 0.5f * cosf(a0));
+        m3d_quad(p00, p01, p11, p10, m3d_tint(color, face_light));
+        m3d_triangle(cap0, p01, p00, m3d_tint(color, 0.74f));
+        m3d_triangle(cap1, p10, p11, m3d_tint(color, 1.05f));
     }
 }
 
+static void m3d_train_wheel(float cx, float cy, float cz, float radius,
+                            float rotation)
+{
+    const float half_depth = 0.045f;
+    const float z0 = cz - half_depth;
+    const float z1 = cz + half_depth;
+    const int segments = 14;
+    M3DVec3 front_center = m3d_v(cx, cy, z1);
+
+    for (int i = 0; i < segments; ++i) {
+        float a0 = (float)i * 6.28318530718f / (float)segments;
+        float a1 = (float)(i + 1) * 6.28318530718f / (float)segments;
+        M3DVec3 b0 = m3d_v(cx + cosf(a0) * radius, cy + sinf(a0) * radius, z0);
+        M3DVec3 b1 = m3d_v(cx + cosf(a1) * radius, cy + sinf(a1) * radius, z0);
+        M3DVec3 f0 = m3d_v(cx + cosf(a0) * radius, cy + sinf(a0) * radius, z1);
+        M3DVec3 f1 = m3d_v(cx + cosf(a1) * radius, cy + sinf(a1) * radius, z1);
+        m3d_quad(b0, b1, f1, f0, m3d_tint(HEX(0x34312C),
+                                       0.88f + 0.12f * (0.5f + 0.5f * cosf(a0))));
+        m3d_triangle(front_center, f0, f1, HEX(0x51483D));
+    }
+
+    /* Four thin spokes rotate with the wheels; the hub sits just proud of the
+       wheel face, so the wheels read as solid parts instead of floating balls. */
+    for (int i = 0; i < 4; ++i) {
+        float a = rotation + (float)i * 1.57079632679f;
+        float inner = radius * 0.19f, outer = radius * 0.72f;
+        float half_width = radius * 0.075f;
+        float ix = cosf(a) * inner, iy = sinf(a) * inner;
+        float ox = cosf(a) * outer, oy = sinf(a) * outer;
+        float px = -sinf(a) * half_width, py = cosf(a) * half_width;
+        float face_z = z1 + 0.004f;
+        m3d_quad(m3d_v(cx + ix + px, cy + iy + py, face_z),
+                 m3d_v(cx + ox + px, cy + oy + py, face_z),
+                 m3d_v(cx + ox - px, cy + oy - py, face_z),
+                 m3d_v(cx + ix - px, cy + iy - py, face_z),
+                 HEX(0xB5A48A));
+    }
+    m3d_sphere(cx, cy, z1 + 0.012f, radius * 0.20f,
+               HEX(0xD0B98E), 7, 4);
+}
+
+static void m3d_train(float elapsed)
+{
+    /* The train moves along the full rear track. Both ends of the loop keep
+       the whole model off-screen, avoiding a visible teleport at the wrap. */
+    float travel = -13.0f + fmodf(elapsed * 0.65f, 26.0f);
+    const float far_track_z = -5.2f;
+    m3d_translate_x = travel;
+    m3d_translate_z = far_track_z;
+
+    /* Two coupled carriages behind the locomotive. The wheels line up with
+       both rails and meet their tops at y=0.14; there is no artificial bob. */
+    for (int car = 0; car < 2; ++car) {
+        float cx = 0.62f + (float)car * 0.88f;
+        uint32_t paint = car == 0 ? HEX(0x2D9D55) : HEX(0x3975C7);
+        m3d_box(cx - 0.43f, 0.31f, 3.15f,
+                cx + 0.43f, 0.73f, 3.83f, paint);
+        m3d_box(cx - 0.47f, 0.67f, 3.12f,
+                cx + 0.47f, 0.78f, 3.86f, HEX(0xE4B653));
+        m3d_box(cx - 0.34f, 0.40f, 3.835f,
+                cx + 0.34f, 0.62f, 3.852f, HEX(0x6C9DB1));
+        for (int axle = 0; axle < 2; ++axle) {
+            float wx = cx + (axle == 0 ? -0.25f : 0.25f);
+            m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, elapsed * 3.2f);
+            m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, elapsed * 3.2f);
+        }
+    }
+
+    /* A small visible coupler joins the rear carriage to the locomotive. */
+    m3d_box(1.84f, 0.35f, 3.40f, 2.16f, 0.43f, 3.58f, HEX(0x51483D));
+    m3d_box(2.12f, 0.29f, 3.15f, 3.40f, 0.40f, 3.83f, HEX(0x8A3927));
+
+    /* Rounded boiler, cab, window, smokestack, cowcatcher, and brass lamp. */
+    m3d_cylinder_x(2.08f, 0.53f, 3.49f, 0.28f, 1.12f, HEX(0xC94B31), 16);
+    m3d_cylinder_x(3.08f, 0.53f, 3.49f, 0.292f, 0.12f, HEX(0xE7B948), 16);
+    m3d_box(3.00f, 0.57f, 3.17f, 3.66f, 1.23f, 3.82f, HEX(0xE7B948));
+    m3d_box(3.10f, 0.82f, 3.832f, 3.53f, 1.08f, 3.848f, HEX(0x4D7890));
+    m3d_box(3.10f, 0.82f, 3.849f, 3.53f, 0.86f, 3.856f, HEX(0xA5D0D8));
+    m3d_cylinder_y(2.43f, 0.70f, 3.49f, 0.12f, 0.28f, HEX(0x8A4924), 12);
+    m3d_cylinder_y(2.43f, 0.95f, 3.49f, 0.15f, 0.07f, HEX(0xD8A04A), 12);
+    m3d_box(3.43f, 0.23f, 3.28f, 3.78f, 0.36f, 3.70f, HEX(0x6A3C28));
+    m3d_sphere(3.73f, 0.51f, 3.49f, 0.095f, HEX(0xFFE5A0), 8, 5);
+
+    /* Leading engine axles sit on both rails as well, not a single row of balls. */
+    for (int axle = 0; axle < 3; ++axle) {
+        float wx = 2.30f + (float)axle * 0.43f;
+        m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, elapsed * 3.2f);
+        m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, elapsed * 3.2f);
+    }
+
+    m3d_translate_x = 0.0f;
+    m3d_translate_z = 0.0f;
+}
 
 /*
  * Physical hardwood cabinet that sits behind the interactive SDL panels.
@@ -438,18 +529,18 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     HEX(0x704126), layout);
 
     /* Thick front stiles define the open face of the cabinet. */
-    m3d_screen_quad(left, top, left + 7.0f, bottom, 4.96f,
-                    HEX(0x87532E), layout);
-    m3d_screen_quad(right - 7.0f, top, right, bottom, 4.96f,
-                    HEX(0x4A2616), layout);
+    m3d_screen_prism(left, top, left + 7.0f, bottom,
+                     5.06f, 3.55f, HEX(0x87532E), layout);
+    m3d_screen_prism(right - 7.0f, top, right, bottom,
+                     5.06f, 3.55f, HEX(0x4A2616), layout);
     m3d_screen_quad(left + 1.0f, top + 5.0f, left + 2.5f, bottom - 8.0f,
                     4.99f, HEX(0xD3A15F), layout);
     m3d_screen_quad(right - 2.5f, top + 5.0f, right - 1.0f, bottom - 8.0f,
                     4.99f, HEX(0xA8733C), layout);
 
     /* The top crown is a separate extrusion, rather than a frame drawn over UI. */
-    m3d_screen_quad(left, top, right, top + 6.0f, 4.99f,
-                    HEX(0x925B32), layout);
+    m3d_screen_prism(left, top, right, top + 6.0f,
+                     5.04f, 3.86f, HEX(0x925B32), layout);
     m3d_screen_face(left, top, 4.99f, right, top, 4.99f,
                     right + 5.0f, top - 5.5f, 4.62f,
                     left - 5.0f, top - 5.5f, 4.62f,
@@ -463,8 +554,8 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     right + 5.0f, bottom + 8.0f, 4.48f,
                     left - 5.0f, bottom + 8.0f, 4.48f,
                     HEX(0x412012), layout);
-    m3d_screen_quad(left - 2.0f, bottom - 7.0f, right + 2.0f, bottom + 2.0f,
-                    5.03f, HEX(0xB47C43), layout);
+    m3d_screen_prism(left - 2.0f, bottom - 7.0f, right + 2.0f, bottom + 2.0f,
+                     5.08f, 4.48f, HEX(0xB47C43), layout);
     m3d_screen_quad(left, bottom + 1.0f, right, bottom + 4.0f,
                     5.045f, HEX(0xE9C57C), layout);
     m3d_screen_quad(left + 75.0f, bottom + 7.0f, left + 130.0f, bottom + 17.0f,
@@ -637,10 +728,12 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
 
     /* Deep cabinet bay behind the shelves. The board is farther away than the
        rear walls, not another front-facing gradient placed over the cubbies. */
-    m3d_screen_quad(panel_x + 4.0f, panel_y + 9.0f, panel_x + panel_w - 12.0f,
-                    panel_y + body_h - 9.0f, 2.42f, HEX(0x4D2E1A), layout);
-    m3d_screen_quad(panel_x + 7.0f, panel_y + 11.0f, panel_x + panel_w - 15.0f,
-                    panel_y + body_h - 12.0f, 2.48f, HEX(0x241107), layout);
+    m3d_screen_prism(panel_x + 4.0f, panel_y + 9.0f,
+                     panel_x + panel_w - 12.0f, panel_y + body_h - 9.0f,
+                     3.02f, 2.36f, HEX(0x4D2E1A), layout);
+    m3d_screen_prism(panel_x + 7.0f, panel_y + 11.0f,
+                     panel_x + panel_w - 15.0f, panel_y + body_h - 12.0f,
+                     3.08f, 2.42f, HEX(0x241107), layout);
 
     /* Side and top/bottom pieces are extruded beams with visible returns. */
     m3d_screen_prism(panel_x, panel_y + 5.0f, panel_x + panel_w - 5.0f, panel_y + 9.0f,
@@ -673,8 +766,9 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                      5.04f, 3.76f, HEX(0x3A1D10), layout);
     m3d_screen_prism(grid_x - 4.0f, grid_y + grid_h, grid_x + grid_w + 4.0f, grid_y + grid_h + 4.0f,
                      5.04f, 3.76f, HEX(0x5A351E), layout);
-    m3d_screen_quad(grid_x - 1.0f, grid_y, grid_x + grid_w + 1.0f,
-                    grid_y + grid_h, 2.68f, HEX(0x1D0D06), layout);
+    m3d_screen_prism(grid_x - 1.0f, grid_y, grid_x + grid_w + 1.0f,
+                     grid_y + grid_h, 3.08f, 2.54f,
+                     HEX(0x1D0D06), layout);
 
     int total_rows = (layout->visible_entries + 2) / 3;
     for (int row = 0; row < total_rows; ++row) {
@@ -717,6 +811,8 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
 
 static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 {
+    m3d_translate_x = 0.0f;
+    m3d_translate_z = 0.0f;
     m3d_clear();
 
     /* Back wall and its panelled timber frame. */
@@ -772,14 +868,24 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_coin(-3.6f, 3.72f + sinf(elapsed * 1.7f) * 0.08f,
              0.2f, 0.47f, elapsed * 1.15f);
 
-    /* Track, sleeper bars, and moving multi-part toy train. */
-    m3d_box(3.0f, 0.025f, 3.38f, 8.5f, 0.09f, 3.65f, HEX(0x8A572F));
-    for (int i = 0; i < 24; ++i) {
-        float x = 2.8f + (float)i * 0.25f;
-        m3d_box(x, 0.04f, 3.19f, x + 0.06f, 0.15f, 3.84f, HEX(0xB17A49));
+    /* Full-width rear railway. It shares the train's world depth and sits
+       behind the display backboard and the green pipes, so the foreground
+       geometry naturally occludes it instead of letting it cut through props. */
+    m3d_translate_x = 0.0f;
+    m3d_translate_z = -5.2f;
+    for (int i = 0; i < 42; ++i) {
+        float x = -10.4f + (float)i * 0.5f;
+        m3d_box(x, -0.015f, 3.12f, x + 0.09f, 0.105f, 3.88f,
+                HEX(0xA17143));
+        m3d_box(x + 0.015f, 0.075f, 3.15f, x + 0.075f, 0.125f, 3.85f,
+                HEX(0x6B442B));
     }
-    m3d_box(2.8f, 0.09f, 3.22f, 8.6f, 0.14f, 3.28f, HEX(0xBFC0B8));
-    m3d_box(2.8f, 0.09f, 3.76f, 8.6f, 0.14f, 3.82f, HEX(0x6E7477));
+    m3d_box(-10.5f, 0.075f, 3.18f, 10.5f, 0.14f, 3.28f,
+            HEX(0xBFC0B8));
+    m3d_box(-10.5f, 0.075f, 3.72f, 10.5f, 0.14f, 3.82f,
+            HEX(0x6E7477));
+    m3d_translate_z = 0.0f;
+
     m3d_train(elapsed);
 
     /* Small brass exhibit lights hang high on each side of the room. */
