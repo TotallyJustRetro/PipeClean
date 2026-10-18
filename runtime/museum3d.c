@@ -1310,8 +1310,10 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     if (layout) m3d_museum_grid(layout);
 
     /* Physical green pipe models sit beside the display housing. */
-    m3d_pipe(-6.65f, 0.80f);
-    m3d_pipe(6.65f, 0.80f);
+    /* Pull the framing pipes slightly into view so the side props read
+       as a deliberate frame around the collection cabinet at 1100x720. */
+    m3d_pipe(-6.10f, 0.80f);
+    m3d_pipe(6.10f, 0.80f);
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
     m3d_box(-7.3f, 0.03f, 1.2f, -5.45f, 0.48f, 2.7f, HEX(0x8C6038));
@@ -1335,20 +1337,25 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
        track and train together in world Y so they stay on one rail plane while
        the cabinet and side pipes depth-occlude them instead of being crossed
        in front of the shelf. */
-    const float train_scale = 0.16f;
+    const float train_scale = 0.22f;
     const float rail_height = 4.15f;
+    const float rail_gauge = 0.27f * train_scale;
+    const float tie_half_width = rail_gauge + 0.045f;
     m3d_translate_x = 0.0f;
     m3d_translate_y = rail_height;
     m3d_translate_z = -5.2f;
-    /* Fine ties and close-set rails match the small toy-scale vehicle. */
+    /* Fine ties and close-set rails match the scaled-up toy-scale vehicle. */
     for (int i = 0; i < 84; ++i) {
         float x = -10.4f + (float)i * 0.25f;
-        m3d_box(x, -0.015f, 3.405f, x + 0.08f, 0.105f, 3.575f,
+        m3d_box(x, -0.015f, 3.49f - tie_half_width,
+                x + 0.08f, 0.105f, 3.49f + tie_half_width,
                 HEX(0xA17143));
     }
-    m3d_box(-10.5f, 0.075f, 3.437f, 10.5f, 0.14f, 3.462f,
+    m3d_box(-10.5f, 0.075f, 3.49f - rail_gauge - 0.0125f,
+            10.5f, 0.14f, 3.49f - rail_gauge + 0.0125f,
             HEX(0xBFC0B8));
-    m3d_box(-10.5f, 0.075f, 3.518f, 10.5f, 0.14f, 3.543f,
+    m3d_box(-10.5f, 0.075f, 3.49f + rail_gauge - 0.0125f,
+            10.5f, 0.14f, 3.49f + rail_gauge + 0.0125f,
             HEX(0x6E7477));
     m3d_translate_z = 0.0f;
 
