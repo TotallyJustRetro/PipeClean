@@ -826,6 +826,66 @@ static void m3d_screen_gold_plate(float x, float y, float width, float height,
     }
 }
 
+/* Raised wooden surround for the parchment Field Guide. The SDL paper is
+   still rendered afterward, but these extruded rails remain visible around it
+   and share the same camera/depth buffer as the collection shelf. */
+static void m3d_field_guide_frame(const M3DMuseumLayout *layout)
+{
+    if (!layout) return;
+    const float x = layout->museum_x + 1.0f;
+    const float y = layout->museum_y + 63.0f;
+    const float w = 450.0f, h = 413.0f;
+
+    m3d_screen_quad(x - 2.0f, y - 2.0f, x + w + 2.0f, y + h + 2.0f,
+                    3.30f, HEX(0x2A1308), layout);
+
+    /* Outer dark reveal and the warm beveled hardwood face. */
+    m3d_screen_prism(x - 1.0f, y - 1.0f, x + w + 1.0f, y + 8.0f,
+                     5.09f, 3.94f, HEX(0x3D1E0E), layout);
+    m3d_screen_prism(x, y, x + w, y + 6.0f,
+                     5.13f, 4.16f, HEX(0x8A572F), layout);
+    m3d_screen_prism(x + 2.0f, y + 1.0f, x + w - 2.0f, y + 3.2f,
+                     5.155f, 4.40f, HEX(0xBD874D), layout);
+    m3d_screen_quad(x + 7.0f, y + 1.6f, x + w - 7.0f, y + 2.3f,
+                    5.18f, HEX(0xF0C982), layout);
+    m3d_screen_quad(x + 8.0f, y + 4.4f, x + w - 8.0f, y + 5.1f,
+                    5.18f, HEX(0x47230F), layout);
+
+    m3d_screen_prism(x - 1.0f, y + h - 8.0f, x + w + 1.0f, y + h + 1.0f,
+                     5.09f, 3.94f, HEX(0x32180B), layout);
+    m3d_screen_prism(x, y + h - 6.0f, x + w, y + h,
+                     5.13f, 4.16f, HEX(0x704222), layout);
+    m3d_screen_prism(x + 2.0f, y + h - 3.2f, x + w - 2.0f, y + h - 1.0f,
+                     5.155f, 4.40f, HEX(0xA8733D), layout);
+    m3d_screen_quad(x + 7.0f, y + h - 2.3f, x + w - 7.0f, y + h - 1.6f,
+                    5.18f, HEX(0xE7BD78), layout);
+
+    m3d_screen_prism(x - 1.0f, y + 7.0f, x + 8.0f, y + h - 7.0f,
+                     5.09f, 3.94f, HEX(0x744525), layout);
+    m3d_screen_prism(x, y + 8.0f, x + 6.0f, y + h - 8.0f,
+                     5.13f, 4.16f, HEX(0xA16B3B), layout);
+    m3d_screen_quad(x + 1.3f, y + 15.0f, x + 2.0f, y + h - 15.0f,
+                    5.18f, HEX(0xE4B774), layout);
+
+    m3d_screen_prism(x + w - 8.0f, y + 7.0f, x + w + 1.0f, y + h - 7.0f,
+                     5.09f, 3.94f, HEX(0x32180D), layout);
+    m3d_screen_prism(x + w - 6.0f, y + 8.0f, x + w, y + h - 8.0f,
+                     5.13f, 4.16f, HEX(0x784A28), layout);
+    m3d_screen_quad(x + w - 2.0f, y + 15.0f, x + w - 1.3f, y + h - 15.0f,
+                    5.18f, HEX(0xB27C44), layout);
+
+    /* Small brass corner blocks finish the joinery without touching the
+       clickable area of the header, specimen window, or field notes. */
+    for (int side = 0; side < 2; ++side) {
+        const float cx = side ? x + w - 4.0f : x + 2.0f;
+        for (int row = 0; row < 2; ++row) {
+            const float cy = row ? y + h - 5.0f : y + 2.0f;
+            m3d_screen_quad(cx, cy, cx + 2.0f, cy + 2.0f,
+                            5.19f, HEX(0xE6BE78), layout);
+        }
+    }
+}
+
 static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                              const M3DMuseumLayout *layout)
 {
@@ -1182,6 +1242,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 
     /* The museum furniture is real perspective geometry; controls are layered later. */
     m3d_cabinet(layout);
+    m3d_field_guide_frame(layout);
     if (layout) m3d_museum_grid(layout);
 
     /* Physical green pipe models sit beside the display housing. */
