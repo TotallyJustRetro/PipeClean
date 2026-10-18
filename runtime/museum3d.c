@@ -382,8 +382,11 @@ static void m3d_train_wheel(float cx, float cy, float cz, float radius,
                             float rotation)
 {
     const float half_depth = 0.045f;
-    const float z0 = cz - half_depth;
-    const float z1 = cz + half_depth;
+    /* The outer-side wheel face sits just proud of the chassis, while the
+       far-side wheel stays tucked behind it. Both still straddle their rail. */
+    const float z_bias = cz > 3.5f ? 0.04f : 0.0f;
+    const float z0 = cz - half_depth + z_bias;
+    const float z1 = cz + half_depth + z_bias;
     const int segments = 14;
     M3DVec3 front_center = m3d_v(cx, cy, z1);
 
@@ -534,9 +537,9 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
     m3d_screen_prism(right - 7.0f, top, right, bottom,
                      5.06f, 3.55f, HEX(0x4A2616), layout);
     m3d_screen_quad(left + 1.0f, top + 5.0f, left + 2.5f, bottom - 8.0f,
-                    4.99f, HEX(0xD3A15F), layout);
+                    5.075f, HEX(0xD3A15F), layout);
     m3d_screen_quad(right - 2.5f, top + 5.0f, right - 1.0f, bottom - 8.0f,
-                    4.99f, HEX(0xA8733C), layout);
+                    5.075f, HEX(0xA8733C), layout);
 
     /* The top crown is a separate extrusion, rather than a frame drawn over UI. */
     m3d_screen_prism(left, top, right, top + 6.0f,
@@ -546,7 +549,7 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     left - 5.0f, top - 5.5f, 4.62f,
                     HEX(0xD0A15D), layout);
     m3d_screen_quad(left + 9.0f, top + 1.2f, right - 9.0f, top + 2.2f,
-                    5.005f, HEX(0xF3D28A), layout);
+                    5.075f, HEX(0xF3D28A), layout);
 
     /* A weighted plinth projects beyond the face at the bottom. */
     m3d_screen_face(left - 2.0f, bottom - 7.0f, 4.97f,
@@ -557,7 +560,7 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
     m3d_screen_prism(left - 2.0f, bottom - 7.0f, right + 2.0f, bottom + 2.0f,
                      5.08f, 4.48f, HEX(0xB47C43), layout);
     m3d_screen_quad(left, bottom + 1.0f, right, bottom + 4.0f,
-                    5.045f, HEX(0xE9C57C), layout);
+                    5.105f, HEX(0xE9C57C), layout);
     m3d_screen_quad(left + 75.0f, bottom + 7.0f, left + 130.0f, bottom + 17.0f,
                     4.75f, HEX(0x3F2114), layout);
     m3d_screen_quad(right - 130.0f, bottom + 7.0f, right - 75.0f, bottom + 17.0f,
