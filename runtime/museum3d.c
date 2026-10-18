@@ -39,26 +39,26 @@ typedef struct { float x, y, invz, z; } M3DProjected;
 enum { M3D_TRACK_CONTROL_COUNT = 20, M3D_TRACK_PATH_STEPS = 5,
        M3D_TRACK_PATH_COUNT = M3D_TRACK_CONTROL_COUNT * M3D_TRACK_PATH_STEPS };
 static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
-    {-6.85f, 4.225f, -1.71f},
-    { 6.85f, 4.225f, -1.71f},
-    { 7.10f, 3.48f,  -1.65f},
-    { 7.32f, 1.82f,  -1.45f},
-    { 7.45f, 0.090f, -1.12f},
-    { 7.45f, 0.090f, -0.50f},
-    { 7.30f, 0.090f,  0.45f},
-    { 6.95f, 0.090f,  1.55f},
-    { 6.40f, 0.090f,  2.65f},
-    { 5.80f, 0.090f,  3.55f},
-    { 5.15f, 0.090f,  4.55f},
-    {-5.15f, 0.090f,  4.55f},
-    {-5.80f, 0.090f,  3.55f},
-    {-6.40f, 0.090f,  2.65f},
-    {-6.95f, 0.090f,  1.55f},
-    {-7.30f, 0.090f,  0.45f},
-    {-7.45f, 0.090f, -0.50f},
-    {-7.45f, 0.090f, -1.12f},
-    {-7.32f, 1.82f,  -1.45f},
-    {-7.10f, 3.48f,  -1.65f}
+    {-6.35f, 4.225f, -1.71f},
+    { 6.35f, 4.225f, -1.71f},
+    { 6.58f, 3.55f,  -1.55f},
+    { 6.72f, 2.25f,  -1.00f},
+    { 6.78f, 0.65f,  -0.35f},
+    { 6.80f, 0.090f,  0.15f},
+    { 6.95f, 0.090f,  0.45f},
+    { 6.85f, 0.090f,  1.45f},
+    { 6.65f, 0.090f,  2.55f},
+    { 5.85f, 0.090f,  3.40f},
+    { 4.00f, 0.090f,  4.85f},
+    {-4.00f, 0.090f,  4.85f},
+    {-5.85f, 0.090f,  3.40f},
+    {-6.65f, 0.090f,  2.55f},
+    {-6.85f, 0.090f,  1.45f},
+    {-6.95f, 0.090f,  0.45f},
+    {-6.80f, 0.090f,  0.15f},
+    {-6.78f, 0.65f,  -0.35f},
+    {-6.72f, 2.25f,  -1.00f},
+    {-6.58f, 3.55f,  -1.55f}
 };
 static M3DVec3 m3d_track_path[M3D_TRACK_PATH_COUNT];
 
@@ -445,19 +445,88 @@ static void m3d_coin(float cx, float cy, float cz, float radius, float angle)
                radius * 0.16f, HEX(0xFFF1B3), 8, 4);
 }
 
-static void m3d_toy_figure(float x, float z, float bob, uint32_t body, uint32_t hat)
+static void m3d_toad_figure(float x, float z, float bob)
 {
-    m3d_box(x - 0.46f, 0.02f, z - 0.38f, x + 0.46f, 0.26f, z + 0.38f,
-            HEX(0x8F5B2F));
-    m3d_box(x - 0.39f, 0.26f, z - 0.31f, x + 0.39f, 0.34f, z + 0.31f,
-            HEX(0xE6C17A));
-    m3d_sphere(x, 0.73f + bob, z, 0.36f, body, 12, 7);
-    m3d_sphere(x, 1.28f + bob, z + 0.02f, 0.31f, HEX(0xEAC99A), 12, 7);
-    m3d_sphere(x, 1.57f + bob, z + 0.01f, 0.34f, hat, 12, 5);
-    m3d_sphere(x - 0.11f, 1.30f + bob, z + 0.29f, 0.035f, HEX(0x28170F), 6, 3);
-    m3d_sphere(x + 0.11f, 1.30f + bob, z + 0.29f, 0.035f, HEX(0x28170F), 6, 3);
+    const float b = bob;
+    /* Brown shoes and a blue vest sit on the actual wooden display plinth. */
+    m3d_sphere(x - 0.15f, 0.535f + b, z + 0.035f, 0.135f,
+               HEX(0x71452A), 10, 6);
+    m3d_sphere(x + 0.15f, 0.535f + b, z + 0.035f, 0.135f,
+               HEX(0x71452A), 10, 6);
+    m3d_cylinder_y(x, 0.56f + b, z, 0.245f, 0.43f,
+                   HEX(0x247EC5), 14);
+    m3d_sphere(x, 0.80f + b, z, 0.265f, HEX(0x287FC7), 14, 8);
+    m3d_sphere(x - 0.285f, 0.82f + b, z + 0.01f, 0.12f,
+               HEX(0xE9C9A5), 9, 6);
+    m3d_sphere(x + 0.285f, 0.82f + b, z + 0.01f, 0.12f,
+               HEX(0xE9C9A5), 9, 6);
+    m3d_box(x - 0.11f, 0.73f + b, z + 0.225f,
+            x + 0.11f, 0.765f + b, z + 0.248f, HEX(0xE9C9A5));
+
+    /* Round peach face, oversized white mushroom cap, and signature spots. */
+    m3d_sphere(x, 1.205f + b, z + 0.135f, 0.285f,
+               HEX(0xF0D2AD), 14, 9);
+    m3d_sphere(x, 1.535f + b, z, 0.425f,
+               HEX(0xF7F4E8), 18, 10);
+    m3d_sphere(x, 1.835f + b, z + 0.285f, 0.105f,
+               HEX(0xD94343), 10, 6);
+    m3d_sphere(x - 0.275f, 1.625f + b, z + 0.285f, 0.093f,
+               HEX(0xD94343), 10, 6);
+    m3d_sphere(x + 0.275f, 1.625f + b, z + 0.285f, 0.093f,
+               HEX(0xD94343), 10, 6);
+    m3d_sphere(x - 0.115f, 1.215f + b, z + 0.392f, 0.044f,
+               HEX(0x29211B), 8, 5);
+    m3d_sphere(x + 0.115f, 1.215f + b, z + 0.392f, 0.044f,
+               HEX(0x29211B), 8, 5);
+    m3d_sphere(x, 1.075f + b, z + 0.402f, 0.045f,
+               HEX(0xC4826A), 8, 5);
 }
 
+static void m3d_goomba_figure(float x, float z, float bob)
+{
+    const float b = bob;
+    /* Stubby mushroom body, tan muzzle, and two dark feet. */
+    m3d_sphere(x - 0.205f, 0.535f + b, z + 0.015f, 0.145f,
+               HEX(0x593225), 10, 6);
+    m3d_sphere(x + 0.205f, 0.535f + b, z + 0.015f, 0.145f,
+               HEX(0x593225), 10, 6);
+    m3d_sphere(x, 0.805f + b, z, 0.355f,
+               HEX(0x9C5835), 14, 8);
+    m3d_sphere(x, 1.155f + b, z - 0.005f, 0.405f,
+               HEX(0x8D4A2F), 16, 9);
+    m3d_sphere(x, 0.985f + b, z + 0.205f, 0.265f,
+               HEX(0xE8C99D), 14, 8);
+
+    /* Slanted brows and tiny pupils give the face the classic grumpy look. */
+    m3d_quad(m3d_v(x - 0.235f, 1.205f + b, z + 0.385f),
+             m3d_v(x - 0.045f, 1.155f + b, z + 0.435f),
+             m3d_v(x - 0.045f, 1.205f + b, z + 0.435f),
+             m3d_v(x - 0.235f, 1.255f + b, z + 0.385f),
+             HEX(0x3D241C));
+    m3d_quad(m3d_v(x + 0.045f, 1.155f + b, z + 0.435f),
+             m3d_v(x + 0.235f, 1.205f + b, z + 0.385f),
+             m3d_v(x + 0.235f, 1.255f + b, z + 0.385f),
+             m3d_v(x + 0.045f, 1.205f + b, z + 0.435f),
+             HEX(0x3D241C));
+    m3d_sphere(x - 0.115f, 1.105f + b, z + 0.425f, 0.063f,
+               HEX(0xFFF9E8), 9, 6);
+    m3d_sphere(x + 0.115f, 1.105f + b, z + 0.425f, 0.063f,
+               HEX(0xFFF9E8), 9, 6);
+    m3d_sphere(x - 0.102f, 1.095f + b, z + 0.478f, 0.030f,
+               HEX(0x211713), 8, 5);
+    m3d_sphere(x + 0.102f, 1.095f + b, z + 0.478f, 0.030f,
+               HEX(0x211713), 8, 5);
+    m3d_box(x - 0.105f, 0.865f + b, z + 0.423f,
+            x + 0.105f, 0.905f + b, z + 0.452f, HEX(0x42231B));
+    m3d_triangle(m3d_v(x - 0.065f, 0.905f + b, z + 0.454f),
+                 m3d_v(x - 0.015f, 0.905f + b, z + 0.454f),
+                 m3d_v(x - 0.040f, 0.845f + b, z + 0.454f), HEX(0xFFF3D7));
+    m3d_triangle(m3d_v(x + 0.015f, 0.905f + b, z + 0.454f),
+                 m3d_v(x + 0.065f, 0.905f + b, z + 0.454f),
+                 m3d_v(x + 0.040f, 0.845f + b, z + 0.454f), HEX(0xFFF3D7));
+}
+
+static void m3d_pipe(float x, float z)
 static void m3d_pipe(float x, float z)
 {
     const float base = 0.02f, height = 4.6f, radius = 0.34f;
@@ -620,7 +689,7 @@ static void m3d_train(float elapsed, const M3DVec3 *path, int path_count)
     if (total_length < 0.01f) return;
 
     /* Distance-based travel avoids speed changes at the smoothed corners. */
-    float distance = fmodf(elapsed * 0.72f + 2.0f, total_length);
+    float distance = fmodf(elapsed * 1.80f + 1.25f, total_length);
     if (distance < 0.0f) distance += total_length;
     M3DVec3 position = path[0], tangent = m3d_v(1.0f, 0.0f, 0.0f);
     for (int i = 0; i < path_count; ++i) {
@@ -1604,12 +1673,10 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_pipe(6.55f, 0.80f);
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
-    m3d_box(-6.98f, 0.03f, 1.2f, -5.77f, 0.48f, 2.7f, HEX(0x8C6038));
-    m3d_box(5.77f, 0.03f, 1.2f, 6.98f, 0.48f, 2.7f, HEX(0x8C6038));
-    m3d_toy_figure(-6.38f, 1.82f, sinf(elapsed * 1.25f) * 0.035f,
-                   HEX(0x398BC1), HEX(0x49A85E));
-    m3d_toy_figure(6.38f, 1.82f, sinf(elapsed * 1.25f + 1.0f) * 0.035f,
-                   HEX(0xB53C31), HEX(0xE5B64A));
+    m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
+    m3d_box(5.05f, 0.03f, 1.2f, 6.35f, 0.48f, 2.7f, HEX(0x8C6038));
+    m3d_toad_figure(-5.70f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
+    m3d_goomba_figure(5.70f, 1.82f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
