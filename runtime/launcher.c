@@ -4808,9 +4808,13 @@ static void museum_draw_question_block(float x, float y, float size)
 {
     const float d = size * 0.19f;
     ui_rrect(x + 2, y + 4, size + d, size + d, 2, RGBA(0, 0, 0, 105));
-    ui_tri(x, y, x + size, y, x + size + d, y - d, HEX(0xFBE391));
+    /* Top and right sides are complete parallelograms built from triangles. */
+    ui_tri(x, y, x + d, y - d, x + size + d, y - d, HEX(0xFBE391));
+    ui_tri(x, y, x + size + d, y - d, x + size, y, HEX(0xE8B844));
     ui_tri(x + size, y, x + size + d, y - d,
            x + size + d, y + size - d, HEX(0xA75A19));
+    ui_tri(x + size, y, x + size + d, y + size - d,
+           x + size, y + size, HEX(0x884414));
     ui_vgrad(x, y, size, size, HEX(0xFFE680), HEX(0xD88A23));
     ui_stroke(x, y, size, size, 2, 1.3f, HEX(0x75401A));
     ui_stroke(x + 3, y + 3, size - 6, size - 6, 1, 1, HEX(0xFFF0AE));
@@ -4818,10 +4822,10 @@ static void museum_draw_question_block(float x, float y, float size)
             1, HEX(0xD9A246));
     ui_line(x + 4, y + size * 0.68f, x + size - 4, y + size * 0.68f,
             1, HEX(0xB7711F));
-    ui_text_c(F_BOLD, size * 0.68f, x + size * 0.5f, y + size * 0.12f,
-              HEX(0xFFF8D1), "?");
     ui_text_c(F_BOLD, size * 0.64f, x + size * 0.5f + 0.5f, y + size * 0.12f + 1,
               HEX(0x8C4C17), "?");
+    ui_text_c(F_BOLD, size * 0.68f, x + size * 0.5f, y + size * 0.12f,
+              HEX(0xFFF8D1), "?");
 }
 
 static void museum_draw_pipe_prop(float x, float y, float w, float h)
@@ -5006,6 +5010,17 @@ static void tab_museum(float x, float y)
     ui_line(x + 7, body_y + 12, x + 7, body_y + body_h - 12, 1.2f, HEX(0xD49A5C));
     ui_line(x + 9, body_y + body_h - 5, x + width - 9, body_y + body_h - 5, 2.0f, HEX(0x210E07));
     ui_line(x + width - 5, body_y + 10, x + width - 5, body_y + body_h - 10, 2.0f, HEX(0x241006));
+    /* Brass corner bolts visually pin the cabinet housing together. */
+    for (int side = 0; side < 2; ++side) {
+        float bx = side ? x + width - 10.0f : x + 5.0f;
+        for (int end = 0; end < 2; ++end) {
+            float by = body_y + (end ? body_h - 10.0f : 5.0f);
+            ui_rrect(bx + 1, by + 1, 5, 5, 2, RGBA(0, 0, 0, 110));
+            ui_vgrad(bx, by, 5, 5, HEX(0xFFE3A1), HEX(0x94602B));
+            ui_stroke(bx, by, 5, 5, 2, 0.8f, HEX(0x48250E));
+            ui_rrect(bx + 2, by + 2, 1.2f, 1.2f, 0.5f, HEX(0xFFF0C3));
+        }
+    }
 
     /* Left: recessed parchment field guide set into the timber frame. */
     ui_vgrad(x + 6, body_y + 6, left_w - 12, body_h - 12, HEX(0x9B6940), HEX(0x3E1E0F));
