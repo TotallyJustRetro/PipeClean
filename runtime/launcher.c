@@ -4567,6 +4567,8 @@ static void museum_draw_entry_art(int game, const MuseumEntry *entry,
     ui_stroke(x, y, w, h, 5, 1.5f, HEX(0xE2B56B));
     ui_rrect(x + 3, y + 3, w - 6, h - 6, 3, HEX(0x26140B));
     ui_vgrad(x + 5, y + 5, w - 10, h - 10, HEX(0x302116), HEX(0x100A06));
+    ui_line(x + 7, y + 6, x + w - 7, y + 6, 1.2f, HEX(0x8A673F));
+    ui_line(x + 6, y + 7, x + 6, y + h - 7, 0.9f, HEX(0x70502F));
 
     char path[1200];
     if (museum_sprite_file(game, entry, path, sizeof path)) {
@@ -4748,12 +4750,20 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
     ui_stroke(x, y, w, h, 3, 1.2f, HEX(0xE2B773));
 
     /* Three trapezoid planes create the illusion that the cubby recedes. */
+    /* Top plane is split into two faces; the rear wall starts inset by 9px. */
     ui_tri(x + 3, y + 3, x + w - 3, y + 3, x + w - 12, y + 12,
            HEX(0xB8844D));
+    ui_tri(x + 3, y + 3, x + w - 12, y + 12, x + 12, y + 12,
+           HEX(0xA36F3E));
     ui_tri(x + 3, y + 3, x + 12, y + 12, x + 12, y + h - 24,
            HEX(0x8A572F));
     ui_tri(x + w - 3, y + 3, x + w - 12, y + 12, x + w - 12, y + h - 24,
            HEX(0x3B1D0F));
+    /* The floor plane slopes toward the back wall and disappears underneath the lip. */
+    ui_tri(x + 12, y + h - 24, x + w - 12, y + h - 24, x + w - 3, y + h - 19,
+           HEX(0x674326));
+    ui_tri(x + 12, y + h - 24, x + w - 3, y + h - 19, x + 3, y + h - 19,
+           HEX(0x4B2D19));
     ui_vgrad(x + 12, y + 12, w - 24, h - 36, HEX(0x382315), HEX(0x100704));
     ui_stroke(x + 12, y + 12, w - 24, h - 36, 1, 1.0f, HEX(0x120904));
     ui_line(x + 14, y + 13, x + w - 14, y + 13, 1, HEX(0x68472D));
@@ -4767,11 +4777,16 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                       HEX(0xD3B17B), "ART PENDING");
         }
     } else {
+        /* Warm light pools behind the metalwork; overlapping translucent planes
+         * create a soft-ish halo with only a handful of extra draw calls. */
+        ui_rrect(x + w * 0.28f, y + 10, w * 0.44f, h * 0.43f, 6, RGBA(222, 166, 77, 12));
+        ui_rrect(x + w * 0.33f, y + 12, w * 0.34f, h * 0.37f, 5, RGBA(243, 196, 101, 15));
         /* The horizontal shutters have alternating bevel highlights/shadows. */
         for (int i = 0; i < 4; ++i) {
             float sy = y + 16 + i * 7.0f;
             ui_line(x + 15, sy, x + w - 15, sy, 2.2f, HEX(0x63472D));
             ui_line(x + 15, sy + 2.1f, x + w - 15, sy + 2.1f, 1.2f, HEX(0x0B0603));
+            ui_line(x + 16, sy, x + w - 16, sy, 0.6f, HEX(0x886442));
         }
         museum_lock_glyph(x + w * 0.37f, y + 11, w * 0.26f, h * 0.49f, 0);
     }
@@ -4854,20 +4869,23 @@ static void museum_draw_train_prop(float x, float rail_y, float w)
     ui_line(x, rail_y + 5, x + w, rail_y + 5, 2.5f, HEX(0x595A5B));
     ui_line(x, rail_y - 6, x + w, rail_y - 6, 0.8f, HEX(0xF0E2BB));
 
-    /* A tiny locomotive and two box cars: faceted roofs, lit sides, dark wheels. */
+    /* The train glides slowly along a fixed track, like a moving miniature. */
+    float train_travel = w - 76.0f;
+    if (train_travel < 1.0f) train_travel = 1.0f;
+    float train_x = x + fmodf(anim_clock * 10.0f, train_travel);
     float ty = rail_y - 24.0f;
-    ui_tri(x + 5, ty + 8, x + 15, ty, x + 15, ty + 8, HEX(0xE6B84C));
-    ui_vgrad(x + 5, ty + 8, 23, 12, HEX(0xF3C54D), HEX(0xA65A1A));
-    ui_stroke(x + 5, ty + 8, 23, 12, 2, 0.8f, HEX(0x522A10));
-    ui_rrect(x + 15, ty + 1, 9, 9, 2, HEX(0xD8E6EB));
-    ui_rrect(x + 17, ty + 2, 5, 5, 1, HEX(0x496678));
-    ui_rrect(x + 27, ty + 2, 3, 7, 1, HEX(0x9DA5A7));
-    ui_vgrad(x + 31, ty + 7, 17, 13, HEX(0xE66A44), HEX(0x8B2B1D));
-    ui_stroke(x + 31, ty + 7, 17, 13, 2, 0.8f, HEX(0x522A10));
-    ui_vgrad(x + 50, ty + 7, 17, 13, HEX(0x5DCA68), HEX(0x1B6531));
-    ui_stroke(x + 50, ty + 7, 17, 13, 2, 0.8f, HEX(0x174523));
+    ui_tri(train_x + 5, ty + 8, train_x + 15, ty, train_x + 15, ty + 8, HEX(0xE6B84C));
+    ui_vgrad(train_x + 5, ty + 8, 23, 12, HEX(0xF3C54D), HEX(0xA65A1A));
+    ui_stroke(train_x + 5, ty + 8, 23, 12, 2, 0.8f, HEX(0x522A10));
+    ui_rrect(train_x + 15, ty + 1, 9, 9, 2, HEX(0xD8E6EB));
+    ui_rrect(train_x + 17, ty + 2, 5, 5, 1, HEX(0x496678));
+    ui_rrect(train_x + 27, ty + 2, 3, 7, 1, HEX(0x9DA5A7));
+    ui_vgrad(train_x + 31, ty + 7, 17, 13, HEX(0xE66A44), HEX(0x8B2B1D));
+    ui_stroke(train_x + 31, ty + 7, 17, 13, 2, 0.8f, HEX(0x522A10));
+    ui_vgrad(train_x + 50, ty + 7, 17, 13, HEX(0x5DCA68), HEX(0x1B6531));
+    ui_stroke(train_x + 50, ty + 7, 17, 13, 2, 0.8f, HEX(0x174523));
     for (int i = 0; i < 6; ++i) {
-        float wx = x + 9 + i * 10.0f;
+        float wx = train_x + 9 + i * 10.0f;
         ui_rrect(wx, rail_y - 4, 5, 5, 2, HEX(0x23170F));
         ui_stroke(wx, rail_y - 4, 5, 5, 2, 0.7f, HEX(0xA9A9A0));
     }
@@ -4881,11 +4899,12 @@ static void museum_draw_3d_set_dressing(float x, float y, float width)
     museum_draw_pipe_prop(x + width - 8, y + 179, 44, 104);
 
     const float rail_w = width * 0.24f;
-    museum_draw_train_prop(x + width * 0.55f, y - 65, rail_w);
-    museum_draw_question_block(x + width - 94, y - 84, 18);
-    museum_draw_question_block(x + width - 58, y - 90, 22);
-    ui_text_c(F_BOLD, 18, x + width * 0.48f, y - 88, HEX(0xE7CF8A), "♪");
-    ui_text_c(F_BOLD, 14, x + width * 0.51f, y - 78, HEX(0xF4DDB0), "♫");
+    museum_draw_train_prop(x + width * 0.55f, y - 87, rail_w);
+    const float block_bob = sinf(anim_clock * 1.25f) * 2.2f;
+    museum_draw_question_block(x + width - 94, y - 84 + block_bob, 18);
+    museum_draw_question_block(x + width - 58, y - 90 - block_bob * 0.7f, 22);
+    ui_text_c(F_BOLD, 18, x + width * 0.48f, y - 88 + block_bob * 0.55f, HEX(0xE7CF8A), "♪");
+    ui_text_c(F_BOLD, 14, x + width * 0.51f, y - 78 - block_bob * 0.4f, HEX(0xF4DDB0), "♫");
 }
 
 static void tab_museum(float x, float y)
@@ -5135,6 +5154,14 @@ static void tab_museum(float x, float y)
     const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
     const float tile_h = 75.0f, row_step = tile_h + tile_gap_y;
     int rows = (visible + 2) / 3;
+    /* Continuous shelves show through the seven-pixel gaps between cubbies. */
+    for (int shelf = 0; shelf < rows; ++shelf) {
+        float sy = grid_y + shelf * row_step + tile_h - museum_scroll;
+        if (sy < grid_y - 6 || sy > grid_y + grid_h) continue;
+        ui_vgrad(grid_x - 1, sy, grid_w + 2, 7, HEX(0xC18B51), HEX(0x4B2613));
+        ui_line(grid_x, sy, grid_x + grid_w, sy, 1.1f, HEX(0xE5B875));
+        ui_line(grid_x, sy + 6, grid_x + grid_w, sy + 6, 1.1f, HEX(0x160904));
+    }
     float content_h = rows * row_step;
     float max_scroll = content_h > grid_h ? content_h - grid_h : 0.0f;
     if (ui_mouse.x >= grid_x && ui_mouse.x <= grid_x + grid_w &&
