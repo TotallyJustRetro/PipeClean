@@ -4561,10 +4561,21 @@ static void museum_lock_glyph(float x, float y, float w, float h, int large)
 static void museum_draw_entry_art(int game, const MuseumEntry *entry,
                                   float x, float y, float w, float h, int found)
 {
-    /* A miniature framed display rather than a flat thumbnail. */
+    /* Extruded display-case housing: a dark right wall and lower edge sit
+     * behind the front bezel, giving the specimen window measurable thickness. */
+    ui_tri(x + w - 2, y + 3, x + w + 4, y + 7,
+           x + w + 4, y + h + 1, HEX(0x2B1309));
+    ui_tri(x + 2, y + h - 1, x + w - 2, y + h - 1,
+           x + w + 4, y + h + 4, HEX(0x4B2915));
+    ui_tri(x + 2, y + 2, x + w - 2, y + 2,
+           x + w + 4, y + 7, HEX(0xC99559));
+
+    /* Thick wooden/brass bevel, then a recessed dark well around the artwork. */
     ui_rrect(x + 1, y + 3, w, h, 5, RGBA(0, 0, 0, 100));
     ui_vgrad(x, y, w, h, HEX(0xA77845), HEX(0x32180D));
     ui_stroke(x, y, w, h, 5, 1.5f, HEX(0xE2B56B));
+    ui_line(x + 5, y + 2, x + w - 6, y + 2, 1.1f, HEX(0xFFE4A5));
+    ui_line(x + 2, y + 7, x + 2, y + h - 7, 1.0f, HEX(0xDDA866));
     ui_rrect(x + 3, y + 3, w - 6, h - 6, 3, HEX(0x26140B));
     ui_vgrad(x + 5, y + 5, w - 10, h - 10, HEX(0x302116), HEX(0x100A06));
     ui_line(x + 7, y + 6, x + w - 7, y + 6, 1.2f, HEX(0x8A673F));
@@ -4575,6 +4586,17 @@ static void museum_draw_entry_art(int game, const MuseumEntry *entry,
         ui_rrect(x + 5, y + 5, w - 10, h - 10, 2, HEX(0xE8D2A0));
         ui_vgrad(x + 6, y + 6, w - 12, h - 12, HEX(0xF8E8BF), HEX(0xB98B4E));
         ui_image_file_fit_pixel(path, x + 7, y + 7, w - 14, h - 14);
+        /* Subtle glass reflections stay faint enough to preserve pixel art. */
+        ui_tri(x + 7, y + 7, x + w * 0.42f, y + 7,
+               x + 7, y + h * 0.35f, RGBA(255, 246, 218, 18));
+        ui_line(x + 8, y + 8, x + w - 9, y + 8, 0.8f, RGBA(255, 246, 218, 90));
+        if (w >= 80.0f) {
+            float glint_x = x + 10.0f + fmodf(anim_clock * 4.0f, w - 24.0f);
+            ui_line(glint_x, y + 10, glint_x + 7.0f, y + h - 11,
+                    1.0f, RGBA(255, 255, 235, 28));
+        }
+        ui_stroke(x + 6, y + 6, w - 12, h - 12, 2,
+                  0.8f, RGBA(255, 224, 151, 125));
     } else if (!found) {
         /* Shutter grooves show through behind the lock in an undiscovered slot. */
         for (int i = 0; i < 4; ++i) {
@@ -4743,6 +4765,10 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                                     float x, float y, float w, float h,
                                     int found, int selected)
 {
+    /* A selected compartment gets a restrained warm halo, as if its exhibit
+     * light switched on when the visitor focused that item. */
+    if (selected)
+        ui_rrect(x - 2, y - 2, w + 4, h + 4, 4, RGBA(255, 219, 135, 28));
     /* Front frame casts a small hard shadow; the dark inset becomes the back
      * wall of the compartment rather than another flat tile background. */
     ui_rrect(x + 3, y + 4, w, h, 3, RGBA(0, 0, 0, 145));
