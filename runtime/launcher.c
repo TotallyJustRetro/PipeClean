@@ -4543,32 +4543,75 @@ static int museum_sprite_file(int game, const MuseumEntry *entry, char *path, si
 }
 
 
-/* Draw a Museum sprite only when SDL can actually load/query it. The legacy
-   SML sprite pack is used when an on-disk v2 PNG exists but fails to decode. */
+#define MUSEUM_SPRITE_FALLBACK_CACHE_CAP 64
+typedef struct {
+    char source[1200];
+    char fallback[1200];
+    unsigned used;
+    int state; /* 0=empty, -1=known unloadable, 1=use fallback instead */
+} MuseumSpriteFallbackCache;
+
+static MuseumSpriteFallbackCache museum_sprite_fallback_cache[MUSEUM_SPRITE_FALLBACK_CACHE_CAP];
+static unsigned museum_sprite_fallback_tick;
+
+/* Draw a Museum sprite only when SDL can actually load/query it. A bad v2
+   SML PNG falls back to its legacy sibling. Failed paths are cached too: an
+   invalid image must not be decoded and logged again every rendered frame. */
 static int museum_draw_sprite_fit_pixel(int game, const char *path,
                                         float x, float y, float w, float h)
 {
     if (!path || !path[0]) return 0;
+
+    for (int i = 0; i < MUSEUM_SPRITE_FALLBACK_CACHE_CAP; ++i) {
+        MuseumSpriteFallbackCache *cached = &museum_sprite_fallback_cache[i];
+        if (cached->state == 0 || strcmp(cached->source, path) != 0) continue;
+        cached->used = ++museum_sprite_fallback_tick;
+        if (cached->state < 0) return 0;
+        return ui_image_file_fit_pixel_checked(cached->fallback, x, y, w, h);
+    }
+
     if (ui_image_file_fit_pixel_checked(path, x, y, w, h)) return 1;
-    if (game != GAME_SML) return 0;
 
-    static const char v2_suffix[] = ".v2.png";
-    const size_t path_len = strlen(path);
-    const size_t suffix_len = sizeof(v2_suffix) - 1u;
-    if (path_len <= suffix_len ||
-        strcmp(path + path_len - suffix_len, v2_suffix) != 0)
-        return 0;
+    char legacy[1200] = {0};
+    if (game == GAME_SML) {
+        static const char v2_suffix[] = ".v2.png";
+        const size_t path_len = strlen(path);
+        const size_t suffix_len = sizeof(v2_suffix) - 1u;
+        if (path_len > suffix_len &&
+            strcmp(path + path_len - suffix_len, v2_suffix) == 0) {
+            const size_t prefix_len = path_len - suffix_len;
+            if (prefix_len + sizeof(".png") <= sizeof(legacy)) {
+                memcpy(legacy, path, prefix_len);
+                memcpy(legacy + prefix_len, ".png", sizeof(".png"));
+                FILE *asset = fopen(legacy, "rb");
+                if (asset) fclose(asset);
+                else legacy[0] = 0;
+            }
+        }
+    }
 
-    char legacy[1200];
-    const size_t prefix_len = path_len - suffix_len;
-    if (prefix_len + sizeof(".png") > sizeof(legacy)) return 0;
-    memcpy(legacy, path, prefix_len);
-    memcpy(legacy + prefix_len, ".png", sizeof(".png"));
+    int loaded_fallback = legacy[0] &&
+        ui_image_file_fit_pixel_checked(legacy, x, y, w, h);
 
-    FILE *asset = fopen(legacy, "rb");
-    if (!asset) return 0;
-    fclose(asset);
-    return ui_image_file_fit_pixel_checked(legacy, x, y, w, h);
+    /* Cache this invalid source so a malformed PNG does not repeatedly call
+       IMG_Load at 60 FPS. Keep the most recently used failures/fallbacks. */
+    int slot = -1;
+    unsigned oldest = UINT32_MAX;
+    for (int i = 0; i < MUSEUM_SPRITE_FALLBACK_CACHE_CAP; ++i) {
+        MuseumSpriteFallbackCache *cached = &museum_sprite_fallback_cache[i];
+        if (cached->state == 0) { slot = i; break; }
+        if (cached->used < oldest) { oldest = cached->used; slot = i; }
+    }
+    if (slot >= 0) {
+        MuseumSpriteFallbackCache *cached = &museum_sprite_fallback_cache[slot];
+        memset(cached, 0, sizeof(*cached));
+        snprintf(cached->source, sizeof(cached->source), "%s", path);
+        cached->state = loaded_fallback ? 1 : -1;
+        if (loaded_fallback)
+            snprintf(cached->fallback, sizeof(cached->fallback), "%s", legacy);
+        cached->used = ++museum_sprite_fallback_tick;
+    }
+    return loaded_fallback;
 }
 
 static void museum_lock_glyph(float x, float y, float w, float h, int large)
