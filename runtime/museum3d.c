@@ -513,7 +513,7 @@ static void m3d_train(float elapsed)
 {
     /* The train moves along the full rear track. Both ends of the loop keep
        the whole model off-screen, avoiding a visible teleport at the wrap. */
-    float travel = -13.0f + fmodf(elapsed * 0.65f, 26.0f);
+    float travel = -8.6f + fmodf(elapsed * 0.50f, 17.2f);
     const float far_track_z = -5.2f;
     const float wheel_rotation = elapsed * (0.65f / 0.15f);
     m3d_translate_x = travel;
@@ -1278,6 +1278,52 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
     m3d_reset_clip();
 }
 
+
+/* A short extruded rail following a path in the X/Z floor plane. Narrow
+   cross-sections make linked segments read as a continuous rounded track
+   instead of long axis-aligned strips with abrupt square corners. */
+static void m3d_track_rail_segment(M3DVec3 a, M3DVec3 b,
+                                   float half_width, float height,
+                                   uint32_t material)
+{
+    float dx = b.x - a.x, dz = b.z - a.z;
+    float length = sqrtf(dx * dx + dz * dz);
+    if (length < 0.0001f) return;
+    const float px = -dz / length * half_width;
+    const float pz =  dx / length * half_width;
+
+    M3DVec3 bl = m3d_v(a.x + px, a.y, a.z + pz);
+    M3DVec3 br = m3d_v(a.x - px, a.y, a.z - pz);
+    M3DVec3 el = m3d_v(b.x + px, b.y, b.z + pz);
+    M3DVec3 er = m3d_v(b.x - px, b.y, b.z - pz);
+    M3DVec3 blt = m3d_v(bl.x, bl.y + height, bl.z);
+    M3DVec3 brt = m3d_v(br.x, br.y + height, br.z);
+    M3DVec3 elt = m3d_v(el.x, el.y + height, el.z);
+    M3DVec3 ert = m3d_v(er.x, er.y + height, er.z);
+
+    m3d_quad(blt, elt, ert, brt, material);
+    m3d_quad(bl, el, elt, blt, m3d_tint(material, 0.62f));
+    m3d_quad(br, brt, ert, er, m3d_tint(material, 0.47f));
+    m3d_quad(bl, br, brt, blt, m3d_tint(material, 0.70f));
+}
+
+/* One cross-tie spanning the paired rails at a sampled point on the route. */
+static void m3d_track_sleeper(M3DVec3 center, float nx, float nz,
+                              float half_gauge, uint32_t color)
+{
+    float length = sqrtf(nx * nx + nz * nz);
+    if (length < 0.0001f) return;
+    nx /= length;
+    nz /= length;
+    const float ax = center.x + nx * half_gauge;
+    const float az = center.z + nz * half_gauge;
+    const float bx = center.x - nx * half_gauge;
+    const float bz = center.z - nz * half_gauge;
+    m3d_box(fminf(ax, bx) - 0.045f, 0.025f, fminf(az, bz) - 0.045f,
+            fmaxf(ax, bx) + 0.045f, 0.095f, fmaxf(az, bz) + 0.045f,
+            color);
+}
+
 static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 {
     m3d_clip_active = 0;
@@ -1380,69 +1426,114 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_translate_y = 0.0f;
 
     /*
-     * The railway is a complete room-scale loop, not a floating line behind
-     * the cabinet. The elevated rear section carries the moving train; the
-     * side runs descend beside the green pipes and the foreground return runs
-     * across the floor. The cabinet itself naturally hides the middle of the
-     * side runs, creating the layered behind/alongside/in-front composition
-     * used by the reference diorama.
+     * The floor railway is a single closed, faceted loop. Its tapered sides
+     * move around the cabinet's front corners and return behind the shelf.
+     * Rail pairs follow the local path normal; sleepers rotate around the bends
+     * rather than making a giant square frame across the foreground.
      */
     {
-        const float outer_x = 5.20f;
-        const float inner_x = 4.92f;
         const float rear_z = -1.71f;
-        const float front_z = 4.55f;
-        const float rail_y = 0.145f;
-        const float rail_w = 0.035f;
-        const uint32_t tie_color = HEX(0x765035);
-        const uint32_t rail_color = HEX(0xAEB5B5);
-        const uint32_t dark_rail_color = HEX(0x5D6467);
+        const float front_z = 3.60f;
+        const float half_gauge = 0.095f;
+        const float rail_y = 0.090f;
+        const uint32_t tie_color = HEX(0x624329);
+        const uint32_t rail_color = HEX(0xB7BFC0);
+        const uint32_t dark_rail_color = HEX(0x666D70);
+        M3DVec3 path[] = {
+            {-6.85f, rail_y, rear_z},
+            { 6.85f, rail_y, rear_z},
+            { 7.10f, rail_y, -1.65f},
+            { 7.32f, rail_y, -1.45f},
+            { 7.45f, rail_y, -1.12f},
+            { 7.45f, rail_y, -0.50f},
+            { 7.30f, rail_y,  0.30f},
+            { 6.95f, rail_y,  1.10f},
+            { 6.40f, rail_y,  1.90f},
+            { 5.80f, rail_y,  2.65f},
+            { 5.20f, rail_y,  front_z},
+            {-5.20f, rail_y,  front_z},
+            {-5.80f, rail_y,  2.65f},
+            {-6.40f, rail_y,  1.90f},
+            {-6.95f, rail_y,  1.10f},
+            {-7.30f, rail_y,  0.30f},
+            {-7.45f, rail_y, -0.50f},
+            {-7.45f, rail_y, -1.12f},
+            {-7.32f, rail_y, -1.45f},
+            {-7.10f, rail_y, -1.65f}
+        };
+        enum { PATH_COUNT = (int)(sizeof(path) / sizeof(path[0])) };
+        M3DVec3 normal[PATH_COUNT];
+        M3DVec3 rail_a[PATH_COUNT], rail_b[PATH_COUNT];
 
-        /* Left and right return runs. Repeated sleepers make the track read
-           as railway hardware rather than two isolated decorative lines. */
-        for (int side = 0; side < 2; ++side) {
-            const float cx = side ? outer_x : -outer_x;
-            const float ix = side ? inner_x : -inner_x;
-            for (int i = 0; i <= 28; ++i) {
-                float z = rear_z + (front_z - rear_z) * ((float)i / 28.0f);
-                m3d_box(fminf(cx, ix) - 0.055f, 0.035f, z - 0.075f,
-                        fmaxf(cx, ix) + 0.055f, 0.16f, z + 0.075f,
-                        tie_color);
+        for (int i = 0; i < PATH_COUNT; ++i) {
+            const M3DVec3 prev = path[(i + PATH_COUNT - 1) % PATH_COUNT];
+            const M3DVec3 next = path[(i + 1) % PATH_COUNT];
+            float dx = next.x - prev.x, dz = next.z - prev.z;
+            float length = sqrtf(dx * dx + dz * dz);
+            if (length < 0.0001f) length = 1.0f;
+            normal[i] = m3d_v(-dz / length, 0.0f, dx / length);
+            rail_a[i] = m3d_v(path[i].x + normal[i].x * half_gauge,
+                               rail_y, path[i].z + normal[i].z * half_gauge);
+            rail_b[i] = m3d_v(path[i].x - normal[i].x * half_gauge,
+                               rail_y, path[i].z - normal[i].z * half_gauge);
+        }
+
+        /* Sleepers are spaced by route distance, not by vertex count. */
+        for (int i = 0; i < PATH_COUNT; ++i) {
+            const int j = (i + 1) % PATH_COUNT;
+            const M3DVec3 a = path[i], b = path[j];
+            const float dx = b.x - a.x, dz = b.z - a.z;
+            const float length = sqrtf(dx * dx + dz * dz);
+            int steps = (int)ceilf(length / 0.28f);
+            if (steps < 1) steps = 1;
+            for (int n = 0; n < steps; ++n) {
+                const float t = (float)n / (float)steps;
+                M3DVec3 center = m3d_v(a.x + dx * t, rail_y, a.z + dz * t);
+                float nx = normal[i].x + (normal[j].x - normal[i].x) * t;
+                float nz = normal[i].z + (normal[j].z - normal[i].z) * t;
+                m3d_track_sleeper(center, nx, nz, half_gauge, tie_color);
             }
-            m3d_box(cx - rail_w, rail_y, rear_z - 0.02f,
-                    cx + rail_w, rail_y + 0.055f, front_z + 0.02f,
-                    rail_color);
-            m3d_box(ix - rail_w, rail_y, rear_z - 0.02f,
-                    ix + rail_w, rail_y + 0.055f, front_z + 0.02f,
-                    dark_rail_color);
         }
 
-        /* Foreground return curve represented as close-set cross ties and
-           two rails. It intentionally sits low so the museum plinth remains
-           readable while the 2D interactive panels retain their hit targets. */
-        for (int i = 0; i <= 52; ++i) {
-            float x = -outer_x + (2.0f * outer_x * (float)i / 52.0f);
-            m3d_box(x - 0.075f, 0.035f, front_z - 0.18f,
-                    x + 0.075f, 0.16f, front_z + 0.18f, tie_color);
+        for (int i = 0; i < PATH_COUNT; ++i) {
+            const int j = (i + 1) % PATH_COUNT;
+            m3d_track_rail_segment(rail_a[i], rail_a[j], 0.026f, 0.050f,
+                                   rail_color);
+            m3d_track_rail_segment(rail_b[i], rail_b[j], 0.026f, 0.050f,
+                                   dark_rail_color);
         }
-        m3d_box(-outer_x - 0.02f, rail_y, front_z - 0.145f,
-                outer_x + 0.02f, rail_y + 0.055f, front_z - 0.075f,
-                rail_color);
-        m3d_box(-outer_x - 0.02f, rail_y, front_z + 0.075f,
-                outer_x + 0.02f, rail_y + 0.055f, front_z + 0.145f,
-                dark_rail_color);
 
-        /* Small rounded-looking corner blocks visually join the straight
-           sections into one continuous loop at both front corners. */
+        /*
+         * Two sloped side sections join the floor loop to the elevated rear
+         * railway. They descend outside the cabinet edges, completing the
+         * layered room-scale track shown in the reference.
+         */
         for (int side = 0; side < 2; ++side) {
-            float cx = side ? outer_x - 0.10f : -outer_x + 0.10f;
-            for (int i = 0; i < 5; ++i) {
-                float dz = (float)i * 0.055f;
-                float dx = (float)i * 0.045f;
-                m3d_box(cx - 0.10f + dx, rail_y - 0.005f,
-                        front_z - 0.22f + dz,
-                        cx + 0.10f - dx, rail_y + 0.06f,
-                        front_z + 0.22f - dz, tie_color);
+            const float sign = side ? 1.0f : -1.0f;
+            const float ramp_top_y = rail_height + 0.075f;
+            const float ramp_bottom_y = rail_y;
+            const float ramp_top_z = rear_z;
+            const float ramp_bottom_z = -1.12f;
+            M3DVec3 top_a = m3d_v(sign * 7.45f, ramp_top_y,
+                                   ramp_top_z - rail_gauge);
+            M3DVec3 top_b = m3d_v(sign * 7.45f, ramp_top_y,
+                                   ramp_top_z + rail_gauge);
+            M3DVec3 foot_a = m3d_v(sign * 7.35f, ramp_bottom_y, ramp_bottom_z);
+            M3DVec3 foot_b = m3d_v(sign * 7.55f, ramp_bottom_y, ramp_bottom_z);
+            m3d_track_rail_segment(top_a, foot_a, 0.026f, 0.050f, rail_color);
+            m3d_track_rail_segment(top_b, foot_b, 0.026f, 0.050f, dark_rail_color);
+
+            for (int i = 0; i < 18; ++i) {
+                const float t = (float)i / 18.0f;
+                float cx = sign * 7.45f;
+                float zlo = ramp_top_z - rail_gauge +
+                            (ramp_bottom_z - (ramp_top_z - rail_gauge)) * t;
+                float zhi = ramp_top_z + rail_gauge +
+                            (ramp_bottom_z - (ramp_top_z + rail_gauge)) * t;
+                float cy = ramp_top_y + (ramp_bottom_y - ramp_top_y) * t;
+                m3d_box(cx - 0.10f, cy - 0.035f, fminf(zlo, zhi) - 0.035f,
+                        cx + 0.10f, cy + 0.035f, fmaxf(zlo, zhi) + 0.035f,
+                        tie_color);
             }
         }
     }
