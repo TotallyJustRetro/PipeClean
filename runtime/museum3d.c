@@ -40,25 +40,33 @@ enum { M3D_TRACK_CONTROL_COUNT = 20, M3D_TRACK_PATH_STEPS = 5,
        M3D_TRACK_PATH_COUNT = M3D_TRACK_CONTROL_COUNT * M3D_TRACK_PATH_STEPS };
 static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
     {-6.35f, 4.225f, -1.71f},
-    { 5.95f, 4.225f, -1.71f},
-    { 6.02f, 3.55f,  -1.55f},
-    { 5.98f, 2.25f,  -1.00f},
-    { 5.92f, 0.65f,  -0.35f},
-    { 5.90f, 0.090f,  0.15f},
-    { 5.92f, 0.090f,  0.45f},
-    { 5.96f, 0.090f,  1.45f},
-    { 6.12f, 0.090f,  2.55f},
-    { 4.90f, 0.090f,  3.40f},
-    { 3.60f, 0.090f,  4.85f},
-    {-3.60f, 0.090f,  4.85f},
-    {-5.35f, 0.090f,  3.40f},
-    {-6.65f, 0.090f,  2.55f},
-    {-6.85f, 0.090f,  1.45f},
-    {-6.95f, 0.090f,  0.45f},
-    {-6.80f, 0.090f,  0.15f},
-    {-6.78f, 0.65f,  -0.35f},
-    {-6.72f, 2.25f,  -1.00f},
-    {-6.58f, 3.55f,  -1.55f}
+    { 6.35f, 4.225f, -1.71f},
+
+    /* Right descent sweeps out beside the cabinet, then drops onto the floor
+       in front of the tall pipe. The track must remain visible across the
+       transition, not disappear behind the cabinet and reappear as a second
+       unrelated foreground loop. */
+    { 6.55f, 3.65f, -1.45f},
+    { 6.72f, 2.85f, -0.70f},
+    { 6.82f, 1.90f,  0.15f},
+    { 6.82f, 0.95f,  1.00f},
+    { 6.75f, 0.090f, 1.70f},
+    { 6.68f, 0.090f, 2.25f},
+    { 6.25f, 0.090f, 3.10f},
+    { 5.25f, 0.090f, 4.45f},
+
+    /* The foreground return is one long continuous run. The mirrored left
+       descent then climbs back to the elevated rear section. */
+    {-5.25f, 0.090f, 4.45f},
+    {-6.25f, 0.090f, 3.10f},
+    {-6.68f, 0.090f, 2.25f},
+    {-6.75f, 0.090f, 1.70f},
+    {-6.82f, 0.95f,  1.00f},
+    {-6.82f, 1.90f,  0.15f},
+    {-6.72f, 2.85f, -0.70f},
+    {-6.55f, 3.65f, -1.45f},
+    {-6.40f, 3.95f, -1.62f},
+    {-6.35f, 4.15f, -1.68f}
 };
 static M3DVec3 m3d_track_path[M3D_TRACK_PATH_COUNT];
 
@@ -1668,14 +1676,14 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     /* Physical green pipe models sit beside the display housing. */
     /* Pull the framing pipes slightly into view so the side props read
        as a deliberate frame around the collection cabinet at 1100x720. */
-    m3d_pipe(-6.55f, 0.80f);
+    m3d_pipe(-7.20f, 0.80f);
     m3d_pipe(7.20f, 0.80f);
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_box(4.80f, 0.03f, 1.45f, 6.00f, 0.48f, 3.95f, HEX(0x8C6038));
     m3d_toad_figure(-6.05f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
-    m3d_goomba_figure(5.35f, 3.05f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
+    m3d_goomba_figure(5.05f, 2.85f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
