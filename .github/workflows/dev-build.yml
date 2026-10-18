@@ -73,8 +73,8 @@ jobs:
       - name: Capture the live Museum UI
         env:
           SDL_AUDIODRIVER: dummy
-          GBL_SIZE: 1024x576
-          GBL_MOUSE: 140,520
+          GBL_SIZE: 1100x720
+          GBL_MOUSE: 140,650
           GBL_CLICK: 1
           GBL_SHOT: museum-ui-smoke.bmp
         run: |
