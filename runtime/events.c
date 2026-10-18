@@ -1746,7 +1746,7 @@ static int sml2_museum_asset_output(const char *entry_id, char *out, size_t cap)
     if (n < 0 || (size_t)n >= sizeof root || !museum_make_dir(root)) return 0;
     n = snprintf(game_dir, sizeof game_dir, "%s/%s", root, games[GAME_SML2].id);
     if (n < 0 || (size_t)n >= sizeof game_dir || !museum_make_dir(game_dir)) return 0;
-    n = snprintf(out, cap, "%s/%s.png", game_dir, entry_id);
+    n = snprintf(out, cap, "%s/%s.v2.png", game_dir, entry_id);
     return n >= 0 && (size_t)n < cap;
 }
 
@@ -1762,10 +1762,10 @@ static int sml2_museum_read_tile_pixel(uint8_t level, uint8_t tile,
         source_address = (uint16_t)(0x7000u + cache_tile * 16u);
     } else if (cache_tile < 104u) {
         const uint16_t table = (uint16_t)(0x362Au + (unsigned)level * 4u);
-        source_bank = cart_rom_read_bank(0, table);
+        source_bank = cart_rom_read_fixed(table);
         source_address = (uint16_t)(
-            (uint16_t)cart_rom_read_bank(0, (uint16_t)(table + 2u)) |
-            ((uint16_t)cart_rom_read_bank(0, (uint16_t)(table + 3u)) << 8));
+            (uint16_t)cart_rom_read_fixed((uint16_t)(table + 2u)) |
+            ((uint16_t)cart_rom_read_fixed((uint16_t)(table + 3u)) << 8));
         source_address = (uint16_t)(source_address + (cache_tile - 48u) * 16u);
     } else {
         source_bank = 7;
@@ -1857,6 +1857,7 @@ static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
         SDL_MapRGBA(surface->format, 92, 92, 92, 255)
     };
 
+    unsigned painted_pixels = 0;
     for (unsigned i = 0; i < piece_count; ++i) {
         const uint8_t tile = pieces[i][2];
         if (tile < 0x80u) continue;
@@ -1876,8 +1877,14 @@ static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
                 Uint32 *row = (Uint32 *)((Uint8 *)surface->pixels +
                     (size_t)out_y * (size_t)surface->pitch);
                 row[out_x] = shades[color & 3];
+                ++painted_pixels;
             }
         }
+    }
+    /* Never poison the cache with a valid-but-fully-transparent PNG. */
+    if (painted_pixels == 0u) {
+        SDL_FreeSurface(surface);
+        return 0;
     }
     const int ok = IMG_SavePNG(surface, path) == 0;
     SDL_FreeSurface(surface);
