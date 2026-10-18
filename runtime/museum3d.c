@@ -45,6 +45,8 @@ static SDL_Renderer *m3d_renderer;
    Applied at projection time so normals and model-local geometry stay intact. */
 static float m3d_translate_x;
 static float m3d_translate_z;
+static int m3d_clip_active;
+static int m3d_clip_left, m3d_clip_top, m3d_clip_right, m3d_clip_bottom;
 
 static const float m3d_cam_y = 4.6f;
 static const float m3d_cam_z = 10.5f;
@@ -145,6 +147,12 @@ static void m3d_triangle_raw(M3DProjected a, M3DProjected b, M3DProjected c,
     if (min_y < 0) min_y = 0;
     if (max_x >= M3D_W) max_x = M3D_W - 1;
     if (max_y >= M3D_H) max_y = M3D_H - 1;
+    if (m3d_clip_active) {
+        if (min_x < m3d_clip_left) min_x = m3d_clip_left;
+        if (min_y < m3d_clip_top) min_y = m3d_clip_top;
+        if (max_x > m3d_clip_right) max_x = m3d_clip_right;
+        if (max_y > m3d_clip_bottom) max_y = m3d_clip_bottom;
+    }
     if (min_x > max_x || min_y > max_y) return;
 
     for (int y = min_y; y <= max_y; ++y) {
@@ -639,6 +647,39 @@ static M3DVec3 m3d_screen_point(float logical_x, float logical_y, float z,
     return m3d_v(wx, m3d_cam_y + dy, z);
 }
 
+static void m3d_set_logical_clip(float x, float y, float width, float height,
+                                 const M3DMuseumLayout *layout)
+{
+    if (!layout || layout->view_w <= 0.0f || layout->view_h <= 0.0f ||
+        width <= 0.0f || height <= 0.0f) {
+        m3d_clip_active = 0;
+        return;
+    }
+    const float sx_scale = (float)M3D_W / (layout->view_w + 58.0f);
+    const float sy_scale = (float)M3D_H / (layout->view_h + 36.0f);
+    const float sx0 = (x - layout->view_x + 29.0f) * sx_scale;
+    const float sy0 = (y - layout->view_y + 18.0f) * sy_scale;
+    const float sx1 = (x + width - layout->view_x + 29.0f) * sx_scale;
+    const float sy1 = (y + height - layout->view_y + 18.0f) * sy_scale;
+
+    /* Pixel-center bounds match m3d_triangle_raw's half-pixel sampling. */
+    m3d_clip_left = (int)ceilf(sx0 - 0.5f);
+    m3d_clip_top = (int)ceilf(sy0 - 0.5f);
+    m3d_clip_right = (int)ceilf(sx1 - 0.5f) - 1;
+    m3d_clip_bottom = (int)ceilf(sy1 - 0.5f) - 1;
+    if (m3d_clip_left < 0) m3d_clip_left = 0;
+    if (m3d_clip_top < 0) m3d_clip_top = 0;
+    if (m3d_clip_right >= M3D_W) m3d_clip_right = M3D_W - 1;
+    if (m3d_clip_bottom >= M3D_H) m3d_clip_bottom = M3D_H - 1;
+    m3d_clip_active = m3d_clip_left <= m3d_clip_right &&
+                      m3d_clip_top <= m3d_clip_bottom;
+}
+
+static void m3d_reset_clip(void)
+{
+    m3d_clip_active = 0;
+}
+
 static void m3d_screen_quad(float x0, float y0, float x1, float y1, float z,
                             uint32_t color, const M3DMuseumLayout *layout)
 {
@@ -882,6 +923,11 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                          5.13f, 4.95f, HEX(0x2A1309), layout);
     }
 
+    /* Clip the shelf internals to the same viewport as the SDL tile layer.
+       This keeps partially scrolled cubbies and rails from spilling across the
+       outer bezel, while still drawing the visible portion of each edge tile. */
+    m3d_set_logical_clip(grid_x, grid_y, grid_w, grid_h, layout);
+
     /* Each divider is a narrow wooden beam reaching back into the display. */
     for (int divider = 0; divider < 2; ++divider) {
         float dx = grid_x + (divider + 1) * tile_w + divider * gap_x;
@@ -893,24 +939,27 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                          5.13f, 4.94f, HEX(0x211006), layout);
     }
 
-    if (layout->visible_entries <= 0) return;
-    int first_row = (int)floorf(layout->scroll / row_step);
-    if (first_row < 0) first_row = 0;
-    for (int row = first_row; row < first_row + 6 && row < total_rows; ++row) {
-        float ty = grid_y + row * row_step - layout->scroll;
-        if (ty < grid_y || ty + tile_h > grid_y + grid_h) continue;
-        for (int col = 0; col < 3; ++col) {
-            int index = row * 3 + col;
-            if (index >= layout->visible_entries) break;
-            float tx = grid_x + col * (tile_w + gap_x);
-            int locked = layout->entry_locked ? layout->entry_locked[index] : 0;
-            m3d_screen_cubby(tx, ty, tile_w, tile_h, locked, layout);
+    if (layout->visible_entries > 0) {
+        int first_row = (int)floorf(layout->scroll / row_step);
+        if (first_row < 0) first_row = 0;
+        for (int row = first_row; row < first_row + 6 && row < total_rows; ++row) {
+            float ty = grid_y + row * row_step - layout->scroll;
+            if (ty + tile_h < grid_y || ty > grid_y + grid_h) continue;
+            for (int col = 0; col < 3; ++col) {
+                int index = row * 3 + col;
+                if (index >= layout->visible_entries) break;
+                float tx = grid_x + col * (tile_w + gap_x);
+                int locked = layout->entry_locked ? layout->entry_locked[index] : 0;
+                m3d_screen_cubby(tx, ty, tile_w, tile_h, locked, layout);
+            }
         }
     }
+    m3d_reset_clip();
 }
 
 static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 {
+    m3d_clip_active = 0;
     m3d_translate_x = 0.0f;
     m3d_translate_z = 0.0f;
     m3d_clear();
