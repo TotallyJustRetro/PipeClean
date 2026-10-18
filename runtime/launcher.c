@@ -4518,6 +4518,24 @@ static int museum_visible_count(void)
     return total;
 }
 
+/* Per-frame state passed to the 3D renderer in the same filtered order as the
+   clickable catalog. This lets only undiscovered compartments receive 3D shutters. */
+#define MUSEUM_SCENE_FLAG_CAP 4096
+static int museum_scene_locked_flags[MUSEUM_SCENE_FLAG_CAP];
+
+static int museum_scene_build_locked_flags(void)
+{
+    int total = 0;
+    if (museum_hacks_view) return 0;
+    for (int i = 0; i < museum_catalog_count(museum_game); ++i) {
+        const MuseumEntry *entry = museum_catalog_entry(museum_game, i);
+        if (!museum_entry_matches(entry)) continue;
+        if (total >= MUSEUM_SCENE_FLAG_CAP) break;
+        museum_scene_locked_flags[total++] = !museum_is_discovered(museum_game, entry->id);
+    }
+    return total;
+}
+
 static int museum_sprite_file(int game, const MuseumEntry *entry, char *path, size_t cap)
 {
     return entry && museum_is_discovered(game, entry->id) &&
@@ -4781,34 +4799,8 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                       HEX(0xD3B17B), "ART PENDING");
         }
     } else {
-        /* These shutter slats remain individually shaded SDL overlays while
-           their cavity, frame, and surrounding shelf are true 3D geometry. */
-        ui_rrect(x + w * 0.28f, y + 10, w * 0.44f, h * 0.43f, 6,
-                 RGBA(222, 166, 77, 12));
-        ui_rrect(x + w * 0.33f, y + 12, w * 0.34f, h * 0.37f, 5,
-                 RGBA(243, 196, 101, 15));
-        const float shutter_x = x + 15.0f;
-        const float shutter_w = w - 30.0f;
-        for (int i = 0; i < 5; ++i) {
-            float sy = y + 15.0f + i * 6.1f;
-            ui_rrect(shutter_x + 1.0f, sy + 1.3f, shutter_w, 5.4f, 1.4f,
-                     RGBA(0, 0, 0, 145));
-            ui_vgrad(shutter_x, sy, shutter_w, 5.2f,
-                     i == 0 ? HEX(0xD6D4C8) : HEX(0xA8AAA5),
-                     i == 4 ? HEX(0x424744) : HEX(0x626762));
-            ui_line(shutter_x + 2.0f, sy + 0.5f,
-                    shutter_x + shutter_w - 2.0f, sy + 0.5f,
-                    0.7f, HEX(0xF0EDE0));
-            ui_line(shutter_x + 2.0f, sy + 4.3f,
-                    shutter_x + shutter_w - 2.0f, sy + 4.3f,
-                    0.8f, HEX(0x343A37));
-            ui_rrect(shutter_x + 3.0f, sy + 1.7f, 1.3f, 1.3f,
-                     0.6f, HEX(0xE9D8A5));
-            ui_rrect(shutter_x + shutter_w - 4.3f, sy + 1.7f,
-                     1.3f, 1.3f, 0.6f, HEX(0xE9D8A5));
-        }
-        ui_rrect(x + w * 0.30f, y + 17.0f, w * 0.40f, h * 0.34f, 5,
-                 RGBA(238, 180, 75, 17));
+        /* The slats themselves are depth-tested 3D metal geometry. Keep only
+           the lock symbol in the interactive overlay above the recessed door. */
         museum_lock_glyph(x + w * 0.37f, y + 11, w * 0.26f, h * 0.49f, 0);
     }
 
@@ -5211,9 +5203,10 @@ LauncherResult launcher_frame(float dt)
     if (tab == TAB_MUSEUM) {
         const float museum_scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
         const float museum_scene_y = 166.0f;
-        const int museum_scene_entries = museum_hacks_view ? 0 : museum_visible_count();
+        const int museum_scene_entries = museum_scene_build_locked_flags();
         museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock,
                                  museum_scene_x, museum_scene_y, museum_scroll,
+                                 museum_scene_locked_flags,
                                  museum_scene_entries, !museum_hacks_view);
     }
 
