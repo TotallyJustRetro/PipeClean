@@ -23,6 +23,7 @@
 #define M3D_H 230
 #define M3D_PIXELS (M3D_W * M3D_H)
 #define M3D_NEAR 0.35f
+#define HEX(rgb) (0xFF000000u | (uint32_t)(rgb))
 
 typedef struct { float x, y, z; } M3DVec3;
 typedef struct { float x, y, invz, z; } M3DProjected;
