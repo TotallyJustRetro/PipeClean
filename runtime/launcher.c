@@ -4766,34 +4766,11 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                                     float x, float y, float w, float h,
                                     int found, int selected)
 {
-    /* A selected compartment gets a restrained warm halo, as if its exhibit
-     * light switched on when the visitor focused that item. */
+    /* The wood frame, recessed backing, shelf lip, and accession plate are
+       actual 3D cabinet geometry in museum3d.c. This layer adds only content:
+       sprites, locked shutters, captions, and a focus outline. */
     if (selected)
         ui_rrect(x - 2, y - 2, w + 4, h + 4, 4, RGBA(255, 219, 135, 28));
-    /* Front frame casts a small hard shadow; the dark inset becomes the back
-     * wall of the compartment rather than another flat tile background. */
-    ui_rrect(x + 3, y + 4, w, h, 3, RGBA(0, 0, 0, 145));
-    ui_vgrad(x, y, w, h, HEX(0xBD8B57), HEX(0x35190C));
-    ui_stroke(x, y, w, h, 3, 1.2f, HEX(0xE2B773));
-
-    /* Three trapezoid planes create the illusion that the cubby recedes. */
-    /* Top plane is split into two faces; the rear wall starts inset by 9px. */
-    ui_tri(x + 3, y + 3, x + w - 3, y + 3, x + w - 12, y + 12,
-           HEX(0xB8844D));
-    ui_tri(x + 3, y + 3, x + w - 12, y + 12, x + 12, y + 12,
-           HEX(0xA36F3E));
-    ui_tri(x + 3, y + 3, x + 12, y + 12, x + 12, y + h - 24,
-           HEX(0x8A572F));
-    ui_tri(x + w - 3, y + 3, x + w - 12, y + 12, x + w - 12, y + h - 24,
-           HEX(0x3B1D0F));
-    /* The floor plane slopes toward the back wall and disappears underneath the lip. */
-    ui_tri(x + 12, y + h - 24, x + w - 12, y + h - 24, x + w - 3, y + h - 19,
-           HEX(0x674326));
-    ui_tri(x + 12, y + h - 24, x + w - 3, y + h - 19, x + 3, y + h - 19,
-           HEX(0x4B2D19));
-    ui_vgrad(x + 12, y + 12, w - 24, h - 36, HEX(0x382315), HEX(0x100704));
-    ui_stroke(x + 12, y + 12, w - 24, h - 36, 1, 1.0f, HEX(0x120904));
-    ui_line(x + 14, y + 13, x + w - 14, y + 13, 1, HEX(0x68472D));
 
     if (found) {
         char path[1200];
@@ -4804,12 +4781,12 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                       HEX(0xD3B17B), "ART PENDING");
         }
     } else {
-        /* Warm light pools behind the metalwork; overlapping translucent planes
-         * create a soft-ish halo with only a handful of extra draw calls. */
-        ui_rrect(x + w * 0.28f, y + 10, w * 0.44f, h * 0.43f, 6, RGBA(222, 166, 77, 12));
-        ui_rrect(x + w * 0.33f, y + 12, w * 0.34f, h * 0.37f, 5, RGBA(243, 196, 101, 15));
-        /* Five overlapping metal shutter slats. Each has a lit top bevel,
-         * cool steel face, dark lower lip, and tiny brass rivets. */
+        /* These shutter slats remain individually shaded SDL overlays while
+           their cavity, frame, and surrounding shelf are true 3D geometry. */
+        ui_rrect(x + w * 0.28f, y + 10, w * 0.44f, h * 0.43f, 6,
+                 RGBA(222, 166, 77, 12));
+        ui_rrect(x + w * 0.33f, y + 12, w * 0.34f, h * 0.37f, 5,
+                 RGBA(243, 196, 101, 15));
         const float shutter_x = x + 15.0f;
         const float shutter_w = w - 30.0f;
         for (int i = 0; i < 5; ++i) {
@@ -4825,31 +4802,19 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
             ui_line(shutter_x + 2.0f, sy + 4.3f,
                     shutter_x + shutter_w - 2.0f, sy + 4.3f,
                     0.8f, HEX(0x343A37));
-            ui_rrect(shutter_x + 3.0f, sy + 1.7f, 1.3f, 1.3f, 0.6f, HEX(0xE9D8A5));
+            ui_rrect(shutter_x + 3.0f, sy + 1.7f, 1.3f, 1.3f,
+                     0.6f, HEX(0xE9D8A5));
             ui_rrect(shutter_x + shutter_w - 4.3f, sy + 1.7f,
                      1.3f, 1.3f, 0.6f, HEX(0xE9D8A5));
         }
-        /* A warm reflected glow separates the gold lock from the cool shutter. */
         ui_rrect(x + w * 0.30f, y + 17.0f, w * 0.40f, h * 0.34f, 5,
                  RGBA(238, 180, 75, 17));
         museum_lock_glyph(x + w * 0.37f, y + 11, w * 0.26f, h * 0.49f, 0);
     }
 
-    /* Thick shelf lip in front of the art; the brass tag hangs just below it. */
-    ui_vgrad(x + 4, y + h - 25, w - 8, 7, HEX(0xC18A50), HEX(0x4A2612));
-    ui_line(x + 5, y + h - 25, x + w - 5, y + h - 25, 1.2f, HEX(0xE7B775));
-    ui_line(x + 5, y + h - 19, x + w - 5, y + h - 19, 1, HEX(0x1A0B05));
-
     const float plaque_w = w * 0.78f;
     const float plaque_x = x + (w - plaque_w) * 0.5f;
     const float plaque_y = y + h - 17;
-    ui_rrect(plaque_x + 1, plaque_y + 2, plaque_w, 14, 3, RGBA(0, 0, 0, 130));
-    ui_vgrad(plaque_x, plaque_y, plaque_w, 14, HEX(0xF5DDA0), HEX(0x8E5A25));
-    ui_stroke(plaque_x, plaque_y, plaque_w, 14, 3, 1.0f, HEX(0x47230E));
-    ui_line(plaque_x + 4, plaque_y + 2, plaque_x + plaque_w - 4,
-            plaque_y + 2, 1.0f, HEX(0xFFF0C7));
-    ui_rrect(plaque_x + 3, plaque_y + 4, 2, 2, 1, HEX(0x795026));
-    ui_rrect(plaque_x + plaque_w - 5, plaque_y + 4, 2, 2, 1, HEX(0x795026));
     if (found && entry)
         ui_text_fit(F_BOLD, 7.2f, plaque_x + 7, plaque_y + 3, plaque_w - 14,
                     HEX(0x43240F), entry->name);
@@ -5068,12 +5033,7 @@ static void tab_museum(float x, float y)
         ui_text(F_REG, 10, x + 15, body_y + 300, HEX(0x795A3B),
                 "Your discoveries will be catalogued here.");
 
-    /* Right: a deep mahogany cabinet with brass edging and a header plate. */
-    ui_vgrad(right_x, body_y + 5, right_w - 5, body_h - 10, HEX(0xA97645), HEX(0x34170B));
-    ui_stroke(right_x, body_y + 5, right_w - 5, body_h - 10, 5, 1.5f, HEX(0xD5A35F));
-    ui_rrect(right_x + 4, body_y + 9, right_w - 13, body_h - 18, 3, HEX(0x2C1409));
-    ui_vgrad(right_x + 6, body_y + 11, right_w - 17, body_h - 22, HEX(0x5A351F), HEX(0x201006));
-    ui_rrect(right_x + 7, body_y + 10, right_w - 19, 25, 3, HEX(0x4A2411));
+    /* The right cabinet backboard and its beveled surround are rendered in 3D. */
     const float shelf_plaque_w = 154.0f;
     const float shelf_plaque_x = right_x + (right_w - shelf_plaque_w) * 0.5f;
     ui_shadow(shelf_plaque_x, body_y + 10, shelf_plaque_w, 25, 4, 2, RGBA(0, 0, 0, 100));
@@ -5099,10 +5059,7 @@ static void tab_museum(float x, float y)
 
     const float grid_x = right_x + 9, grid_y = body_y + 71;
     const float grid_w = right_w - 27, grid_h = body_h - 83;
-    /* Dark backboard and visible shelf rails sit behind the clickable cubbies. */
-    ui_rrect(grid_x - 3, grid_y - 3, grid_w + 6, grid_h + 6, 3, HEX(0x190B05));
-    ui_vgrad(grid_x - 1, grid_y - 1, grid_w + 2, grid_h + 2, HEX(0x321B0F), HEX(0x120804));
-    ui_stroke(grid_x - 3, grid_y - 3, grid_w + 6, grid_h + 6, 3, 1, HEX(0x986138));
+    /* The backboard, shelf rails, dividers and deep wells are 3D geometry. */
     const float tile_gap_x = 7.0f, tile_gap_y = 7.0f;
     const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
     const float tile_h = 75.0f, row_step = tile_h + tile_gap_y;
@@ -5116,26 +5073,6 @@ static void tab_museum(float x, float y)
     if (museum_scroll < 0.0f) museum_scroll = 0.0f;
     if (museum_scroll > max_scroll) museum_scroll = max_scroll;
 
-    /* Continuous shelf lips and upright dividers peek through the gaps between
-     * the individual clickable compartments, making one connected cabinet. */
-    for (int shelf = 0; shelf < rows; ++shelf) {
-        float sy = grid_y + shelf * row_step + tile_h - museum_scroll;
-        if (sy < grid_y - 6 || sy > grid_y + grid_h) continue;
-        ui_vgrad(grid_x - 1, sy, grid_w + 2, 7, HEX(0xC18B51), HEX(0x4B2613));
-        ui_line(grid_x, sy, grid_x + grid_w, sy, 1.1f, HEX(0xE5B875));
-        ui_line(grid_x + 2, sy + 1, grid_x + grid_w - 2, sy + 1,
-                0.6f, HEX(0xF0D49A));
-        ui_line(grid_x, sy + 6, grid_x + grid_w, sy + 6, 1.1f, HEX(0x160904));
-    }
-    for (int divider = 0; divider < 2; ++divider) {
-        float dx = grid_x + (divider + 1) * tile_w + divider * tile_gap_x;
-        ui_vgrad(dx, grid_y - 1, tile_gap_x, grid_h + 2,
-                 HEX(0xB57B45), HEX(0x35190C));
-        ui_line(dx, grid_y, dx, grid_y + grid_h, 1.0f, HEX(0xD6A065));
-        ui_line(dx + tile_gap_x - 1, grid_y, dx + tile_gap_x - 1,
-                grid_y + grid_h, 1.0f, HEX(0x160904));
-    }
-
     ui_clip(grid_x, grid_y, grid_w, grid_h);
     int shown = 0;
     for (int i = 0; i < all_count; ++i) {
@@ -5148,9 +5085,9 @@ static void tab_museum(float x, float y)
         if (ty + tile_h < grid_y || ty > grid_y + grid_h) continue;
         int found = museum_is_discovered(museum_game, entry->id);
         int selected_tile = selected && !strcmp(selected->id, entry->id);
-        if (ui_button(tx, ty, tile_w, tile_h, "", selected_tile ? B_PRIMARY : B_NORMAL, 1)) {
+        int tile_over = 0;
+        if (clickable(tx, ty, tile_w, tile_h, &tile_over))
             museum_selected[museum_game] = i;
-        }
         museum_draw_shelf_cubby(museum_game, entry, tx, ty, tile_w, tile_h,
                                 found, selected_tile);
     }
@@ -5271,9 +5208,15 @@ LauncherResult launcher_frame(float dt)
      * the actual visible viewport rather than the fixed-width cabinet bounds,
      * so fullscreen, resize, and compact layouts keep the scene aligned.
      * Navigation, header, cabinet, and all clickable controls are drawn later. */
-    if (tab == TAB_MUSEUM)
+    if (tab == TAB_MUSEUM) {
+        const float museum_scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
+        const float museum_scene_y = 166.0f;
+        const int museum_scene_entries = museum_hacks_view ? 0 : museum_visible_count();
         museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock,
-                                   compact_layout ? -0.90f : 0.0f);
+                                 compact_layout ? -0.90f : 0.0f,
+                                 museum_scene_x, museum_scene_y, museum_scroll,
+                                 museum_scene_entries, !museum_hacks_view);
+    }
 
     /* Use only the supplied transparent PipeClean logo in the header. */
     SDL_Texture *brand_logo = branding_logo_texture();
