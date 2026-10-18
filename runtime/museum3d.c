@@ -390,11 +390,11 @@ static void m3d_toy_figure(float x, float z, float bob, uint32_t body, uint32_t 
 
 static void m3d_pipe(float x, float z)
 {
-    const float base = 0.02f, height = 4.6f, radius = 0.48f;
-    const float lip_outer = radius + 0.17f;
-    const float bore_radius = radius * 0.74f;
+    const float base = 0.02f, height = 4.6f, radius = 0.34f;
+    const float lip_outer = radius + 0.13f;
+    const float bore_radius = radius * 0.70f;
 
-    m3d_box(x - 0.56f, 0.0f, z - 0.52f, x + 0.56f, 0.11f, z + 0.52f,
+    m3d_box(x - 0.42f, 0.0f, z - 0.43f, x + 0.42f, 0.11f, z + 0.43f,
             HEX(0x70452A));
 
     /* The shaft and widened mouth have open ends; their top is not a filled
@@ -427,7 +427,7 @@ static void m3d_pipe(float x, float z)
     m3d_disk_horizontal(x, base + 1.42f, z, bore_radius * 0.98f,
                         HEX(0x042914), 28);
 
-    m3d_cylinder_y(x - 0.12f, 0.11f, z + 0.46f, 0.025f, 3.95f,
+    m3d_cylinder_y(x - radius * 0.25f, 0.11f, z + radius * 0.92f, 0.020f, 3.95f,
                    HEX(0xA4F47E), 6);
 }
 
@@ -1369,8 +1369,8 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     /* Physical green pipe models sit beside the display housing. */
     /* Pull the framing pipes slightly into view so the side props read
        as a deliberate frame around the collection cabinet at 1100x720. */
-    m3d_pipe(-6.10f, 0.80f);
-    m3d_pipe(6.10f, 0.80f);
+    m3d_pipe(-6.55f, 0.80f);
+    m3d_pipe(6.55f, 0.80f);
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
     m3d_box(-7.3f, 0.03f, 1.2f, -5.45f, 0.48f, 2.7f, HEX(0x8C6038));
