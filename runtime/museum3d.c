@@ -1027,29 +1027,35 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
         const float shackle_l = lock_cx - 11.0f;
         const float shackle_r = lock_cx + 11.0f;
         const float shackle_top = y + 14.0f;
-        const float shackle_bottom = y + 33.0f;
-        m3d_screen_prism(shackle_l, shackle_top, shackle_r, shackle_bottom,
-                         5.335f, 4.84f, HEX(0x3B210E), layout);
-        m3d_screen_prism(shackle_l + 2.0f, shackle_top + 1.5f,
-                         shackle_r - 2.0f, shackle_bottom,
-                         5.365f, 4.96f, HEX(0xB17A2F), layout);
-        m3d_screen_quad(shackle_l + 3.0f, shackle_top + 2.0f,
-                        shackle_r - 3.0f, shackle_top + 2.9f,
-                        5.395f, HEX(0xF8D78A), layout);
-        /* Recessed center masks the brass fill and leaves a chunky U-shaped
-           lock loop, with shaded inner walls still visible behind the body. */
-        m3d_screen_quad(lock_cx - 6.5f, shackle_top + 5.3f,
-                        lock_cx + 6.5f, shackle_bottom - 1.0f,
-                        5.405f, HEX(0x25221A), layout);
-        m3d_screen_quad(shackle_l + 2.7f, shackle_top + 4.0f,
-                        shackle_l + 4.1f, shackle_bottom - 1.0f,
-                        5.415f, HEX(0xE7BE70), layout);
-        m3d_screen_quad(shackle_r - 4.1f, shackle_top + 4.0f,
-                        shackle_r - 2.7f, shackle_bottom - 1.0f,
-                        5.415f, HEX(0x68431D), layout);
-
         const float lock_body_top = y + 29.0f;
         const float lock_body_bottom = y + 49.0f;
+
+        /*
+         * Build the shackle from separate side posts and a top arch instead of
+         * a filled rectangle with a fake cutout. The cavity sits behind the
+         * brass, while the body later occludes the embedded ends of both posts.
+         */
+        m3d_screen_prism(lock_cx - 7.0f, shackle_top + 4.0f,
+                         lock_cx + 7.0f, lock_body_top + 1.0f,
+                         5.365f, 5.00f, HEX(0x21160D), layout);
+        m3d_screen_prism(shackle_l + 1.0f, shackle_top + 2.0f,
+                         shackle_l + 5.0f, lock_body_top + 1.0f,
+                         5.390f, 4.91f, HEX(0x4A270F), layout);
+        m3d_screen_prism(shackle_r - 5.0f, shackle_top + 2.0f,
+                         shackle_r - 1.0f, lock_body_top + 1.0f,
+                         5.390f, 4.91f, HEX(0x4A270F), layout);
+        m3d_screen_prism(shackle_l + 1.0f, shackle_top,
+                         shackle_r - 1.0f, shackle_top + 5.5f,
+                         5.400f, 4.93f, HEX(0x9C6826), layout);
+        m3d_screen_prism(shackle_l + 2.0f, shackle_top + 0.6f,
+                         shackle_l + 4.2f, lock_body_top + 0.2f,
+                         5.420f, 4.98f, HEX(0xC7963F), layout);
+        m3d_screen_prism(shackle_r - 4.2f, shackle_top + 0.6f,
+                         shackle_r - 2.0f, lock_body_top + 0.2f,
+                         5.420f, 4.98f, HEX(0x80501F), layout);
+        m3d_screen_quad(shackle_l + 3.0f, shackle_top + 0.8f,
+                        shackle_r - 3.0f, shackle_top + 1.7f,
+                        5.425f, HEX(0xF8D78A), layout);
         m3d_screen_prism(lock_cx - 17.0f, lock_body_top,
                          lock_cx + 17.0f, lock_body_bottom,
                          5.40f, 4.66f, HEX(0x3E210D), layout);
