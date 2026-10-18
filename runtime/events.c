@@ -462,6 +462,28 @@ static const char *sml2_museum_enemy_id(uint8_t level, uint8_t object_type)
     return NULL;
 }
 
+/* The three remaining SML2 bosses are created by scripted encounters rather
+ * than their courses' ordinary spawn lists. These contextual object IDs were
+ * checked against the ROM's boss-only sprite sheets and mapping tables:
+ * type 5D uses the Pumpkin Zone boss map for the Witch; types 22/23/25/27 use
+ * pig-head maps with the Mario Zone boss sheet and Octopus maps with the Turtle
+ * Zone boss sheet. 75 and the high-byte aliases are alternate boss-map forms.
+ * They must be interpreted by course, never as global species IDs. */
+static const char *sml2_museum_scripted_boss_id(uint8_t level, uint8_t object_type)
+{
+    if (level == 0x09u &&
+        (object_type == 0x5Du || object_type == 0x97u))
+        return "sml2_witch";
+
+    if ((level == 0x0Du || level == 0x10u) &&
+        (object_type == 0x22u || object_type == 0x23u ||
+         object_type == 0x25u || object_type == 0x27u ||
+         object_type == 0x75u || object_type == 0xB4u))
+        return level == 0x0Du ? "sml2_three_little_pigs" : "sml2_octopus_boss";
+
+    return NULL;
+}
+
 /* The active marker is set to 2 once an object has been initialized and has
  * entered the live actor list. The v7 trace's field0B is byte +11 (animation/
  * mapping state); the actor's screen coordinates are +9=Y and +10=X. Require
@@ -479,23 +501,39 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
         const uint8_t y = sml2_ram_read((uint16_t)(base + 9u));
         if (y < 0x08u || y > 0xA0u) continue;
 
-        /* The live actor's +5 field changes during transitions (for example,
-         * a collected item can change its runtime type). Its source pointer
-         * addresses descriptor byte +2, so +3 from that pointer is the
-         * original object ID used by the course spawn list. */
+        /* The live actor's +5 field can change during animation/state
+         * transitions, so prefer the original object ID from its source
+         * descriptor whenever that descriptor belongs to the expanded AB06 list. */
         const uint16_t source_ref = (uint16_t)(
             ((uint16_t)sml2_ram_read((uint16_t)(base + 6u)) << 8) |
             sml2_ram_read((uint16_t)(base + 7u)));
-        /* Valid source refs point to descriptor byte +2 in the expanded AB06
-         * spawn list. Requiring the exact six-byte stride rejects stale actor
-         * records and arbitrary pointers before reading the source object ID. */
-        if (source_ref < 0xAB08u || source_ref > 0xACFAu ||
-            ((source_ref - 0xAB08u) % 6u) != 0)
-            continue;
+        const int source_valid =
+            source_ref >= 0xAB08u && source_ref <= 0xACFAu &&
+            ((source_ref - 0xAB08u) % 6u) == 0;
         const uint8_t x = sml2_ram_read((uint16_t)(base + 10u));
         if (x < 0x08u || x > 0xF0u) continue;
-        const uint8_t object_type = sml2_ram_read((uint16_t)(source_ref + 3u));
-        const char *museum_id = sml2_museum_enemy_id(level, object_type);
+
+        uint8_t object_type = 0xFFu;
+        const char *museum_id = NULL;
+        if (source_valid) {
+            object_type = sml2_ram_read((uint16_t)(source_ref + 3u));
+            museum_id = sml2_museum_enemy_id(level, object_type);
+            if (!museum_id)
+                museum_id = sml2_museum_scripted_boss_id(level, object_type);
+        }
+
+        /* A scripted boss can have no ordinary course-list descriptor. In
+         * that case use its live object type, but only against the narrow,
+         * course-specific boss map above; don't infer ordinary enemy species
+         * from mutable animation state. */
+        if (!museum_id) {
+            const uint8_t runtime_type = sml2_ram_read((uint16_t)(base + 5u));
+            const char *boss_id = sml2_museum_scripted_boss_id(level, runtime_type);
+            if (boss_id) {
+                object_type = runtime_type;
+                museum_id = boss_id;
+            }
+        }
         if (!museum_id) continue;
 
         /* Minikyura are spawned by Kurokyura, not by a course-list entry of
@@ -503,7 +541,7 @@ static void sml2_museum_observe_visible_enemies(uint8_t level)
          * Kurokyura source descriptor; this avoids crediting Minikyura before a
          * bat has actually appeared. Do not classify from mutable field +5. */
         const int discovered = museum_discover_entry(GAME_SML2, museum_id);
-        if (level == 0x06u && object_type == 0x51u) {
+        if (source_valid && level == 0x06u && object_type == 0x51u) {
             int summoned_actor_visible = 0;
             for (int other = 0; other < 16; ++other) {
                 if (other == slot) continue;
