@@ -384,7 +384,7 @@ static void m3d_train_wheel(float cx, float cy, float cz, float radius,
     const float half_depth = 0.045f;
     /* The outer-side wheel face sits just proud of the chassis, while the
        far-side wheel stays tucked behind it. Both still straddle their rail. */
-    const float z_bias = cz > 3.5f ? 0.04f : 0.0f;
+    const float z_bias = cz > 3.5f ? 0.10f : 0.0f;
     const float z0 = cz - half_depth + z_bias;
     const float z1 = cz + half_depth + z_bias;
     const int segments = 14;
@@ -428,6 +428,7 @@ static void m3d_train(float elapsed)
        the whole model off-screen, avoiding a visible teleport at the wrap. */
     float travel = -13.0f + fmodf(elapsed * 0.65f, 26.0f);
     const float far_track_z = -5.2f;
+    const float wheel_rotation = elapsed * (0.65f / 0.15f);
     m3d_translate_x = travel;
     m3d_translate_z = far_track_z;
 
@@ -444,8 +445,8 @@ static void m3d_train(float elapsed)
                 cx + 0.34f, 0.62f, 3.852f, HEX(0x6C9DB1));
         for (int axle = 0; axle < 2; ++axle) {
             float wx = cx + (axle == 0 ? -0.25f : 0.25f);
-            m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, elapsed * 3.2f);
-            m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, elapsed * 3.2f);
+            m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, wheel_rotation);
+            m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, wheel_rotation);
         }
     }
 
@@ -467,8 +468,8 @@ static void m3d_train(float elapsed)
     /* Leading engine axles sit on both rails as well, not a single row of balls. */
     for (int axle = 0; axle < 3; ++axle) {
         float wx = 2.30f + (float)axle * 0.43f;
-        m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, elapsed * 3.2f);
-        m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, elapsed * 3.2f);
+        m3d_train_wheel(wx, 0.29f, 3.22f, 0.15f, wheel_rotation);
+        m3d_train_wheel(wx, 0.29f, 3.76f, 0.15f, wheel_rotation);
     }
 
     m3d_translate_x = 0.0f;
@@ -925,8 +926,6 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
         float x = -10.4f + (float)i * 0.5f;
         m3d_box(x, -0.015f, 3.12f, x + 0.09f, 0.105f, 3.88f,
                 HEX(0xA17143));
-        m3d_box(x + 0.015f, 0.075f, 3.15f, x + 0.075f, 0.125f, 3.85f,
-                HEX(0x6B442B));
     }
     m3d_box(-10.5f, 0.075f, 3.18f, 10.5f, 0.14f, 3.28f,
             HEX(0xBFC0B8));
