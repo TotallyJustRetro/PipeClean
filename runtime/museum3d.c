@@ -371,6 +371,93 @@ static void m3d_train(float elapsed)
     }
 }
 
+
+/*
+ * Physical hardwood cabinet that sits behind the interactive SDL panels.
+ *
+ * The UI deliberately remains a screen-space layer so every control keeps
+ * its current hit-test and scroll behavior. This model supplies the actual
+ * perspective, depth, crown, side cheeks, brass inlay and weighted plinth
+ * that the flat panel layer cannot provide on its own.
+ */
+static void m3d_cabinet(void)
+{
+    const float front_z = 4.72f;
+    const float rear_z = 2.30f;
+
+    /* Trapezoidal front corners compensate for the perspective camera so the
+       shell frames the current logical cabinet without looking like a flat box. */
+    M3DVec3 front_bl = m3d_v(-2.44f, -0.10f, front_z);
+    M3DVec3 front_br = m3d_v( 4.40f, -0.10f, front_z);
+    M3DVec3 front_tl = m3d_v(-2.05f,  3.30f, front_z);
+    M3DVec3 front_tr = m3d_v( 3.72f,  3.30f, front_z);
+
+    M3DVec3 rear_bl = m3d_v(-2.62f, -0.20f, rear_z);
+    M3DVec3 rear_br = m3d_v( 4.15f, -0.20f, rear_z);
+    M3DVec3 rear_tl = m3d_v(-2.36f,  3.53f, rear_z);
+    M3DVec3 rear_tr = m3d_v( 3.82f,  3.53f, rear_z);
+
+    /* Five solid faces form the carcass: a thick top, bottom, and both sides. */
+    m3d_quad(rear_bl, rear_br, front_br, front_bl, HEX(0x3C1D10));
+    m3d_quad(rear_tl, rear_tr, front_tr, front_tl, HEX(0xA87745));
+    m3d_quad(rear_bl, front_bl, front_tl, rear_tl, HEX(0x704126));
+    m3d_quad(rear_br, front_br, front_tr, rear_tr, HEX(0x3B2014));
+    m3d_quad(front_bl, front_br, front_tr, front_tl, HEX(0x63351D));
+
+    /* Crown fascia sits proud of the front face, above the UI's top edge. */
+    M3DVec3 crown_bl = m3d_v(-2.48f, 3.30f, 4.77f);
+    M3DVec3 crown_br = m3d_v( 4.18f, 3.30f, 4.77f);
+    M3DVec3 crown_tl = m3d_v(-2.28f, 3.53f, 4.77f);
+    M3DVec3 crown_tr = m3d_v( 3.93f, 3.53f, 4.77f);
+    m3d_quad(front_tl, front_tr, crown_br, crown_bl, HEX(0x89532D));
+    m3d_quad(crown_bl, crown_br, crown_tr, crown_tl, HEX(0xA87540));
+    m3d_quad(rear_tl, rear_tr, crown_tr, crown_tl, HEX(0x98663A));
+
+    /* A raised brass line in the crown catches the room's warm key light. */
+    m3d_box(-2.24f, 3.455f, 4.80f, 3.90f, 3.485f, 4.91f, HEX(0xD8AF68));
+    m3d_box(-2.18f, 3.460f, 4.91f, 3.84f, 3.480f, 4.94f, HEX(0xF1D18B));
+
+    /* Long, tapered front stiles give the cabinet real wood thickness. */
+    m3d_quad(m3d_v(-2.58f, -0.12f, 4.80f),
+             m3d_v(-2.43f, -0.12f, 4.80f),
+             m3d_v(-2.03f,  3.29f, 4.80f),
+             m3d_v(-2.19f,  3.29f, 4.80f), HEX(0x8C5A31));
+    m3d_quad(m3d_v( 4.39f, -0.12f, 4.80f),
+             m3d_v( 4.55f, -0.12f, 4.80f),
+             m3d_v( 3.87f,  3.29f, 4.80f),
+             m3d_v( 3.71f,  3.29f, 4.80f), HEX(0x4B2817));
+    m3d_quad(m3d_v(-2.55f, -0.12f, 4.83f),
+             m3d_v(-2.51f, -0.12f, 4.83f),
+             m3d_v(-2.13f,  3.29f, 4.83f),
+             m3d_v(-2.17f,  3.29f, 4.83f), HEX(0xD2A15B));
+    m3d_quad(m3d_v( 4.48f, -0.12f, 4.83f),
+             m3d_v( 4.52f, -0.12f, 4.83f),
+             m3d_v( 3.81f,  3.29f, 4.83f),
+             m3d_v( 3.77f,  3.29f, 4.83f), HEX(0xB47A3D));
+
+    /* A framed maker's badge and two raised brass fasteners on the crown. */
+    m3d_box(0.13f, 3.365f, 4.82f, 1.56f, 3.485f, 4.94f, HEX(0xD0A155));
+    m3d_box(0.20f, 3.383f, 4.94f, 1.49f, 3.468f, 4.985f, HEX(0x5A321B));
+    m3d_box(0.31f, 3.405f, 4.986f, 0.43f, 3.446f, 5.005f, HEX(0xE9C77C));
+    m3d_box(0.48f, 3.405f, 4.986f, 0.60f, 3.446f, 5.005f, HEX(0xE9C77C));
+    m3d_box(0.65f, 3.405f, 4.986f, 0.77f, 3.446f, 5.005f, HEX(0xE9C77C));
+    m3d_box(0.82f, 3.405f, 4.986f, 0.94f, 3.446f, 5.005f, HEX(0xE9C77C));
+    m3d_sphere(-2.16f, 3.40f, 4.91f, 0.055f, HEX(0xF0D18B), 8, 4);
+    m3d_sphere( 3.82f, 3.40f, 4.91f, 0.055f, HEX(0xF0D18B), 8, 4);
+
+    /* The broad bottom plinth projects below the catalog, with a bright lip. */
+    m3d_box(-2.60f, -0.35f, 2.65f, 4.50f, -0.11f, 4.97f, HEX(0x57301A));
+    m3d_box(-2.65f, -0.25f, 4.96f, 4.55f, -0.205f, 5.015f, HEX(0xD0A15B));
+    m3d_box(-2.59f, -0.31f, 5.015f, 4.49f, -0.275f, 5.045f, HEX(0xF0CF83));
+    m3d_box(-2.54f, -0.35f, 4.97f, 4.44f, -0.325f, 5.02f, HEX(0x32190D));
+
+    /* Two sturdy feet lift the plinth away from the floor boards. */
+    m3d_box(-2.03f, -0.52f, 3.45f, -1.45f, -0.32f, 4.69f, HEX(0x442516));
+    m3d_box( 3.38f, -0.52f, 3.45f,  3.96f, -0.32f, 4.69f, HEX(0x442516));
+    m3d_box(-1.98f, -0.49f, 4.69f, -1.50f, -0.445f, 4.75f, HEX(0x94633A));
+    m3d_box( 3.43f, -0.49f, 4.69f,  3.91f, -0.445f, 4.75f, HEX(0x94633A));
+}
+
 static void m3d_scene(float elapsed)
 {
     m3d_clear();
@@ -402,6 +489,9 @@ static void m3d_scene(float elapsed)
                 HEX(0x392116));
     }
     m3d_box(-8.8f, 0.03f, 7.5f, 8.8f, 0.10f, 7.7f, HEX(0xA36C3D));
+
+    /* The museum furniture is real perspective geometry; controls are layered later. */
+    m3d_cabinet();
 
     /* Physical green pipe models sit beside the display housing. */
     m3d_pipe(-6.65f, 0.80f);
