@@ -516,7 +516,7 @@ static void m3d_screen_cubby(float x, float y, float w, float h,
                              const M3DMuseumLayout *layout)
 {
     /* Back wall and four inner returns make a genuinely hollow exhibit box. */
-    const float front_z = 5.12f, rear_z = 4.02f;
+    const float front_z = 5.12f, rear_z = 4.25f;
     const float opening_left = x + 4.0f, opening_right = x + w - 4.0f;
     const float opening_top = y + 4.0f, opening_bottom = y + h - 25.0f;
     const float rear_left = x + 13.0f, rear_right = x + w - 13.0f;
@@ -605,9 +605,9 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
 
     /* Recessed right cabinet bay and heavy top, side and bottom frame members. */
     m3d_screen_quad(panel_x + 4.0f, panel_y + 9.0f, panel_x + panel_w - 12.0f,
-                    panel_y + body_h - 9.0f, 4.18f, HEX(0x654027), layout);
+                    panel_y + body_h - 9.0f, 3.72f, HEX(0x654027), layout);
     m3d_screen_quad(panel_x + 7.0f, panel_y + 11.0f, panel_x + panel_w - 15.0f,
-                    panel_y + body_h - 12.0f, 4.20f, HEX(0x2B160C), layout);
+                    panel_y + body_h - 12.0f, 3.78f, HEX(0x2B160C), layout);
     m3d_screen_face(panel_x, panel_y + 5.0f, 5.00f,
                     panel_x + panel_w - 5.0f, panel_y + 5.0f, 5.00f,
                     panel_x + panel_w - 12.0f, panel_y + 9.0f, 4.72f,
@@ -662,7 +662,7 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                     grid_x - 4.0f, grid_y + grid_h + 4.0f, 5.00f,
                     HEX(0x5A351E), layout);
     m3d_screen_quad(grid_x - 1.0f, grid_y, grid_x + grid_w + 1.0f,
-                    grid_y + grid_h, 4.12f, HEX(0x1D0D06), layout);
+                    grid_y + grid_h, 3.82f, HEX(0x1D0D06), layout);
 
     int total_rows = (layout->visible_entries + 2) / 3;
     for (int row = 0; row < total_rows; ++row) {
