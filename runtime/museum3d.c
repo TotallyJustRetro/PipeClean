@@ -1368,6 +1368,74 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_train_scale = 1.0f;
     m3d_translate_y = 0.0f;
 
+    /*
+     * The railway is a complete room-scale loop, not a floating line behind
+     * the cabinet. The elevated rear section carries the moving train; the
+     * side runs descend beside the green pipes and the foreground return runs
+     * across the floor. The cabinet itself naturally hides the middle of the
+     * side runs, creating the layered behind/alongside/in-front composition
+     * used by the reference diorama.
+     */
+    {
+        const float outer_x = 7.72f;
+        const float inner_x = 7.48f;
+        const float rear_z = -1.71f;
+        const float front_z = 7.12f;
+        const float rail_y = 0.145f;
+        const float rail_w = 0.035f;
+        const uint32_t tie_color = HEX(0x765035);
+        const uint32_t rail_color = HEX(0xAEB5B5);
+        const uint32_t dark_rail_color = HEX(0x5D6467);
+
+        /* Left and right return runs. Repeated sleepers make the track read
+           as railway hardware rather than two isolated decorative lines. */
+        for (int side = 0; side < 2; ++side) {
+            const float cx = side ? outer_x : -outer_x;
+            const float ix = side ? inner_x : -inner_x;
+            for (int i = 0; i <= 28; ++i) {
+                float z = rear_z + (front_z - rear_z) * ((float)i / 28.0f);
+                m3d_box(fminf(cx, ix) - 0.055f, 0.035f, z - 0.075f,
+                        fmaxf(cx, ix) + 0.055f, 0.12f, z + 0.075f,
+                        tie_color);
+            }
+            m3d_box(cx - rail_w, rail_y, rear_z - 0.02f,
+                    cx + rail_w, rail_y + 0.055f, front_z + 0.02f,
+                    rail_color);
+            m3d_box(ix - rail_w, rail_y, rear_z - 0.02f,
+                    ix + rail_w, rail_y + 0.055f, front_z + 0.02f,
+                    dark_rail_color);
+        }
+
+        /* Foreground return curve represented as close-set cross ties and
+           two rails. It intentionally sits low so the museum plinth remains
+           readable while the 2D interactive panels retain their hit targets. */
+        for (int i = 0; i <= 52; ++i) {
+            float x = -outer_x + (2.0f * outer_x * (float)i / 52.0f);
+            m3d_box(x - 0.075f, 0.035f, front_z - 0.18f,
+                    x + 0.075f, 0.12f, front_z + 0.18f, tie_color);
+        }
+        m3d_box(-outer_x - 0.02f, rail_y, front_z - 0.145f,
+                outer_x + 0.02f, rail_y + 0.055f, front_z - 0.075f,
+                rail_color);
+        m3d_box(-outer_x - 0.02f, rail_y, front_z + 0.075f,
+                outer_x + 0.02f, rail_y + 0.055f, front_z + 0.145f,
+                dark_rail_color);
+
+        /* Small rounded-looking corner blocks visually join the straight
+           sections into one continuous loop at both front corners. */
+        for (int side = 0; side < 2; ++side) {
+            float cx = side ? outer_x - 0.10f : -outer_x + 0.10f;
+            for (int i = 0; i < 5; ++i) {
+                float dz = (float)i * 0.055f;
+                float dx = (float)i * 0.045f;
+                m3d_box(cx - 0.10f + dx, rail_y - 0.005f,
+                        front_z - 0.22f + dz,
+                        cx + 0.10f - dx, rail_y + 0.06f,
+                        front_z + 0.22f - dz, tie_color);
+            }
+        }
+    }
+
     /* Small brass exhibit lights hang high on each side of the room. */
     m3d_box(-6.6f, 5.7f, -3.4f, -5.9f, 5.85f, -3.05f, HEX(0xB5803D));
     m3d_sphere(-6.25f, 5.48f, -3.15f, 0.24f, HEX(0xFFD88A), 10, 5);
