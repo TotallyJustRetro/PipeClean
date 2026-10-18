@@ -22,6 +22,7 @@
 #include "widescreen.h"
 #include "netplay.h"
 #include "museum.h"
+#include "museum3d.h"
 
 static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
@@ -5500,6 +5501,10 @@ LauncherResult launcher_frame(float dt)
      * the actual Museum panels are painted later, so never lose hit targets. */
     if (tab == TAB_MUSEUM) {
         const float scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
+        /* Render the real perspective/depth-tested 3D room first. The small
+         * SDL-drawn accents stay in the back layer for the current pass; every
+         * clickable panel is still drawn afterward. */
+        museum3d_draw_background(ren_get(), scene_x, 166.0f, 808.0f, 520.0f, anim_clock);
         museum_draw_3d_set_dressing(scene_x, 166.0f, 808.0f);
     }
 
