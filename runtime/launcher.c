@@ -5213,7 +5213,6 @@ LauncherResult launcher_frame(float dt)
         const float museum_scene_y = 166.0f;
         const int museum_scene_entries = museum_hacks_view ? 0 : museum_visible_count();
         museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock,
-                                 compact_layout ? -0.90f : 0.0f,
                                  museum_scene_x, museum_scene_y, museum_scroll,
                                  museum_scene_entries, !museum_hacks_view);
     }
