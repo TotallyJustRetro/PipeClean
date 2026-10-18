@@ -5471,6 +5471,53 @@ LauncherResult launcher_frame(float dt)
         }
         ui_rect(vx + 12, nav_divider_y, vw - 24, 1, C_LINE);
     } else {
+        if (tab == TAB_MUSEUM) {
+            /* The reference composition leaves a visible strip of room on the
+               left for the pipe and toy pedestal before the launcher sidebar.
+               Make that spacing Museum-specific so the other tabs retain their
+               established desktop layout and hit targets. */
+            const float side_x = 110.0f, side_w = 180.0f;
+            const float side_y = 106.0f;
+            const float game_row = 43.0f, game_h = 40.0f;
+            ui_rect(103.0f, 90.0f, 194.0f, UI_H - 116.0f,
+                    RGBA(17, 13, 11, 76));
+            ui_rect(296.0f, 90.0f, 1.0f, UI_H - 116.0f,
+                    RGBA(224, 179, 111, 32));
+            if (brand_logo) ui_image(brand_logo, NULL, 110.0f, 3.0f, 158.0f, 77.0f);
+            ui_rect(108.0f, 90.0f, UI_W - 150.0f, 1.0f, C_LINE);
+
+            for (int i = 0; i < N_GAMES; i++) {
+                float y = side_y + i * game_row;
+                if (tab_button(side_x, y, side_w, game_h, tab == i, games[i].accent))
+                    tab = i;
+                ui_text_fit(F_BOLD, 12, side_x + 12, y + 3, side_w - 22,
+                            tab == i ? C_TEXT : C_MUTED, games[i].name);
+                int kind = rs[i].ok ? 1 : (settings.g[i].rom_path[0] ? 3 : 2);
+                const char *msg = rs[i].ok ? "Ready to play" :
+                    (settings.g[i].rom_path[0] ? "ROM issue" : "ROM needed");
+                status_line(side_x + 12, y + 22, side_w - 22, kind, msg);
+            }
+
+            float y2 = side_y + N_GAMES * game_row + 4.0f;
+            ui_rect(side_x + 6.0f, y2, side_w - 12.0f, 1.0f, C_LINE);
+            float nav_y = y2 + 8.0f;
+            const int nav_count = N_TABS - TAB_MULTIPLAYER;
+            float nav_available = UI_H - 52.0f - nav_y;
+            float nav_step = nav_available / (float)nav_count;
+            if (nav_step > 39.0f) nav_step = 39.0f;
+            float nav_h = nav_step - 3.0f;
+            if (nav_h > 34.0f) nav_h = 34.0f;
+            for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
+                float y = nav_y + (i - TAB_MULTIPLAYER) * nav_step;
+                uint32_t accent = i == TAB_MULTIPLAYER
+                    ? games[mp_config_game].accent : 0x4C8DFF;
+                if (tab_button(side_x, y, side_w, nav_h, tab == i, accent))
+                    tab = i;
+                ui_text_fit(F_BOLD, 12, side_x + 12,
+                            y + (nav_h - 18.0f) * 0.5f, side_w - 22.0f,
+                            tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
+            }
+        } else {
         if (brand_logo) ui_image(brand_logo, NULL, 20, 1, 170, 83);
         ui_rect(20, 90, UI_W - 40, 1, C_LINE);
 
@@ -5511,9 +5558,8 @@ LauncherResult launcher_frame(float dt)
             ui_text_fit(F_BOLD, nav_h < 32.0f ? 12 : 14, sx + 18,
                         y + (nav_h - 21.0f) * 0.5f, 194,
                         tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
-        }
+        }        }
     }
-
     float cx = compact_layout ? vx + (vw - 808.0f) * 0.5f : 308.0f, cy = 108;
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
