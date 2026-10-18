@@ -1,4 +1,5 @@
 #include "museum3d.h"
+#include "ui.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -15,12 +16,12 @@
  * works with PipeClean's existing SDL_Renderer on Windows, Linux and Android.
  *
  * The interactive Museum controls and typography remain SDL UI drawn over
- * this scene. The render buffer is intentionally modest and bilinearly
- * enlarged; most of the scene is decorative background behind those controls.
+ * this scene. The scene is rendered at a higher native resolution, then scaled
+ * with the exact same logical-to-pixel transform as the launcher UI.
  */
 
-#define M3D_W 384
-#define M3D_H 230
+#define M3D_W 768
+#define M3D_H 460
 #define M3D_PIXELS (M3D_W * M3D_H)
 #define M3D_NEAR 0.35f
 #define HEX(rgb) (0xFF000000u | (uint32_t)(rgb))
@@ -37,8 +38,8 @@ static const float m3d_cam_y = 4.6f;
 static const float m3d_cam_z = 10.5f;
 static const float m3d_pitch_sin = 0.31f;
 static const float m3d_pitch_cos = 0.9502f;
-static const float m3d_focal = 276.0f;
-static const float m3d_center_y = 99.0f;
+static const float m3d_focal = 552.0f;
+static const float m3d_center_y = 198.0f;
 
 static M3DVec3 m3d_v(float x, float y, float z)
 {
@@ -465,10 +466,17 @@ void museum3d_draw_background(SDL_Renderer *renderer,
     if (SDL_UpdateTexture(m3d_texture, NULL, m3d_pixels, M3D_W * (int)sizeof(uint32_t)) != 0)
         return;
 
+    /* UI primitives use dp/logical coordinates and transform them to renderer
+     * pixels with the current ui_scale plus the centered viewport offset.
+     * RenderCopy bypasses those helpers, so apply that exact transform here.
+     * Without this, maximizing/resizing moves the 3D image relative to the UI. */
+    const float scale = ui_scale > 0.0f ? ui_scale : 1.0f;
+    const float view_x = ui_view_x0();
+    const float view_y = ui_view_y0();
     SDL_Rect dst;
-    dst.x = (int)lroundf(x - 29.0f);
-    dst.y = (int)lroundf(y - 18.0f);
-    dst.w = (int)lroundf(width + 58.0f);
-    dst.h = (int)lroundf(height);
+    dst.x = (int)lroundf((x - 29.0f - view_x) * scale);
+    dst.y = (int)lroundf((y - 18.0f - view_y) * scale);
+    dst.w = (int)lroundf((width + 58.0f) * scale);
+    dst.h = (int)lroundf(height * scale);
     SDL_RenderCopy(renderer, m3d_texture, NULL, &dst);
 }
