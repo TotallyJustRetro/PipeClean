@@ -399,6 +399,18 @@ static void m3d_pipe(float x, float z)
        from appearing to run through the pipe when the camera looks into it. */
     m3d_cylinder_y_open(x, base + 0.16f, z, bore_radius, height - 0.30f,
                         HEX(0x0B5729), 28);
+
+    /* Opaque rear throat: the interior is deep and shaded, but not a
+       see-through tunnel. It sits behind the inner green wall and in front of
+       the rear railway, so the train cannot appear to pass through the pipe. */
+    m3d_box(x - bore_radius * 0.94f, base + 0.18f, z - 0.58f,
+            x + bore_radius * 0.94f, base + height - 0.34f, z - 0.52f,
+            HEX(0x042914));
+    m3d_box(x - bore_radius * 0.78f, base + 0.26f, z - 0.515f,
+            x - bore_radius * 0.72f, base + height - 0.58f, z - 0.51f,
+            HEX(0x0C3D20));
+
+    /* This low, horizontal shadow floor still tells the eye the shaft is deep. */
     m3d_disk_horizontal(x, base + 1.42f, z, bore_radius * 0.98f,
                         HEX(0x042914), 28);
 
