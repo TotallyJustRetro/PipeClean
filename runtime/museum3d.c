@@ -583,8 +583,8 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                      5.30f, 4.32f, HEX(0x754725), layout);
 
     /* Bright wood edge on the front is an inlay; the bulk behind it is a solid beam. */
-    m3d_screen_prism(x + 2.0f, y + 1.0f, x + w - 2.0f, y + 2.2f,
-                     5.31f, 4.90f, HEX(0xE7BC78), layout);
+    m3d_screen_quad(x + 2.0f, y + 1.0f, x + w - 2.0f, y + 2.2f,
+                    5.31f, HEX(0xE7BC78), layout);
 
     /* Closed compartments use chunky, separately extruded metal shutter slats. */
     if (locked) {
@@ -594,35 +594,35 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
             uint32_t face = i == 4 ? HEX(0x454945) : HEX(0x777B75);
             m3d_screen_prism(shutter_x, sy, shutter_x + shutter_w, sy + 5.2f,
                              5.20f, 4.65f, face, layout);
-            m3d_screen_prism(shutter_x + 1.2f, sy + 0.3f,
-                             shutter_x + shutter_w - 1.2f, sy + 1.0f,
-                             5.235f, 5.02f, HEX(0xD9D8CE), layout);
-            m3d_screen_prism(shutter_x + 1.2f, sy + 4.1f,
-                             shutter_x + shutter_w - 1.2f, sy + 4.8f,
-                             5.235f, 5.02f, HEX(0x303530), layout);
-            m3d_screen_prism(shutter_x + 3.0f, sy + 1.7f,
-                             shutter_x + 4.5f, sy + 3.0f,
-                             5.24f, 5.06f, HEX(0xE4C98E), layout);
-            m3d_screen_prism(shutter_x + shutter_w - 4.5f, sy + 1.7f,
-                             shutter_x + shutter_w - 3.0f, sy + 3.0f,
-                             5.24f, 5.06f, HEX(0xE4C98E), layout);
+            m3d_screen_quad(shutter_x + 1.2f, sy + 0.3f,
+                            shutter_x + shutter_w - 1.2f, sy + 1.0f,
+                            5.235f, HEX(0xD9D8CE), layout);
+            m3d_screen_quad(shutter_x + 1.2f, sy + 4.1f,
+                            shutter_x + shutter_w - 1.2f, sy + 4.8f,
+                            5.235f, HEX(0x303530), layout);
+            m3d_screen_quad(shutter_x + 3.0f, sy + 1.7f,
+                            shutter_x + 4.5f, sy + 3.0f,
+                            5.24f, HEX(0xE4C98E), layout);
+            m3d_screen_quad(shutter_x + shutter_w - 4.5f, sy + 1.7f,
+                            shutter_x + shutter_w - 3.0f, sy + 3.0f,
+                            5.24f, HEX(0xE4C98E), layout);
         }
     }
 
     /* Heavy shelf nose and raised brass plate add a second, readable depth step. */
     m3d_screen_prism(x + 4.0f, y + h - 25.0f, x + w - 4.0f, y + h - 18.0f,
                      5.30f, 4.65f, HEX(0xB67C41), layout);
-    m3d_screen_prism(x + 5.0f, y + h - 25.0f, x + w - 5.0f, y + h - 23.8f,
-                     5.34f, 5.06f, HEX(0xF0C986), layout);
+    m3d_screen_quad(x + 5.0f, y + h - 25.0f, x + w - 5.0f, y + h - 23.8f,
+                    5.34f, HEX(0xF0C986), layout);
     const float plaque_w = w * 0.78f;
     const float plaque_x = x + (w - plaque_w) * 0.5f;
     const float plaque_y = y + h - 17.0f;
     m3d_screen_prism(plaque_x - 1.0f, plaque_y - 1.0f,
                      plaque_x + plaque_w + 1.0f, plaque_y + 15.0f,
                      5.31f, 4.96f, HEX(0x543018), layout);
-    m3d_screen_prism(plaque_x + 1.0f, plaque_y + 1.0f,
-                     plaque_x + plaque_w - 1.0f, plaque_y + 13.0f,
-                     5.34f, 5.12f, HEX(0xE5C982), layout);
+    m3d_screen_quad(plaque_x + 1.0f, plaque_y + 1.0f,
+                    plaque_x + plaque_w - 1.0f, plaque_y + 13.0f,
+                    5.34f, HEX(0xE5C982), layout);
 }
 
 static void m3d_museum_grid(const M3DMuseumLayout *layout)
