@@ -4938,13 +4938,13 @@ static void museum_draw_3d_set_dressing(float x, float y, float width)
     museum_draw_pipe_prop(x + width - 12, y + 322, 37, 66);
 
     const float rail_w = width * 0.24f;
-    museum_draw_train_prop(x + width * 0.55f, y - 87, rail_w);
+    museum_draw_train_prop(x + width * 0.55f, y - 62, rail_w);
     museum_draw_gold_coin(x + width * 0.43f, y - 78, 17.0f);
     const float block_bob = sinf(anim_clock * 1.25f) * 2.2f;
-    museum_draw_question_block(x + width - 94, y - 84 + block_bob, 18);
-    museum_draw_question_block(x + width - 58, y - 90 - block_bob * 0.7f, 22);
-    ui_text_c(F_BOLD, 18, x + width * 0.48f, y - 88 + block_bob * 0.55f, HEX(0xE7CF8A), "♪");
-    ui_text_c(F_BOLD, 14, x + width * 0.51f, y - 78 - block_bob * 0.4f, HEX(0xF4DDB0), "♫");
+    museum_draw_question_block(x + width - 94, y - 70 + block_bob, 18);
+    museum_draw_question_block(x + width - 58, y - 78 - block_bob * 0.7f, 22);
+    ui_text_c(F_BOLD, 18, x + width * 0.48f, y - 65 + block_bob * 0.55f, HEX(0xE7CF8A), "♪");
+    ui_text_c(F_BOLD, 14, x + width * 0.51f, y - 55 - block_bob * 0.4f, HEX(0xF4DDB0), "♫");
 }
 
 static void tab_museum(float x, float y)
@@ -5369,6 +5369,12 @@ LauncherResult launcher_frame(float dt)
         draw_cover(bt, bw, bh, vx, vy, vw, vh);
         ui_rect(vx, vy, vw, vh, RGBA(8, 9, 14, (int)(60 + settings.g[g].bg_dim * 2.4f)));
     }
+    /* Keep all 3D-style props in the background layer. Header controls and
+     * the actual Museum panels are painted later, so never lose hit targets. */
+    if (tab == TAB_MUSEUM) {
+        const float scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
+        museum_draw_3d_set_dressing(scene_x, 166.0f, 808.0f);
+    }
 
     /* Use only the supplied transparent PipeClean logo in the header. */
     SDL_Texture *brand_logo = branding_logo_texture();
@@ -5452,8 +5458,6 @@ LauncherResult launcher_frame(float dt)
     }
 
     float cx = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f, cy = 108;
-    if (tab == TAB_MUSEUM)
-        museum_draw_3d_set_dressing(cx, cy + 58.0f, 808.0f);
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
