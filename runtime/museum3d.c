@@ -698,7 +698,7 @@ static void m3d_train(float elapsed, const M3DVec3 *path, int path_count)
     if (total_length < 0.01f) return;
 
     /* Distance-based travel avoids speed changes at the smoothed corners. */
-    float distance = fmodf(elapsed * 2.50f + 25.00f, total_length);
+    float distance = fmodf(elapsed * 2.50f + 32.00f, total_length);
     if (distance < 0.0f) distance += total_length;
     M3DVec3 position = path[0], tangent = m3d_v(1.0f, 0.0f, 0.0f);
     for (int i = 0; i < path_count; ++i) {
@@ -1685,7 +1685,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_box(4.80f, 0.03f, 1.45f, 6.00f, 0.48f, 3.95f, HEX(0x8C6038));
     m3d_toad_figure(-6.15f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
-    m3d_goomba_figure(5.05f, 3.05f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
+    m3d_goomba_figure(4.95f, 3.05f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
