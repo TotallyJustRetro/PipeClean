@@ -4891,6 +4891,27 @@ static void museum_draw_train_prop(float x, float rail_y, float w)
     }
 }
 
+static void museum_draw_gold_coin(float x, float y, float size)
+{
+    /* Squashing the coin horizontally simulates a slow turn in perspective. */
+    const float bob = sinf(anim_clock * 1.8f) * 2.0f;
+    const float width = size * (0.22f + 0.78f * fabsf(cosf(anim_clock * 1.45f)));
+    y += bob;
+    ui_rrect(x + 2, y + 3, width, size, size * 0.5f, RGBA(0, 0, 0, 105));
+    ui_rrect(x + 1, y + 1, width, size, size * 0.5f, HEX(0x8D4F18));
+    ui_vgrad(x, y, width, size, HEX(0xFFF0A2), HEX(0xB97417));
+    ui_stroke(x, y, width, size, size * 0.5f, 1.2f, HEX(0x61330F));
+    if (width > size * 0.62f) {
+        ui_stroke(x + 2, y + 2, width - 4, size - 4, size * 0.5f - 1, 0.8f, HEX(0xFFE7A0));
+        ui_text_c(F_BOLD, size * 0.52f, x + width * 0.5f, y + size * 0.15f,
+                  HEX(0x8D4C12), "C");
+        ui_line(x + 3, y + 3, x + 4, y + size - 4, 1.0f, HEX(0xFFF5C8));
+    } else {
+        ui_line(x + width * 0.5f, y + 3, x + width * 0.5f, y + size - 3,
+                1.2f, HEX(0xFFE8A2));
+    }
+}
+
 static void museum_draw_hanging_tag(float x, float y)
 {
     /* A little paper accession tag sits over the cabinet lip, like a real prop. */
@@ -4918,6 +4939,7 @@ static void museum_draw_3d_set_dressing(float x, float y, float width)
 
     const float rail_w = width * 0.24f;
     museum_draw_train_prop(x + width * 0.55f, y - 87, rail_w);
+    museum_draw_gold_coin(x + width * 0.43f, y - 78, 17.0f);
     const float block_bob = sinf(anim_clock * 1.25f) * 2.2f;
     museum_draw_question_block(x + width - 94, y - 84 + block_bob, 18);
     museum_draw_question_block(x + width - 58, y - 90 - block_bob * 0.7f, 22);
@@ -5035,6 +5057,21 @@ static void tab_museum(float x, float y)
     const float body_y = y + 63.0f, body_h = 413.0f;
     const float left_w = 450.0f, gap = 8.0f, right_x = x + left_w + gap;
     const float right_w = width - left_w - gap;
+
+    /* A short extruded top and right wall give the cabinet a visible depth
+     * before its front face is drawn over them. */
+    ui_tri(x + 8, body_y - 7, x + width - 8, body_y - 7,
+           x + width + 7, body_y + 4, HEX(0xD8A76C));
+    ui_tri(x + 8, body_y - 7, x + width + 7, body_y + 4,
+           x + 8, body_y + 4, HEX(0x9A693E));
+    ui_line(x + 14, body_y - 6, x + width - 10, body_y - 6,
+            1.3f, HEX(0xFFE0A0));
+    ui_tri(x + width - 5, body_y + 4, x + width + 7, body_y + 11,
+           x + width + 7, body_y + body_h - 3, HEX(0x261006));
+    ui_tri(x + width - 5, body_y + 4, x + width + 7, body_y + body_h - 3,
+           x + width - 5, body_y + body_h - 10, HEX(0x4A2511));
+    ui_line(x + width + 4, body_y + 15, x + width + 4, body_y + body_h - 12,
+            1.2f, HEX(0x6B3A1A));
 
     /* The whole Museum sits inside a layered, bevelled hardwood housing. */
     ui_shadow(x, body_y, width, body_h, 10, 8, RGBA(0, 0, 0, 150));
@@ -5188,6 +5225,8 @@ static void tab_museum(float x, float y)
         if (sy < grid_y - 6 || sy > grid_y + grid_h) continue;
         ui_vgrad(grid_x - 1, sy, grid_w + 2, 7, HEX(0xC18B51), HEX(0x4B2613));
         ui_line(grid_x, sy, grid_x + grid_w, sy, 1.1f, HEX(0xE5B875));
+        ui_line(grid_x + 2, sy + 1, grid_x + grid_w - 2, sy + 1,
+                0.6f, HEX(0xF0D49A));
         ui_line(grid_x, sy + 6, grid_x + grid_w, sy + 6, 1.1f, HEX(0x160904));
     }
     for (int divider = 0; divider < 2; ++divider) {
