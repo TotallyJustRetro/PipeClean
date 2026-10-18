@@ -158,6 +158,7 @@ static void on_trigger(int ch, const uint8_t *r)
  * rather than parsing the status bar at one hard-coded screen row: the bar's
  * vertical position can vary with the game's background/window layer. */
 static Sml2MuseumTracker sml2_museum_tracker;
+static int sml2_museum_sprite_cache_sweep_done;
 
 static uint8_t sml2_ram_read(uint16_t address)
 {
@@ -491,6 +492,8 @@ static const char *sml2_museum_scripted_boss_id(uint8_t level, uint8_t object_ty
 /* Save a locally rendered SML2 sprite for an encountered, mapped enemy. */
 static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
                                       const char *entry_id);
+/* Backfill artwork only for discoveries already recorded in the Museum. */
+static void sml2_museum_capture_discovered_sprites(void);
 
 static void sml2_museum_observe_visible_enemies(uint8_t level)
 {
@@ -594,6 +597,7 @@ static void sml2_museum_live_frame(void)
 {
     if (cur_game != GAME_SML2 || rom_loaded_game() != GAME_SML2) {
         sml2_museum_tracker.have_previous = 0;
+        sml2_museum_sprite_cache_sweep_done = 0;
         return;
     }
 
@@ -607,6 +611,15 @@ static void sml2_museum_live_frame(void)
      * walking past or seeing an enemy is sufficient to add its specimen. */
     const uint8_t level = sml2_ram_read(0xA269);
     sml2_museum_observe_visible_enemies(level);
+
+    /* Old cache files may have been created as transparent images by an
+       invalid fixed-bank ROM read. On each fresh SML2 session, rebuild art for
+       already-discovered catalog entries from the loaded ROM mappings. This
+       does not unlock anything; it only fills artwork for saved discoveries. */
+    if (!sml2_museum_sprite_cache_sweep_done) {
+        sml2_museum_sprite_cache_sweep_done = 1;
+        sml2_museum_capture_discovered_sprites();
+    }
 
     Sml2MuseumSnapshot snapshot;
     if (!sml2_museum_snapshot_read(&snapshot)) return;
@@ -1893,6 +1906,59 @@ static int sml2_museum_capture_sprite(uint8_t level, uint8_t object_type,
         return 0;
     }
     return 1;
+}
+
+static void sml2_museum_capture_discovered_sprites(void)
+{
+    if (cur_game != GAME_SML2 || rom_loaded_game() != GAME_SML2)
+        return;
+
+    for (size_t i = 0;
+         i < sizeof sml2_museum_enemy_map / sizeof sml2_museum_enemy_map[0];
+         ++i) {
+        const Sml2MuseumEnemyMap *entry = &sml2_museum_enemy_map[i];
+        if (!museum_is_discovered(GAME_SML2, entry->museum_id))
+            continue;
+        char path[1200];
+        if (museum_sprite_asset_path(GAME_SML2, entry->museum_id,
+                                     path, sizeof path))
+            continue;
+        /* Try alternate course/type mappings when one ROM mapping is absent. */
+        (void)sml2_museum_capture_sprite(entry->level, entry->object_type,
+                                         entry->museum_id);
+    }
+
+    /* Scripted bosses are not part of the ordinary course spawn lists, but
+       their sprite maps are still addressable through the ROM's object tables. */
+    static const Sml2MuseumEnemyMap scripted_bosses[] = {
+        {0x09, 0x5D, "sml2_witch"},
+        {0x09, 0x97, "sml2_witch"},
+        {0x0D, 0x22, "sml2_three_little_pigs"},
+        {0x0D, 0x23, "sml2_three_little_pigs"},
+        {0x0D, 0x25, "sml2_three_little_pigs"},
+        {0x0D, 0x27, "sml2_three_little_pigs"},
+        {0x0D, 0x75, "sml2_three_little_pigs"},
+        {0x0D, 0xB4, "sml2_three_little_pigs"},
+        {0x10, 0x22, "sml2_octopus_boss"},
+        {0x10, 0x23, "sml2_octopus_boss"},
+        {0x10, 0x25, "sml2_octopus_boss"},
+        {0x10, 0x27, "sml2_octopus_boss"},
+        {0x10, 0x75, "sml2_octopus_boss"},
+        {0x10, 0xB4, "sml2_octopus_boss"}
+    };
+    for (size_t i = 0;
+         i < sizeof scripted_bosses / sizeof scripted_bosses[0];
+         ++i) {
+        const Sml2MuseumEnemyMap *entry = &scripted_bosses[i];
+        if (!museum_is_discovered(GAME_SML2, entry->museum_id))
+            continue;
+        char path[1200];
+        if (museum_sprite_asset_path(GAME_SML2, entry->museum_id,
+                                     path, sizeof path))
+            continue;
+        (void)sml2_museum_capture_sprite(entry->level, entry->object_type,
+                                         entry->museum_id);
+    }
 }
 
 static int museum_sml_asset_output(const char *entry_id, char *out, size_t cap)
