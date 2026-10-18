@@ -5146,11 +5146,25 @@ static void tab_museum(float x, float y)
         ui_line(x + 16, gy, x + left_w - 16, gy + (grain % 2 ? 0.4f : -0.4f),
                 0.6f, RGBA(154, 105, 52, 38));
     }
-    /* Keep decoration underneath the interactive Field Guide content. */
-    museum_draw_field_guide_corner(x + 20.0f, body_y + 43.0f, 1.0f, 1.0f, 0.78f);
-    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + 43.0f, -1.0f, 1.0f, 0.78f);
-    museum_draw_field_guide_corner(x + 20.0f, body_y + body_h - 22.0f, 1.0f, -1.0f, 0.90f);
-    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + body_h - 22.0f, -1.0f, -1.0f, 0.90f);
+    /* Sparse, deterministic paper fibers add parchment texture without
+       requiring a bitmap overlay or making the copy hard to read. */
+    for (int fleck = 0; fleck < 72; ++fleck) {
+        const int fx_offset = 19 + (fleck * 53) % 410;
+        const int fy_offset = 43 + (fleck * 37) % 350;
+        const float fx = x + (float)fx_offset;
+        const float fy = body_y + (float)fy_offset;
+        const float fleck_len = 1.4f + (float)(fleck % 4) * 0.55f;
+        const uint32_t fiber = (fleck % 3 == 0)
+            ? RGBA(111, 68, 31, 18) : RGBA(255, 242, 202, 23);
+        ui_line(fx, fy, fx + fleck_len, fy + (fleck % 2 ? 0.25f : -0.25f),
+                0.55f, fiber);
+    }
+    /* Scale the engraved corner scrolls up to match the carved ornaments in
+       the references. They are still drawn underneath all live text/artwork. */
+    museum_draw_field_guide_corner(x + 20.0f, body_y + 43.0f, 1.0f, 1.0f, 1.05f);
+    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + 43.0f, -1.0f, 1.0f, 1.42f);
+    museum_draw_field_guide_corner(x + 20.0f, body_y + body_h - 22.0f, 1.0f, -1.0f, 1.20f);
+    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + body_h - 22.0f, -1.0f, -1.0f, 1.20f);
     /* Soft shadow panels split the field notes and discovery log into paper
        insets without changing the hit targets or the text layout. */
     ui_rrect(x + 13, body_y + 160, left_w - 26, 103, 2,
