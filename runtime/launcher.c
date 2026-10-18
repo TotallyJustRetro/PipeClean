@@ -4891,12 +4891,30 @@ static void museum_draw_train_prop(float x, float rail_y, float w)
     }
 }
 
+static void museum_draw_hanging_tag(float x, float y)
+{
+    /* A little paper accession tag sits over the cabinet lip, like a real prop. */
+    ui_line(x + 5, y - 11, x + 9, y + 3, 2.0f, HEX(0x3B2112));
+    ui_line(x + 4, y - 11, x + 8, y + 2, 1.0f, HEX(0xE1C184));
+    ui_rrect(x + 1, y - 14, 8, 8, 4, HEX(0xC9A15F));
+    ui_stroke(x + 1, y - 14, 8, 8, 4, 1.0f, HEX(0x4E2A10));
+    ui_tri(x + 4, y + 1, x + 22, y + 4, x + 19, y + 34, HEX(0xD6BC83));
+    ui_tri(x + 4, y + 1, x + 19, y + 34, x + 1, y + 29, HEX(0xB89A62));
+    ui_line(x + 4, y + 5, x + 17, y + 7, 1.0f, HEX(0xF6E5B4));
+    ui_line(x + 4, y + 11, x + 15, y + 13, 0.8f, HEX(0x8D7045));
+    ui_line(x + 3, y + 17, x + 15, y + 19, 0.8f, HEX(0x8D7045));
+    ui_rrect(x + 7, y + 25, 5, 5, 2, HEX(0xC9A45F));
+    ui_stroke(x + 7, y + 25, 5, 5, 2, 0.8f, HEX(0x76502B));
+}
+
 static void museum_draw_3d_set_dressing(float x, float y, float width)
 {
     /* The props live behind the real interactive UI, like toys in a cabinet
      * diorama. They peek out at the edges rather than covering controls. */
     museum_draw_pipe_prop(x - 21, y + 154, 43, 97);
     museum_draw_pipe_prop(x + width - 8, y + 179, 44, 104);
+    museum_draw_pipe_prop(x - 13, y + 326, 34, 62);
+    museum_draw_pipe_prop(x + width - 12, y + 322, 37, 66);
 
     const float rail_w = width * 0.24f;
     museum_draw_train_prop(x + width * 0.55f, y - 87, rail_w);
@@ -5154,14 +5172,6 @@ static void tab_museum(float x, float y)
     const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
     const float tile_h = 75.0f, row_step = tile_h + tile_gap_y;
     int rows = (visible + 2) / 3;
-    /* Continuous shelves show through the seven-pixel gaps between cubbies. */
-    for (int shelf = 0; shelf < rows; ++shelf) {
-        float sy = grid_y + shelf * row_step + tile_h - museum_scroll;
-        if (sy < grid_y - 6 || sy > grid_y + grid_h) continue;
-        ui_vgrad(grid_x - 1, sy, grid_w + 2, 7, HEX(0xC18B51), HEX(0x4B2613));
-        ui_line(grid_x, sy, grid_x + grid_w, sy, 1.1f, HEX(0xE5B875));
-        ui_line(grid_x, sy + 6, grid_x + grid_w, sy + 6, 1.1f, HEX(0x160904));
-    }
     float content_h = rows * row_step;
     float max_scroll = content_h > grid_h ? content_h - grid_h : 0.0f;
     if (ui_mouse.x >= grid_x && ui_mouse.x <= grid_x + grid_w &&
@@ -5170,6 +5180,24 @@ static void tab_museum(float x, float y)
         museum_scroll -= ui_mouse.wheel * row_step;
     if (museum_scroll < 0.0f) museum_scroll = 0.0f;
     if (museum_scroll > max_scroll) museum_scroll = max_scroll;
+
+    /* Continuous shelf lips and upright dividers peek through the gaps between
+     * the individual clickable compartments, making one connected cabinet. */
+    for (int shelf = 0; shelf < rows; ++shelf) {
+        float sy = grid_y + shelf * row_step + tile_h - museum_scroll;
+        if (sy < grid_y - 6 || sy > grid_y + grid_h) continue;
+        ui_vgrad(grid_x - 1, sy, grid_w + 2, 7, HEX(0xC18B51), HEX(0x4B2613));
+        ui_line(grid_x, sy, grid_x + grid_w, sy, 1.1f, HEX(0xE5B875));
+        ui_line(grid_x, sy + 6, grid_x + grid_w, sy + 6, 1.1f, HEX(0x160904));
+    }
+    for (int divider = 0; divider < 2; ++divider) {
+        float dx = grid_x + (divider + 1) * tile_w + divider * tile_gap_x;
+        ui_vgrad(dx, grid_y - 1, tile_gap_x, grid_h + 2,
+                 HEX(0xB57B45), HEX(0x35190C));
+        ui_line(dx, grid_y, dx, grid_y + grid_h, 1.0f, HEX(0xD6A065));
+        ui_line(dx + tile_gap_x - 1, grid_y, dx + tile_gap_x - 1,
+                grid_y + grid_h, 1.0f, HEX(0x160904));
+    }
 
     ui_clip(grid_x, grid_y, grid_w, grid_h);
     int shown = 0;
@@ -5463,6 +5491,8 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Collectible Museum");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "A shared collection for every game: enemies, items, treasures, stages, and milestones.");
         tab_museum(cx, cy + 58);
+        if (!museum_hacks_view)
+            museum_draw_hanging_tag(cx + 808.0f - 25.0f, cy + 58.0f + 135.0f);
     }
 
     /* footer */
