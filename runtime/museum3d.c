@@ -46,6 +46,7 @@ static const float m3d_cam_z = 10.5f;
 static const float m3d_pitch_sin = 0.31f;
 static const float m3d_pitch_cos = 0.9502f;
 static const float m3d_focal = 754.0f;
+static float m3d_focal_x = 754.0f;
 static const float m3d_center_y = 270.0f;
 
 static M3DVec3 m3d_v(float x, float y, float z)
@@ -111,7 +112,7 @@ static int m3d_project(M3DVec3 p, M3DProjected *out)
     float view_y = dy * m3d_pitch_cos - dz * m3d_pitch_sin;
     float view_z = (m3d_cam_z - p.z) * m3d_pitch_cos - dy * m3d_pitch_sin;
     if (view_z <= M3D_NEAR) return 0;
-    out->x = (float)M3D_W * 0.5f + p.x * m3d_focal / view_z;
+    out->x = (float)M3D_W * 0.5f + p.x * m3d_focal_x / view_z;
     out->y = m3d_center_y - view_y * m3d_focal / view_z;
     out->z = view_z;
     out->invz = 1.0f / view_z;
@@ -483,7 +484,7 @@ static M3DVec3 m3d_screen_point(float logical_x, float logical_y, float z,
     float dy = distance * (ratio * m3d_pitch_cos - m3d_pitch_sin) /
                (m3d_pitch_cos + ratio * m3d_pitch_sin);
     float view_z = distance * m3d_pitch_cos - dy * m3d_pitch_sin;
-    float wx = (sx - (float)M3D_W * 0.5f) * view_z / m3d_focal;
+    float wx = (sx - (float)M3D_W * 0.5f) * view_z / m3d_focal_x;
     return m3d_v(wx, m3d_cam_y + dy, z);
 }
 
@@ -496,11 +497,26 @@ static void m3d_screen_quad(float x0, float y0, float x1, float y1, float z,
     M3DVec3 d = m3d_screen_point(x0, y1, z, layout);
     m3d_quad(a, b, c, d, color);
 }
+ 
+static void m3d_screen_face(float x0, float y0, float z0,
+                            float x1, float y1, float z1,
+                            float x2, float y2, float z2,
+                            float x3, float y3, float z3,
+                            uint32_t color, const M3DMuseumLayout *layout)
+{
+    M3DVec3 a = m3d_screen_point(x0, y0, z0, layout);
+    M3DVec3 b = m3d_screen_point(x1, y1, z1, layout);
+    M3DVec3 c = m3d_screen_point(x2, y2, z2, layout);
+    M3DVec3 d = m3d_screen_point(x3, y3, z3, layout);
+    m3d_quad(a, b, c, d, color);
+}
+
 
 static void m3d_screen_cubby(float x, float y, float w, float h,
                              const M3DMuseumLayout *layout)
 {
-    const float front_z = 4.96f, back_z = 4.48f;
+    /* Back wall and four inner returns make a genuinely hollow exhibit box. */
+    const float front_z = 5.12f, rear_z = 4.02f;
     const float opening_left = x + 4.0f, opening_right = x + w - 4.0f;
     const float opening_top = y + 4.0f, opening_bottom = y + h - 25.0f;
     const float rear_left = x + 13.0f, rear_right = x + w - 13.0f;
@@ -510,48 +526,71 @@ static void m3d_screen_cubby(float x, float y, float w, float h,
     M3DVec3 ft_r = m3d_screen_point(opening_right, opening_top, front_z, layout);
     M3DVec3 fb_r = m3d_screen_point(opening_right, opening_bottom, front_z, layout);
     M3DVec3 fb_l = m3d_screen_point(opening_left, opening_bottom, front_z, layout);
-    M3DVec3 rt_l = m3d_screen_point(rear_left, rear_top, back_z, layout);
-    M3DVec3 rt_r = m3d_screen_point(rear_right, rear_top, back_z, layout);
-    M3DVec3 rb_r = m3d_screen_point(rear_right, rear_bottom, back_z, layout);
-    M3DVec3 rb_l = m3d_screen_point(rear_left, rear_bottom, back_z, layout);
+    M3DVec3 rt_l = m3d_screen_point(rear_left, rear_top, rear_z, layout);
+    M3DVec3 rt_r = m3d_screen_point(rear_right, rear_top, rear_z, layout);
+    M3DVec3 rb_r = m3d_screen_point(rear_right, rear_bottom, rear_z, layout);
+    M3DVec3 rb_l = m3d_screen_point(rear_left, rear_bottom, rear_z, layout);
 
-    /* Recessed rear wall first, then the four inner walls of the hollow cubby. */
     m3d_quad(rt_l, rt_r, rb_r, rb_l, HEX(0x170B06));
-    m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0xA47647));
-    m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x86542F));
-    m3d_quad(ft_r, fb_r, rb_r, rt_r, HEX(0x3C1E10));
-    m3d_quad(fb_l, rb_l, rb_r, fb_r, HEX(0x684124));
+    m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0xB17B46));
+    m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x88552F));
+    m3d_quad(ft_r, fb_r, rb_r, rt_r, HEX(0x3D1F11));
+    m3d_quad(fb_l, rb_l, rb_r, fb_r, HEX(0x6A4225));
 
-    /* The front surround is a raised wooden frame, not a flat card background. */
-    m3d_screen_quad(x, y, x + w, y + 4.0f, 4.985f, HEX(0xA87845), layout);
-    m3d_screen_quad(x, y + 4.0f, x + 4.0f, y + h - 25.0f,
-                    4.985f, HEX(0x8B592F), layout);
-    m3d_screen_quad(x + w - 4.0f, y + 4.0f, x + w, y + h - 25.0f,
-                    4.985f, HEX(0x452414), layout);
-    m3d_screen_quad(x + 4.0f, y + h - 25.0f, x + w - 4.0f, y + h - 22.0f,
-                    4.985f, HEX(0x583018), layout);
+    /* The bezel is a sloped wood rim. Its inner edge drops into the cavity,
+       which creates hard perspective highlights that a gradient card cannot. */
+    m3d_screen_face(x, y, front_z, x + w, y, front_z,
+                    opening_right, opening_top, 4.98f,
+                    opening_left, opening_top, 4.98f,
+                    HEX(0xB47D43), layout);
+    m3d_screen_face(x, y, front_z, opening_left, opening_top, 4.98f,
+                    opening_left, opening_bottom, 4.98f,
+                    x, opening_bottom, front_z,
+                    HEX(0x8D592F), layout);
+    m3d_screen_face(opening_right, opening_top, 4.98f, x + w, y, front_z,
+                    x + w, opening_bottom, front_z,
+                    opening_right, opening_bottom, 4.98f,
+                    HEX(0x452414), layout);
+    m3d_screen_face(x, opening_bottom, front_z, opening_left, opening_bottom, 4.98f,
+                    opening_right, opening_bottom, 4.98f,
+                    x + w, opening_bottom, front_z,
+                    HEX(0x754725), layout);
     m3d_screen_quad(x + 3.0f, y + 1.0f, x + w - 3.0f, y + 2.2f,
-                    5.005f, HEX(0xE1B978), layout);
+                    5.14f, HEX(0xE7BC78), layout);
+    m3d_screen_quad(x + 3.0f, y + 3.0f, x + 5.0f, opening_bottom - 1.0f,
+                    5.14f, HEX(0xD6A15B), layout);
+    m3d_screen_quad(x + w - 5.0f, y + 3.0f, x + w - 3.0f, opening_bottom - 1.0f,
+                    5.14f, HEX(0xB0783D), layout);
 
-    /* Shelf nose and the accession plaque are raised pieces attached to the frame. */
-    m3d_screen_quad(x + 4.0f, y + h - 25.0f, x + w - 4.0f, y + h - 18.0f,
-                    5.00f, HEX(0xB47B42), layout);
-    m3d_screen_quad(x + 5.0f, y + h - 25.0f, x + w - 5.0f, y + h - 24.0f,
-                    5.015f, HEX(0xE6BC78), layout);
+    /* A projecting shelf nose is a second piece of wood, not a painted line. */
+    m3d_screen_face(x + 4.0f, y + h - 25.0f, 5.11f,
+                    x + w - 4.0f, y + h - 25.0f, 5.11f,
+                    x + w - 3.0f, y + h - 18.0f, 4.94f,
+                    x + 3.0f, y + h - 18.0f, 4.94f,
+                    HEX(0xB67C41), layout);
+    m3d_screen_quad(x + 5.0f, y + h - 25.0f, x + w - 5.0f, y + h - 23.8f,
+                    5.15f, HEX(0xF0C986), layout);
+    m3d_screen_quad(x + 5.0f, y + h - 19.0f, x + w - 5.0f, y + h - 18.0f,
+                    5.13f, HEX(0x3B1B0C), layout);
+
+    /* Raised brass accession plate with a darker bevel and inset face. */
     float plaque_w = w * 0.78f;
     float plaque_x = x + (w - plaque_w) * 0.5f;
     float plaque_y = y + h - 17.0f;
+    m3d_screen_quad(plaque_x - 1.0f, plaque_y - 1.0f,
+                    plaque_x + plaque_w + 1.0f, plaque_y + 15.0f,
+                    5.13f, HEX(0x543018), layout);
     m3d_screen_quad(plaque_x, plaque_y, plaque_x + plaque_w, plaque_y + 14.0f,
-                    5.005f, HEX(0xA66B32), layout);
+                    5.16f, HEX(0xB7803D), layout);
     m3d_screen_quad(plaque_x + 2.0f, plaque_y + 2.0f,
                     plaque_x + plaque_w - 2.0f, plaque_y + 12.0f,
-                    5.025f, HEX(0xE5C982), layout);
-    m3d_screen_quad(plaque_x + 3.0f, plaque_y + 4.0f,
-                    plaque_x + 5.0f, plaque_y + 6.0f,
-                    5.035f, HEX(0x68401D), layout);
-    m3d_screen_quad(plaque_x + plaque_w - 5.0f, plaque_y + 4.0f,
-                    plaque_x + plaque_w - 3.0f, plaque_y + 6.0f,
-                    5.035f, HEX(0x68401D), layout);
+                    5.18f, HEX(0xEBD091), layout);
+    m3d_screen_quad(plaque_x + 4.0f, plaque_y + 3.0f,
+                    plaque_x + 5.5f, plaque_y + 4.5f,
+                    5.19f, HEX(0x805126), layout);
+    m3d_screen_quad(plaque_x + plaque_w - 5.5f, plaque_y + 3.0f,
+                    plaque_x + plaque_w - 4.0f, plaque_y + 4.5f,
+                    5.19f, HEX(0x805126), layout);
 }
 
 static void m3d_museum_grid(const M3DMuseumLayout *layout)
@@ -564,76 +603,100 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
     const float grid_w = 323.0f, grid_h = 330.0f;
     const float tile_w = 103.0f, tile_h = 75.0f, gap_x = 7.0f, row_step = 82.0f;
 
-    /* The inner display board sits behind the rim so the wells can recede into it. */
+    /* Recessed right cabinet bay and heavy top, side and bottom frame members. */
     m3d_screen_quad(panel_x + 4.0f, panel_y + 9.0f, panel_x + panel_w - 12.0f,
-                    panel_y + body_h - 9.0f, 4.34f, HEX(0x654027), layout);
+                    panel_y + body_h - 9.0f, 4.18f, HEX(0x654027), layout);
     m3d_screen_quad(panel_x + 7.0f, panel_y + 11.0f, panel_x + panel_w - 15.0f,
-                    panel_y + body_h - 12.0f, 4.36f, HEX(0x382012), layout);
-
-    /* Brass-lit top/bottom rails and darker sides turn the right panel into a fitted insert. */
-    m3d_screen_quad(panel_x, panel_y + 5.0f, panel_x + panel_w - 5.0f,
-                    panel_y + 9.0f, 4.75f, HEX(0xA16D3E), layout);
-    m3d_screen_quad(panel_x, panel_y + 9.0f, panel_x + 4.0f,
-                    panel_y + body_h - 5.0f, 4.75f, HEX(0x8A572F), layout);
-    m3d_screen_quad(panel_x + panel_w - 9.0f, panel_y + 9.0f,
-                    panel_x + panel_w - 5.0f, panel_y + body_h - 5.0f,
-                    4.75f, HEX(0x3B1E10), layout);
-    m3d_screen_quad(panel_x + 4.0f, panel_y + body_h - 9.0f,
-                    panel_x + panel_w - 9.0f, panel_y + body_h - 5.0f,
-                    4.75f, HEX(0x4A2716), layout);
+                    panel_y + body_h - 12.0f, 4.20f, HEX(0x2B160C), layout);
+    m3d_screen_face(panel_x, panel_y + 5.0f, 5.00f,
+                    panel_x + panel_w - 5.0f, panel_y + 5.0f, 5.00f,
+                    panel_x + panel_w - 12.0f, panel_y + 9.0f, 4.72f,
+                    panel_x + 4.0f, panel_y + 9.0f, 4.72f,
+                    HEX(0xA16D3E), layout);
+    m3d_screen_face(panel_x, panel_y + 5.0f, 5.00f,
+                    panel_x + 4.0f, panel_y + 9.0f, 4.72f,
+                    panel_x + 4.0f, panel_y + body_h - 9.0f, 4.72f,
+                    panel_x, panel_y + body_h - 5.0f, 5.00f,
+                    HEX(0x8A572F), layout);
+    m3d_screen_face(panel_x + panel_w - 5.0f, panel_y + 5.0f, 5.00f,
+                    panel_x + panel_w - 5.0f, panel_y + body_h - 5.0f, 5.00f,
+                    panel_x + panel_w - 12.0f, panel_y + body_h - 9.0f, 4.72f,
+                    panel_x + panel_w - 12.0f, panel_y + 9.0f, 4.72f,
+                    HEX(0x3B1E10), layout);
+    m3d_screen_face(panel_x + 4.0f, panel_y + body_h - 9.0f, 4.72f,
+                    panel_x + panel_w - 12.0f, panel_y + body_h - 9.0f, 4.72f,
+                    panel_x + panel_w - 5.0f, panel_y + body_h - 5.0f, 5.00f,
+                    panel_x, panel_y + body_h - 5.0f, 5.00f,
+                    HEX(0x4A2716), layout);
     m3d_screen_quad(panel_x + 7.0f, panel_y + 6.0f, panel_x + panel_w - 8.0f,
-                    panel_y + 7.0f, 4.78f, HEX(0xD8A866), layout);
+                    panel_y + 7.0f, 5.02f, HEX(0xD8A866), layout);
+
+    /* The side struts joining the field guide and collection shelf are behind
+       the screen-space text, but their hard edges remain visible around both inserts. */
+    m3d_screen_quad(x - 6.0f, body_y + 6.0f, x + 6.0f, body_y + body_h - 6.0f,
+                    4.70f, HEX(0x76482A), layout);
+    m3d_screen_quad(x + 450.0f, body_y + 6.0f, x + 458.0f, body_y + body_h - 6.0f,
+                    4.96f, HEX(0x2A1409), layout);
 
     if (!layout->draw_cubby_grid) return;
 
-    /* The left field-guide insert and the frame margins are also physical mounted boards. */
-    m3d_screen_quad(x - 35.0f, body_y - 4.0f, x + 845.0f, body_y + 6.0f,
-                    4.62f, HEX(0x80512F), layout);
-    m3d_screen_quad(x - 35.0f, body_y + 6.0f, x + 6.0f, body_y + body_h - 6.0f,
-                    4.62f, HEX(0x76482A), layout);
-    m3d_screen_quad(x + 802.0f, body_y + 6.0f, x + 845.0f, body_y + body_h - 6.0f,
-                    4.62f, HEX(0x3C2013), layout);
-    m3d_screen_quad(x - 35.0f, body_y + body_h - 6.0f, x + 845.0f,
-                    body_y + body_h + 6.0f, 4.62f, HEX(0x59311B), layout);
-    m3d_screen_quad(x + 6.0f, body_y + 6.0f, x + 450.0f, body_y + body_h - 6.0f,
-                    4.68f, HEX(0x704629), layout);
-    m3d_screen_quad(x + 450.0f, body_y + 6.0f, x + 458.0f, body_y + body_h - 6.0f,
-                    4.69f, HEX(0x2A1409), layout);
+    /* Thick outside rim and the dark backboard sit behind every recessed cubby. */
+    m3d_screen_face(grid_x - 4.0f, grid_y - 4.0f, 5.00f,
+                    grid_x + grid_w + 4.0f, grid_y - 4.0f, 5.00f,
+                    grid_x + grid_w + 1.0f, grid_y, 4.38f,
+                    grid_x - 1.0f, grid_y, 4.38f,
+                    HEX(0xA77643), layout);
+    m3d_screen_face(grid_x - 4.0f, grid_y - 4.0f, 5.00f,
+                    grid_x - 1.0f, grid_y, 4.38f,
+                    grid_x - 1.0f, grid_y + grid_h, 4.38f,
+                    grid_x - 4.0f, grid_y + grid_h + 4.0f, 5.00f,
+                    HEX(0x86542F), layout);
+    m3d_screen_face(grid_x + grid_w + 4.0f, grid_y - 4.0f, 5.00f,
+                    grid_x + grid_w + 4.0f, grid_y + grid_h + 4.0f, 5.00f,
+                    grid_x + grid_w + 1.0f, grid_y + grid_h, 4.38f,
+                    grid_x + grid_w + 1.0f, grid_y, 4.38f,
+                    HEX(0x3A1D10), layout);
+    m3d_screen_face(grid_x - 1.0f, grid_y + grid_h, 4.38f,
+                    grid_x + grid_w + 1.0f, grid_y + grid_h, 4.38f,
+                    grid_x + grid_w + 4.0f, grid_y + grid_h + 4.0f, 5.00f,
+                    grid_x - 4.0f, grid_y + grid_h + 4.0f, 5.00f,
+                    HEX(0x5A351E), layout);
+    m3d_screen_quad(grid_x - 1.0f, grid_y, grid_x + grid_w + 1.0f,
+                    grid_y + grid_h, 4.12f, HEX(0x1D0D06), layout);
 
-    /* Outer trim around the open shelving. The recessed dark board sits behind each well. */
-    m3d_screen_quad(grid_x - 3.0f, grid_y - 3.0f,
-                    grid_x + grid_w + 3.0f, grid_y + grid_h + 3.0f,
-                    4.40f, HEX(0x1D0D06), layout);
-    m3d_screen_quad(grid_x - 1.0f, grid_y - 1.0f,
-                    grid_x + grid_w + 1.0f, grid_y + grid_h + 1.0f,
-                    4.42f, HEX(0x302015), layout);
-
-    /* Scrollable shelf rails are physical wood bars; their positions follow the list. */
     int total_rows = (layout->visible_entries + 2) / 3;
     for (int row = 0; row < total_rows; ++row) {
         float sy = grid_y + row * row_step + tile_h - layout->scroll;
-        if (sy < grid_y - 7.0f || sy > grid_y + grid_h) continue;
-        m3d_screen_quad(grid_x - 1.0f, sy, grid_x + grid_w + 1.0f, sy + 7.0f,
-                        4.91f, HEX(0x9A6537), layout);
-        m3d_screen_quad(grid_x, sy, grid_x + grid_w, sy + 1.0f,
-                        4.94f, HEX(0xE2B775), layout);
-        m3d_screen_quad(grid_x, sy + 5.5f, grid_x + grid_w, sy + 7.0f,
-                        4.95f, HEX(0x2A1309), layout);
+        if (sy < grid_y - 8.0f || sy > grid_y + grid_h) continue;
+        /* Each shelf has a sloped top, solid front fascia and shaded underside. */
+        m3d_screen_face(grid_x - 1.0f, sy, 5.06f,
+                        grid_x + grid_w + 1.0f, sy, 5.06f,
+                        grid_x + grid_w + 1.0f, sy + 7.0f, 4.78f,
+                        grid_x - 1.0f, sy + 7.0f, 4.78f,
+                        HEX(0xA57540), layout);
+        m3d_screen_quad(grid_x, sy + 1.0f, grid_x + grid_w, sy + 5.5f,
+                        5.09f, HEX(0x8B572F), layout);
+        m3d_screen_quad(grid_x, sy + 1.0f, grid_x + grid_w, sy + 2.0f,
+                        5.11f, HEX(0xE7BB76), layout);
+        m3d_screen_quad(grid_x, sy + 5.0f, grid_x + grid_w, sy + 6.0f,
+                        5.10f, HEX(0x281207), layout);
     }
 
-    /* Two upright rails physically separate the three columns. */
+    /* Full-depth uprights divide the shelf into three bays. */
     for (int divider = 0; divider < 2; ++divider) {
         float dx = grid_x + (divider + 1) * tile_w + divider * gap_x;
-        m3d_screen_quad(dx, grid_y - 1.0f, dx + gap_x, grid_y + grid_h + 1.0f,
-                        4.90f, HEX(0x9A663A), layout);
-        m3d_screen_quad(dx, grid_y, dx + 1.0f, grid_y + grid_h,
-                        4.94f, HEX(0xD3A067), layout);
-        m3d_screen_quad(dx + gap_x - 1.0f, grid_y, dx + gap_x, grid_y + grid_h,
-                        4.95f, HEX(0x211006), layout);
+        m3d_screen_face(dx, grid_y - 1.0f, 5.04f,
+                        dx + gap_x, grid_y - 1.0f, 5.04f,
+                        dx + gap_x, grid_y + grid_h + 1.0f, 4.45f,
+                        dx, grid_y + grid_h + 1.0f, 4.45f,
+                        HEX(0x986438), layout);
+        m3d_screen_quad(dx, grid_y, dx + 1.4f, grid_y + grid_h,
+                        5.08f, HEX(0xD3A067), layout);
+        m3d_screen_quad(dx + gap_x - 1.4f, grid_y, dx + gap_x, grid_y + grid_h,
+                        5.08f, HEX(0x211006), layout);
     }
 
     if (layout->visible_entries <= 0) return;
-
     int first_row = (int)floorf(layout->scroll / row_step);
     if (first_row < 0) first_row = 0;
     for (int row = first_row; row < first_row + 6 && row < total_rows; ++row) {
@@ -752,6 +815,15 @@ void museum3d_draw_background(SDL_Renderer *renderer,
     layout.scroll = museum_scroll;
     layout.visible_entries = visible_entries < 0 ? 0 : visible_entries;
     layout.draw_cubby_grid = draw_cubby_grid;
+    /* The render target is stretched to the visible window viewport. Adjust horizontal
+       camera FOV to cancel that stretch, so the 3D furniture keeps its proportions
+       on ultrawide, narrow, maximized, and compact windows. */
+    {
+        float output_aspect = (width + 58.0f) / (height + 36.0f);
+        float target_aspect = (float)M3D_W / (float)M3D_H;
+        if (output_aspect < 0.2f) output_aspect = target_aspect;
+        m3d_focal_x = m3d_focal * target_aspect / output_aspect;
+    }
     m3d_scene(elapsed_seconds, &layout);
     if (SDL_UpdateTexture(m3d_texture, NULL, m3d_pixels, M3D_W * (int)sizeof(uint32_t)) != 0)
         return;
