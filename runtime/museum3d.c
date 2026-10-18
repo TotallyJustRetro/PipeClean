@@ -16,12 +16,12 @@
  * works with PipeClean's existing SDL_Renderer on Windows, Linux and Android.
  *
  * The interactive Museum controls and typography remain SDL UI drawn over
- * this scene. The scene is rendered at a higher native resolution, then scaled
- * with the exact same logical-to-pixel transform as the launcher UI.
+ * this scene. The scene is rendered at a high native resolution matched to the launcher’s
+ * viewport aspect, then scaled with the exact same logical-to-pixel transform.
  */
 
-#define M3D_W 768
-#define M3D_H 460
+#define M3D_W 960
+#define M3D_H 628
 #define M3D_PIXELS (M3D_W * M3D_H)
 #define M3D_NEAR 0.35f
 #define HEX(rgb) (0xFF000000u | (uint32_t)(rgb))
@@ -38,8 +38,8 @@ static const float m3d_cam_y = 4.6f;
 static const float m3d_cam_z = 10.5f;
 static const float m3d_pitch_sin = 0.31f;
 static const float m3d_pitch_cos = 0.9502f;
-static const float m3d_focal = 552.0f;
-static const float m3d_center_y = 198.0f;
+static const float m3d_focal = 754.0f;
+static const float m3d_center_y = 270.0f;
 
 static M3DVec3 m3d_v(float x, float y, float z)
 {
@@ -477,6 +477,6 @@ void museum3d_draw_background(SDL_Renderer *renderer,
     dst.x = (int)lroundf((x - 29.0f - view_x) * scale);
     dst.y = (int)lroundf((y - 18.0f - view_y) * scale);
     dst.w = (int)lroundf((width + 58.0f) * scale);
-    dst.h = (int)lroundf(height * scale);
+    dst.h = (int)lroundf((height + 36.0f) * scale);
     SDL_RenderCopy(renderer, m3d_texture, NULL, &dst);
 }
