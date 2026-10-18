@@ -7,6 +7,8 @@
  * existing interactive SDL UI. Coordinates are launcher logical pixels. */
 void museum3d_draw_background(SDL_Renderer *renderer,
                               float x, float y, float width, float height,
-                              float elapsed_seconds, float cabinet_x_offset);
+                              float elapsed_seconds, float cabinet_x_offset,
+                              float museum_x, float museum_y, float museum_scroll,
+                              int visible_entries, int draw_cubby_grid);
 
 #endif
