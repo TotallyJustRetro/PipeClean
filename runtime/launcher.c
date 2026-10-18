@@ -5504,7 +5504,7 @@ LauncherResult launcher_frame(float dt)
         /* Render the real perspective/depth-tested 3D room first. The small
          * SDL-drawn accents stay in the back layer for the current pass; every
          * clickable panel is still drawn afterward. */
-        museum3d_draw_background(ren_get(), scene_x, 166.0f, 808.0f, 520.0f, anim_clock);
+        museum3d_draw_background(ren_get(), scene_x, 100.0f, 808.0f, 520.0f, anim_clock);
         museum_draw_3d_set_dressing(scene_x, 166.0f, 808.0f);
     }
 
