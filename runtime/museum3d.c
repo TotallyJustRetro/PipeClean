@@ -47,6 +47,8 @@ static SDL_Renderer *m3d_renderer;
 static float m3d_translate_x;
 static float m3d_translate_y;
 static float m3d_translate_z;
+/* Scales only the moving railway vehicle about the track's centerline. */
+static float m3d_train_scale = 1.0f;
 static int m3d_clip_active;
 static int m3d_clip_left, m3d_clip_top, m3d_clip_right, m3d_clip_bottom;
 
@@ -116,6 +118,13 @@ static void m3d_clear(void)
 
 static int m3d_project(M3DVec3 p, M3DProjected *out)
 {
+    /* The train is intentionally a small background prop, not a foreground
+       vehicle. Scale its model-local dimensions while preserving the wheel
+       gauge center; translations are applied afterward so the vehicle stays
+       centered on the moving path and seated at rail height. */
+    p.x *= m3d_train_scale;
+    p.y *= m3d_train_scale;
+    p.z = 3.49f + (p.z - 3.49f) * m3d_train_scale;
     p.x += m3d_translate_x;
     p.y += m3d_translate_y;
     p.z += m3d_translate_z;
@@ -1140,6 +1149,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_translate_x = 0.0f;
     m3d_translate_y = 0.0f;
     m3d_translate_z = 0.0f;
+    m3d_train_scale = 1.0f;
     m3d_clear();
 
     /* Back wall and its panelled timber frame. */
@@ -1200,21 +1210,30 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
        track and train together in world Y so they stay on one rail plane while
        the cabinet and side pipes depth-occlude them instead of being crossed
        in front of the shelf. */
+    const float train_scale = 0.16f;
+    const float rail_height = 4.15f;
     m3d_translate_x = 0.0f;
-    m3d_translate_y = 4.15f;
+    m3d_translate_y = rail_height;
     m3d_translate_z = -5.2f;
-    for (int i = 0; i < 42; ++i) {
-        float x = -10.4f + (float)i * 0.5f;
-        m3d_box(x, -0.015f, 3.12f, x + 0.09f, 0.105f, 3.88f,
+    /* Fine ties and close-set rails match the small toy-scale vehicle. */
+    for (int i = 0; i < 84; ++i) {
+        float x = -10.4f + (float)i * 0.25f;
+        m3d_box(x, -0.015f, 3.405f, x + 0.08f, 0.105f, 3.575f,
                 HEX(0xA17143));
     }
-    m3d_box(-10.5f, 0.075f, 3.18f, 10.5f, 0.14f, 3.28f,
+    m3d_box(-10.5f, 0.075f, 3.437f, 10.5f, 0.14f, 3.462f,
             HEX(0xBFC0B8));
-    m3d_box(-10.5f, 0.075f, 3.72f, 10.5f, 0.14f, 3.82f,
+    m3d_box(-10.5f, 0.075f, 3.518f, 10.5f, 0.14f, 3.543f,
             HEX(0x6E7477));
     m3d_translate_z = 0.0f;
 
+    /* Wheel bottoms are 0.125 model units above the vehicle origin; offset
+       its base so the scaled wheels overlap the rail top by the same tiny
+       amount as before (no visible floating gap). */
+    m3d_translate_y = rail_height + 0.14f - 0.125f * train_scale;
+    m3d_train_scale = train_scale;
     m3d_train(elapsed);
+    m3d_train_scale = 1.0f;
     m3d_translate_y = 0.0f;
 
     /* Small brass exhibit lights hang high on each side of the room. */
