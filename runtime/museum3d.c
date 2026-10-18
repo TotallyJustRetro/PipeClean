@@ -29,6 +29,14 @@
 typedef struct { float x, y, z; } M3DVec3;
 typedef struct { float x, y, invz, z; } M3DProjected;
 
+typedef struct {
+    float view_x, view_y, view_w, view_h;
+    float cabinet_x_offset;
+    float museum_x, museum_y, scroll;
+    int visible_entries;
+    int draw_cubby_grid;
+} M3DMuseumLayout;
+
 static uint32_t m3d_pixels[M3D_PIXELS];
 static float m3d_depth[M3D_PIXELS];
 static SDL_Texture *m3d_texture;
@@ -461,7 +469,164 @@ static void m3d_cabinet(float horizontal_offset)
     m3d_projection_x_offset = 0.0f;
 }
 
-static void m3d_scene(float elapsed, float cabinet_x_offset)
+
+/* Convert launcher logical coordinates back into this renderer's image plane,
+   then invert the perspective camera at a chosen depth. That lets the physical
+   cubbies line up exactly underneath SDL's still-interactive text and sprites. */
+static M3DVec3 m3d_screen_point(float logical_x, float logical_y, float z,
+                                const M3DMuseumLayout *layout)
+{
+    float sx = (logical_x - layout->view_x + 29.0f) *
+               (float)M3D_W / (layout->view_w + 58.0f);
+    float sy = (logical_y - layout->view_y + 18.0f) *
+               (float)M3D_H / (layout->view_h + 36.0f);
+    float ratio = (m3d_center_y - sy) / m3d_focal;
+    float distance = m3d_cam_z - z;
+    float dy = distance * (ratio * m3d_pitch_cos - m3d_pitch_sin) /
+               (m3d_pitch_cos + ratio * m3d_pitch_sin);
+    float view_z = distance * m3d_pitch_cos - dy * m3d_pitch_sin;
+    float wx = (sx - (float)M3D_W * 0.5f) * view_z / m3d_focal;
+    return m3d_v(wx, m3d_cam_y + dy, z);
+}
+
+static void m3d_screen_quad(float x0, float y0, float x1, float y1, float z,
+                            uint32_t color, const M3DMuseumLayout *layout)
+{
+    M3DVec3 a = m3d_screen_point(x0, y0, z, layout);
+    M3DVec3 b = m3d_screen_point(x1, y0, z, layout);
+    M3DVec3 c = m3d_screen_point(x1, y1, z, layout);
+    M3DVec3 d = m3d_screen_point(x0, y1, z, layout);
+    m3d_quad(a, b, c, d, color);
+}
+
+static void m3d_screen_cubby(float x, float y, float w, float h,
+                             const M3DMuseumLayout *layout)
+{
+    const float front_z = 4.96f, back_z = 4.48f;
+    const float opening_left = x + 4.0f, opening_right = x + w - 4.0f;
+    const float opening_top = y + 4.0f, opening_bottom = y + h - 25.0f;
+    const float rear_left = x + 13.0f, rear_right = x + w - 13.0f;
+    const float rear_top = y + 12.0f, rear_bottom = y + h - 30.0f;
+
+    M3DVec3 ft_l = m3d_screen_point(opening_left, opening_top, front_z, layout);
+    M3DVec3 ft_r = m3d_screen_point(opening_right, opening_top, front_z, layout);
+    M3DVec3 fb_r = m3d_screen_point(opening_right, opening_bottom, front_z, layout);
+    M3DVec3 fb_l = m3d_screen_point(opening_left, opening_bottom, front_z, layout);
+    M3DVec3 rt_l = m3d_screen_point(rear_left, rear_top, back_z, layout);
+    M3DVec3 rt_r = m3d_screen_point(rear_right, rear_top, back_z, layout);
+    M3DVec3 rb_r = m3d_screen_point(rear_right, rear_bottom, back_z, layout);
+    M3DVec3 rb_l = m3d_screen_point(rear_left, rear_bottom, back_z, layout);
+
+    /* Recessed rear wall first, then the four inner walls of the hollow cubby. */
+    m3d_quad(rt_l, rt_r, rb_r, rb_l, HEX(0x170B06));
+    m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0xA47647));
+    m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x86542F));
+    m3d_quad(ft_r, fb_r, rb_r, rt_r, HEX(0x3C1E10));
+    m3d_quad(fb_l, rb_l, rb_r, fb_r, HEX(0x684124));
+
+    /* The front surround is a raised wooden frame, not a flat card background. */
+    m3d_screen_quad(x, y, x + w, y + 4.0f, 4.985f, HEX(0xA87845), layout);
+    m3d_screen_quad(x, y + 4.0f, x + 4.0f, y + h - 25.0f,
+                    4.985f, HEX(0x8B592F), layout);
+    m3d_screen_quad(x + w - 4.0f, y + 4.0f, x + w, y + h - 25.0f,
+                    4.985f, HEX(0x452414), layout);
+    m3d_screen_quad(x + 4.0f, y + h - 25.0f, x + w - 4.0f, y + h - 22.0f,
+                    4.985f, HEX(0x583018), layout);
+    m3d_screen_quad(x + 3.0f, y + 1.0f, x + w - 3.0f, y + 2.2f,
+                    5.005f, HEX(0xE1B978), layout);
+
+    /* Shelf nose and the accession plaque are raised pieces attached to the frame. */
+    m3d_screen_quad(x + 4.0f, y + h - 25.0f, x + w - 4.0f, y + h - 18.0f,
+                    5.00f, HEX(0xB47B42), layout);
+    m3d_screen_quad(x + 5.0f, y + h - 25.0f, x + w - 5.0f, y + h - 24.0f,
+                    5.015f, HEX(0xE6BC78), layout);
+    float plaque_w = w * 0.78f;
+    float plaque_x = x + (w - plaque_w) * 0.5f;
+    float plaque_y = y + h - 17.0f;
+    m3d_screen_quad(plaque_x, plaque_y, plaque_x + plaque_w, plaque_y + 14.0f,
+                    5.005f, HEX(0xA66B32), layout);
+    m3d_screen_quad(plaque_x + 2.0f, plaque_y + 2.0f,
+                    plaque_x + plaque_w - 2.0f, plaque_y + 12.0f,
+                    5.025f, HEX(0xE5C982), layout);
+    m3d_screen_quad(plaque_x + 3.0f, plaque_y + 4.0f,
+                    plaque_x + 5.0f, plaque_y + 6.0f,
+                    5.035f, HEX(0x68401D), layout);
+    m3d_screen_quad(plaque_x + plaque_w - 5.0f, plaque_y + 4.0f,
+                    plaque_x + plaque_w - 3.0f, plaque_y + 6.0f,
+                    5.035f, HEX(0x68401D), layout);
+}
+
+static void m3d_museum_grid(const M3DMuseumLayout *layout)
+{
+    const float x = layout->museum_x, y = layout->museum_y;
+    const float panel_x = x + 458.0f, panel_y = y + 63.0f;
+    const float panel_w = 350.0f, body_h = 413.0f;
+    const float grid_x = x + 467.0f, grid_y = y + 134.0f;
+    const float grid_w = 323.0f, grid_h = 330.0f;
+    const float tile_w = 103.0f, tile_h = 75.0f, gap_x = 7.0f, row_step = 82.0f;
+
+    /* Outer right-hand display board is a fitted wood panel on the cabinet face. */
+    m3d_screen_quad(panel_x, panel_y + 5.0f, panel_x + panel_w - 5.0f,
+                    panel_y + body_h - 5.0f, 4.75f, HEX(0x80512F), layout);
+    m3d_screen_quad(panel_x + 4.0f, panel_y + 9.0f, panel_x + panel_w - 12.0f,
+                    panel_y + body_h - 9.0f, 4.78f, HEX(0x4B2A18), layout);
+    m3d_screen_quad(panel_x + 7.0f, panel_y + 11.0f, panel_x + panel_w - 15.0f,
+                    panel_y + body_h - 12.0f, 4.79f, HEX(0x382012), layout);
+    m3d_screen_quad(panel_x + 9.0f, panel_y + 6.0f, panel_x + panel_w - 8.0f,
+                    panel_y + 7.0f, 4.81f, HEX(0xD8A866), layout);
+    m3d_screen_quad(panel_x + 7.0f, panel_y + body_h - 7.0f,
+                    panel_x + panel_w - 9.0f, panel_y + body_h - 6.0f,
+                    4.81f, HEX(0x2A1309), layout);
+
+    /* Recessed dark backing creates the shadowed interior behind the exhibits. */
+    m3d_screen_quad(grid_x - 3.0f, grid_y - 3.0f,
+                    grid_x + grid_w + 3.0f, grid_y + grid_h + 3.0f,
+                    4.81f, HEX(0x1D0D06), layout);
+    m3d_screen_quad(grid_x - 1.0f, grid_y - 1.0f,
+                    grid_x + grid_w + 1.0f, grid_y + grid_h + 1.0f,
+                    4.82f, HEX(0x302015), layout);
+
+    /* Scrollable shelf rails are physical wood bars; their positions follow the list. */
+    int total_rows = (layout->visible_entries + 2) / 3;
+    for (int row = 0; row < total_rows; ++row) {
+        float sy = grid_y + row * row_step + tile_h - layout->scroll;
+        if (sy < grid_y - 7.0f || sy > grid_y + grid_h) continue;
+        m3d_screen_quad(grid_x - 1.0f, sy, grid_x + grid_w + 1.0f, sy + 7.0f,
+                        4.91f, HEX(0x9A6537), layout);
+        m3d_screen_quad(grid_x, sy, grid_x + grid_w, sy + 1.0f,
+                        4.94f, HEX(0xE2B775), layout);
+        m3d_screen_quad(grid_x, sy + 5.5f, grid_x + grid_w, sy + 7.0f,
+                        4.95f, HEX(0x2A1309), layout);
+    }
+
+    /* Two upright rails physically separate the three columns. */
+    for (int divider = 0; divider < 2; ++divider) {
+        float dx = grid_x + (divider + 1) * tile_w + divider * gap_x;
+        m3d_screen_quad(dx, grid_y - 1.0f, dx + gap_x, grid_y + grid_h + 1.0f,
+                        4.90f, HEX(0x9A663A), layout);
+        m3d_screen_quad(dx, grid_y, dx + 1.0f, grid_y + grid_h,
+                        4.94f, HEX(0xD3A067), layout);
+        m3d_screen_quad(dx + gap_x - 1.0f, grid_y, dx + gap_x, grid_y + grid_h,
+                        4.95f, HEX(0x211006), layout);
+    }
+
+    if (!layout->draw_cubby_grid || layout->visible_entries <= 0) return;
+
+    int first_row = (int)floorf(layout->scroll / row_step);
+    if (first_row < 0) first_row = 0;
+    for (int row = first_row; row < first_row + 6 && row < total_rows; ++row) {
+        float ty = grid_y + row * row_step - layout->scroll;
+        if (ty < grid_y || ty + tile_h > grid_y + grid_h) continue;
+        for (int col = 0; col < 3; ++col) {
+            int index = row * 3 + col;
+            if (index >= layout->visible_entries) break;
+            float tx = grid_x + col * (tile_w + gap_x);
+            m3d_screen_cubby(tx, ty, tile_w, tile_h, layout);
+        }
+    }
+}
+
+static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 {
     m3d_clear();
 
@@ -494,7 +659,9 @@ static void m3d_scene(float elapsed, float cabinet_x_offset)
     m3d_box(-8.8f, 0.03f, 7.5f, 8.8f, 0.10f, 7.7f, HEX(0xA36C3D));
 
     /* The museum furniture is real perspective geometry; controls are layered later. */
-    m3d_cabinet(cabinet_x_offset);
+    m3d_cabinet(layout ? layout->cabinet_x_offset : 0.0f);
+    m3d_projection_x_offset = 0.0f;
+    if (layout) m3d_museum_grid(layout);
 
     /* Physical green pipe models sit beside the display housing. */
     m3d_pipe(-6.65f, 0.80f);
@@ -536,7 +703,9 @@ static void m3d_scene(float elapsed, float cabinet_x_offset)
 
 void museum3d_draw_background(SDL_Renderer *renderer,
                               float x, float y, float width, float height,
-                              float elapsed_seconds, float cabinet_x_offset)
+                              float elapsed_seconds, float cabinet_x_offset,
+                              float museum_x, float museum_y, float museum_scroll,
+                              int visible_entries, int draw_cubby_grid)
 {
     if (!renderer || width <= 0.0f || height <= 0.0f) return;
 
@@ -555,7 +724,15 @@ void museum3d_draw_background(SDL_Renderer *renderer,
 #endif
     }
 
-    m3d_scene(elapsed_seconds, cabinet_x_offset);
+    M3DMuseumLayout layout;
+    layout.view_x = x; layout.view_y = y;
+    layout.view_w = width; layout.view_h = height;
+    layout.cabinet_x_offset = cabinet_x_offset;
+    layout.museum_x = museum_x; layout.museum_y = museum_y;
+    layout.scroll = museum_scroll;
+    layout.visible_entries = visible_entries < 0 ? 0 : visible_entries;
+    layout.draw_cubby_grid = draw_cubby_grid;
+    m3d_scene(elapsed_seconds, &layout);
     if (SDL_UpdateTexture(m3d_texture, NULL, m3d_pixels, M3D_W * (int)sizeof(uint32_t)) != 0)
         return;
 
