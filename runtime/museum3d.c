@@ -511,9 +511,12 @@ static void m3d_train_wheel(float cx, float cy, float cz, float radius,
 
 static void m3d_train(float elapsed)
 {
-    /* The train moves along the full rear track. Both ends of the loop keep
-       the whole model off-screen, avoiding a visible teleport at the wrap. */
-    float travel = -8.6f + fmodf(elapsed * 0.50f, 17.2f);
+    /* Keep the locomotive on the clear central span of the rear rail. It
+       gently reverses before the side pipes and descents, instead of running
+       through those props or wrapping visibly from one edge to the other. */
+    float travel_phase = fmodf(elapsed * 0.45f, 22.0f);
+    if (travel_phase > 11.0f) travel_phase = 22.0f - travel_phase;
+    float travel = -5.8f + travel_phase;
     const float far_track_z = -5.2f;
     const float wheel_rotation = elapsed * (0.65f / 0.15f);
     m3d_translate_x = travel;
