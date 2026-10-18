@@ -835,12 +835,12 @@ static int sml2_actor_trace_sprite_tile_source_table(int base,
     int valid = 0;
     for (int level = 0; level < 32; ++level) {
         const uint16_t entry = (uint16_t)(base + level * 4);
-        /* Read through the active mapper; the recomp ROM pointer is not a
-         * reliable way to address the fixed bank of the active cartridge. */
-        const uint8_t bank = cart_rom_read_bank(0, entry);
+        /* LevelEnemySets is fixed ROM0 data below $4000; banked-window reads
+         * reject these addresses, so use the explicit fixed-bank accessor. */
+        const uint8_t bank = cart_rom_read_fixed(entry);
         const uint16_t address = (uint16_t)(
-            (uint16_t)cart_rom_read_bank(0, (uint16_t)(entry + 2u)) |
-            ((uint16_t)cart_rom_read_bank(0, (uint16_t)(entry + 3u)) << 8));
+            (uint16_t)cart_rom_read_fixed((uint16_t)(entry + 2u)) |
+            ((uint16_t)cart_rom_read_fixed((uint16_t)(entry + 3u)) << 8));
         banks[level] = bank;
         addresses[level] = address;
         /* 56 tiles occupy 0x380 bytes and must fit in the bank's 0x4000-0x7FFF
