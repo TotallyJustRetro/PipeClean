@@ -1,7 +1,6 @@
 #include "museum.h"
 #include "settings.h"
-#include "cart.h"
-#include "patch.h"
+#include <stdint.h>
 #include <SDL.h>
 #include <stdio.h>
 #include <string.h>
@@ -707,15 +706,27 @@ int museum_is_discovered(int game, const char *id)
 }
 
 /* The selected Museum tab can differ from the cartridge most recently
- * previewed or played. Also recognize the configured base ROM / selected IPS,
- * so an already-captured DX specimen remains colored while browsing the guide. */
+ * previewed or played. Recognize the configured ROM / selected IPS so cached
+ * DX specimens remain colored while browsing the guide, without linking the
+ * Museum module to the emulator's live cartridge implementation. */
+#define SML2DX_V181_ROM_SIZE 0x100000u
+#define SML2DX_V181_ROM_CRC32 0xF0799017u
 #define SML2DX_V181_IPS_SIZE 274302u
 #define SML2DX_V181_IPS_CRC32 0x0B742316u
 
+static uint32_t museum_crc32_bytes(const uint8_t *bytes, size_t size)
+{
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < size; ++i) {
+        crc ^= bytes[i];
+        for (unsigned bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1) ^ (0xEDB88320u & (uint32_t)-(int32_t)(crc & 1u));
+    }
+    return ~crc;
+}
+
 static int museum_sml2dx_profile_configured(void)
 {
-    if (cart_is_sml2dx_v181(cart_info())) return 1;
-
     const GameCfg *cfg = &settings.g[GAME_SML2];
     const int selected = cfg->romhack_selected;
     const char *rom_path = cfg->rom_path;
@@ -739,21 +750,22 @@ static int museum_sml2dx_profile_configured(void)
     snprintf(cache_hack_path, sizeof cache_hack_path, "%s", hack_path);
     cache_result = 0;
 
-    /* Directly configured, already-patched DX ROM. */
+    /* Directly configured, already-patched DX ROM. Its exact output checksum
+     * and header identity are sufficient; no emulated cartridge state needed. */
     if (rom_path[0]) {
         FILE *f = fopen(rom_path, "rb");
         if (f) {
             if (fseek(f, 0, SEEK_END) == 0) {
                 long n = ftell(f);
-                if (n == 0x100000L && fseek(f, 0, SEEK_SET) == 0) {
+                if (n == (long)SML2DX_V181_ROM_SIZE &&
+                    fseek(f, 0, SEEK_SET) == 0) {
                     uint8_t *bytes = (uint8_t *)malloc((size_t)n);
                     if (bytes) {
-                        if (fread(bytes, 1, (size_t)n, f) == (size_t)n) {
-                            CartInfo ci;
-                            if (cart_parse(bytes, (size_t)n, &ci) &&
-                                cart_is_sml2dx_v181(&ci))
-                                cache_result = 1;
-                        }
+                        if (fread(bytes, 1, (size_t)n, f) == (size_t)n &&
+                            bytes[0x143] == 0xC0u && bytes[0x147] == 0x1Bu &&
+                            museum_crc32_bytes(bytes, (size_t)n) ==
+                                SML2DX_V181_ROM_CRC32)
+                            cache_result = 1;
                         free(bytes);
                     }
                 }
@@ -775,7 +787,8 @@ static int museum_sml2dx_profile_configured(void)
                     if (bytes) {
                         if (fread(bytes, 1, (size_t)n, f) == (size_t)n &&
                             memcmp(bytes, "PATCH", 5) == 0 &&
-                            crc32_bytes(bytes, (size_t)n) == SML2DX_V181_IPS_CRC32)
+                            museum_crc32_bytes(bytes, (size_t)n) ==
+                                SML2DX_V181_IPS_CRC32)
                             cache_result = 1;
                         free(bytes);
                     }
