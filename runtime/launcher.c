@@ -5188,6 +5188,21 @@ static void tab_museum(float x, float y)
         museum_draw_shelf_cubby(museum_game, entry, tx, ty, tile_w, tile_h,
                                 found, selected_tile);
     }
+
+    /* The cabinet has twelve physical display wells on its first page. When a
+       filter contains fewer records, finish the shelf with closed locked drawers
+       rather than leaving an exposed, empty lower half. These are visual-only
+       placeholders; they never enter the catalogue or affect discovery counts. */
+    if (visible > 0 && visible < 12 && max_scroll <= 0.0f) {
+        for (int i = visible; i < 12; ++i) {
+            const int row = i / 3, col = i % 3;
+            const float tx = grid_x + col * (tile_w + tile_gap_x);
+            const float ty = grid_y + row * row_step - museum_scroll;
+            if (ty + tile_h < grid_y || ty > grid_y + grid_h) continue;
+            museum_draw_shelf_cubby(museum_game, NULL, tx, ty,
+                                    tile_w, tile_h, 0, 0);
+        }
+    }
     ui_unclip();
 
     ui_shadow(x + 1, y + 478, width - 2, 30, 4, 3, RGBA(0, 0, 0, 105));
