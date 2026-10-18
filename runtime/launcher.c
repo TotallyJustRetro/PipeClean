@@ -5272,7 +5272,8 @@ LauncherResult launcher_frame(float dt)
      * so fullscreen, resize, and compact layouts keep the scene aligned.
      * Navigation, header, cabinet, and all clickable controls are drawn later. */
     if (tab == TAB_MUSEUM)
-        museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock);
+        museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock,
+                                   compact_layout ? -0.90f : 0.0f);
 
     /* Use only the supplied transparent PipeClean logo in the header. */
     SDL_Texture *brand_logo = branding_logo_texture();
