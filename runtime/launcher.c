@@ -4882,6 +4882,74 @@ static int museum_shelf_filter_chip(float x, float y, float w, float h,
     return clicked;
 }
 
+/* Decorative curves for the engraved parchment corners of the Museum Field Guide.
+   The curves are vector strokes drawn behind the live text/artwork, not a flat
+   screenshot asset, so the panel remains scalable and interactive. */
+static void museum_draw_bezier_stroke(float x0, float y0,
+                                      float x1, float y1,
+                                      float x2, float y2,
+                                      float x3, float y3,
+                                      float thickness, uint32_t color)
+{
+    float px = x0, py = y0;
+    const int steps = 12;
+    for (int i = 1; i <= steps; ++i) {
+        const float t = (float)i / (float)steps;
+        const float u = 1.0f - t;
+        const float x = u * u * u * x0 + 3.0f * u * u * t * x1 +
+                        3.0f * u * t * t * x2 + t * t * t * x3;
+        const float y = u * u * u * y0 + 3.0f * u * u * t * y1 +
+                        3.0f * u * t * t * y2 + t * t * t * y3;
+        ui_line(px, py, x, y, thickness, color);
+        px = x;
+        py = y;
+    }
+}
+
+static void museum_draw_field_guide_corner(float x, float y,
+                                            float sx, float sy, float scale)
+{
+    const float u = scale;
+    const uint32_t shade = RGBA(91, 43, 19, 178);
+    const uint32_t copper = RGBA(157, 83, 39, 196);
+    const uint32_t gold = RGBA(242, 192, 118, 210);
+
+    /* Outer stem, with the second stroke acting as a lit bevel. */
+    museum_draw_bezier_stroke(x, y + sy * 31.0f * u,
+        x + sx * 2.0f * u, y + sy * 14.0f * u,
+        x + sx * 13.0f * u, y + sy * 3.0f * u,
+        x + sx * 33.0f * u, y + sy * 2.0f * u, 2.2f * u, shade);
+    museum_draw_bezier_stroke(x + sx * 1.0f * u, y + sy * 30.0f * u,
+        x + sx * 3.0f * u, y + sy * 15.0f * u,
+        x + sx * 14.0f * u, y + sy * 4.0f * u,
+        x + sx * 32.0f * u, y + sy * 3.0f * u, 0.9f * u, gold);
+
+    /* Tight inward scroll and a leaf-like return make it read as carved
+       ornamental tooling rather than a plain corner bracket. */
+    museum_draw_bezier_stroke(x + sx * 8.0f * u, y + sy * 21.0f * u,
+        x + sx * 21.0f * u, y + sy * 27.0f * u,
+        x + sx * 27.0f * u, y + sy * 17.0f * u,
+        x + sx * 20.0f * u, y + sy * 12.0f * u, 1.8f * u, copper);
+    museum_draw_bezier_stroke(x + sx * 20.0f * u, y + sy * 12.0f * u,
+        x + sx * 11.0f * u, y + sy * 9.0f * u,
+        x + sx * 13.0f * u, y + sy * 20.0f * u,
+        x + sx * 18.0f * u, y + sy * 20.0f * u, 1.2f * u, gold);
+    museum_draw_bezier_stroke(x + sx * 15.0f * u, y + sy * 20.0f * u,
+        x + sx * 19.0f * u, y + sy * 30.0f * u,
+        x + sx * 29.0f * u, y + sy * 29.0f * u,
+        x + sx * 29.0f * u, y + sy * 22.0f * u, 1.7f * u, copper);
+    museum_draw_bezier_stroke(x + sx * 24.0f * u, y + sy * 8.0f * u,
+        x + sx * 33.0f * u, y + sy * 6.0f * u,
+        x + sx * 33.0f * u, y + sy * 14.0f * u,
+        x + sx * 27.0f * u, y + sy * 15.0f * u, 1.4f * u, gold);
+
+    /* Tiny diamond leaf at the branch joint. */
+    ui_tri(x + sx * 8.0f * u, y + sy * 16.0f * u,
+           x + sx * 13.0f * u, y + sy * 12.0f * u,
+           x + sx * 12.0f * u, y + sy * 19.0f * u,
+           RGBA(207, 150, 78, 170));
+}
+
 static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                                     float x, float y, float w, float h,
                                     int found, int selected)
@@ -5068,11 +5136,28 @@ static void tab_museum(float x, float y)
     ui_vgrad(x + 10, body_y + 10, left_w - 20, 25, HEX(0x9E6131), HEX(0x542510));
     ui_stroke(x + 10, body_y + 10, left_w - 20, 25, 3, 1, HEX(0xE0AF65));
     ui_line(x + 14, body_y + 12, x + left_w - 14, body_y + 12, 1, HEX(0xF6D397));
+    /* Fine inner tooling on the parchment edge gives the paper its own frame
+       instead of leaving the large cream panel as an unbroken flat rectangle. */
+    ui_stroke(x + 14, body_y + 37, left_w - 28, body_h - 51,
+              2, 0.8f, RGBA(148, 93, 43, 112));
+    ui_line(x + 18, body_y + 39, x + left_w - 18, body_y + 39,
+            0.7f, RGBA(255, 239, 193, 145));
     for (int grain = 0; grain < 9; ++grain) {
         float gy = body_y + 45 + grain * 38.0f;
         ui_line(x + 16, gy, x + left_w - 16, gy + (grain % 2 ? 0.4f : -0.4f),
                 0.6f, RGBA(154, 105, 52, 38));
     }
+    /* Keep decoration underneath the interactive Field Guide content. */
+    museum_draw_field_guide_corner(x + 20.0f, body_y + 43.0f, 1.0f, 1.0f, 0.78f);
+    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + 43.0f, -1.0f, 1.0f, 0.78f);
+    museum_draw_field_guide_corner(x + 20.0f, body_y + body_h - 22.0f, 1.0f, -1.0f, 0.90f);
+    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + body_h - 22.0f, -1.0f, -1.0f, 0.90f);
+    /* Soft shadow panels split the field notes and discovery log into paper
+       insets without changing the hit targets or the text layout. */
+    ui_rrect(x + 13, body_y + 160, left_w - 26, 103, 2,
+             RGBA(255, 246, 220, 24));
+    ui_rrect(x + 13, body_y + 270, left_w - 26, body_h - 285, 2,
+             RGBA(108, 62, 27, 13));
     ui_text(F_BOLD, 13, x + 16, body_y + 9, HEX(0xFFF3D4), "FIELD GUIDE");
     ui_text_r(F_BOLD, 11, x + left_w - 16, body_y + 10, HEX(0xF4D19A),
               selected_found ? museum_category_name(selected->category) :
