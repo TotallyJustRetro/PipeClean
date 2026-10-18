@@ -638,9 +638,9 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
     /* Deep cabinet bay behind the shelves. The board is farther away than the
        rear walls, not another front-facing gradient placed over the cubbies. */
     m3d_screen_quad(panel_x + 4.0f, panel_y + 9.0f, panel_x + panel_w - 12.0f,
-                    panel_y + body_h - 9.0f, 3.15f, HEX(0x4D2E1A), layout);
+                    panel_y + body_h - 9.0f, 2.42f, HEX(0x4D2E1A), layout);
     m3d_screen_quad(panel_x + 7.0f, panel_y + 11.0f, panel_x + panel_w - 15.0f,
-                    panel_y + body_h - 12.0f, 3.20f, HEX(0x241107), layout);
+                    panel_y + body_h - 12.0f, 2.48f, HEX(0x241107), layout);
 
     /* Side and top/bottom pieces are extruded beams with visible returns. */
     m3d_screen_prism(panel_x, panel_y + 5.0f, panel_x + panel_w - 5.0f, panel_y + 9.0f,
@@ -674,7 +674,7 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
     m3d_screen_prism(grid_x - 4.0f, grid_y + grid_h, grid_x + grid_w + 4.0f, grid_y + grid_h + 4.0f,
                      5.04f, 3.76f, HEX(0x5A351E), layout);
     m3d_screen_quad(grid_x - 1.0f, grid_y, grid_x + grid_w + 1.0f,
-                    grid_y + grid_h, 3.25f, HEX(0x1D0D06), layout);
+                    grid_y + grid_h, 2.68f, HEX(0x1D0D06), layout);
 
     int total_rows = (layout->visible_entries + 2) / 3;
     for (int row = 0; row < total_rows; ++row) {
