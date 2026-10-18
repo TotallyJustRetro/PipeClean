@@ -412,7 +412,8 @@ static void m3d_cabinet(float horizontal_offset)
     m3d_quad(rear_tl, rear_tr, front_tr, front_tl, HEX(0xA87745));
     m3d_quad(rear_bl, front_bl, front_tl, rear_tl, HEX(0x704126));
     m3d_quad(rear_br, front_br, front_tr, rear_tr, HEX(0x3B2014));
-    m3d_quad(front_bl, front_br, front_tr, front_tl, HEX(0x63351D));
+    /* The broad front is intentionally open: mounted panels and true shelf wells
+       are separate geometry below, rather than one solid face hidden by SDL. */
 
     /* Crown fascia sits proud of the front face, above the UI's top edge. */
     M3DVec3 crown_bl = m3d_v(-2.22f, 3.30f, 4.77f);
@@ -565,26 +566,49 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
     const float grid_w = 323.0f, grid_h = 330.0f;
     const float tile_w = 103.0f, tile_h = 75.0f, gap_x = 7.0f, row_step = 82.0f;
 
-    /* Outer right-hand display board is a fitted wood panel on the cabinet face. */
-    m3d_screen_quad(panel_x, panel_y + 5.0f, panel_x + panel_w - 5.0f,
-                    panel_y + body_h - 5.0f, 4.75f, HEX(0x80512F), layout);
+    /* The inner display board sits behind the rim so the wells can recede into it. */
     m3d_screen_quad(panel_x + 4.0f, panel_y + 9.0f, panel_x + panel_w - 12.0f,
-                    panel_y + body_h - 9.0f, 4.78f, HEX(0x4B2A18), layout);
+                    panel_y + body_h - 9.0f, 4.34f, HEX(0x654027), layout);
     m3d_screen_quad(panel_x + 7.0f, panel_y + 11.0f, panel_x + panel_w - 15.0f,
-                    panel_y + body_h - 12.0f, 4.79f, HEX(0x382012), layout);
-    m3d_screen_quad(panel_x + 9.0f, panel_y + 6.0f, panel_x + panel_w - 8.0f,
-                    panel_y + 7.0f, 4.81f, HEX(0xD8A866), layout);
-    m3d_screen_quad(panel_x + 7.0f, panel_y + body_h - 7.0f,
-                    panel_x + panel_w - 9.0f, panel_y + body_h - 6.0f,
-                    4.81f, HEX(0x2A1309), layout);
+                    panel_y + body_h - 12.0f, 4.36f, HEX(0x382012), layout);
 
-    /* Recessed dark backing creates the shadowed interior behind the exhibits. */
+    /* Brass-lit top/bottom rails and darker sides turn the right panel into a fitted insert. */
+    m3d_screen_quad(panel_x, panel_y + 5.0f, panel_x + panel_w - 5.0f,
+                    panel_y + 9.0f, 4.75f, HEX(0xA16D3E), layout);
+    m3d_screen_quad(panel_x, panel_y + 9.0f, panel_x + 4.0f,
+                    panel_y + body_h - 5.0f, 4.75f, HEX(0x8A572F), layout);
+    m3d_screen_quad(panel_x + panel_w - 9.0f, panel_y + 9.0f,
+                    panel_x + panel_w - 5.0f, panel_y + body_h - 5.0f,
+                    4.75f, HEX(0x3B1E10), layout);
+    m3d_screen_quad(panel_x + 4.0f, panel_y + body_h - 9.0f,
+                    panel_x + panel_w - 9.0f, panel_y + body_h - 5.0f,
+                    4.75f, HEX(0x4A2716), layout);
+    m3d_screen_quad(panel_x + 7.0f, panel_y + 6.0f, panel_x + panel_w - 8.0f,
+                    panel_y + 7.0f, 4.78f, HEX(0xD8A866), layout);
+
+    if (!layout->draw_cubby_grid) return;
+
+    /* The left field-guide insert and the frame margins are also physical mounted boards. */
+    m3d_screen_quad(x - 35.0f, body_y - 4.0f, x + 845.0f, body_y + 6.0f,
+                    4.62f, HEX(0x80512F), layout);
+    m3d_screen_quad(x - 35.0f, body_y + 6.0f, x + 6.0f, body_y + body_h - 6.0f,
+                    4.62f, HEX(0x76482A), layout);
+    m3d_screen_quad(x + 802.0f, body_y + 6.0f, x + 845.0f, body_y + body_h - 6.0f,
+                    4.62f, HEX(0x3C2013), layout);
+    m3d_screen_quad(x - 35.0f, body_y + body_h - 6.0f, x + 845.0f,
+                    body_y + body_h + 6.0f, 4.62f, HEX(0x59311B), layout);
+    m3d_screen_quad(x + 6.0f, body_y + 6.0f, x + 450.0f, body_y + body_h - 6.0f,
+                    4.68f, HEX(0x704629), layout);
+    m3d_screen_quad(x + 450.0f, body_y + 6.0f, x + 458.0f, body_y + body_h - 6.0f,
+                    4.69f, HEX(0x2A1409), layout);
+
+    /* Outer trim around the open shelving. The recessed dark board sits behind each well. */
     m3d_screen_quad(grid_x - 3.0f, grid_y - 3.0f,
                     grid_x + grid_w + 3.0f, grid_y + grid_h + 3.0f,
-                    4.81f, HEX(0x1D0D06), layout);
+                    4.40f, HEX(0x1D0D06), layout);
     m3d_screen_quad(grid_x - 1.0f, grid_y - 1.0f,
                     grid_x + grid_w + 1.0f, grid_y + grid_h + 1.0f,
-                    4.82f, HEX(0x302015), layout);
+                    4.42f, HEX(0x302015), layout);
 
     /* Scrollable shelf rails are physical wood bars; their positions follow the list. */
     int total_rows = (layout->visible_entries + 2) / 3;
@@ -610,7 +634,7 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                         4.95f, HEX(0x211006), layout);
     }
 
-    if (!layout->draw_cubby_grid || layout->visible_entries <= 0) return;
+    if (layout->visible_entries <= 0) return;
 
     int first_row = (int)floorf(layout->scroll / row_step);
     if (first_row < 0) first_row = 0;
