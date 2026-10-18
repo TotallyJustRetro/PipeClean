@@ -4547,8 +4547,8 @@ static void museum_lock_glyph(float x, float y, float w, float h, int large)
     ui_line(sx + shackle_w * 0.78f, sy, sx + shackle_w, sy + shackle_h * 0.50f, thick, HEX(0xD3AE6D));
     ui_line(sx + shackle_w, sy + shackle_h * 0.50f, sx + shackle_w, sy + shackle_h, thick, HEX(0x8D6638));
 
-    ui_shadow(body_x, body_y, body_w, body_h, large ? 6 : 3, 2,
-              RGBA(0, 0, 0, 95));
+    ui_rrect(body_x + 1, body_y + 2, body_w, body_h, large ? 6 : 3,
+             RGBA(0, 0, 0, 100));
     ui_vgrad(body_x, body_y, body_w, body_h, HEX(0xFFE09A), HEX(0xB87731));
     ui_stroke(body_x, body_y, body_w, body_h, large ? 6 : 3, large ? 2.0f : 1.0f, dark);
     ui_line(body_x + 4, body_y + 2, body_x + body_w - 4, body_y + 2, 1, HEX(0xFFF0C6));
@@ -4562,7 +4562,7 @@ static void museum_draw_entry_art(int game, const MuseumEntry *entry,
                                   float x, float y, float w, float h, int found)
 {
     /* A miniature framed display rather than a flat thumbnail. */
-    ui_shadow(x, y, w, h, 5, 3, RGBA(0, 0, 0, 100));
+    ui_rrect(x + 1, y + 3, w, h, 5, RGBA(0, 0, 0, 100));
     ui_vgrad(x, y, w, h, HEX(0xA77845), HEX(0x32180D));
     ui_stroke(x, y, w, h, 5, 1.5f, HEX(0xE2B56B));
     ui_rrect(x + 3, y + 3, w - 6, h - 6, 3, HEX(0x26140B));
@@ -4715,7 +4715,7 @@ static int museum_cabinet_chip(float x, float y, float w, float h,
 {
     int over = 0;
     int clicked = clickable(x, y, w, h, &over);
-    ui_shadow(x, y, w, h, h * 0.46f, 3.5f, RGBA(0, 0, 0, 100));
+    ui_rrect(x + 1, y + 3, w, h, h * 0.46f, RGBA(0, 0, 0, 100));
     ui_vgrad(x, y, w, h, HEX(0xA9784E), HEX(0x29150B));
     ui_stroke(x, y, w, h, h * 0.46f, 1.0f, HEX(0x29140A));
 
@@ -4768,7 +4768,7 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
     const float plaque_w = w * 0.78f;
     const float plaque_x = x + (w - plaque_w) * 0.5f;
     const float plaque_y = y + h - 19;
-    ui_shadow(plaque_x, plaque_y, plaque_w, 15, 3, 2, RGBA(0, 0, 0, 115));
+    ui_rrect(plaque_x + 1, plaque_y + 2, plaque_w, 15, 3, RGBA(0, 0, 0, 115));
     ui_vgrad(plaque_x, plaque_y, plaque_w, 15, HEX(0xF1D493), HEX(0x9A682E));
     ui_stroke(plaque_x, plaque_y, plaque_w, 15, 3, 1.0f, HEX(0x4C2B12));
     ui_rrect(plaque_x + 3, plaque_y + 3, 2.0f, 2.0f, 1, HEX(0x795026));
