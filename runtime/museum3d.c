@@ -41,13 +41,13 @@ enum { M3D_TRACK_CONTROL_COUNT = 20, M3D_TRACK_PATH_STEPS = 5,
 static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
     /* The rear straight reaches the room margins, where it can visibly join
        the descents rather than ending behind the cabinet's opaque panels. */
-    {-7.45f, 4.225f, -1.71f},
-    { 7.45f, 4.225f, -1.71f},
+    {-7.45f, 3.75f, -1.71f},
+    { 7.45f, 3.75f, -1.71f},
 
     /* Right ramp is deliberately outside the cabinet's projected edge for
        its full drop. As it descends, x comes inward gradually; the last floor
        turn stays outside the exhibit plinth and joins the foreground return. */
-    { 7.55f, 3.65f, -1.45f},
+    { 7.55f, 3.45f, -1.45f},
     { 7.35f, 2.85f, -0.70f},
     { 6.95f, 1.90f,  0.15f},
     { 6.60f, 0.95f,  1.00f},
@@ -66,9 +66,9 @@ static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
     {-6.60f, 0.95f,  1.00f},
     {-6.95f, 1.90f,  0.15f},
     {-7.35f, 2.85f, -0.70f},
-    {-7.70f, 3.65f, -1.45f},
-    {-7.55f, 3.95f, -1.62f},
-    {-7.45f, 4.15f, -1.68f}
+    {-7.70f, 3.45f, -1.45f},
+    {-7.55f, 3.60f, -1.62f},
+    {-7.45f, 3.70f, -1.68f}
 };
 static M3DVec3 m3d_track_path[M3D_TRACK_PATH_COUNT];
 
@@ -698,7 +698,7 @@ static void m3d_train(float elapsed, const M3DVec3 *path, int path_count)
     if (total_length < 0.01f) return;
 
     /* Distance-based travel avoids speed changes at the smoothed corners. */
-    float distance = fmodf(elapsed * 2.50f + 32.00f, total_length);
+    float distance = fmodf(elapsed * 2.50f + 20.00f, total_length);
     if (distance < 0.0f) distance += total_length;
     M3DVec3 position = path[0], tangent = m3d_v(1.0f, 0.0f, 0.0f);
     for (int i = 0; i < path_count; ++i) {
