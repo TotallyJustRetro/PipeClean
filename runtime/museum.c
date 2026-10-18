@@ -1,6 +1,7 @@
 #include "museum.h"
 #include "settings.h"
 #include "cart.h"
+#include "patch.h"
 #include <SDL.h>
 #include <stdio.h>
 #include <string.h>
@@ -705,6 +706,87 @@ int museum_is_discovered(int game, const char *id)
     return idx >= 0 ? discovered[game][idx] != 0 : 0;
 }
 
+/* The selected Museum tab can differ from the cartridge most recently
+ * previewed or played. Also recognize the configured base ROM / selected IPS,
+ * so an already-captured DX specimen remains colored while browsing the guide. */
+#define SML2DX_V181_IPS_SIZE 274302u
+#define SML2DX_V181_IPS_CRC32 0x0B742316u
+
+static int museum_sml2dx_profile_configured(void)
+{
+    if (cart_is_sml2dx_v181(cart_info())) return 1;
+
+    const GameCfg *cfg = &settings.g[GAME_SML2];
+    const int selected = cfg->romhack_selected;
+    const char *rom_path = cfg->rom_path;
+    const char *hack_path =
+        selected >= 0 && selected < cfg->romhack_count &&
+        selected < MAX_ROMHACKS ? cfg->romhacks[selected].path : "";
+
+    static int cache_valid;
+    static int cache_selected = -2;
+    static int cache_result;
+    static char cache_rom_path[512];
+    static char cache_hack_path[512];
+    if (cache_valid && selected == cache_selected &&
+        strcmp(rom_path, cache_rom_path) == 0 &&
+        strcmp(hack_path, cache_hack_path) == 0)
+        return cache_result;
+
+    cache_valid = 1;
+    cache_selected = selected;
+    snprintf(cache_rom_path, sizeof cache_rom_path, "%s", rom_path);
+    snprintf(cache_hack_path, sizeof cache_hack_path, "%s", hack_path);
+    cache_result = 0;
+
+    /* Directly configured, already-patched DX ROM. */
+    if (rom_path[0]) {
+        FILE *f = fopen(rom_path, "rb");
+        if (f) {
+            if (fseek(f, 0, SEEK_END) == 0) {
+                long n = ftell(f);
+                if (n == 0x100000L && fseek(f, 0, SEEK_SET) == 0) {
+                    uint8_t *bytes = (uint8_t *)malloc((size_t)n);
+                    if (bytes) {
+                        if (fread(bytes, 1, (size_t)n, f) == (size_t)n) {
+                            CartInfo ci;
+                            if (cart_parse(bytes, (size_t)n, &ci) &&
+                                cart_is_sml2dx_v181(&ci))
+                                cache_result = 1;
+                        }
+                        free(bytes);
+                    }
+                }
+            }
+            fclose(f);
+        }
+    }
+
+    /* The uploaded v1.8.1 IPS is fingerprinted by size and CRC, not filename,
+     * so renaming it doesn't make PipeClean fall back to grayscale artwork. */
+    if (!cache_result && selected >= 0 && hack_path[0]) {
+        FILE *f = fopen(hack_path, "rb");
+        if (f) {
+            if (fseek(f, 0, SEEK_END) == 0) {
+                long n = ftell(f);
+                if (n == (long)SML2DX_V181_IPS_SIZE &&
+                    fseek(f, 0, SEEK_SET) == 0) {
+                    uint8_t *bytes = (uint8_t *)malloc((size_t)n);
+                    if (bytes) {
+                        if (fread(bytes, 1, (size_t)n, f) == (size_t)n &&
+                            memcmp(bytes, "PATCH", 5) == 0 &&
+                            crc32_bytes(bytes, (size_t)n) == SML2DX_V181_IPS_CRC32)
+                            cache_result = 1;
+                        free(bytes);
+                    }
+                }
+            }
+            fclose(f);
+        }
+    }
+    return cache_result;
+}
+
 int museum_sprite_asset_path(int game, const char *id, char *out, size_t out_size)
 {
     museum_init();
@@ -717,7 +799,7 @@ int museum_sprite_asset_path(int game, const char *id, char *out, size_t out_siz
     size_t len = strlen(base);
     const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
     int n;
-    if (game == GAME_SML2 && cart_is_sml2dx_v181(cart_info()))
+    if (game == GAME_SML2 && museum_sml2dx_profile_configured())
         n = snprintf(out, out_size,
                      "%s%spipeclean-museum-assets/%s-dx-v1.8.1/%s.png",
                      base, sep, games[game].id, id);
