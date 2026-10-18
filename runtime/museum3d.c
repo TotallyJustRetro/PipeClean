@@ -438,6 +438,35 @@ static void m3d_pipe(float x, float z)
                    HEX(0xA4F47E), 6);
 }
 
+/* A reusable section of hollow green pipe. The same radial geometry is
+   used for the short wall outlet and foreground mouths so the props share
+   a consistent lip, bore, shading, and glossy highlight with the room pipes. */
+static void m3d_pipe_tube(float x, float base_y, float z,
+                          float height, float radius)
+{
+    if (height < 0.25f || radius < 0.08f) return;
+    const float lip_h = fminf(0.22f, height * 0.32f);
+    const float lip_outer = radius + 0.11f;
+    const float bore_radius = radius * 0.69f;
+
+    m3d_cylinder_y_open(x, base_y, z, radius, height,
+                        HEX(0x139B3B), 28);
+    m3d_cylinder_y_open(x, base_y + height - lip_h, z, lip_outer, lip_h,
+                        HEX(0x38CE51), 28);
+    m3d_ring_horizontal(x, base_y + height + 0.02f, z,
+                        bore_radius, lip_outer, HEX(0x43D65A), 28);
+    m3d_cylinder_y_open(x, base_y + 0.055f, z, bore_radius,
+                        fmaxf(0.12f, height - 0.075f),
+                        HEX(0x0B5729), 28);
+    /* The shadow floor is part-way down the bore, not on the lip surface. */
+    m3d_disk_horizontal(x, base_y + fmaxf(0.10f, height * 0.30f), z,
+                        bore_radius * 0.96f, HEX(0x042914), 28);
+    m3d_cylinder_y(x - radius * 0.25f, base_y + 0.04f,
+                   z + radius * 0.92f, 0.014f,
+                   fmaxf(0.12f, height - lip_h),
+                   HEX(0xA4F47E), 6);
+}
+
 static void m3d_question_block(float cx, float y, float cz, float size, float bob)
 {
     float h = size * 0.5f;
@@ -1435,6 +1464,12 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_box(-5.05f, 1.15f, -3.44f, -4.88f, 5.60f, -3.30f, HEX(0x5B3624));
     m3d_box(4.88f, 1.15f, -3.44f, 5.05f, 5.60f, -3.30f, HEX(0x5B3624));
 
+    /* A short hollow outlet rises from the rear wall over the cabinet. The
+       elevated railway passes in front of it, while the cabinet naturally
+       hides the lower end—matching the layered pipe/rail composition shown
+       in the polished reference rather than adding a floating green cylinder. */
+    m3d_pipe_tube(-0.30f, 3.70f, -3.18f, 0.66f, 0.22f);
+
     /* Floor slab and separate boards with real perspective and depth testing. */
     m3d_box(-9.0f, -0.35f, -4.6f, 9.0f, -0.01f, 8.5f, HEX(0x55321F));
     for (int i = 0; i < 17; ++i) {
@@ -1659,6 +1694,26 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
                         tie_color);
             }
         }
+    }
+
+    /*
+     * Two little pipe mouths sit in the extreme foreground. Their bases and
+     * short shafts straddle the foreground rail, so the track is visibly
+     * behind them while all functional Museum text and controls remain drawn
+     * on the front UI layer.
+     */
+    const float foreground_pipe_z = 5.30f;
+    const float foreground_pipe_radius = 0.30f;
+    const float foreground_pipe_positions[2] = {0.80f, 3.70f};
+    for (int i = 0; i < 2; ++i) {
+        const float px = foreground_pipe_positions[i];
+        m3d_box(px - foreground_pipe_radius - 0.10f, 0.015f,
+                foreground_pipe_z - foreground_pipe_radius - 0.10f,
+                px + foreground_pipe_radius + 0.10f, 0.095f,
+                foreground_pipe_z + foreground_pipe_radius + 0.10f,
+                HEX(0x70452A));
+        m3d_pipe_tube(px, 0.08f, foreground_pipe_z, 0.52f,
+                      foreground_pipe_radius);
     }
 
     /* Small brass exhibit lights hang high on each side of the room. */
