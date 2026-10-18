@@ -20,8 +20,15 @@
  * viewport aspect, then scaled with the exact same logical-to-pixel transform.
  */
 
+#if defined(__ANDROID__)
 #define M3D_W 960
 #define M3D_H 628
+#define M3D_RENDER_SCALE 1.0f
+#else
+#define M3D_W 1080
+#define M3D_H 707
+#define M3D_RENDER_SCALE 1.125f
+#endif
 #define M3D_PIXELS (M3D_W * M3D_H)
 #define M3D_NEAR 0.35f
 #define HEX(rgb) (0xFF000000u | (uint32_t)(rgb))
@@ -57,9 +64,9 @@ static const float m3d_cam_y = 4.6f;
 static const float m3d_cam_z = 10.5f;
 static const float m3d_pitch_sin = 0.31f;
 static const float m3d_pitch_cos = 0.9502f;
-static const float m3d_focal = 754.0f;
-static float m3d_focal_x = 754.0f;
-static const float m3d_center_y = 270.0f;
+static const float m3d_focal = 754.0f * M3D_RENDER_SCALE;
+static float m3d_focal_x = 754.0f * M3D_RENDER_SCALE;
+static const float m3d_center_y = 270.0f * M3D_RENDER_SCALE;
 
 static M3DVec3 m3d_v(float x, float y, float z)
 {
@@ -671,6 +678,21 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     4.79f, HEX(0xB98945), layout);
     m3d_screen_quad(left + 12.0f, bottom + 4.7f, right - 12.0f, bottom + 5.5f,
                     5.09f, HEX(0xF2D48B), layout);
+
+    /* Fine grain on the broad crown and the narrow vertical stiles. A slightly
+       darker line paired with a warm highlight suggests varnished walnut. */
+    m3d_screen_quad(left + 22.0f, top + 3.4f, right - 22.0f, top + 3.8f,
+                    5.06f, HEX(0x51311E), layout);
+    m3d_screen_quad(left + 46.0f, top + 4.7f, right - 46.0f, top + 5.0f,
+                    5.061f, HEX(0x9A6B3E), layout);
+    m3d_screen_quad(left + 3.4f, top + 19.0f, left + 3.9f, bottom - 22.0f,
+                    5.085f, HEX(0x402617), layout);
+    m3d_screen_quad(left + 5.1f, top + 28.0f, left + 5.35f, bottom - 35.0f,
+                    5.086f, HEX(0x98643A), layout);
+    m3d_screen_quad(right - 4.0f, top + 19.0f, right - 3.5f, bottom - 22.0f,
+                    5.085f, HEX(0x28160E), layout);
+    m3d_screen_quad(right - 5.4f, top + 32.0f, right - 5.15f, bottom - 38.0f,
+                    5.086f, HEX(0x83542F), layout);
 }
 
 
@@ -963,7 +985,7 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
 
     /* A broad shelf nose supports the plate and reads as a projecting board. */
     m3d_screen_prism(x + 3.0f, y + h - 25.0f, x + w - 3.0f, y + h - 18.0f,
-                     5.31f, 4.42f, HEX(0x754421), layout);
+                     5.31f, 4.42f, HEX(0x5D3923), layout);
     m3d_screen_prism(x + 4.0f, y + h - 25.0f, x + w - 4.0f, y + h - 22.0f,
                      5.34f, 4.62f, HEX(0xA16B34), layout);
     m3d_screen_quad(x + 6.0f, y + h - 24.0f, x + w - 6.0f, y + h - 23.0f,
@@ -1244,7 +1266,7 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
         const float sy = grid_y + row * row_step + tile_h - layout->scroll;
         if (sy < grid_y - 8.0f || sy > grid_y + grid_h) continue;
         m3d_screen_prism(grid_x - 1.0f, sy, grid_x + grid_w + 1.0f, sy + 7.5f,
-                         5.12f, 3.80f, HEX(0x8B572F), layout);
+                         5.12f, 3.80f, HEX(0x694329), layout);
         m3d_screen_prism(grid_x, sy, grid_x + grid_w, sy + 1.2f,
                          5.16f, 4.95f, HEX(0xE8BE7A), layout);
         m3d_screen_quad(grid_x, sy + 6.3f, grid_x + grid_w, sy + 7.1f,
@@ -1362,6 +1384,27 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
         m3d_box(x, 0.38f, -3.96f, x + 0.045f, 6.87f, -3.84f,
                 HEX(0x8B5B37));
     }
+    /* Long, restrained vertical grain follows the timber panels. The paired
+       dark/light traces catch the room light without turning the wall into
+       a noisy striped texture, and a few short knots break the repetition. */
+    for (int i = 0; i < 13; ++i) {
+        const float gx = -7.78f + (float)i * 1.33f;
+        const uint32_t dark_grain = (i % 2) ? HEX(0x4A2C1B) : HEX(0x4E2F1C);
+        const uint32_t light_grain = (i % 3) ? HEX(0x765038) : HEX(0x6E482F);
+        m3d_box(gx, 0.70f, -3.988f, gx + 0.018f, 6.55f, -3.978f,
+                dark_grain);
+        m3d_box(gx + 0.038f, 0.90f, -3.987f, gx + 0.047f, 6.30f, -3.978f,
+                light_grain);
+        if (i % 3 == 1) {
+            const float knot_y = 1.45f + (float)(i % 4) * 0.78f;
+            m3d_box(gx + 0.065f, knot_y, -3.987f,
+                    gx + 0.17f, knot_y + 0.024f, -3.978f,
+                    HEX(0x402515));
+            m3d_box(gx + 0.088f, knot_y + 0.008f, -3.986f,
+                    gx + 0.145f, knot_y + 0.015f, -3.977f,
+                    HEX(0x6B452C));
+        }
+    }
     /* A raised brass-edged arch frames the cabinet from behind. */
     m3d_box(-5.5f, 1.0f, -3.72f, -5.17f, 6.0f, -3.47f, HEX(0xBF8E4F));
     m3d_box(5.17f, 1.0f, -3.72f, 5.5f, 6.0f, -3.47f, HEX(0xBF8E4F));
@@ -1378,6 +1421,17 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
         m3d_box(x, 0.002f, -4.4f, x + 0.96f, 0.025f, 8.4f, wood);
         m3d_box(x + 0.96f, 0.003f, -1.5f, x + 0.99f, 0.026f, 8.4f,
                 HEX(0x392116));
+        /* Thin grain runs with the length of each board, plus short broken
+           marks so the floor reads as timber rather than repeated flat slabs. */
+        for (int grain = 0; grain < 3; ++grain) {
+            const float gx = x + 0.18f + (float)((i + grain * 2) % 4) * 0.13f;
+            const float gz = -1.25f + (float)grain * 2.35f;
+            const float grain_len = 0.78f + (float)((i + grain) % 4) * 0.19f;
+            const uint32_t grain_color = ((i + grain) % 2)
+                ? HEX(0x583722) : HEX(0x805532);
+            m3d_box(gx, 0.026f, gz, gx + 0.016f, 0.030f,
+                    gz + grain_len, grain_color);
+        }
     }
     m3d_box(-8.8f, 0.03f, 7.5f, 8.8f, 0.10f, 7.7f, HEX(0xA36C3D));
 

@@ -5161,10 +5161,10 @@ static void tab_museum(float x, float y)
     }
     /* Scale the engraved corner scrolls up to match the carved ornaments in
        the references. They are still drawn underneath all live text/artwork. */
-    museum_draw_field_guide_corner(x + 20.0f, body_y + 43.0f, 1.0f, 1.0f, 1.05f);
-    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + 43.0f, -1.0f, 1.0f, 1.42f);
-    museum_draw_field_guide_corner(x + 20.0f, body_y + body_h - 22.0f, 1.0f, -1.0f, 1.20f);
-    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + body_h - 22.0f, -1.0f, -1.0f, 1.20f);
+    museum_draw_field_guide_corner(x + 20.0f, body_y + 43.0f, 1.0f, 1.0f, 1.30f);
+    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + 43.0f, -1.0f, 1.0f, 2.25f);
+    museum_draw_field_guide_corner(x + 20.0f, body_y + body_h - 22.0f, 1.0f, -1.0f, 2.05f);
+    museum_draw_field_guide_corner(x + left_w - 20.0f, body_y + body_h - 22.0f, -1.0f, -1.0f, 2.05f);
     /* Soft shadow panels split the field notes and discovery log into paper
        insets without changing the hit targets or the text layout. */
     ui_rrect(x + 13, body_y + 160, left_w - 26, 103, 2,
