@@ -31,7 +31,6 @@ typedef struct { float x, y, invz, z; } M3DProjected;
 
 typedef struct {
     float view_x, view_y, view_w, view_h;
-    float cabinet_x_offset;
     float museum_x, museum_y, scroll;
     int visible_entries;
     int draw_cubby_grid;
@@ -41,7 +40,6 @@ static uint32_t m3d_pixels[M3D_PIXELS];
 static float m3d_depth[M3D_PIXELS];
 static SDL_Texture *m3d_texture;
 static SDL_Renderer *m3d_renderer;
-static float m3d_projection_x_offset;
 
 static const float m3d_cam_y = 4.6f;
 static const float m3d_cam_z = 10.5f;
@@ -113,7 +111,7 @@ static int m3d_project(M3DVec3 p, M3DProjected *out)
     float view_y = dy * m3d_pitch_cos - dz * m3d_pitch_sin;
     float view_z = (m3d_cam_z - p.z) * m3d_pitch_cos - dy * m3d_pitch_sin;
     if (view_z <= M3D_NEAR) return 0;
-    out->x = (float)M3D_W * 0.5f + (p.x + m3d_projection_x_offset) * m3d_focal / view_z;
+    out->x = (float)M3D_W * 0.5f + p.x * m3d_focal / view_z;
     out->y = m3d_center_y - view_y * m3d_focal / view_z;
     out->z = view_z;
     out->invz = 1.0f / view_z;
@@ -389,85 +387,84 @@ static void m3d_train(float elapsed)
  * perspective, depth, crown, side cheeks, brass inlay and weighted plinth
  * that the flat panel layer cannot provide on its own.
  */
-static void m3d_cabinet(float horizontal_offset)
+/*
+ * The cabinet shell is modeled in 3D but anchored to the exact logical UI
+ * rectangle. Each vertex is inverse-projected through the same camera used by
+ * the shelves. This removes the old guessed world-space offset that drifted
+ * when the launcher window changed aspect ratio or entered compact layout.
+ */
+static M3DVec3 m3d_screen_point(float logical_x, float logical_y, float z,
+                                const M3DMuseumLayout *layout);
+static void m3d_screen_quad(float x0, float y0, float x1, float y1, float z,
+                            uint32_t color, const M3DMuseumLayout *layout);
+static void m3d_screen_face(float x0, float y0, float z0,
+                            float x1, float y1, float z1,
+                            float x2, float y2, float z2,
+                            float x3, float y3, float z3,
+                            uint32_t color, const M3DMuseumLayout *layout);
+
+static void m3d_cabinet(const M3DMuseumLayout *layout)
 {
-    m3d_projection_x_offset = horizontal_offset;
-    const float front_z = 4.72f;
-    const float rear_z = 2.30f;
+    if (!layout) return;
+    const float x = layout->museum_x, y = layout->museum_y;
+    const float left = x - 8.0f, right = x + 816.0f;
+    const float top = y - 8.0f, bottom = y + 510.0f;
 
-    /* Trapezoidal front corners compensate for the perspective camera so the
-       shell frames the current logical cabinet without looking like a flat box. */
-    M3DVec3 front_bl = m3d_v(-2.44f, -0.10f, front_z);
-    M3DVec3 front_br = m3d_v( 4.40f, -0.10f, front_z);
-    M3DVec3 front_tl = m3d_v(-2.05f,  3.30f, front_z);
-    M3DVec3 front_tr = m3d_v( 3.72f,  3.30f, front_z);
+    /* Dark carcass behind the interactive panels; the side returns project out
+       at different depths, so the silhouette is stable under resize. */
+    m3d_screen_quad(left - 10.0f, top - 10.0f, right + 11.0f, bottom + 14.0f,
+                    3.45f, HEX(0x281209), layout);
+    m3d_screen_face(left, top, 4.82f, right, top, 4.82f,
+                    right + 11.0f, top - 10.0f, 3.55f,
+                    left - 10.0f, top - 10.0f, 3.55f,
+                    HEX(0xB07A45), layout);
+    m3d_screen_face(right, top, 4.82f, right, bottom, 4.82f,
+                    right + 11.0f, bottom + 13.0f, 3.55f,
+                    right + 11.0f, top - 10.0f, 3.55f,
+                    HEX(0x3B1D10), layout);
+    m3d_screen_face(left, bottom, 4.82f, right, bottom, 4.82f,
+                    right + 11.0f, bottom + 13.0f, 3.55f,
+                    left - 10.0f, bottom + 13.0f, 3.55f,
+                    HEX(0x482516), layout);
+    m3d_screen_face(left, top, 4.82f, left, bottom, 4.82f,
+                    left - 10.0f, bottom + 13.0f, 3.55f,
+                    left - 10.0f, top - 10.0f, 3.55f,
+                    HEX(0x704126), layout);
 
-    M3DVec3 rear_bl = m3d_v(-2.62f, -0.20f, rear_z);
-    M3DVec3 rear_br = m3d_v( 4.15f, -0.20f, rear_z);
-    M3DVec3 rear_tl = m3d_v(-2.36f,  3.53f, rear_z);
-    M3DVec3 rear_tr = m3d_v( 3.82f,  3.53f, rear_z);
+    /* Thick front stiles define the open face of the cabinet. */
+    m3d_screen_quad(left, top, left + 7.0f, bottom, 4.96f,
+                    HEX(0x87532E), layout);
+    m3d_screen_quad(right - 7.0f, top, right, bottom, 4.96f,
+                    HEX(0x4A2616), layout);
+    m3d_screen_quad(left + 1.0f, top + 5.0f, left + 2.5f, bottom - 8.0f,
+                    4.99f, HEX(0xD3A15F), layout);
+    m3d_screen_quad(right - 2.5f, top + 5.0f, right - 1.0f, bottom - 8.0f,
+                    4.99f, HEX(0xA8733C), layout);
 
-    /* Five solid faces form the carcass: a thick top, bottom, and both sides. */
-    m3d_quad(rear_bl, rear_br, front_br, front_bl, HEX(0x3C1D10));
-    m3d_quad(rear_tl, rear_tr, front_tr, front_tl, HEX(0xA87745));
-    m3d_quad(rear_bl, front_bl, front_tl, rear_tl, HEX(0x704126));
-    m3d_quad(rear_br, front_br, front_tr, rear_tr, HEX(0x3B2014));
-    /* The broad front is intentionally open: mounted panels and true shelf wells
-       are separate geometry below, rather than one solid face hidden by SDL. */
+    /* The top crown is a separate extrusion, rather than a frame drawn over UI. */
+    m3d_screen_quad(left, top, right, top + 6.0f, 4.99f,
+                    HEX(0x925B32), layout);
+    m3d_screen_face(left, top, 4.99f, right, top, 4.99f,
+                    right + 5.0f, top - 5.5f, 4.62f,
+                    left - 5.0f, top - 5.5f, 4.62f,
+                    HEX(0xD0A15D), layout);
+    m3d_screen_quad(left + 9.0f, top + 1.2f, right - 9.0f, top + 2.2f,
+                    5.005f, HEX(0xF3D28A), layout);
 
-    /* Crown fascia sits proud of the front face, above the UI's top edge. */
-    M3DVec3 crown_bl = m3d_v(-2.22f, 3.30f, 4.77f);
-    M3DVec3 crown_br = m3d_v( 3.89f, 3.30f, 4.77f);
-    M3DVec3 crown_tl = m3d_v(-2.28f, 3.53f, 4.77f);
-    M3DVec3 crown_tr = m3d_v( 3.93f, 3.53f, 4.77f);
-    m3d_quad(front_tl, front_tr, crown_br, crown_bl, HEX(0x89532D));
-    m3d_quad(crown_bl, crown_br, crown_tr, crown_tl, HEX(0xA87540));
-    m3d_quad(rear_tl, rear_tr, crown_tr, crown_tl, HEX(0x98663A));
-
-    /* A raised brass line in the crown catches the room's warm key light. */
-    m3d_box(-2.24f, 3.455f, 4.80f, 3.90f, 3.485f, 4.91f, HEX(0xD8AF68));
-    m3d_box(-2.18f, 3.460f, 4.91f, 3.84f, 3.480f, 4.94f, HEX(0xF1D18B));
-
-    /* Long, tapered front stiles give the cabinet real wood thickness. */
-    m3d_quad(m3d_v(-2.58f, -0.12f, 4.80f),
-             m3d_v(-2.43f, -0.12f, 4.80f),
-             m3d_v(-2.03f,  3.29f, 4.80f),
-             m3d_v(-2.19f,  3.29f, 4.80f), HEX(0x8C5A31));
-    m3d_quad(m3d_v( 4.39f, -0.12f, 4.80f),
-             m3d_v( 4.55f, -0.12f, 4.80f),
-             m3d_v( 3.87f,  3.29f, 4.80f),
-             m3d_v( 3.71f,  3.29f, 4.80f), HEX(0x4B2817));
-    m3d_quad(m3d_v(-2.55f, -0.12f, 4.83f),
-             m3d_v(-2.51f, -0.12f, 4.83f),
-             m3d_v(-2.13f,  3.29f, 4.83f),
-             m3d_v(-2.17f,  3.29f, 4.83f), HEX(0xD2A15B));
-    m3d_quad(m3d_v( 4.48f, -0.12f, 4.83f),
-             m3d_v( 4.52f, -0.12f, 4.83f),
-             m3d_v( 3.81f,  3.29f, 4.83f),
-             m3d_v( 3.77f,  3.29f, 4.83f), HEX(0xB47A3D));
-
-    /* A framed maker's badge and two raised brass fasteners on the crown. */
-    m3d_box(0.13f, 3.365f, 4.82f, 1.56f, 3.485f, 4.94f, HEX(0xD0A155));
-    m3d_box(0.20f, 3.383f, 4.94f, 1.49f, 3.468f, 4.985f, HEX(0x5A321B));
-    m3d_box(0.31f, 3.405f, 4.986f, 0.43f, 3.446f, 5.005f, HEX(0xE9C77C));
-    m3d_box(0.48f, 3.405f, 4.986f, 0.60f, 3.446f, 5.005f, HEX(0xE9C77C));
-    m3d_box(0.65f, 3.405f, 4.986f, 0.77f, 3.446f, 5.005f, HEX(0xE9C77C));
-    m3d_box(0.82f, 3.405f, 4.986f, 0.94f, 3.446f, 5.005f, HEX(0xE9C77C));
-    m3d_sphere(-2.16f, 3.40f, 4.91f, 0.055f, HEX(0xF0D18B), 8, 4);
-    m3d_sphere( 3.82f, 3.40f, 4.91f, 0.055f, HEX(0xF0D18B), 8, 4);
-
-    /* The broad bottom plinth projects below the catalog, with a bright lip. */
-    m3d_box(-2.60f, -0.35f, 2.65f, 4.50f, -0.11f, 4.97f, HEX(0x57301A));
-    m3d_box(-2.65f, -0.25f, 4.96f, 4.55f, -0.205f, 5.015f, HEX(0xD0A15B));
-    m3d_box(-2.59f, -0.31f, 5.015f, 4.49f, -0.275f, 5.045f, HEX(0xF0CF83));
-    m3d_box(-2.54f, -0.35f, 4.97f, 4.44f, -0.325f, 5.02f, HEX(0x32190D));
-
-    /* Two sturdy feet lift the plinth away from the floor boards. */
-    m3d_box(-2.03f, -0.52f, 3.45f, -1.45f, -0.32f, 4.69f, HEX(0x442516));
-    m3d_box( 3.38f, -0.52f, 3.45f,  3.96f, -0.32f, 4.69f, HEX(0x442516));
-    m3d_box(-1.98f, -0.49f, 4.69f, -1.50f, -0.445f, 4.75f, HEX(0x94633A));
-    m3d_box( 3.43f, -0.49f, 4.69f,  3.91f, -0.445f, 4.75f, HEX(0x94633A));
-    m3d_projection_x_offset = 0.0f;
+    /* A weighted plinth projects beyond the face at the bottom. */
+    m3d_screen_face(left - 2.0f, bottom - 7.0f, 4.97f,
+                    right + 2.0f, bottom - 7.0f, 4.97f,
+                    right + 5.0f, bottom + 8.0f, 4.48f,
+                    left - 5.0f, bottom + 8.0f, 4.48f,
+                    HEX(0x412012), layout);
+    m3d_screen_quad(left - 2.0f, bottom - 7.0f, right + 2.0f, bottom + 2.0f,
+                    5.03f, HEX(0xB47C43), layout);
+    m3d_screen_quad(left, bottom + 1.0f, right, bottom + 4.0f,
+                    5.045f, HEX(0xE9C57C), layout);
+    m3d_screen_quad(left + 75.0f, bottom + 7.0f, left + 130.0f, bottom + 17.0f,
+                    4.75f, HEX(0x3F2114), layout);
+    m3d_screen_quad(right - 130.0f, bottom + 7.0f, right - 75.0f, bottom + 17.0f,
+                    4.75f, HEX(0x3F2114), layout);
 }
 
 
@@ -684,8 +681,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_box(-8.8f, 0.03f, 7.5f, 8.8f, 0.10f, 7.7f, HEX(0xA36C3D));
 
     /* The museum furniture is real perspective geometry; controls are layered later. */
-    m3d_cabinet(layout ? layout->cabinet_x_offset : 0.0f);
-    m3d_projection_x_offset = 0.0f;
+    m3d_cabinet(layout);
     if (layout) m3d_museum_grid(layout);
 
     /* Physical green pipe models sit beside the display housing. */
@@ -728,7 +724,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 
 void museum3d_draw_background(SDL_Renderer *renderer,
                               float x, float y, float width, float height,
-                              float elapsed_seconds, float cabinet_x_offset,
+                              float elapsed_seconds,
                               float museum_x, float museum_y, float museum_scroll,
                               int visible_entries, int draw_cubby_grid)
 {
@@ -752,7 +748,6 @@ void museum3d_draw_background(SDL_Renderer *renderer,
     M3DMuseumLayout layout;
     layout.view_x = x; layout.view_y = y;
     layout.view_w = width; layout.view_h = height;
-    layout.cabinet_x_offset = cabinet_x_offset;
     layout.museum_x = museum_x; layout.museum_y = museum_y;
     layout.scroll = museum_scroll;
     layout.visible_entries = visible_entries < 0 ? 0 : visible_entries;
