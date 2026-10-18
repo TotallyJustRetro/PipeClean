@@ -39,34 +39,36 @@ typedef struct { float x, y, invz, z; } M3DProjected;
 enum { M3D_TRACK_CONTROL_COUNT = 20, M3D_TRACK_PATH_STEPS = 5,
        M3D_TRACK_PATH_COUNT = M3D_TRACK_CONTROL_COUNT * M3D_TRACK_PATH_STEPS };
 static const M3DVec3 m3d_track_control[M3D_TRACK_CONTROL_COUNT] = {
-    {-6.35f, 4.225f, -1.71f},
-    { 6.35f, 4.225f, -1.71f},
+    /* The rear straight reaches the room margins, where it can visibly join
+       the descents rather than ending behind the cabinet's opaque panels. */
+    {-7.45f, 4.225f, -1.71f},
+    { 7.45f, 4.225f, -1.71f},
 
-    /* Right descent sweeps out beside the cabinet, then drops onto the floor
-       in front of the tall pipe. The track must remain visible across the
-       transition, not disappear behind the cabinet and reappear as a second
-       unrelated foreground loop. */
-    { 6.55f, 3.65f, -1.45f},
-    { 6.72f, 2.85f, -0.70f},
-    { 6.82f, 1.90f,  0.15f},
-    { 6.82f, 0.95f,  1.00f},
-    { 6.75f, 0.090f, 1.70f},
-    { 6.68f, 0.090f, 2.25f},
-    { 6.25f, 0.090f, 3.10f},
-    { 5.25f, 0.090f, 4.45f},
+    /* Right ramp is deliberately outside the cabinet's projected edge for
+       its full drop. As it descends, x comes inward gradually; the last floor
+       turn stays outside the exhibit plinth and joins the foreground return. */
+    { 7.55f, 3.65f, -1.45f},
+    { 7.35f, 2.85f, -0.70f},
+    { 6.95f, 1.90f,  0.15f},
+    { 6.60f, 0.95f,  1.00f},
+    { 6.45f, 0.090f, 1.70f},
+    { 6.30f, 0.090f, 2.25f},
+    { 6.30f, 0.090f, 3.10f},
+    { 5.05f, 0.090f, 4.45f},
 
-    /* The foreground return is one long continuous run. The mirrored left
-       descent then climbs back to the elevated rear section. */
-    {-5.25f, 0.090f, 4.45f},
-    {-6.25f, 0.090f, 3.10f},
-    {-6.68f, 0.090f, 2.25f},
-    {-6.75f, 0.090f, 1.70f},
-    {-6.82f, 0.95f,  1.00f},
-    {-6.82f, 1.90f,  0.15f},
-    {-6.72f, 2.85f, -0.70f},
-    {-6.55f, 3.65f, -1.45f},
-    {-6.40f, 3.95f, -1.62f},
-    {-6.35f, 4.15f, -1.68f}
+    /* Long foreground return, then the left side rises back to the rear rail.
+       It routes outside the Toad plinth and just left of the navigation panel
+       so both sides read as the same continuous railway in the final image. */
+    {-5.05f, 0.090f, 4.45f},
+    {-6.30f, 0.090f, 3.10f},
+    {-6.80f, 0.090f, 2.25f},
+    {-6.80f, 0.090f, 1.70f},
+    {-6.60f, 0.95f,  1.00f},
+    {-6.95f, 1.90f,  0.15f},
+    {-7.35f, 2.85f, -0.70f},
+    {-7.70f, 3.65f, -1.45f},
+    {-7.55f, 3.95f, -1.62f},
+    {-7.45f, 4.15f, -1.68f}
 };
 static M3DVec3 m3d_track_path[M3D_TRACK_PATH_COUNT];
 
@@ -696,7 +698,7 @@ static void m3d_train(float elapsed, const M3DVec3 *path, int path_count)
     if (total_length < 0.01f) return;
 
     /* Distance-based travel avoids speed changes at the smoothed corners. */
-    float distance = fmodf(elapsed * 1.80f + 1.25f, total_length);
+    float distance = fmodf(elapsed * 2.50f + 12.50f, total_length);
     if (distance < 0.0f) distance += total_length;
     M3DVec3 position = path[0], tangent = m3d_v(1.0f, 0.0f, 0.0f);
     for (int i = 0; i < path_count; ++i) {
@@ -1683,7 +1685,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_box(4.80f, 0.03f, 1.45f, 6.00f, 0.48f, 3.95f, HEX(0x8C6038));
     m3d_toad_figure(-6.05f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
-    m3d_goomba_figure(5.05f, 2.85f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
+    m3d_goomba_figure(5.05f, 3.05f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
