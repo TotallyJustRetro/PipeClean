@@ -1675,7 +1675,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_box(-6.35f, 0.03f, 1.2f, -5.05f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_box(5.05f, 0.03f, 1.2f, 6.35f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_toad_figure(-6.05f, 1.82f, sinf(elapsed * 1.25f) * 0.025f);
-    m3d_goomba_figure(5.35f, 1.82f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
+    m3d_goomba_figure(5.35f, 2.35f, sinf(elapsed * 1.25f + 1.0f) * 0.025f);
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
