@@ -716,17 +716,30 @@ int museum_sprite_asset_path(int game, const char *id, char *out, size_t out_siz
     size_t len = strlen(base);
     const char *sep = (len && (base[len - 1] == '/' || base[len - 1] == '\\')) ? "" : "/";
     int n;
-    if (game == GAME_SML)
+    if (game == GAME_SML) {
+        /* Prefer the cleaned-up v2 sprites, but don't turn an older installed
+           asset pack into a broken/blank image when that one file has no v2
+           replacement yet. Fall back per entry instead of failing the whole
+           catalog sprite lookup. */
         n = snprintf(out, out_size, "%s%spipeclean-museum-assets/%s/%s.v2.png",
                      base, sep, games[game].id, id);
-    else
+        if (n < 0 || (size_t)n >= out_size) { out[0] = 0; return 0; }
+        FILE *preferred = fopen(out, "rb");
+        if (preferred) {
+            fclose(preferred);
+            return 1;
+        }
         n = snprintf(out, out_size, "%s%spipeclean-museum-assets/%s/%s.png",
                      base, sep, games[game].id, id);
+    } else {
+        n = snprintf(out, out_size, "%s%spipeclean-museum-assets/%s/%s.png",
+                     base, sep, games[game].id, id);
+    }
     if (n < 0 || (size_t)n >= out_size) { out[0] = 0; return 0; }
 
-    FILE *f = fopen(out, "rb");
-    if (!f) { out[0] = 0; return 0; }
-    fclose(f);
+    FILE *asset = fopen(out, "rb");
+    if (!asset) { out[0] = 0; return 0; }
+    fclose(asset);
     return 1;
 }
 
