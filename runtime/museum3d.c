@@ -1382,8 +1382,8 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     m3d_pipe(6.55f, 0.80f);
 
     /* Soft-lit museum plinths, then two original stylised toy figures. */
-    m3d_box(-7.3f, 0.03f, 1.2f, -5.45f, 0.48f, 2.7f, HEX(0x8C6038));
-    m3d_box(5.45f, 0.03f, 1.2f, 7.3f, 0.48f, 2.7f, HEX(0x8C6038));
+    m3d_box(-6.98f, 0.03f, 1.2f, -5.77f, 0.48f, 2.7f, HEX(0x8C6038));
+    m3d_box(5.77f, 0.03f, 1.2f, 6.98f, 0.48f, 2.7f, HEX(0x8C6038));
     m3d_toy_figure(-6.38f, 1.82f, sinf(elapsed * 1.25f) * 0.035f,
                    HEX(0x398BC1), HEX(0x49A85E));
     m3d_toy_figure(6.38f, 1.82f, sinf(elapsed * 1.25f + 1.0f) * 0.035f,
@@ -1391,12 +1391,12 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 
     /* Floating question blocks are bevelled solids, not flat UI glyphs. */
     float block_bob = sinf(elapsed * 1.25f) * 0.09f;
-    m3d_question_block(-4.5f, 4.55f, -0.75f, 0.77f, block_bob);
-    m3d_question_block(4.45f, 4.30f, -0.80f, 0.88f, -block_bob * 0.72f);
+    m3d_question_block(-4.5f, 4.55f, -0.75f, 0.65f, block_bob);
+    m3d_question_block(4.45f, 4.30f, -0.80f, 0.72f, -block_bob * 0.72f);
 
     /* A faceted, rotating gold coin is a thin extruded 3D disk. */
     m3d_coin(-3.6f, 3.72f + sinf(elapsed * 1.7f) * 0.08f,
-             0.2f, 0.47f, elapsed * 1.15f);
+             0.2f, 0.40f, elapsed * 1.15f);
 
     /* Full-width elevated rear railway. The polished reference places the
        toy train high on the back wall, above the cabinet crown. Translate the
