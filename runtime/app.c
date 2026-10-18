@@ -2970,12 +2970,46 @@ int app_run(const char *autorun, const char *hack)
         ui_end();
         if (getenv("GBL_SHOT")) {
             static int fr;
-            if (fr == 3 && getenv("GBL_MOUSE")) { int mx, my; sscanf(getenv("GBL_MOUSE"), "%d,%d", &mx, &my); SDL_WarpMouseInWindow(win, mx, my); }
+            static int release_test_click;
+            if (fr == 3 && getenv("GBL_MOUSE")) {
+                int mx = 0, my = 0;
+                sscanf(getenv("GBL_MOUSE"), "%d,%d", &mx, &my);
+                SDL_WarpMouseInWindow(win, mx, my);
+                /* Optional click injection is used only by the CI visual-smoke
+                   command. Normal runs are unchanged unless GBL_CLICK is set. */
+                if (getenv("GBL_CLICK")) {
+                    SDL_Event click;
+                    memset(&click, 0, sizeof(click));
+                    click.type = SDL_MOUSEBUTTONDOWN;
+                    click.button.windowID = SDL_GetWindowID(win);
+                    click.button.button = SDL_BUTTON_LEFT;
+                    click.button.state = SDL_PRESSED;
+                    click.button.x = mx;
+                    click.button.y = my;
+                    SDL_PushEvent(&click);
+                    release_test_click = 1;
+                }
+            }
+            if (fr == 4 && release_test_click) {
+                int mx = 0, my = 0;
+                if (getenv("GBL_MOUSE")) sscanf(getenv("GBL_MOUSE"), "%d,%d", &mx, &my);
+                SDL_Event click;
+                memset(&click, 0, sizeof(click));
+                click.type = SDL_MOUSEBUTTONUP;
+                click.button.windowID = SDL_GetWindowID(win);
+                click.button.button = SDL_BUTTON_LEFT;
+                click.button.state = SDL_RELEASED;
+                click.button.x = mx;
+                click.button.y = my;
+                SDL_PushEvent(&click);
+                release_test_click = 0;
+            }
             if (++fr == 8) {
                 SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
                 SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch);
                 SDL_SaveBMP(s, getenv("GBL_SHOT"));
-                printf("out %dx%d hint='%s' mouse=%.0f,%.0f\n", W, H, ui_hint_text(), ui_mouse.x, ui_mouse.y);
+                printf("out %dx%d hint='%s' mouse=%.0f,%.0f\\n", W, H, ui_hint_text(), ui_mouse.x, ui_mouse.y);
+                SDL_FreeSurface(s);
                 quit = 1;
             }
         }
