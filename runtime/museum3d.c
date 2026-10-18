@@ -719,7 +719,7 @@ static void m3d_train(float elapsed, const M3DVec3 *path, int path_count)
     if (total_length < 0.01f) return;
 
     /* Distance-based travel avoids speed changes at the smoothed corners. */
-    float distance = fmodf(elapsed * 1.20f + 27.00f, total_length);
+    float distance = fmodf(elapsed * 1.20f + 28.00f, total_length);
     if (distance < 0.0f) distance += total_length;
     M3DVec3 position = path[0], tangent = m3d_v(1.0f, 0.0f, 0.0f);
     for (int i = 0; i < path_count; ++i) {
