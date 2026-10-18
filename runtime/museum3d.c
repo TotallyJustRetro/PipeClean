@@ -604,7 +604,7 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
     m3d_screen_face(left, top, 4.82f, right, top, 4.82f,
                     right + 11.0f, top - 10.0f, 3.55f,
                     left - 10.0f, top - 10.0f, 3.55f,
-                    HEX(0xB07A45), layout);
+                    HEX(0x8D5D35), layout);
     m3d_screen_face(right, top, 4.82f, right, bottom, 4.82f,
                     right + 11.0f, bottom + 13.0f, 3.55f,
                     right + 11.0f, top - 10.0f, 3.55f,
@@ -620,21 +620,21 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
 
     /* Thick front stiles define the open face of the cabinet. */
     m3d_screen_prism(left, top, left + 7.0f, bottom,
-                     5.06f, 3.55f, HEX(0x87532E), layout);
+                     5.06f, 3.55f, HEX(0x764525), layout);
     m3d_screen_prism(right - 7.0f, top, right, bottom,
                      5.06f, 3.55f, HEX(0x4A2616), layout);
     m3d_screen_quad(left + 1.0f, top + 5.0f, left + 2.5f, bottom - 8.0f,
-                    5.075f, HEX(0xD3A15F), layout);
+                    5.075f, HEX(0xBD8A4E), layout);
     m3d_screen_quad(right - 2.5f, top + 5.0f, right - 1.0f, bottom - 8.0f,
                     5.075f, HEX(0xA8733C), layout);
 
     /* The top crown is a separate extrusion, rather than a frame drawn over UI. */
     m3d_screen_prism(left, top, right, top + 6.0f,
-                     5.04f, 3.86f, HEX(0x925B32), layout);
+                     5.04f, 3.86f, HEX(0x7B4A29), layout);
     m3d_screen_face(left, top, 4.99f, right, top, 4.99f,
                     right + 5.0f, top - 5.5f, 4.62f,
                     left - 5.0f, top - 5.5f, 4.62f,
-                    HEX(0xD0A15D), layout);
+                    HEX(0xB8844A), layout);
     m3d_screen_quad(left + 9.0f, top + 1.2f, right - 9.0f, top + 2.2f,
                     5.075f, HEX(0xF3D28A), layout);
     /* Double moulding and hairline brass inlays make the crown read as carved
@@ -653,9 +653,9 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     left - 5.0f, bottom + 8.0f, 4.48f,
                     HEX(0x412012), layout);
     m3d_screen_prism(left - 2.0f, bottom - 7.0f, right + 2.0f, bottom + 2.0f,
-                     5.08f, 4.48f, HEX(0xB47C43), layout);
+                     5.08f, 4.48f, HEX(0x915E31), layout);
     m3d_screen_quad(left, bottom + 1.0f, right, bottom + 4.0f,
-                    5.105f, HEX(0xE9C57C), layout);
+                    5.105f, HEX(0xD6AD69), layout);
     m3d_screen_quad(left + 75.0f, bottom + 7.0f, left + 130.0f, bottom + 17.0f,
                     4.75f, HEX(0x3F2114), layout);
     m3d_screen_quad(right - 130.0f, bottom + 7.0f, right - 75.0f, bottom + 17.0f,
@@ -919,26 +919,26 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                     opening_right - 3.0f, opening_bottom - 3.0f,
                     3.155f, HEX(0x211006), layout);
     m3d_quad(rt_l, rt_r, rb_r, rb_l, HEX(0x120804));
-    m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0xA87443));
-    m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x82502D));
+    m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0x8E5E34));
+    m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x6F4327));
     m3d_quad(ft_r, fb_r, rb_r, rt_r, HEX(0x3A1D10));
-    m3d_quad(fb_l, rb_l, rb_r, fb_r, HEX(0x684025));
+    m3d_quad(fb_l, rb_l, rb_r, fb_r, HEX(0x54301B));
 
     /* The face is built in three steps: dark joinery shadow, thick walnut,
        then a narrow lighter bevel on the interior edge. */
     m3d_screen_prism(x - 1.0f, y - 1.0f, x + w + 1.0f, y + 6.0f,
                      5.23f, 4.10f, HEX(0x3A1D0E), layout);
     m3d_screen_prism(x, y, x + w, y + 5.0f,
-                     5.29f, 4.28f, HEX(0x9D6738), layout);
+                     5.29f, 4.28f, HEX(0x87522B), layout);
     m3d_screen_prism(x + 1.0f, y + 1.0f, x + w - 1.0f, y + 3.2f,
-                     5.32f, 4.46f, HEX(0xC18A4D), layout);
+                     5.32f, 4.46f, HEX(0xA8753F), layout);
 
     m3d_screen_prism(x - 1.0f, y + 4.5f, x + 6.0f, y + h - 25.0f,
                      5.25f, 4.10f, HEX(0x4A2814), layout);
     m3d_screen_prism(x, y + 5.0f, x + 5.0f, y + h - 25.0f,
-                     5.29f, 4.28f, HEX(0x8A572F), layout);
+                     5.29f, 4.28f, HEX(0x754628), layout);
     m3d_screen_prism(x + 3.4f, y + 7.0f, x + 4.5f, y + h - 27.0f,
-                     5.32f, 4.43f, HEX(0xE0B477), layout);
+                     5.32f, 4.43f, HEX(0xC59355), layout);
 
     m3d_screen_prism(x + w - 6.0f, y + 4.5f, x + w + 1.0f, y + h - 25.0f,
                      5.25f, 4.10f, HEX(0x271207), layout);
@@ -949,11 +949,11 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
 
     /* A broad shelf nose supports the plate and reads as a projecting board. */
     m3d_screen_prism(x + 3.0f, y + h - 25.0f, x + w - 3.0f, y + h - 18.0f,
-                     5.31f, 4.42f, HEX(0x8B5529), layout);
+                     5.31f, 4.42f, HEX(0x754421), layout);
     m3d_screen_prism(x + 4.0f, y + h - 25.0f, x + w - 4.0f, y + h - 22.0f,
-                     5.34f, 4.62f, HEX(0xBD8647), layout);
+                     5.34f, 4.62f, HEX(0xA16B34), layout);
     m3d_screen_quad(x + 6.0f, y + h - 24.0f, x + w - 6.0f, y + h - 23.0f,
-                    5.365f, HEX(0xF0C983), layout);
+                    5.365f, HEX(0xDDB16D), layout);
     m3d_screen_quad(x + 5.0f, y + h - 19.0f, x + w - 5.0f, y + h - 18.0f,
                     5.34f, HEX(0x38200F), layout);
 
@@ -989,21 +989,21 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                          5.20f, 4.62f, HEX(0x211F1A), layout);
         for (int i = 0; i < 5; ++i) {
             const float sy = y + 15.0f + i * 6.1f;
-            const uint32_t face = i == 4 ? HEX(0x424741) : HEX(0x777C75);
+            const uint32_t face = i == 4 ? HEX(0x424741) : HEX(0x625A50);
             m3d_screen_prism(shutter_x, sy, shutter_x + shutter_w, sy + 5.2f,
                              5.23f, 4.65f, face, layout);
             m3d_screen_quad(shutter_x + 1.2f, sy + 0.3f,
                             shutter_x + shutter_w - 1.2f, sy + 1.0f,
-                            5.265f, HEX(0xE1E0D7), layout);
+                            5.265f, HEX(0xBFAF91), layout);
             m3d_screen_quad(shutter_x + 1.2f, sy + 4.1f,
                             shutter_x + shutter_w - 1.2f, sy + 4.8f,
                             5.265f, HEX(0x30342F), layout);
             m3d_screen_quad(shutter_x + 3.0f, sy + 1.7f,
                             shutter_x + 4.5f, sy + 3.0f,
-                            5.27f, HEX(0xE7CD95), layout);
+                            5.27f, HEX(0xD3AC64), layout);
             m3d_screen_quad(shutter_x + shutter_w - 4.5f, sy + 1.7f,
                             shutter_x + shutter_w - 3.0f, sy + 3.0f,
-                            5.27f, HEX(0xE7CD95), layout);
+                            5.27f, HEX(0xD3AC64), layout);
         }
 
         /* The padlock is genuine depth-buffered cabinet geometry, not the
@@ -1106,16 +1106,16 @@ static void m3d_museum_grid(const M3DMuseumLayout *layout)
                      5.05f, 3.72f, HEX(0x60371D), layout);
     m3d_screen_prism(panel_x + 1.5f, panel_y + 5.0f,
                      panel_x + panel_w - 7.0f, panel_y + 9.0f,
-                     5.10f, 3.96f, HEX(0xA47140), layout);
+                     5.10f, 3.96f, HEX(0x85522D), layout);
     m3d_screen_quad(panel_x + 9.0f, panel_y + 5.9f,
                     panel_x + panel_w - 13.0f, panel_y + 6.8f,
-                    5.135f, HEX(0xE7BF7B), layout);
+                    5.135f, HEX(0xD3A15F), layout);
     m3d_screen_prism(panel_x, panel_y + 10.0f,
                      panel_x + 7.0f, panel_y + body_h - 5.0f,
-                     5.05f, 3.72f, HEX(0x85532D), layout);
+                     5.05f, 3.72f, HEX(0x704326), layout);
     m3d_screen_prism(panel_x + 1.5f, panel_y + 12.0f,
                      panel_x + 5.0f, panel_y + body_h - 7.0f,
-                     5.10f, 3.96f, HEX(0xB27B45), layout);
+                     5.10f, 3.96f, HEX(0x986638), layout);
     m3d_screen_quad(panel_x + 3.0f, panel_y + 18.0f,
                     panel_x + 4.0f, panel_y + body_h - 14.0f,
                     5.135f, HEX(0xE3B978), layout);
