@@ -560,7 +560,8 @@ static void m3d_screen_cubby(float x, float y, float w, float h,
 static void m3d_museum_grid(const M3DMuseumLayout *layout)
 {
     const float x = layout->museum_x, y = layout->museum_y;
-    const float panel_x = x + 458.0f, panel_y = y + 63.0f;
+    const float body_y = y + 63.0f;
+    const float panel_x = x + 458.0f, panel_y = body_y;
     const float panel_w = 350.0f, body_h = 413.0f;
     const float grid_x = x + 467.0f, grid_y = y + 134.0f;
     const float grid_w = 323.0f, grid_h = 330.0f;
