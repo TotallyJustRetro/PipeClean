@@ -4781,13 +4781,30 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
          * create a soft-ish halo with only a handful of extra draw calls. */
         ui_rrect(x + w * 0.28f, y + 10, w * 0.44f, h * 0.43f, 6, RGBA(222, 166, 77, 12));
         ui_rrect(x + w * 0.33f, y + 12, w * 0.34f, h * 0.37f, 5, RGBA(243, 196, 101, 15));
-        /* The horizontal shutters have alternating bevel highlights/shadows. */
-        for (int i = 0; i < 4; ++i) {
-            float sy = y + 16 + i * 7.0f;
-            ui_line(x + 15, sy, x + w - 15, sy, 2.2f, HEX(0x63472D));
-            ui_line(x + 15, sy + 2.1f, x + w - 15, sy + 2.1f, 1.2f, HEX(0x0B0603));
-            ui_line(x + 16, sy, x + w - 16, sy, 0.6f, HEX(0x886442));
+        /* Five overlapping metal shutter slats. Each has a lit top bevel,
+         * cool steel face, dark lower lip, and tiny brass rivets. */
+        const float shutter_x = x + 15.0f;
+        const float shutter_w = w - 30.0f;
+        for (int i = 0; i < 5; ++i) {
+            float sy = y + 15.0f + i * 6.1f;
+            ui_rrect(shutter_x + 1.0f, sy + 1.3f, shutter_w, 5.4f, 1.4f,
+                     RGBA(0, 0, 0, 145));
+            ui_vgrad(shutter_x, sy, shutter_w, 5.2f,
+                     i == 0 ? HEX(0xD6D4C8) : HEX(0xA8AAA5),
+                     i == 4 ? HEX(0x424744) : HEX(0x626762));
+            ui_line(shutter_x + 2.0f, sy + 0.5f,
+                    shutter_x + shutter_w - 2.0f, sy + 0.5f,
+                    0.7f, HEX(0xF0EDE0));
+            ui_line(shutter_x + 2.0f, sy + 4.3f,
+                    shutter_x + shutter_w - 2.0f, sy + 4.3f,
+                    0.8f, HEX(0x343A37));
+            ui_rrect(shutter_x + 3.0f, sy + 1.7f, 1.3f, 1.3f, 0.6f, HEX(0xE9D8A5));
+            ui_rrect(shutter_x + shutter_w - 4.3f, sy + 1.7f,
+                     1.3f, 1.3f, 0.6f, HEX(0xE9D8A5));
         }
+        /* A warm reflected glow separates the gold lock from the cool shutter. */
+        ui_rrect(x + w * 0.30f, y + 17.0f, w * 0.40f, h * 0.34f, 5,
+                 RGBA(238, 180, 75, 17));
         museum_lock_glyph(x + w * 0.37f, y + 11, w * 0.26f, h * 0.49f, 0);
     }
 
@@ -4928,21 +4945,105 @@ static void museum_draw_hanging_tag(float x, float y)
     ui_stroke(x + 7, y + 25, 5, 5, 2, 0.8f, HEX(0x76502B));
 }
 
+static void museum_draw_toy_relic(float x, float y, float scale, uint32_t accent)
+{
+    /* An original little museum toy: no game logo or copied character art.
+     * The stacked shapes and cast shadow make it read as a physical figurine. */
+    ui_shadow(x - 1.0f, y + 25.0f * scale, 39.0f * scale, 7.0f * scale,
+              4.0f * scale, 3.0f * scale, RGBA(0, 0, 0, 110));
+    ui_tri(x + 1.0f * scale, y + 24.0f * scale,
+           x + 19.0f * scale, y + 18.0f * scale,
+           x + 37.0f * scale, y + 24.0f * scale, HEX(0xE5C27E));
+    ui_vgrad(x + 3.0f * scale, y + 24.0f * scale,
+             33.0f * scale, 6.0f * scale, HEX(0xD8A45C), HEX(0x71401D));
+    ui_stroke(x + 3.0f * scale, y + 24.0f * scale,
+              33.0f * scale, 6.0f * scale, 2.0f * scale, 0.8f, HEX(0x44200E));
+    ui_vgrad(x + 10.0f * scale, y + 8.0f * scale,
+             18.0f * scale, 16.0f * scale, accent, HEX(0x472A22));
+    ui_stroke(x + 10.0f * scale, y + 8.0f * scale,
+              18.0f * scale, 16.0f * scale, 3.0f * scale, 0.9f, HEX(0x24120C));
+    ui_rrect(x + 7.0f * scale, y, 24.0f * scale, 13.0f * scale,
+             6.0f * scale, accent);
+    ui_stroke(x + 7.0f * scale, y, 24.0f * scale, 13.0f * scale,
+              6.0f * scale, 0.9f, HEX(0x4A2B1D));
+    ui_line(x + 11.0f * scale, y + 3.0f * scale,
+            x + 25.0f * scale, y + 2.0f * scale,
+            1.0f * scale, RGBA(255, 245, 210, 190));
+    ui_rrect(x + 13.0f * scale, y + 5.0f * scale, 2.5f * scale,
+             2.5f * scale, 1.0f * scale, HEX(0x302017));
+    ui_rrect(x + 23.0f * scale, y + 5.0f * scale, 2.5f * scale,
+             2.5f * scale, 1.0f * scale, HEX(0x302017));
+}
+
 static void museum_draw_3d_set_dressing(float x, float y, float width)
 {
-    /* The props live behind the real interactive UI, like toys in a cabinet
-     * diorama. They peek out at the edges rather than covering controls. */
+    /* Painted first: a miniature room enclosing the UI like a display case.
+     * Translucent beams and low-contrast wall panels add depth without making
+     * the text or hit targets harder to see. */
+    ui_rrect(x - 29, y - 18, width + 58, 520, 15, RGBA(9, 6, 5, 72));
+    ui_vgrad(x - 24, y - 14, width + 48, 510,
+             RGBA(92, 54, 30, 22), RGBA(13, 8, 7, 0));
+    ui_stroke(x - 24, y - 14, width + 48, 510, 14, 2.0f, RGBA(207, 153, 91, 72));
+    ui_line(x - 12, y + 12, x + width + 12, y + 12, 2.0f, RGBA(236, 191, 126, 66));
+    ui_line(x - 12, y + 17, x + width + 12, y + 17, 1.0f, RGBA(40, 20, 10, 90));
+
+    /* Wall panels converge toward the display area, implying a shallow room. */
+    for (int p = 0; p < 7; ++p) {
+        float px = x + 18.0f + p * (width - 36.0f) / 6.0f;
+        ui_line(px, y + 28, x + width * 0.5f + (px - x - width * 0.5f) * 0.78f,
+                y + 407, 1.0f, RGBA(233, 185, 119, 22));
+    }
+    ui_tri(x + 32, y - 8, x + 150, y - 8, x + 10, y + 318,
+           RGBA(255, 202, 112, 10));
+    ui_tri(x + width - 165, y - 8, x + width - 48, y - 8,
+           x + width + 18, y + 320, RGBA(255, 202, 112, 11));
+    /* Tiny illuminated dust motes drift in the spotlights. */
+    for (int i = 0; i < 13; ++i) {
+        float px = x + 25.0f + (float)((i * 73) % 755);
+        float py = y + 42.0f + (float)((i * 47) % 365);
+        float pulse = 0.55f + 0.45f * sinf(anim_clock * 1.4f + i * 1.7f);
+        ui_rrect(px, py, 1.2f + pulse, 1.2f + pulse, 1.0f,
+                 RGBA(255, 219, 155, (int)(24.0f + pulse * 44.0f)));
+    }
+
+    /* Display-room skirting and foreshortened floor planks peek out below the
+     * cabinet and around its sides. */
+    ui_vgrad(x - 17, y + 424, width + 34, 12, HEX(0xD6A46A), HEX(0x4D2914));
+    ui_line(x - 15, y + 425, x + width + 15, y + 425, 1.4f, HEX(0xFFE0A0));
+    ui_line(x - 15, y + 434, x + width + 15, y + 434, 1.3f, HEX(0x211006));
+    for (int plank = 0; plank < 5; ++plank) {
+        float py = y + 436.0f + plank * 14.0f;
+        ui_tri(x - 18, py, x + width + 18, py,
+               x + width + 42, py + 13.0f, HEX(0x53301B));
+        ui_tri(x - 18, py, x + width + 42, py + 13.0f,
+               x - 42, py + 13.0f, HEX(0x765033));
+        ui_line(x - 35, py + 11, x + width + 35, py + 11,
+                0.8f, RGBA(237, 185, 117, 90));
+    }
+    for (int seam = 0; seam < 10; ++seam) {
+        float sx = x - 30.0f + seam * (width + 60.0f) / 9.0f;
+        ui_line(x + width * 0.5f, y + 438, sx, y + 505,
+                0.8f, RGBA(30, 15, 8, 90));
+    }
+
+    /* Side props are tucked behind the controls and cabinet front. */
     museum_draw_pipe_prop(x - 21, y + 154, 43, 97);
     museum_draw_pipe_prop(x + width - 8, y + 179, 44, 104);
     museum_draw_pipe_prop(x - 13, y + 326, 34, 62);
     museum_draw_pipe_prop(x + width - 12, y + 322, 37, 66);
 
-    const float rail_w = width * 0.24f;
-    museum_draw_train_prop(x + width * 0.55f, y - 62, rail_w);
-    museum_draw_gold_coin(x + width * 0.43f, y - 78, 17.0f);
+    /* A tiny figure sits on a side plinth; it only peeks out around the frame. */
+    museum_draw_toy_relic(x - 19, y + 386, 0.74f, HEX(0x5EBB72));
+    museum_draw_toy_relic(x + width - 8, y + 389, 0.72f, HEX(0xD95D3B));
+
+    const float rail_w = width * 0.28f;
+    museum_draw_train_prop(x + width * 0.53f, y - 53, rail_w);
+    museum_draw_gold_coin(x + width * 0.42f, y - 79, 19.0f);
+    museum_draw_gold_coin(x + width * 0.38f, y + 24 + sinf(anim_clock * 1.1f) * 2.0f, 12.0f);
     const float block_bob = sinf(anim_clock * 1.25f) * 2.2f;
-    museum_draw_question_block(x + width - 94, y - 70 + block_bob, 18);
-    museum_draw_question_block(x + width - 58, y - 78 - block_bob * 0.7f, 22);
+    museum_draw_question_block(x + width - 96, y - 70 + block_bob, 19);
+    museum_draw_question_block(x + width - 57, y - 81 - block_bob * 0.7f, 23);
+    museum_draw_question_block(x + 15, y - 44 - block_bob * 0.5f, 16);
     ui_text_c(F_BOLD, 18, x + width * 0.48f, y - 65 + block_bob * 0.55f, HEX(0xE7CF8A), "♪");
     ui_text_c(F_BOLD, 14, x + width * 0.51f, y - 55 - block_bob * 0.4f, HEX(0xF4DDB0), "♫");
 }
