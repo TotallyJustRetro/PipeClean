@@ -242,6 +242,47 @@ static void m3d_cylinder_y(float cx, float base_y, float cz, float radius,
     m3d_disk_horizontal(cx, base_y + height, cz, radius, m3d_tint(color, 1.08f), segments);
 }
 
+/* Draw only the cylindrical side wall. Used for tubes with an intentionally
+   open end, where a filled cap would make the prop look sealed. */
+static void m3d_cylinder_y_open(float cx, float base_y, float cz, float radius,
+                                float height, uint32_t color, int segments)
+{
+    for (int i = 0; i < segments; ++i) {
+        float a0 = (float)i * 6.28318530718f / (float)segments;
+        float a1 = (float)(i + 1) * 6.28318530718f / (float)segments;
+        M3DVec3 b0 = m3d_v(cx + cosf(a0) * radius, base_y,
+                           cz + sinf(a0) * radius);
+        M3DVec3 b1 = m3d_v(cx + cosf(a1) * radius, base_y,
+                           cz + sinf(a1) * radius);
+        M3DVec3 t1 = m3d_v(b1.x, base_y + height, b1.z);
+        M3DVec3 t0 = m3d_v(b0.x, base_y + height, b0.z);
+        float face_tint = 0.82f + 0.18f * (0.5f + 0.5f * cosf(a0));
+        m3d_quad(b0, b1, t1, t0, m3d_tint(color, face_tint));
+    }
+}
+
+/* A horizontal annulus gives the pipe lip a visible top surface without
+   filling its hole with the solid cap used by ordinary cylinders. */
+static void m3d_ring_horizontal(float cx, float y, float cz,
+                                float inner_radius, float outer_radius,
+                                uint32_t color, int segments)
+{
+    for (int i = 0; i < segments; ++i) {
+        float a0 = (float)i * 6.28318530718f / (float)segments;
+        float a1 = (float)(i + 1) * 6.28318530718f / (float)segments;
+        M3DVec3 i0 = m3d_v(cx + cosf(a0) * inner_radius, y,
+                           cz + sinf(a0) * inner_radius);
+        M3DVec3 o0 = m3d_v(cx + cosf(a0) * outer_radius, y,
+                           cz + sinf(a0) * outer_radius);
+        M3DVec3 o1 = m3d_v(cx + cosf(a1) * outer_radius, y,
+                           cz + sinf(a1) * outer_radius);
+        M3DVec3 i1 = m3d_v(cx + cosf(a1) * inner_radius, y,
+                           cz + sinf(a1) * inner_radius);
+        float face_tint = 0.92f + 0.08f * (0.5f + 0.5f * cosf(a0));
+        m3d_quad(i0, o0, o1, i1, m3d_tint(color, face_tint));
+    }
+}
+
 static void m3d_sphere(float cx, float cy, float cz, float radius,
                        uint32_t color, int longitude_steps, int latitude_steps)
 {
@@ -329,16 +370,26 @@ static void m3d_toy_figure(float x, float z, float bob, uint32_t body, uint32_t 
 static void m3d_pipe(float x, float z)
 {
     const float base = 0.02f, height = 4.6f, radius = 0.48f;
+    const float lip_outer = radius + 0.17f;
+    const float bore_radius = radius * 0.74f;
+
     m3d_box(x - 0.56f, 0.0f, z - 0.52f, x + 0.56f, 0.11f, z + 0.52f,
             HEX(0x70452A));
-    m3d_cylinder_y(x, base, z, radius, height, HEX(0x139B3B), 18);
-    m3d_cylinder_y(x, base + height - 0.26f, z, radius + 0.17f, 0.28f,
-                   HEX(0x38CE51), 18);
-    m3d_disk_horizontal(x, base + height + 0.285f, z, radius * 0.70f,
-                        HEX(0x063E1E), 18);
-    /* Dark inner throat sits below the bright rim to show an actual opening. */
-    m3d_disk_horizontal(x, base + height + 0.19f, z, radius * 0.66f,
+
+    /* The shaft and widened mouth have open ends; their top is not a filled
+       cylinder cap. A separate annulus forms the upper surface of the rim. */
+    m3d_cylinder_y_open(x, base, z, radius, height, HEX(0x139B3B), 18);
+    m3d_cylinder_y_open(x, base + height - 0.26f, z, lip_outer, 0.28f,
+                        HEX(0x38CE51), 18);
+    m3d_ring_horizontal(x, base + height + 0.02f, z,
+                        bore_radius, lip_outer, HEX(0x43D65A), 18);
+
+    /* A dark inner wall and recessed floor create an actual hollow throat. */
+    m3d_cylinder_y_open(x, base + height - 0.38f, z, bore_radius, 0.36f,
+                        HEX(0x0B5729), 18);
+    m3d_disk_horizontal(x, base + height - 0.375f, z, bore_radius * 0.98f,
                         HEX(0x042914), 18);
+
     m3d_cylinder_y(x - 0.12f, 0.11f, z + 0.46f, 0.025f, 3.95f,
                    HEX(0xA4F47E), 6);
 }
