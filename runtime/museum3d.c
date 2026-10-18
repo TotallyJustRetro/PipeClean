@@ -1507,7 +1507,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
      */
     {
         const float rear_z = -1.71f;
-        const float front_z = 6.05f;
+        const float front_z = 4.55f;
         const float half_gauge = 0.095f;
         const float rail_y = 0.090f;
         const uint32_t tie_color = HEX(0x624329);
@@ -1524,16 +1524,16 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
             { 7.32f, rail_y, -1.45f},
             { 7.45f, rail_y, -1.12f},
             { 7.45f, rail_y, -0.50f},
-            { 7.30f, rail_y,  0.65f},
-            { 6.95f, rail_y,  2.00f},
-            { 6.40f, rail_y,  3.20f},
-            { 5.80f, rail_y,  4.20f},
+            { 7.30f, rail_y,  0.45f},
+            { 6.95f, rail_y,  1.55f},
+            { 6.40f, rail_y,  2.65f},
+            { 5.80f, rail_y,  3.55f},
             { 5.15f, rail_y,  front_z},
             {-5.15f, rail_y,  front_z},
-            {-5.80f, rail_y,  4.20f},
-            {-6.40f, rail_y,  3.20f},
-            {-6.95f, rail_y,  2.00f},
-            {-7.30f, rail_y,  0.65f},
+            {-5.80f, rail_y,  3.55f},
+            {-6.40f, rail_y,  2.65f},
+            {-6.95f, rail_y,  1.55f},
+            {-7.30f, rail_y,  0.45f},
             {-7.45f, rail_y, -0.50f},
             {-7.45f, rail_y, -1.12f},
             {-7.32f, rail_y, -1.45f},
