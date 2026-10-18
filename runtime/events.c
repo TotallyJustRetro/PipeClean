@@ -624,7 +624,11 @@ static void sml2_museum_live_frame(void)
     Sml2MuseumSnapshot snapshot;
     if (!sml2_museum_snapshot_read(&snapshot)) return;
     const uint32_t found = sml2_museum_tracker_update(&sml2_museum_tracker, &snapshot);
-    if (found) sml2_museum_discover(found);
+    if (found) {
+        sml2_museum_discover(found);
+        /* Newly found counters/items may need their first sprite cache too. */
+        sml2_museum_sprite_cache_sweep_done = 0;
+    }
 }
 
 /* Wario Land SML3 stores its expedition counters in cartridge RAM. */
@@ -1950,6 +1954,29 @@ static void sml2_museum_capture_discovered_sprites(void)
          i < sizeof scripted_bosses / sizeof scripted_bosses[0];
          ++i) {
         const Sml2MuseumEnemyMap *entry = &scripted_bosses[i];
+        if (!museum_is_discovered(GAME_SML2, entry->museum_id))
+            continue;
+        char path[1200];
+        if (museum_sprite_asset_path(GAME_SML2, entry->museum_id,
+                                     path, sizeof path))
+            continue;
+        (void)sml2_museum_capture_sprite(entry->level, entry->object_type,
+                                         entry->museum_id);
+    }
+
+    /* Power-up and extra-life discoveries are tracked independently from
+       ordinary enemy spawns. Their ROM object mappings are stable across these
+       profiles, so regenerate icon art for saved/newly-found entries too. */
+    static const Sml2MuseumEnemyMap item_sprites[] = {
+        {0x00, 0x0A, "coin"},
+        {0x00, 0x11, "mushroom"},
+        {0x00, 0x12, "magic_carrot"},
+        {0x00, 0x13, "fire_flower"},
+        {0x00, 0x14, "starman"},
+        {0x00, 0x15, "extra_life"}
+    };
+    for (size_t i = 0; i < sizeof item_sprites / sizeof item_sprites[0]; ++i) {
+        const Sml2MuseumEnemyMap *entry = &item_sprites[i];
         if (!museum_is_discovered(GAME_SML2, entry->museum_id))
             continue;
         char path[1200];
