@@ -1005,6 +1005,70 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                             shutter_x + shutter_w - 3.0f, sy + 3.0f,
                             5.27f, HEX(0xE7CD95), layout);
         }
+
+        /* The padlock is genuine depth-buffered cabinet geometry, not the
+           former flat SDL glyph. A thick brass shackle rises from a layered
+           body, with a dark keyway, reflected edges, and tiny corner rivets. */
+        const float lock_cx = x + w * 0.5f;
+        const float shackle_l = lock_cx - 11.0f;
+        const float shackle_r = lock_cx + 11.0f;
+        const float shackle_top = y + 14.0f;
+        const float shackle_bottom = y + 33.0f;
+        m3d_screen_prism(shackle_l, shackle_top, shackle_r, shackle_bottom,
+                         5.335f, 4.84f, HEX(0x3B210E), layout);
+        m3d_screen_prism(shackle_l + 2.0f, shackle_top + 1.5f,
+                         shackle_r - 2.0f, shackle_bottom,
+                         5.365f, 4.96f, HEX(0xB17A2F), layout);
+        m3d_screen_quad(shackle_l + 3.0f, shackle_top + 2.0f,
+                        shackle_r - 3.0f, shackle_top + 2.9f,
+                        5.395f, HEX(0xF8D78A), layout);
+        /* Recessed center masks the brass fill and leaves a chunky U-shaped
+           lock loop, with shaded inner walls still visible behind the body. */
+        m3d_screen_quad(lock_cx - 6.5f, shackle_top + 5.3f,
+                        lock_cx + 6.5f, shackle_bottom - 1.0f,
+                        5.405f, HEX(0x25221A), layout);
+        m3d_screen_quad(shackle_l + 2.7f, shackle_top + 4.0f,
+                        shackle_l + 4.1f, shackle_bottom - 1.0f,
+                        5.415f, HEX(0xE7BE70), layout);
+        m3d_screen_quad(shackle_r - 4.1f, shackle_top + 4.0f,
+                        shackle_r - 2.7f, shackle_bottom - 1.0f,
+                        5.415f, HEX(0x68431D), layout);
+
+        const float lock_body_top = y + 29.0f;
+        const float lock_body_bottom = y + 49.0f;
+        m3d_screen_prism(lock_cx - 17.0f, lock_body_top,
+                         lock_cx + 17.0f, lock_body_bottom,
+                         5.40f, 4.66f, HEX(0x3E210D), layout);
+        m3d_screen_prism(lock_cx - 15.0f, lock_body_top + 1.5f,
+                         lock_cx + 15.0f, lock_body_bottom - 1.0f,
+                         5.445f, 4.83f, HEX(0xC7963F), layout);
+        m3d_screen_quad(lock_cx - 12.5f, lock_body_top + 3.2f,
+                        lock_cx + 12.5f, lock_body_bottom - 3.0f,
+                        5.465f, HEX(0xDAB15F), layout);
+        m3d_screen_quad(lock_cx - 11.0f, lock_body_top + 3.4f,
+                        lock_cx + 11.0f, lock_body_top + 4.2f,
+                        5.49f, HEX(0xFFE4A0), layout);
+        m3d_screen_quad(lock_cx + 11.5f, lock_body_top + 4.0f,
+                        lock_cx + 12.5f, lock_body_bottom - 4.0f,
+                        5.49f, HEX(0x8B5D24), layout);
+        /* Keyhole head and tapered lower stem are separate inset facets. */
+        m3d_screen_quad(lock_cx - 2.0f, lock_body_top + 6.0f,
+                        lock_cx + 2.0f, lock_body_top + 10.0f,
+                        5.505f, HEX(0x39200E), layout);
+        m3d_screen_face(lock_cx - 1.3f, lock_body_top + 9.0f, 5.51f,
+                        lock_cx + 1.3f, lock_body_top + 9.0f, 5.51f,
+                        lock_cx + 3.2f, lock_body_top + 14.0f, 5.51f,
+                        lock_cx - 3.2f, lock_body_top + 14.0f, 5.51f,
+                        HEX(0x39200E), layout);
+        for (int side = 0; side < 2; ++side) {
+            const float rivet_x = side ? lock_cx + 10.5f : lock_cx - 12.5f;
+            m3d_screen_quad(rivet_x, lock_body_top + 8.0f,
+                            rivet_x + 1.6f, lock_body_top + 9.6f,
+                            5.50f, HEX(0x76501F), layout);
+            m3d_screen_quad(rivet_x + 0.3f, lock_body_top + 8.2f,
+                            rivet_x + 0.9f, lock_body_top + 8.7f,
+                            5.52f, HEX(0xFFE4A0), layout);
+        }
     }
 
     /* A polished brass accession plate is mounted into the shelf nose. */
