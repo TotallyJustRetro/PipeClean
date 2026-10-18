@@ -527,7 +527,6 @@ static void m3d_goomba_figure(float x, float z, float bob)
 }
 
 static void m3d_pipe(float x, float z)
-static void m3d_pipe(float x, float z)
 {
     const float base = 0.02f, height = 4.6f, radius = 0.34f;
     const float lip_outer = radius + 0.13f;
