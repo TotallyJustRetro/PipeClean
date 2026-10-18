@@ -417,8 +417,9 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
 
     /* Dark carcass behind the interactive panels; the side returns project out
        at different depths, so the silhouette is stable under resize. */
+    /* Backing board must sit behind the shelf wells in the Z buffer. */
     m3d_screen_quad(left - 10.0f, top - 10.0f, right + 11.0f, bottom + 14.0f,
-                    3.45f, HEX(0x281209), layout);
+                    2.35f, HEX(0x281209), layout);
     m3d_screen_face(left, top, 4.82f, right, top, 4.82f,
                     right + 11.0f, top - 10.0f, 3.55f,
                     left - 10.0f, top - 10.0f, 3.55f,
@@ -548,7 +549,7 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                              const M3DMuseumLayout *layout)
 {
     const float front_z = 5.22f;
-    const float rear_z = 3.70f;
+    const float rear_z = 3.18f;
     const float opening_left = x + 5.0f, opening_right = x + w - 5.0f;
     const float opening_top = y + 5.0f, opening_bottom = y + h - 25.0f;
 
