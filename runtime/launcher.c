@@ -4976,9 +4976,8 @@ static void museum_draw_shelf_cubby(int game, const MuseumEntry *entry,
                       HEX(0xD3B17B), "ART PENDING");
         }
     } else {
-        /* The slats themselves are depth-tested 3D metal geometry. Keep only
-           the lock symbol in the interactive overlay above the recessed door. */
-        museum_lock_glyph(x + w * 0.37f, y + 11, w * 0.26f, h * 0.49f, 0);
+        /* Shutter and brass padlock are drawn as depth-tested cabinet geometry
+           in museum3d.c. Do not lay the old flat lock glyph over the 3D model. */
     }
 
     const float plaque_w = w * 0.78f;
