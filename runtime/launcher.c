@@ -4990,43 +4990,9 @@ static void tab_museum(float x, float y)
     const float left_w = 450.0f, gap = 8.0f, right_x = x + left_w + gap;
     const float right_w = width - left_w - gap;
 
-    /* A short extruded top and right wall give the cabinet a visible depth
-     * before its front face is drawn over them. */
-    ui_tri(x + 8, body_y - 7, x + width - 8, body_y - 7,
-           x + width + 7, body_y + 4, HEX(0xD8A76C));
-    ui_tri(x + 8, body_y - 7, x + width + 7, body_y + 4,
-           x + 8, body_y + 4, HEX(0x9A693E));
-    ui_line(x + 14, body_y - 6, x + width - 10, body_y - 6,
-            1.3f, HEX(0xFFE0A0));
-    ui_tri(x + width - 5, body_y + 4, x + width + 7, body_y + 11,
-           x + width + 7, body_y + body_h - 3, HEX(0x261006));
-    ui_tri(x + width - 5, body_y + 4, x + width + 7, body_y + body_h - 3,
-           x + width - 5, body_y + body_h - 10, HEX(0x4A2511));
-    ui_line(x + width + 4, body_y + 15, x + width + 4, body_y + body_h - 12,
-            1.2f, HEX(0x6B3A1A));
-
-    /* The whole Museum sits inside a layered, bevelled hardwood housing. */
-    ui_shadow(x, body_y, width, body_h, 10, 8, RGBA(0, 0, 0, 150));
-    ui_vgrad(x, body_y, width, body_h, HEX(0xB17B4B), HEX(0x2D1409));
-    ui_stroke(x, body_y, width, body_h, 9, 2, HEX(0xE7B76D));
-    ui_rrect(x + 3, body_y + 3, width - 6, body_h - 6, 7, HEX(0x542A16));
-    ui_stroke(x + 4, body_y + 4, width - 8, body_h - 8, 6, 1, HEX(0xA56D3B));
-    /* Light catches the top edge; the lower and right edges fall into shadow. */
-    ui_line(x + 12, body_y + 5, x + width - 12, body_y + 5, 1.3f, HEX(0xF0C47C));
-    ui_line(x + 7, body_y + 12, x + 7, body_y + body_h - 12, 1.2f, HEX(0xD49A5C));
-    ui_line(x + 9, body_y + body_h - 5, x + width - 9, body_y + body_h - 5, 2.0f, HEX(0x210E07));
-    ui_line(x + width - 5, body_y + 10, x + width - 5, body_y + body_h - 10, 2.0f, HEX(0x241006));
-    /* Brass corner bolts visually pin the cabinet housing together. */
-    for (int side = 0; side < 2; ++side) {
-        float bx = side ? x + width - 10.0f : x + 5.0f;
-        for (int end = 0; end < 2; ++end) {
-            float by = body_y + (end ? body_h - 10.0f : 5.0f);
-            ui_rrect(bx + 1, by + 1, 5, 5, 2, RGBA(0, 0, 0, 110));
-            ui_vgrad(bx, by, 5, 5, HEX(0xFFE3A1), HEX(0x94602B));
-            ui_stroke(bx, by, 5, 5, 2, 0.8f, HEX(0x48250E));
-            ui_rrect(bx + 2, by + 2, 1.2f, 1.2f, 0.5f, HEX(0xFFF0C3));
-        }
-    }
+    /* The outer hardwood carcass is real perspective geometry from museum3d.c.
+       Keep the working front panels in SDL screen-space; their click targets,
+       scrolling, filters, and selection behavior do not change. */
 
     /* Left: recessed parchment field guide set into the timber frame. */
     ui_vgrad(x + 6, body_y + 6, left_w - 12, body_h - 12, HEX(0x9B6940), HEX(0x3E1E0F));
