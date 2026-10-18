@@ -5301,16 +5301,12 @@ LauncherResult launcher_frame(float dt)
         draw_cover(bt, bw, bh, vx, vy, vw, vh);
         ui_rect(vx, vy, vw, vh, RGBA(8, 9, 14, (int)(60 + settings.g[g].bg_dim * 2.4f)));
     }
-    /* Keep all 3D-style props in the background layer. Header controls and
-     * the actual Museum panels are painted later, so never lose hit targets. */
-    if (tab == TAB_MUSEUM) {
-        const float scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
-        /* The background extends beyond the cabinet and below the shelves.
-         * Keep its center aligned to the fixed 808dp Museum panel on every
-         * window size; the renderer converts logical coords to output pixels. */
-        museum3d_draw_background(ren_get(), scene_x - 60.0f, 100.0f,
-                                928.0f, 590.0f, anim_clock);
-    }
+    /* The 3D room is the full Museum-screen backdrop, edge to edge. It uses
+     * the actual visible viewport rather than the fixed-width cabinet bounds,
+     * so fullscreen, resize, and compact layouts keep the scene aligned.
+     * Navigation, header, cabinet, and all clickable controls are drawn later. */
+    if (tab == TAB_MUSEUM)
+        museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock);
 
     /* Use only the supplied transparent PipeClean logo in the header. */
     SDL_Texture *brand_logo = branding_logo_texture();
