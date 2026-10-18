@@ -32,6 +32,7 @@ typedef struct { float x, y, invz, z; } M3DProjected;
 typedef struct {
     float view_x, view_y, view_w, view_h;
     float museum_x, museum_y, scroll;
+    float ui_origin_x, ui_origin_y, ui_scale_x, ui_scale_y;
     float elapsed_seconds;
     const int *entry_locked;
     int visible_entries;
@@ -620,7 +621,7 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
 
     /* Thick front stiles define the open face of the cabinet. */
     m3d_screen_prism(left, top, left + 7.0f, bottom,
-                     5.06f, 3.55f, HEX(0x764525), layout);
+                     5.06f, 3.55f, HEX(0x56351F), layout);
     m3d_screen_prism(right - 7.0f, top, right, bottom,
                      5.06f, 3.55f, HEX(0x4A2616), layout);
     m3d_screen_quad(left + 1.0f, top + 5.0f, left + 2.5f, bottom - 8.0f,
@@ -630,11 +631,11 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
 
     /* The top crown is a separate extrusion, rather than a frame drawn over UI. */
     m3d_screen_prism(left, top, right, top + 6.0f,
-                     5.04f, 3.86f, HEX(0x7B4A29), layout);
+                     5.04f, 3.86f, HEX(0x5A3823), layout);
     m3d_screen_face(left, top, 4.99f, right, top, 4.99f,
                     right + 5.0f, top - 5.5f, 4.62f,
                     left - 5.0f, top - 5.5f, 4.62f,
-                    HEX(0xB8844A), layout);
+                    HEX(0x946637), layout);
     m3d_screen_quad(left + 9.0f, top + 1.2f, right - 9.0f, top + 2.2f,
                     5.075f, HEX(0xF3D28A), layout);
     /* Double moulding and hairline brass inlays make the crown read as carved
@@ -653,7 +654,7 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
                     left - 5.0f, bottom + 8.0f, 4.48f,
                     HEX(0x412012), layout);
     m3d_screen_prism(left - 2.0f, bottom - 7.0f, right + 2.0f, bottom + 2.0f,
-                     5.08f, 4.48f, HEX(0x915E31), layout);
+                     5.08f, 4.48f, HEX(0x684328), layout);
     m3d_screen_quad(left, bottom + 1.0f, right, bottom + 4.0f,
                     5.105f, HEX(0xD6AD69), layout);
     m3d_screen_quad(left + 75.0f, bottom + 7.0f, left + 130.0f, bottom + 17.0f,
@@ -676,6 +677,10 @@ static void m3d_cabinet(const M3DMuseumLayout *layout)
 static M3DVec3 m3d_screen_point(float logical_x, float logical_y, float z,
                                 const M3DMuseumLayout *layout)
 {
+    logical_x = layout->ui_origin_x +
+                (logical_x - layout->ui_origin_x) * layout->ui_scale_x;
+    logical_y = layout->ui_origin_y +
+                (logical_y - layout->ui_origin_y) * layout->ui_scale_y;
     float sx = (logical_x - layout->view_x + 29.0f) *
                (float)M3D_W / (layout->view_w + 58.0f);
     float sy = (logical_y - layout->view_y + 18.0f) *
@@ -697,12 +702,18 @@ static void m3d_set_logical_clip(float x, float y, float width, float height,
         m3d_clip_active = 0;
         return;
     }
+    const float tx0 = layout->ui_origin_x + (x - layout->ui_origin_x) * layout->ui_scale_x;
+    const float ty0 = layout->ui_origin_y + (y - layout->ui_origin_y) * layout->ui_scale_y;
+    const float tx1 = layout->ui_origin_x +
+                      (x + width - layout->ui_origin_x) * layout->ui_scale_x;
+    const float ty1 = layout->ui_origin_y +
+                      (y + height - layout->ui_origin_y) * layout->ui_scale_y;
     const float sx_scale = (float)M3D_W / (layout->view_w + 58.0f);
     const float sy_scale = (float)M3D_H / (layout->view_h + 36.0f);
-    const float sx0 = (x - layout->view_x + 29.0f) * sx_scale;
-    const float sy0 = (y - layout->view_y + 18.0f) * sy_scale;
-    const float sx1 = (x + width - layout->view_x + 29.0f) * sx_scale;
-    const float sy1 = (y + height - layout->view_y + 18.0f) * sy_scale;
+    const float sx0 = (tx0 - layout->view_x + 29.0f) * sx_scale;
+    const float sy0 = (ty0 - layout->view_y + 18.0f) * sy_scale;
+    const float sx1 = (tx1 - layout->view_x + 29.0f) * sx_scale;
+    const float sy1 = (ty1 - layout->view_y + 18.0f) * sy_scale;
 
     /* Pixel-center bounds match m3d_triangle_raw's half-pixel sampling. */
     m3d_clip_left = (int)ceilf(sx0 - 0.5f);
@@ -843,9 +854,9 @@ static void m3d_field_guide_frame(const M3DMuseumLayout *layout)
     m3d_screen_prism(x - 1.0f, y - 1.0f, x + w + 1.0f, y + 8.0f,
                      5.09f, 3.94f, HEX(0x3D1E0E), layout);
     m3d_screen_prism(x, y, x + w, y + 6.0f,
-                     5.13f, 4.16f, HEX(0x8A572F), layout);
+                     5.13f, 4.16f, HEX(0x6A4329), layout);
     m3d_screen_prism(x + 2.0f, y + 1.0f, x + w - 2.0f, y + 3.2f,
-                     5.155f, 4.40f, HEX(0xBD874D), layout);
+                     5.155f, 4.40f, HEX(0x93683A), layout);
     m3d_screen_quad(x + 7.0f, y + 1.6f, x + w - 7.0f, y + 2.3f,
                     5.18f, HEX(0xF0C982), layout);
     m3d_screen_quad(x + 8.0f, y + 4.4f, x + w - 8.0f, y + 5.1f,
@@ -854,16 +865,16 @@ static void m3d_field_guide_frame(const M3DMuseumLayout *layout)
     m3d_screen_prism(x - 1.0f, y + h - 8.0f, x + w + 1.0f, y + h + 1.0f,
                      5.09f, 3.94f, HEX(0x32180B), layout);
     m3d_screen_prism(x, y + h - 6.0f, x + w, y + h,
-                     5.13f, 4.16f, HEX(0x704222), layout);
+                     5.13f, 4.16f, HEX(0x52321D), layout);
     m3d_screen_prism(x + 2.0f, y + h - 3.2f, x + w - 2.0f, y + h - 1.0f,
-                     5.155f, 4.40f, HEX(0xA8733D), layout);
+                     5.155f, 4.40f, HEX(0x7D522F), layout);
     m3d_screen_quad(x + 7.0f, y + h - 2.3f, x + w - 7.0f, y + h - 1.6f,
                     5.18f, HEX(0xE7BD78), layout);
 
     m3d_screen_prism(x - 1.0f, y + 7.0f, x + 8.0f, y + h - 7.0f,
                      5.09f, 3.94f, HEX(0x744525), layout);
     m3d_screen_prism(x, y + 8.0f, x + 6.0f, y + h - 8.0f,
-                     5.13f, 4.16f, HEX(0xA16B3B), layout);
+                     5.13f, 4.16f, HEX(0x7C512F), layout);
     m3d_screen_quad(x + 1.3f, y + 15.0f, x + 2.0f, y + h - 15.0f,
                     5.18f, HEX(0xE4B774), layout);
 
@@ -919,8 +930,8 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
                     opening_right - 3.0f, opening_bottom - 3.0f,
                     3.155f, HEX(0x211006), layout);
     m3d_quad(rt_l, rt_r, rb_r, rb_l, HEX(0x120804));
-    m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0x8E5E34));
-    m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x6F4327));
+    m3d_quad(ft_l, ft_r, rt_r, rt_l, HEX(0x6B452A));
+    m3d_quad(ft_l, rt_l, rb_l, fb_l, HEX(0x52321E));
     m3d_quad(ft_r, fb_r, rb_r, rt_r, HEX(0x3A1D10));
     m3d_quad(fb_l, rb_l, rb_r, fb_r, HEX(0x54301B));
 
@@ -929,16 +940,16 @@ static void m3d_screen_cubby(float x, float y, float w, float h, int locked,
     m3d_screen_prism(x - 1.0f, y - 1.0f, x + w + 1.0f, y + 6.0f,
                      5.23f, 4.10f, HEX(0x3A1D0E), layout);
     m3d_screen_prism(x, y, x + w, y + 5.0f,
-                     5.29f, 4.28f, HEX(0x87522B), layout);
+                     5.29f, 4.28f, HEX(0x5C3922), layout);
     m3d_screen_prism(x + 1.0f, y + 1.0f, x + w - 1.0f, y + 3.2f,
-                     5.32f, 4.46f, HEX(0xA8753F), layout);
+                     5.32f, 4.46f, HEX(0x79502F), layout);
 
     m3d_screen_prism(x - 1.0f, y + 4.5f, x + 6.0f, y + h - 25.0f,
                      5.25f, 4.10f, HEX(0x4A2814), layout);
     m3d_screen_prism(x, y + 5.0f, x + 5.0f, y + h - 25.0f,
                      5.29f, 4.28f, HEX(0x754628), layout);
     m3d_screen_prism(x + 3.4f, y + 7.0f, x + 4.5f, y + h - 27.0f,
-                     5.32f, 4.43f, HEX(0xC59355), layout);
+                     5.32f, 4.43f, HEX(0xA6793E), layout);
 
     m3d_screen_prism(x + w - 6.0f, y + 4.5f, x + w + 1.0f, y + h - 25.0f,
                      5.25f, 4.10f, HEX(0x271207), layout);
@@ -1279,7 +1290,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
     /* Back wall and its panelled timber frame. */
     m3d_box(-8.5f, -0.1f, -4.55f, 8.5f, 8.2f, -4.0f, HEX(0x573523));
     m3d_box(-8.4f, 6.9f, -3.98f, 8.4f, 7.35f, -3.82f, HEX(0x98643C));
-    m3d_box(-8.4f, 0.0f, -3.98f, 8.4f, 0.34f, -3.82f, HEX(0x8A572F));
+    m3d_box(-8.4f, 0.0f, -3.98f, 8.4f, 0.34f, -3.82f, HEX(0x6A4329));
     for (int i = 0; i < 13; ++i) {
         float x = -8.0f + (float)i * 1.33f;
         m3d_box(x, 0.38f, -3.96f, x + 0.045f, 6.87f, -3.84f,
@@ -1377,10 +1388,10 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
      * used by the reference diorama.
      */
     {
-        const float outer_x = 7.72f;
-        const float inner_x = 7.48f;
+        const float outer_x = 5.20f;
+        const float inner_x = 4.92f;
         const float rear_z = -1.71f;
-        const float front_z = 7.12f;
+        const float front_z = 4.55f;
         const float rail_y = 0.145f;
         const float rail_w = 0.035f;
         const uint32_t tie_color = HEX(0x765035);
@@ -1395,7 +1406,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
             for (int i = 0; i <= 28; ++i) {
                 float z = rear_z + (front_z - rear_z) * ((float)i / 28.0f);
                 m3d_box(fminf(cx, ix) - 0.055f, 0.035f, z - 0.075f,
-                        fmaxf(cx, ix) + 0.055f, 0.12f, z + 0.075f,
+                        fmaxf(cx, ix) + 0.055f, 0.16f, z + 0.075f,
                         tie_color);
             }
             m3d_box(cx - rail_w, rail_y, rear_z - 0.02f,
@@ -1412,7 +1423,7 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
         for (int i = 0; i <= 52; ++i) {
             float x = -outer_x + (2.0f * outer_x * (float)i / 52.0f);
             m3d_box(x - 0.075f, 0.035f, front_z - 0.18f,
-                    x + 0.075f, 0.12f, front_z + 0.18f, tie_color);
+                    x + 0.075f, 0.16f, front_z + 0.18f, tie_color);
         }
         m3d_box(-outer_x - 0.02f, rail_y, front_z - 0.145f,
                 outer_x + 0.02f, rail_y + 0.055f, front_z - 0.075f,
@@ -1446,7 +1457,10 @@ static void m3d_scene(float elapsed, const M3DMuseumLayout *layout)
 void museum3d_draw_background(SDL_Renderer *renderer,
                               float x, float y, float width, float height,
                               float elapsed_seconds,
-                              float museum_x, float museum_y, float museum_scroll,
+                              float museum_x, float museum_y,
+                              float ui_origin_x, float ui_origin_y,
+                              float ui_scale_x, float ui_scale_y,
+                              float museum_scroll,
                               const int *entry_locked,
                               int visible_entries, int draw_cubby_grid)
 {
@@ -1471,6 +1485,8 @@ void museum3d_draw_background(SDL_Renderer *renderer,
     layout.view_x = x; layout.view_y = y;
     layout.view_w = width; layout.view_h = height;
     layout.museum_x = museum_x; layout.museum_y = museum_y;
+    layout.ui_origin_x = ui_origin_x; layout.ui_origin_y = ui_origin_y;
+    layout.ui_scale_x = ui_scale_x; layout.ui_scale_y = ui_scale_y;
     layout.scroll = museum_scroll;
     layout.elapsed_seconds = elapsed_seconds;
     layout.entry_locked = entry_locked;
@@ -1483,7 +1499,7 @@ void museum3d_draw_background(SDL_Renderer *renderer,
         float output_aspect = (width + 58.0f) / (height + 36.0f);
         float target_aspect = (float)M3D_W / (float)M3D_H;
         if (output_aspect < 0.2f) output_aspect = target_aspect;
-        m3d_focal_x = m3d_focal * target_aspect / output_aspect;
+        m3d_focal_x = 0.80f * m3d_focal * target_aspect / output_aspect;
     }
     m3d_scene(elapsed_seconds, &layout);
     if (SDL_UpdateTexture(m3d_texture, NULL, m3d_pixels, M3D_W * (int)sizeof(uint32_t)) != 0)

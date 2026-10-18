@@ -5155,7 +5155,7 @@ static void tab_museum(float x, float y)
         const float fy = body_y + (float)fy_offset;
         const float fleck_len = 1.4f + (float)(fleck % 4) * 0.55f;
         const uint32_t fiber = (fleck % 3 == 0)
-            ? RGBA(111, 68, 31, 18) : RGBA(255, 242, 202, 23);
+            ? RGBA(111, 68, 31, 31) : RGBA(255, 242, 202, 34);
         ui_line(fx, fy, fx + fleck_len, fy + (fleck % 2 ? 0.25f : -0.25f),
                 0.55f, fiber);
     }
@@ -5419,12 +5419,17 @@ LauncherResult launcher_frame(float dt)
      * so fullscreen, resize, and compact layouts keep the scene aligned.
      * Navigation, header, cabinet, and all clickable controls are drawn later. */
     if (tab == TAB_MUSEUM) {
-        const float museum_scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f;
+        const float museum_scene_x = compact_layout ? vx + (vw - 808.0f) * 0.5f : 308.0f;
         const float museum_scene_y = 166.0f;
+        const float museum_scene_scale_x = compact_layout ? 1.0f : 0.82f;
+        const float museum_scene_scale_y = compact_layout ? 1.0f : 0.76f;
+        const float museum_transform_origin_y = compact_layout ? museum_scene_y : 70.0f;
         const int museum_scene_entries = museum_scene_build_locked_flags();
         museum3d_draw_background(ren_get(), vx, vy, vw, vh, anim_clock,
-                                 museum_scene_x, museum_scene_y, museum_scroll,
-                                 museum_scene_locked_flags,
+                                 museum_scene_x, museum_scene_y,
+                                 museum_scene_x, museum_transform_origin_y,
+                                 museum_scene_scale_x, museum_scene_scale_y,
+                                 museum_scroll, museum_scene_locked_flags,
                                  museum_scene_entries, !museum_hacks_view);
     }
 
@@ -5509,7 +5514,7 @@ LauncherResult launcher_frame(float dt)
         }
     }
 
-    float cx = compact_layout ? vx + (vw - 808.0f) * 0.5f : 268.0f, cy = 108;
+    float cx = compact_layout ? vx + (vw - 808.0f) * 0.5f : 308.0f, cy = 108;
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
@@ -5583,11 +5588,15 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Adjust the launcher's size on desktop and Android.");
         tab_display(cx, cy + 58);
     } else {
+        const int museum_local_transform = !compact_layout;
+        if (museum_local_transform)
+            ui_transform_begin(cx, 70.0f, 0.82f, 0.76f);
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Collectible Museum");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "A shared collection for every game: enemies, items, treasures, stages, and milestones.");
         tab_museum(cx, cy + 58);
         if (!museum_hacks_view)
             museum_draw_hanging_tag(cx + 808.0f - 25.0f, cy + 58.0f + 135.0f);
+        if (museum_local_transform) ui_transform_end();
     }
 
     /* footer */

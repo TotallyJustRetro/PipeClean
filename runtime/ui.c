@@ -10,6 +10,29 @@
 
 UiMouse ui_mouse;
 float ui_scale = 1.0f, ui_dt = 0.016f;
+
+/* One non-nesting local transform lets a panel fit different aspect ratios
+   without replacing the real UI or breaking its mouse/touch hit targets. */
+static int ui_local_transform_active;
+static float ui_local_origin_x, ui_local_origin_y;
+static float ui_local_scale_x = 1.0f, ui_local_scale_y = 1.0f;
+static float ui_local_mouse_x, ui_local_mouse_y;
+
+static float ui_map_x(float x)
+{
+    return ui_local_transform_active
+        ? ui_local_origin_x + (x - ui_local_origin_x) * ui_local_scale_x : x;
+}
+static float ui_map_y(float y)
+{
+    return ui_local_transform_active
+        ? ui_local_origin_y + (y - ui_local_origin_y) * ui_local_scale_y : y;
+}
+static float ui_local_font_scale(void)
+{
+    return ui_local_transform_active
+        ? fminf(ui_local_scale_x, ui_local_scale_y) : 1.0f;
+}
 void (*ui_sfx_cb)(int);
 uint32_t ui_accent = 0x4C8DFF;
 
@@ -342,6 +365,32 @@ void ui_end(void)
     if (!ui_mouse.down) active_id = 0;
 }
 
+void ui_transform_begin(float origin_x, float origin_y, float scale_x, float scale_y)
+{
+    if (ui_local_transform_active) ui_transform_end();
+    if (!isfinite(scale_x) || !isfinite(scale_y) ||
+        scale_x <= 0.01f || scale_y <= 0.01f) return;
+    ui_local_transform_active = 1;
+    ui_local_origin_x = origin_x;
+    ui_local_origin_y = origin_y;
+    ui_local_scale_x = scale_x;
+    ui_local_scale_y = scale_y;
+    ui_local_mouse_x = ui_mouse.x;
+    ui_local_mouse_y = ui_mouse.y;
+    ui_mouse.x = origin_x + (ui_mouse.x - origin_x) / scale_x;
+    ui_mouse.y = origin_y + (ui_mouse.y - origin_y) / scale_y;
+}
+
+void ui_transform_end(void)
+{
+    if (!ui_local_transform_active) return;
+    ui_mouse.x = ui_local_mouse_x;
+    ui_mouse.y = ui_local_mouse_y;
+    ui_local_transform_active = 0;
+    ui_local_origin_x = ui_local_origin_y = 0.0f;
+    ui_local_scale_x = ui_local_scale_y = 1.0f;
+}
+
 void ui_set_mouse(int wx, int wy, int ww, int wh)
 {
     if (ww <= 0 || wh <= 0) return;
@@ -384,9 +433,20 @@ float ui_anim(int id, float target, float speed)
 }
 
 /* ------------------------------------------------------------ primitives */
-static inline int PXx(float x) { return (int)floorf(ox + x * ui_scale + 0.5f); }
-static inline int PXy(float y) { return (int)floorf(oy + y * ui_scale + 0.5f); }
-static inline int PXs(float v) { return (int)floorf(v * ui_scale + 0.5f); }
+static inline int PXx(float x) { return (int)floorf(ox + ui_map_x(x) * ui_scale + 0.5f); }
+static inline int PXy(float y) { return (int)floorf(oy + ui_map_y(y) * ui_scale + 0.5f); }
+static inline int PXs(float v) { return (int)floorf(v * ui_scale * ui_local_font_scale() + 0.5f); }
+
+static int text_px_base(float logical_size)
+{
+    int px = (int)floorf(logical_size * UI_FONT_SCALE * ui_scale + 0.5f);
+#if defined(__ANDROID__)
+    if (ui_scale < 0.85f && px < 8) px = 8;
+#else
+    if (ui_scale < 0.70f && px < 7) px = 7;
+#endif
+    return px;
+}
 
 /* Keep labels legible on low-density / small Android render targets. Geometry
    still follows the fitted scale; only the glyph atlas gets a small pixel floor. */
@@ -497,6 +557,9 @@ void ui_hgrad(float x, float y, float w, float h, uint32_t a, uint32_t b)
 
 void ui_line(float x1, float y1, float x2, float y2, float t, uint32_t c)
 {
+    x1 = ui_map_x(x1); x2 = ui_map_x(x2);
+    y1 = ui_map_y(y1); y2 = ui_map_y(y2);
+    t *= ui_local_font_scale();
     float dx = x2 - x1, dy = y2 - y1, l = sqrtf(dx * dx + dy * dy);
     if (l < 0.001f) return;
     float nx = -dy / l * t * 0.5f, ny = dx / l * t * 0.5f;
@@ -512,6 +575,8 @@ void ui_line(float x1, float y1, float x2, float y2, float t, uint32_t c)
 
 void ui_tri(float x1, float y1, float x2, float y2, float x3, float y3, uint32_t c)
 {
+    x1 = ui_map_x(x1); x2 = ui_map_x(x2); x3 = ui_map_x(x3);
+    y1 = ui_map_y(y1); y2 = ui_map_y(y2); y3 = ui_map_y(y3);
     SDL_Color col = {(Uint8)(c >> 24), (Uint8)(c >> 16), (Uint8)(c >> 8), (Uint8)c};
     float s = ui_scale;
     SDL_Vertex v[3] = {{{ox + x1 * s, oy + y1 * s}, col, {0, 0}}, {{ox + x2 * s, oy + y2 * s}, col, {0, 0}},
@@ -531,7 +596,7 @@ void ui_shadow(float x, float y, float w, float h, float r, float spread, uint32
 
 void ui_clip(float x, float y, float w, float h)
 {
-    SDL_Rect r = {PXx(x), PXy(y), PXs(w), PXs(h)};
+    SDL_Rect r = {PXx(x), PXy(y), PXx(x + w) - PXx(x), PXy(y + h) - PXy(y)};
     SDL_RenderSetClipRect(ren, &r);
 }
 void ui_unclip(void) { SDL_RenderSetClipRect(ren, NULL); }
@@ -606,10 +671,15 @@ static const Glyph *glyph_of(Atlas *a, int cp)
 float ui_text_w(int font, float size, const char *s)
 {
     if (!fonts_ok) return 0;
-    Atlas *a = get_atlas(font, text_px(size));
+    /* Measure in source coordinates, correcting for the local horizontal
+       text scale so centered and right-aligned labels remain aligned. */
+    Atlas *a = get_atlas(font, ui_local_transform_active ? text_px_base(size) : text_px(size));
     float w = 0;
     while (*s) w += glyph_of(a, next_cp(&s))->adv;
-    return w / ui_scale;
+    float width = w / ui_scale;
+    if (ui_local_transform_active && ui_local_scale_x > 0.0f)
+        width *= ui_local_font_scale() / ui_local_scale_x;
+    return width;
 }
 
 float ui_line_h(float size) { return size * 1.5f * UI_FONT_SCALE; }
@@ -621,7 +691,7 @@ void ui_text(int font, float size, float x, float y, uint32_t c, const char *s)
     if (!a->tex) return;
     tint(a->tex, c);
     float px = (float)PXx(x);
-    int base = PXy(y) + (int)floorf((ui_line_h(size) * ui_scale - (a->ascent - a->descent)) * 0.5f + a->ascent + 0.5f);
+    int base = PXy(y) + (int)floorf((ui_line_h(size) * ui_scale * ui_local_font_scale() - (a->ascent - a->descent)) * 0.5f + a->ascent + 0.5f);
     while (*s) {
         const Glyph *g = glyph_of(a, next_cp(&s));
         if (g->w > 0 && g->h > 0) {

@@ -32,6 +32,9 @@ void ui_shutdown(void);
 /* call at the start of every frame with the renderer output size (pixels) */
 void ui_begin(int pw, int ph, float dt);
 void ui_end(void);
+/* Temporarily scale a coordinated UI region about an anchor; mouse hit tests are inverse-mapped. */
+void ui_transform_begin(float origin_x, float origin_y, float scale_x, float scale_y);
+void ui_transform_end(void);
 /* mouse in window units -> dp; ww/wh = window size in window units */
 void ui_set_mouse(int wx, int wy, int ww, int wh);
 /* SDL normalized touch coordinates (0..1) mapped to the UI design space. */
