@@ -1965,25 +1965,26 @@ static void sub_dualsense(int g, float x, float y)
 #ifdef __ANDROID__
     label(x + 18, y + 320, "Vibration output");
     int route_count = pad_android_haptic_option_count();
-    int route = settings.android_haptic_target;
+    int route_option = pad_android_haptic_target_option(settings.android_haptic_target);
     if (route_count < 2) route_count = 2;
-    if (route < 0 || route >= route_count) {
-        route = ANDROID_HAPTIC_AUTO;
-        settings.android_haptic_target = route;
+    if (route_option < 0 || route_option >= route_count) {
+        route_option = 0;
+        settings.android_haptic_target = pad_android_haptic_option_target(route_option);
         settings_save();
     }
     if (ui_button(x + 18, y + 338, 28, 28, "<", B_NORMAL, 1)) {
-        route = (route + route_count - 1) % route_count;
-        settings.android_haptic_target = route;
+        route_option = (route_option + route_count - 1) % route_count;
+        settings.android_haptic_target = pad_android_haptic_option_target(route_option);
         settings_save();
     }
     if (ui_button(x + lw - 46, y + 338, 28, 28, ">", B_NORMAL, 1)) {
-        route = (route + 1) % route_count;
-        settings.android_haptic_target = route;
+        route_option = (route_option + 1) % route_count;
+        settings.android_haptic_target = pad_android_haptic_option_target(route_option);
         settings_save();
     }
+    int route = settings.android_haptic_target;
     char route_name[160];
-    pad_android_haptic_option_name(route, route_name, sizeof route_name);
+    pad_android_haptic_option_name(route_option, route_name, sizeof route_name);
     ui_text_fit(F_BOLD, 11, x + 52, y + 346, lw - 104, C_TEXT, route_name);
 
     if (ui_button(x + 18, y + 374, bw, 36, "Test light", B_NORMAL, 1)) { pad_set_context(g, 0); pad_flash(0xFFFFFF); }

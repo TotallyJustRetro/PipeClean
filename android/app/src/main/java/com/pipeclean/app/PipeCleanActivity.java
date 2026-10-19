@@ -3,12 +3,16 @@ package com.pipeclean.app;
 import android.app.Activity;
 import android.hardware.display.DisplayManager;
 import android.view.Display;
+import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.widget.Toast;
@@ -60,6 +64,66 @@ public final class PipeCleanActivity extends SDLActivity {
     public static native void nativeCompanionAction(int action, int pressed);
     public static native void nativeCompanionDisplayAvailable(int available);
     public static native void nativeCompanionLayoutPickerResult(int kind, int game, String path);
+
+    /*
+     * Android 12+ can expose individual vibrator IDs through VibratorManager.
+     * Older Android versions expose a single default system vibrator.
+     */
+    private Vibrator pipeCleanVibratorForSlot(int slot) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            VibratorManager manager = (VibratorManager)getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            if (manager == null) return null;
+            if (slot < 0) return manager.getDefaultVibrator();
+            int[] ids = manager.getVibratorIds();
+            if (slot >= ids.length) return null;
+            return manager.getVibrator(ids[slot]);
+        }
+        if (slot > 0) return null;
+        return (Vibrator)getSystemService(Context.VIBRATOR_SERVICE);
+    }
+
+    public int pipeCleanVibratorCount() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            VibratorManager manager = (VibratorManager)getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            if (manager != null) {
+                int count = manager.getVibratorIds().length;
+                if (count > 0) return count;
+                Vibrator fallback = manager.getDefaultVibrator();
+                return fallback != null && fallback.hasVibrator() ? 1 : 0;
+            }
+        }
+        Vibrator vibrator = (Vibrator)getSystemService(Context.VIBRATOR_SERVICE);
+        return vibrator != null && vibrator.hasVibrator() ? 1 : 0;
+    }
+
+    public String pipeCleanVibratorName(int slot) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            VibratorManager manager = (VibratorManager)getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+            if (manager != null) {
+                int[] ids = manager.getVibratorIds();
+                if (slot >= 0 && slot < ids.length)
+                    return "Phone actuator (ID " + ids[slot] + ")";
+            }
+        }
+        return slot == 0 ? "Android phone vibrator" : "Phone actuator unavailable";
+    }
+
+    public boolean pipeCleanPulseVibrator(int slot, int durationMs, int amplitude) {
+        Vibrator vibrator = pipeCleanVibratorForSlot(slot);
+        if (vibrator == null || !vibrator.hasVibrator() || durationMs <= 0) return false;
+        int safeAmplitude = Math.max(1, Math.min(255, amplitude));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(durationMs, safeAmplitude));
+        } else {
+            vibrator.vibrate(durationMs);
+        }
+        return true;
+    }
+
+    public void pipeCleanCancelVibrator(int slot) {
+        Vibrator vibrator = pipeCleanVibratorForSlot(slot);
+        if (vibrator != null) vibrator.cancel();
+    }
 
     @Override
     protected void onCreate(android.os.Bundle state) {

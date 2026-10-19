@@ -35,8 +35,14 @@ extern const LuigiColor luigi_colors[N_LUIGI_COLORS];
 enum { ACT_SAVE_STATE, ACT_LOAD_STATE, ACT_REWIND, ACT_SUSPEND, ACT_NEXT_SLOT, N_ACTION };
 enum { LAT_LOW, LAT_NORMAL, LAT_HIGH, N_LAT };
 /* Android haptic routing: auto, phone vibrator, then connected controller slots. */
-enum { ANDROID_HAPTIC_AUTO, ANDROID_HAPTIC_PHONE, ANDROID_HAPTIC_CONTROLLER_FIRST,
-       N_ANDROID_HAPTIC_TARGETS = ANDROID_HAPTIC_CONTROLLER_FIRST + 4 };
+#define ANDROID_HAPTIC_PHONE_MOTOR_SLOTS 14
+enum {
+    ANDROID_HAPTIC_AUTO = 0,
+    ANDROID_HAPTIC_PHONE = 1,
+    ANDROID_HAPTIC_PHONE_MOTOR_FIRST = 2,
+    ANDROID_HAPTIC_CONTROLLER_FIRST = ANDROID_HAPTIC_PHONE_MOTOR_FIRST + ANDROID_HAPTIC_PHONE_MOTOR_SLOTS,
+    N_ANDROID_HAPTIC_TARGETS = ANDROID_HAPTIC_CONTROLLER_FIRST + 4
+};
 
 #define PAD_AXIS_BASE 100               /* controller binding codes >= 100 are triggers: 100 = L2, 101 = R2 */
 #define MAX_EVENTS 8
@@ -160,7 +166,7 @@ typedef struct {
     int launcher_fullscreen;            /* launcher fullscreen (desktop only) */
     int launcher_dual_screen;            /* Android: use the second display; desktop: open the Companion Deck simulator window. */
     int launcher_pipe_screen_swap;        /* Android: swap SML1 gameplay to the companion screen in pipes/bonus rooms. */
-    int android_haptic_target;             /* Android only: 0 auto, 1 phone vibrator, 2..5 controller slots. */
+    int android_haptic_target;             /* Android only: auto, phone default, individual motor slots, then controller slots. */
     int museum_discovery_notifications;   /* Show a launcher toast when a new Museum entry is unlocked. */
     int recent_played_count;
     int recent_played[N_RECENT_PLAYED];  /* Game indices, most recent first; -1 = unused. */

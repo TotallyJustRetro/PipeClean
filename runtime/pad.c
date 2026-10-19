@@ -2,6 +2,8 @@
 #include <math.h>
 #ifdef __ANDROID__
 #include <SDL_haptic.h>
+#include <SDL_system.h>
+#include <jni.h>
 #endif
 #include "pad.h"
 #include "settings.h"
@@ -113,6 +115,84 @@ static void remember_assigned_instances(void)
     }
 }
 #ifdef __ANDROID__
+static int android_java_vibrator_count_cache = -1;
+
+static JNIEnv *pad_android_env_and_activity(jobject *activity)
+{
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    if (!env || !activity) return NULL;
+    *activity = (jobject)SDL_AndroidGetActivity();
+    if (!*activity) return NULL;
+    return env;
+}
+
+static int pad_android_java_vibrator_count(void)
+{
+    if (android_java_vibrator_count_cache >= 0) return android_java_vibrator_count_cache;
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return 0;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanVibratorCount", "()I") : NULL;
+    jint count = method ? (*env)->CallIntMethod(env, activity, method) : 0;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); count = 0; }
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+    android_java_vibrator_count_cache = count > 0 ? (int)count : 0;
+    return android_java_vibrator_count_cache;
+}
+
+static void pad_android_java_vibrator_name(int slot, char *buf, size_t n)
+{
+    if (!buf || n == 0) return;
+    snprintf(buf, n, "Phone actuator %d", slot + 1);
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanVibratorName", "(I)Ljava/lang/String;") : NULL;
+    jstring result = method ? (jstring)(*env)->CallObjectMethod(env, activity, method, (jint)slot) : NULL;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); result = NULL; }
+    if (result) {
+        const char *utf = (*env)->GetStringUTFChars(env, result, NULL);
+        if (utf) {
+            snprintf(buf, n, "%s", utf);
+            (*env)->ReleaseStringUTFChars(env, result, utf);
+        }
+        (*env)->DeleteLocalRef(env, result);
+    }
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+static int pad_android_java_vibrator_pulse(int slot, int ms, int amplitude)
+{
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return 0;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanPulseVibrator", "(III)Z") : NULL;
+    jboolean ok = method ? (*env)->CallBooleanMethod(env, activity, method,
+                        (jint)slot, (jint)ms, (jint)amplitude) : JNI_FALSE;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); ok = JNI_FALSE; }
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+    return ok == JNI_TRUE;
+}
+
+static void pad_android_java_vibrator_cancel(int slot)
+{
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanCancelVibrator", "(I)V") : NULL;
+    if (method) (*env)->CallVoidMethod(env, activity, method, (jint)slot);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
 static void pad_close_haptic(Pad *p)
 {
     if (!p || !p->haptic) return;
@@ -881,9 +961,16 @@ static int pad_rumble_device_mix(int device, int low_pct, int high_pct, int ms)
     /* Explicit phone mode never vibrates a connected controller. This also
        works when no physical controller is assigned to Player 1. */
     if (target == ANDROID_HAPTIC_PHONE) {
+        if (pad_android_java_vibrator_pulse(-1, ms, strongest * 255 / 100)) return 1;
         return android_system_haptic &&
                SDL_HapticRumblePlay(android_system_haptic,
                                     strongest / 100.0f, (Uint32)ms) == 0;
+    }
+
+    if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+        target < ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        const int slot = target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST;
+        return pad_android_java_vibrator_pulse(slot, ms, strongest * 255 / 100);
     }
 
     /* A numbered controller route is strict for diagnostics: don't fall back
@@ -893,9 +980,8 @@ static int pad_rumble_device_mix(int device, int low_pct, int high_pct, int ms)
         return pad_try_controller_rumble(selected, low_pct, high_pct, ms);
     }
 
-    /* Auto tries Player 1's controller first, then Android's system vibrator.
-       The fallback intentionally does not require a connected controller. */
     if (pad_try_controller_rumble(device, low_pct, high_pct, ms)) return 1;
+    if (pad_android_java_vibrator_pulse(-1, ms, strongest * 255 / 100)) return 1;
     if (android_system_haptic &&
         SDL_HapticRumblePlay(android_system_haptic,
                              strongest / 100.0f, (Uint32)ms) == 0)
@@ -926,11 +1012,19 @@ static void pad_stop_rumble_device(int device)
     /* The phone motor is a shared system output, and the sequence's controller
        index may be -1 when the game is being played with touch controls. */
     if (android_system_haptic) SDL_HapticRumbleStop(android_system_haptic);
-    if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST)
+    if (settings.android_haptic_target == ANDROID_HAPTIC_PHONE)
+        pad_android_java_vibrator_cancel(-1);
+    else if (settings.android_haptic_target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+             settings.android_haptic_target < ANDROID_HAPTIC_CONTROLLER_FIRST)
+        pad_android_java_vibrator_cancel(settings.android_haptic_target -
+                                         ANDROID_HAPTIC_PHONE_MOTOR_FIRST);
+    else if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST)
         pad_stop_controller_rumble(settings.android_haptic_target -
                                    ANDROID_HAPTIC_CONTROLLER_FIRST);
-    else
+    else {
+        pad_android_java_vibrator_cancel(-1);
         pad_stop_controller_rumble(device);
+    }
 #else
     pad_stop_controller_rumble(device);
 #endif
@@ -956,10 +1050,58 @@ void pad_rumble_selected(int game, int pct, int ms)
 int pad_android_haptic_option_count(void)
 {
 #ifdef __ANDROID__
-    return 2 + n_pads;
+    int phone_motors = pad_android_java_vibrator_count();
+    if (phone_motors <= 1) phone_motors = 0;
+    if (phone_motors > ANDROID_HAPTIC_PHONE_MOTOR_SLOTS)
+        phone_motors = ANDROID_HAPTIC_PHONE_MOTOR_SLOTS;
+    return 2 + phone_motors + n_pads;
 #else
     return 0;
 #endif
+}
+
+int pad_android_haptic_option_target(int option)
+{
+#ifdef __ANDROID__
+    if (option == 0) return ANDROID_HAPTIC_AUTO;
+    if (option == 1) return ANDROID_HAPTIC_PHONE;
+    int phone_motors = pad_android_java_vibrator_count();
+    if (phone_motors <= 1) phone_motors = 0;
+    if (phone_motors > ANDROID_HAPTIC_PHONE_MOTOR_SLOTS)
+        phone_motors = ANDROID_HAPTIC_PHONE_MOTOR_SLOTS;
+    if (option >= 2 && option < 2 + phone_motors)
+        return ANDROID_HAPTIC_PHONE_MOTOR_FIRST + option - 2;
+    int controller = option - (2 + phone_motors);
+    if (controller >= 0 && controller < n_pads)
+        return ANDROID_HAPTIC_CONTROLLER_FIRST + controller;
+#else
+    (void)option;
+#endif
+    return -1;
+}
+
+int pad_android_haptic_target_option(int target)
+{
+#ifdef __ANDROID__
+    if (target == ANDROID_HAPTIC_AUTO) return 0;
+    if (target == ANDROID_HAPTIC_PHONE) return 1;
+    int phone_motors = pad_android_java_vibrator_count();
+    if (phone_motors <= 1) phone_motors = 0;
+    if (phone_motors > ANDROID_HAPTIC_PHONE_MOTOR_SLOTS)
+        phone_motors = ANDROID_HAPTIC_PHONE_MOTOR_SLOTS;
+    if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+        target < ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        int slot = target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST;
+        return slot < phone_motors ? 2 + slot : 0;
+    }
+    if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        int controller = target - ANDROID_HAPTIC_CONTROLLER_FIRST;
+        if (controller < n_pads) return 2 + phone_motors + controller;
+    }
+#else
+    (void)target;
+#endif
+    return 0;
 }
 
 void pad_android_haptic_option_name(int option, char *buf, size_t n)
@@ -967,16 +1109,19 @@ void pad_android_haptic_option_name(int option, char *buf, size_t n)
     if (!buf || n == 0) return;
     buf[0] = 0;
 #ifdef __ANDROID__
-    if (option == ANDROID_HAPTIC_AUTO) {
+    int target = pad_android_haptic_option_target(option);
+    if (target == ANDROID_HAPTIC_AUTO) {
         snprintf(buf, n, "Automatic (controller, then phone)");
-    } else if (option == ANDROID_HAPTIC_PHONE) {
-        snprintf(buf, n, "Android phone vibrator");
-    } else if (option >= ANDROID_HAPTIC_CONTROLLER_FIRST &&
-               option < ANDROID_HAPTIC_CONTROLLER_FIRST + n_pads) {
+    } else if (target == ANDROID_HAPTIC_PHONE) {
+        snprintf(buf, n, "Android phone vibrator (default)");
+    } else if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+               target < ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        pad_android_java_vibrator_name(target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST, buf, n);
+    } else if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST) {
         snprintf(buf, n, "Controller: %.100s",
-                 name_of(&pads[option - ANDROID_HAPTIC_CONTROLLER_FIRST]));
+                 name_of(&pads[target - ANDROID_HAPTIC_CONTROLLER_FIRST]));
     } else {
-        snprintf(buf, n, "Unavailable controller output");
+        snprintf(buf, n, "Unavailable vibration output");
     }
 #else
     (void)option;
@@ -988,11 +1133,15 @@ int pad_android_haptic_target_available(int target)
 {
 #ifdef __ANDROID__
     if (target == ANDROID_HAPTIC_AUTO) {
-        if (android_system_haptic) return 1;
+        if (pad_android_java_vibrator_count() > 0 || android_system_haptic) return 1;
         for (int i = 0; i < n_pads; i++) if (pad_device_has_rumble(i)) return 1;
         return 0;
     }
-    if (target == ANDROID_HAPTIC_PHONE) return android_system_haptic != NULL;
+    if (target == ANDROID_HAPTIC_PHONE)
+        return pad_android_java_vibrator_count() > 0 || android_system_haptic != NULL;
+    if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+        target < ANDROID_HAPTIC_CONTROLLER_FIRST)
+        return target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST < pad_android_java_vibrator_count();
     if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST)
         return pad_device_has_rumble(target - ANDROID_HAPTIC_CONTROLLER_FIRST);
 #else
