@@ -932,8 +932,11 @@ static const Sml2RumbleBeat sml2_rumble_golden[] = {
 static const Sml2RumbleBeat sml2_rumble_castle[] = {
     {70, 18, 150, 42}, {100, 34, 230, 70}, {86, 24, 270, 0}
 };
+static const Sml2RumbleBeat sml2_rumble_damage[] = {
+    {62, 20, 75, 42}, {48, 12, 145, 0}
+};
 
-static const Sml2RumbleProfile sml2_rumble_profiles[8] = {
+static const Sml2RumbleProfile sml2_rumble_profiles[9] = {
     {sml2_rumble_coin,   sizeof sml2_rumble_coin   / sizeof sml2_rumble_coin[0],   1},
     {sml2_rumble_enemy,  sizeof sml2_rumble_enemy  / sizeof sml2_rumble_enemy[0],  3},
     {sml2_rumble_life,   sizeof sml2_rumble_life   / sizeof sml2_rumble_life[0],   8},
@@ -941,7 +944,8 @@ static const Sml2RumbleProfile sml2_rumble_profiles[8] = {
     {sml2_rumble_power,  sizeof sml2_rumble_power  / sizeof sml2_rumble_power[0],  4},
     {sml2_rumble_star,   sizeof sml2_rumble_star   / sizeof sml2_rumble_star[0],   7},
     {sml2_rumble_golden, sizeof sml2_rumble_golden / sizeof sml2_rumble_golden[0], 9},
-    {sml2_rumble_castle, sizeof sml2_rumble_castle / sizeof sml2_rumble_castle[0], 10}
+    {sml2_rumble_castle, sizeof sml2_rumble_castle / sizeof sml2_rumble_castle[0], 10},
+    {sml2_rumble_damage, sizeof sml2_rumble_damage / sizeof sml2_rumble_damage[0], 7}
 };
 static Sml2RumbleSequence sml2_rumble_sequence;
 
@@ -986,7 +990,10 @@ static const Sml2LightBeat sml2_light_golden[] = {
 static const Sml2LightBeat sml2_light_castle[] = {
     {0xFFFFFFu, 190, 48}, {0xFFD34Au, 310, 62}, {0xFFF1A0u, 430, 0}
 };
-static const Sml2LightProfile sml2_light_profiles[8] = {
+static const Sml2LightBeat sml2_light_damage[] = {
+    {0xFF6538u, 175, 45}, {0xFF3030u, 125, 0}
+};
+static const Sml2LightProfile sml2_light_profiles[9] = {
     {sml2_light_coin,   sizeof sml2_light_coin   / sizeof sml2_light_coin[0]},
     {sml2_light_enemy,  sizeof sml2_light_enemy  / sizeof sml2_light_enemy[0]},
     {sml2_light_life,   sizeof sml2_light_life   / sizeof sml2_light_life[0]},
@@ -994,13 +1001,14 @@ static const Sml2LightProfile sml2_light_profiles[8] = {
     {sml2_light_power,  sizeof sml2_light_power  / sizeof sml2_light_power[0]},
     {sml2_light_star,   sizeof sml2_light_star   / sizeof sml2_light_star[0]},
     {sml2_light_golden, sizeof sml2_light_golden / sizeof sml2_light_golden[0]},
-    {sml2_light_castle, sizeof sml2_light_castle / sizeof sml2_light_castle[0]}
+    {sml2_light_castle, sizeof sml2_light_castle / sizeof sml2_light_castle[0]},
+    {sml2_light_damage, sizeof sml2_light_damage / sizeof sml2_light_damage[0]}
 };
 static Sml2LightSequence sml2_light_sequence;
 
 static int sml2_event_priority(int ev)
 {
-    return ev >= 0 && ev < 8 ? sml2_rumble_profiles[ev].priority : 0;
+    return ev >= 0 && ev < 9 ? sml2_rumble_profiles[ev].priority : 0;
 }
 
 static void pad_cancel_sml2_light(void)
@@ -1025,7 +1033,7 @@ static void pad_cancel_sml2_feedback(void)
 
 static void pad_schedule_sml2_rumble(int ev)
 {
-    if (ev < 0 || ev >= 8) return;
+    if (ev < 0 || ev >= 9) return;
     const GameCfg *c = &settings.g[GAME_SML2];
     const Sml2RumbleProfile *profile = &sml2_rumble_profiles[ev];
     const int device = c->pad_device[0];
@@ -1048,7 +1056,7 @@ static void pad_schedule_sml2_rumble(int ev)
 
 static void pad_schedule_sml2_light(int ev)
 {
-    if (ev < 0 || ev >= 8) return;
+    if (ev < 0 || ev >= 9) return;
     const GameCfg *c = &settings.g[GAME_SML2];
     const int device = c->pad_device[0];
     if (device < 0 || device >= n_pads || !pad_is_dualsense(device) ||

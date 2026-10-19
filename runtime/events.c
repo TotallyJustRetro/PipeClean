@@ -49,6 +49,7 @@ static const EventDef sml2_defs[] = {
     {"star",   "Super Star",       "A quick, sparkling invincibility cue",   0, 0, 1, 0xFFF1A0, 270, 78},
     {"golden", "Golden Coins",     "A three-pulse collection milestone",      0, 0, 9, 0xFFD34A, 360, 88},
     {"castle", "Castle reclaimed", "A longer finale cue after Wario",         0, 0, 10, 0xFFFFFF, 640, 100},
+    {"damage", "Power-down / damage", "Mario shrinks after taking a hit",     0, 0, 2, 0xFF6538, 240, 78},
 };
 /* Wario Land SML3 shares these state values with its Companion Deck tracker. */
 static const EventDef wario_sml3_defs[] = {
@@ -230,6 +231,7 @@ static void sml2_museum_discover(uint32_t discoveries)
     if (discoveries & SML2_MUSEUM_SUPER_STAR) fire(5);
     if (discoveries & SML2_MUSEUM_GOLDEN_COINS) fire(6);
     if (discoveries & SML2_MUSEUM_CASTLE_CLEARED) fire(7);
+    if (discoveries & SML2_MUSEUM_POWER_DOWN) fire(8);
     if (discoveries & SML2_MUSEUM_MUSHROOM)
         (void)museum_discover_entry(GAME_SML2, "mushroom");
     if (discoveries & SML2_MUSEUM_MAGIC_CARROT)

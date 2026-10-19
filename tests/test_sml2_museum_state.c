@@ -82,6 +82,16 @@ int main(void)
     s = snapshot(1, 1, 4, 0, 0, 0x1F, 1, 0);
     assert(sml2_museum_tracker_update(&tracker, &s) == 0);
 
+    /* Shrinking from a powered form is distinct from losing a life. */
+    memset(&tracker, 0, sizeof tracker);
+    s = snapshot(0, 0, 3, 1, 0, 3, 0, 0);
+    assert(sml2_museum_tracker_update(&tracker, &s) & SML2_MUSEUM_MUSHROOM);
+    s = snapshot(0, 0, 3, 0, 0, 3, 0, 0);
+    found = sml2_museum_tracker_update(&tracker, &s);
+    assert(found & SML2_MUSEUM_POWER_DOWN);
+    assert(!(found & SML2_MUSEUM_LIFE_LOST));
+    assert(sml2_museum_tracker_update(&tracker, &s) == 0);
+
     /* The 99 -> 00 enemy counter wrap is still a valid enemy encounter. */
     memset(&tracker, 0, sizeof tracker);
     s = snapshot(0, 99, 3, 0, 0, 4, 0, 0);

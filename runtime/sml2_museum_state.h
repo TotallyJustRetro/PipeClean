@@ -28,6 +28,7 @@ enum {
     SML2_MUSEUM_FIRE_FLOWER   = 1u << 6,
     SML2_MUSEUM_SUPER_STAR    = 1u << 7,
     SML2_MUSEUM_GOLDEN_COINS  = 1u << 8,
+    SML2_MUSEUM_POWER_DOWN    = 1u << 9,
     SML2_MUSEUM_WARIO         = 1u << 10,
     SML2_MUSEUM_SECRET_EXIT   = 1u << 11,
     SML2_MUSEUM_CASTLE_CLEARED= 1u << 12
@@ -111,8 +112,14 @@ static inline uint32_t sml2_museum_tracker_update(Sml2MuseumTracker *tracker,
     if (same_level && current->lives > old.lives)
         discoveries |= SML2_MUSEUM_EXTRA_LIFE;
 
-    if (current->powerup != old.powerup)
+    if (current->powerup != old.powerup) {
         discoveries |= sml2_museum_powerup_discovery(current->powerup);
+        /* A hit can shrink Mario without costing a life. Only the transition
+         * from a powered form to Small Mario is a damage cue; switching forms
+         * or a Super Star expiring does not count as taking a hit. */
+        if (same_level && old.powerup != 0 && current->powerup == 0)
+            discoveries |= SML2_MUSEUM_POWER_DOWN;
+    }
     if (current->star_active && !old.star_active)
         discoveries |= SML2_MUSEUM_SUPER_STAR;
 
