@@ -1,16 +1,33 @@
 #include <string.h>
 #include <math.h>
+#ifdef __ANDROID__
+#include <SDL_haptic.h>
+#include <SDL_system.h>
+#include <jni.h>
+#endif
 #include "pad.h"
 #include "settings.h"
 #include "events.h"
 #include "audio.h"
 
 #define MAXPADS 4
-typedef struct { SDL_GameController *gc; SDL_Joystick *joy; int mapped; } Pad;
+typedef struct {
+    SDL_GameController *gc;
+    SDL_Joystick *joy;
+    int mapped;
+#ifdef __ANDROID__
+    SDL_Haptic *haptic; /* Android maps this to InputDevice.getVibrator(). */
+#endif
+} Pad;
 static Pad pads[MAXPADS];
 static int n_pads;
 static SDL_JoystickID assigned_instance[N_GAMES][MAX_MP_PLAYERS];
 static int sync_initialized;
+#ifdef __ANDROID__
+/* SDL2's Android joystick rumble backend is unsupported. Its separate haptic
+ * backend exposes controller vibrators and a VIBRATOR_SERVICE device. */
+static SDL_Haptic *android_system_haptic;
+#endif
 static uint8_t touch_buttons[N_GAMES][MAX_MP_PLAYERS];
 static uint8_t touch_dpad[N_GAMES][MAX_MP_PLAYERS];
 static const char *name_of(const Pad *p) { const char *n = p->mapped ? SDL_GameControllerName(p->gc) : SDL_JoystickName(p->joy); return n && n[0] ? n : "Controller"; }
@@ -97,15 +114,176 @@ static void remember_assigned_instances(void)
         }
     }
 }
+#ifdef __ANDROID__
+static int android_java_vibrator_count_cache = -1;
+
+static JNIEnv *pad_android_env_and_activity(jobject *activity)
+{
+    JNIEnv *env = (JNIEnv *)SDL_AndroidGetJNIEnv();
+    if (!env || !activity) return NULL;
+    *activity = (jobject)SDL_AndroidGetActivity();
+    if (!*activity) return NULL;
+    return env;
+}
+
+static int pad_android_java_vibrator_count(void)
+{
+    if (android_java_vibrator_count_cache >= 0) return android_java_vibrator_count_cache;
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return 0;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanVibratorCount", "()I") : NULL;
+    jint count = method ? (*env)->CallIntMethod(env, activity, method) : 0;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); count = 0; }
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+    android_java_vibrator_count_cache = count > 0 ? (int)count : 0;
+    return android_java_vibrator_count_cache;
+}
+
+static void pad_android_java_vibrator_name(int slot, char *buf, size_t n)
+{
+    if (!buf || n == 0) return;
+    snprintf(buf, n, "Phone actuator %d", slot + 1);
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanVibratorName", "(I)Ljava/lang/String;") : NULL;
+    jstring result = method ? (jstring)(*env)->CallObjectMethod(env, activity, method, (jint)slot) : NULL;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); result = NULL; }
+    if (result) {
+        const char *utf = (*env)->GetStringUTFChars(env, result, NULL);
+        if (utf) {
+            snprintf(buf, n, "%s", utf);
+            (*env)->ReleaseStringUTFChars(env, result, utf);
+        }
+        (*env)->DeleteLocalRef(env, result);
+    }
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+static int pad_android_java_vibrator_pulse(int slot, int ms, int amplitude)
+{
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return 0;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanPulseVibrator", "(III)Z") : NULL;
+    jboolean ok = method ? (*env)->CallBooleanMethod(env, activity, method,
+                        (jint)slot, (jint)ms, (jint)amplitude) : JNI_FALSE;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); ok = JNI_FALSE; }
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+    return ok == JNI_TRUE;
+}
+
+static void pad_android_java_vibrator_cancel(int slot)
+{
+    jobject activity = NULL;
+    JNIEnv *env = pad_android_env_and_activity(&activity);
+    if (!env) return;
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "pipeCleanCancelVibrator", "(I)V") : NULL;
+    if (method) (*env)->CallVoidMethod(env, activity, method, (jint)slot);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+}
+
+static void pad_close_haptic(Pad *p)
+{
+    if (!p || !p->haptic) return;
+    SDL_HapticRumbleStop(p->haptic);
+    SDL_HapticClose(p->haptic);
+    p->haptic = NULL;
+}
+
+static void pad_open_haptic(int device)
+{
+    if (device < 0 || device >= n_pads) return;
+    Pad *p = &pads[device];
+    SDL_Joystick *j = joystick_for_device(device);
+    if (!j) return;
+
+    /* Prefer the vibration motor attached to this exact Android input device
+     * (e.g. a USB/Bluetooth controller that exposes its own vibrator). */
+    SDL_Haptic *h = SDL_HapticOpenFromJoystick(j);
+    if (!h) return;
+    if (!SDL_HapticRumbleSupported(h) || SDL_HapticRumbleInit(h) < 0) {
+        SDL_HapticClose(h);
+        return;
+    }
+    p->haptic = h;
+}
+
+static void pad_open_android_system_haptic(void)
+{
+    if (android_system_haptic) return;
+    const int count = SDL_NumHaptics();
+    for (int i = 0; i < count; ++i) {
+        const char *name = SDL_HapticName(i);
+        if (!name || strcmp(name, "VIBRATOR_SERVICE") != 0) continue;
+        SDL_Haptic *h = SDL_HapticOpen(i);
+        if (!h) continue;
+        if (!SDL_HapticRumbleSupported(h) || SDL_HapticRumbleInit(h) < 0) {
+            SDL_HapticClose(h);
+            continue;
+        }
+        android_system_haptic = h;
+        return;
+    }
+}
+#endif
+
 static void rescan(void)
 {
-    for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
-    memset(pads, 0, sizeof pads); n_pads = 0;
+    for (int i = 0; i < n_pads; i++) {
+#ifdef __ANDROID__
+        pad_close_haptic(&pads[i]);
+#endif
+        if (pads[i].gc) SDL_GameControllerClose(pads[i].gc);
+        else if (pads[i].joy) SDL_JoystickClose(pads[i].joy);
+    }
+    memset(pads, 0, sizeof pads);
+    n_pads = 0;
+#ifdef __ANDROID__
+    /* Refresh SDL's Android InputDevice vibrator list before binding the
+     * newly arrived joystick to its per-device haptic (SDL polls this list). */
+    (void)SDL_NumHaptics();
+#endif
     int nj = SDL_NumJoysticks();
     for (int i = 0; i < nj && n_pads < MAXPADS; i++) {
-        if (SDL_IsGameController(i)) { SDL_GameController *c = SDL_GameControllerOpen(i); if (c) { pads[n_pads].gc = c; pads[n_pads].mapped = 1; n_pads++; } }
-        else { SDL_Joystick *j = SDL_JoystickOpen(i); if (j) { pads[n_pads].joy = j; n_pads++; } }
+        if (SDL_IsGameController(i)) {
+            SDL_GameController *controller = SDL_GameControllerOpen(i);
+            if (controller) {
+                pads[n_pads].gc = controller;
+                pads[n_pads].mapped = 1;
+                n_pads++;
+#ifdef __ANDROID__
+                pad_open_haptic(n_pads - 1);
+#endif
+            }
+        } else {
+            SDL_Joystick *joystick = SDL_JoystickOpen(i);
+            if (joystick) {
+                pads[n_pads].joy = joystick;
+                n_pads++;
+#ifdef __ANDROID__
+                pad_open_haptic(n_pads - 1);
+#endif
+            }
+        }
     }
+#ifdef __ANDROID__
+    pad_open_android_system_haptic();
+    if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST + n_pads) {
+        settings.android_haptic_target = ANDROID_HAPTIC_AUTO;
+        settings_save();
+    }
+#endif
 }
 
 void pad_init(void)
@@ -114,20 +292,66 @@ void pad_init(void)
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
+#ifdef __ANDROID__
+    /* Android SDL2 implements vibration through SDL_Haptic, not through the
+     * SDL_JoystickRumble backend (which returns unsupported on this platform). */
+    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC);
+#else
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
+#endif
+#ifdef __ANDROID__
+    /* The first selector stored controller slots as 2..5. The extended selector
+       reserves 2..15 for separately selectable phone actuators. Migrate once. */
+    if (settings.android_haptic_target_version < 1) {
+        if (settings.android_haptic_target >= 2 &&
+            settings.android_haptic_target <= 5)
+            settings.android_haptic_target =
+                ANDROID_HAPTIC_CONTROLLER_FIRST + settings.android_haptic_target - 2;
+        settings.android_haptic_target_version = 1;
+        settings_save();
+    }
+#endif
     for (int g = 0; g < N_GAMES; g++)
         for (int player = 0; player < MAX_MP_PLAYERS; player++)
             assigned_instance[g][player] = (SDL_JoystickID)-1;
     sync_initialized = 0;
     rescan();
     pad_sync_assignments();
+    /* If a DualSense is already connected when PipeClean starts, open its
+       audio endpoint now so event speaker effects work without first visiting
+       the DualSense settings page. */
+    for (int i = 0; i < n_pads; i++) {
+        if (pad_is_dualsense(i)) {
+            (void)audio_pad_open();
+            break;
+        }
+    }
 }
 
 void pad_shutdown(void)
 {
-    for (int i = 0; i < n_pads; i++) { if (pads[i].gc) SDL_GameControllerClose(pads[i].gc); else if (pads[i].joy) SDL_JoystickClose(pads[i].joy); }
+    for (int i = 0; i < n_pads; i++) {
+#ifdef __ANDROID__
+        pad_close_haptic(&pads[i]);
+#endif
+        if (pads[i].gc) SDL_GameControllerClose(pads[i].gc);
+        else if (pads[i].joy) SDL_JoystickClose(pads[i].joy);
+    }
+    memset(pads, 0, sizeof pads);
     n_pads = 0;
+#ifdef __ANDROID__
+    if (android_system_haptic) {
+        SDL_HapticRumbleStop(android_system_haptic);
+        SDL_HapticClose(android_system_haptic);
+        android_system_haptic = NULL;
+    }
+#endif
     audio_pad_close();
+#ifdef __ANDROID__
+    SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC);
+#else
+    SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
+#endif
 }
 
 void pad_event(const SDL_Event *e)
@@ -138,8 +362,14 @@ void pad_event(const SDL_Event *e)
         remember_assigned_instances();
         rescan();
         pad_sync_assignments();
-        if (e->type == SDL_CONTROLLERDEVICEADDED && pad_is_dualsense(0) + pad_is_dualsense(1) > 0)
-            audio_pad_open();
+        if (e->type == SDL_CONTROLLERDEVICEADDED) {
+            for (int i = 0; i < n_pads; i++) {
+                if (pad_is_dualsense(i)) {
+                    (void)audio_pad_open();
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -656,29 +886,164 @@ static int ctx_game = -1, ctx_in_game;
 static uint32_t screen_rgb = 0x808080;
 static uint32_t flash_rgb;
 static float flash_t;
+static float flash_duration = 0.40f;
 static uint32_t last_sent = 0xFFFFFFFFu;
 static float send_acc;
 
-void pad_set_context(int game, int in_game) { ctx_game = game; ctx_in_game = in_game; last_sent = 0xFFFFFFFFu; }
+static void pad_cancel_sml2_feedback(void);
+static void pad_cancel_sml2_light(void);
+
+void pad_set_context(int game, int in_game)
+{
+    if (ctx_in_game && (!in_game || game != ctx_game))
+        pad_cancel_sml2_feedback();
+    ctx_game = game;
+    ctx_in_game = in_game;
+    last_sent = 0xFFFFFFFFu;
+}
 void pad_set_screen_color(uint32_t rgb) { screen_rgb = rgb; }
-void pad_flash(uint32_t rgb) { flash_rgb = rgb; flash_t = 1.0f; }
+void pad_flash(uint32_t rgb)
+{
+    pad_cancel_sml2_light();
+    flash_rgb = rgb;
+    flash_t = 1.0f;
+    flash_duration = 0.40f;
+}
 
 int pad_has_light(void)
 {
-    for (int i = 0; i < n_pads; i++) if (pads[i].mapped && SDL_GameControllerHasLED(pads[i].gc)) return 1;
+    /* Only DualSense lightbars are driven by PipeClean's event lighting. */
+    for (int i = 0; i < n_pads; i++)
+        if (pad_is_dualsense(i) && SDL_GameControllerHasLED(pads[i].gc)) return 1;
     return 0;
+}
+
+static int pad_device_has_rumble(int device)
+{
+    if (device < 0 || device >= n_pads) return 0;
+    Pad *p = &pads[device];
+#ifdef __ANDROID__
+    if (p->haptic) return 1;
+#endif
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc)) return 1;
+    SDL_Joystick *j = joystick_for_device(device);
+    return j && SDL_JoystickHasRumble(j);
+}
+
+static int pad_try_controller_rumble(int device, int low_pct, int high_pct, int ms)
+{
+    if (device < 0 || device >= n_pads || ms <= 0) return 0;
+    const Uint16 low = (Uint16)((unsigned)low_pct * 65535u / 100u);
+    const Uint16 high = (Uint16)((unsigned)high_pct * 65535u / 100u);
+    Pad *p = &pads[device];
+
+#ifdef __ANDROID__
+    /* SDL's Android joystick rumble backend can be unavailable even on a pad
+       that has a working haptic handle, so try that handle first. */
+    const int strongest = low_pct > high_pct ? low_pct : high_pct;
+    if (p->haptic &&
+        SDL_HapticRumblePlay(p->haptic, strongest / 100.0f, (Uint32)ms) == 0)
+        return 1;
+#endif
+
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc) &&
+        SDL_GameControllerRumble(p->gc, low, high, (Uint32)ms) == 0)
+        return 1;
+
+    SDL_Joystick *j = joystick_for_device(device);
+    if (j && SDL_JoystickHasRumble(j) &&
+        SDL_JoystickRumble(j, low, high, (Uint32)ms) == 0)
+        return 1;
+    return 0;
+}
+
+static int pad_rumble_device_mix(int device, int low_pct, int high_pct, int ms)
+{
+    if ((low_pct <= 0 && high_pct <= 0) || ms <= 0) return 0;
+    if (low_pct < 0) low_pct = 0;
+    if (high_pct < 0) high_pct = 0;
+    if (low_pct > 100) low_pct = 100;
+    if (high_pct > 100) high_pct = 100;
+
+#ifdef __ANDROID__
+    const int target = settings.android_haptic_target;
+    const int strongest = low_pct > high_pct ? low_pct : high_pct;
+
+    /* Explicit phone mode never vibrates a connected controller. This also
+       works when no physical controller is assigned to Player 1. */
+    if (target == ANDROID_HAPTIC_PHONE) {
+        if (pad_android_java_vibrator_pulse(-1, ms, strongest * 255 / 100)) return 1;
+        return android_system_haptic &&
+               SDL_HapticRumblePlay(android_system_haptic,
+                                    strongest / 100.0f, (Uint32)ms) == 0;
+    }
+
+    if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+        target < ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        const int slot = target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST;
+        return pad_android_java_vibrator_pulse(slot, ms, strongest * 255 / 100);
+    }
+
+    /* A numbered controller route is strict for diagnostics: don't fall back
+       to the phone, because that could make a broken controller look healthy. */
+    if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        const int selected = target - ANDROID_HAPTIC_CONTROLLER_FIRST;
+        return pad_try_controller_rumble(selected, low_pct, high_pct, ms);
+    }
+
+    if (pad_try_controller_rumble(device, low_pct, high_pct, ms)) return 1;
+    if (pad_android_java_vibrator_pulse(-1, ms, strongest * 255 / 100)) return 1;
+    if (android_system_haptic &&
+        SDL_HapticRumblePlay(android_system_haptic,
+                             strongest / 100.0f, (Uint32)ms) == 0)
+        return 1;
+    return 0;
+#else
+    return pad_try_controller_rumble(device, low_pct, high_pct, ms);
+#endif
+}
+
+static void pad_stop_controller_rumble(int device)
+{
+    if (device < 0 || device >= n_pads) return;
+    Pad *p = &pads[device];
+#ifdef __ANDROID__
+    if (p->haptic) SDL_HapticRumbleStop(p->haptic);
+#endif
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc))
+        (void)SDL_GameControllerRumble(p->gc, 0, 0, 0);
+    SDL_Joystick *j = joystick_for_device(device);
+    if (j && SDL_JoystickHasRumble(j))
+        (void)SDL_JoystickRumble(j, 0, 0, 0);
+}
+
+static void pad_stop_rumble_device(int device)
+{
+#ifdef __ANDROID__
+    /* The phone motor is a shared system output, and the sequence's controller
+       index may be -1 when the game is being played with touch controls. */
+    if (android_system_haptic) SDL_HapticRumbleStop(android_system_haptic);
+    if (settings.android_haptic_target == ANDROID_HAPTIC_PHONE)
+        pad_android_java_vibrator_cancel(-1);
+    else if (settings.android_haptic_target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+             settings.android_haptic_target < ANDROID_HAPTIC_CONTROLLER_FIRST)
+        pad_android_java_vibrator_cancel(settings.android_haptic_target -
+                                         ANDROID_HAPTIC_PHONE_MOTOR_FIRST);
+    else if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST)
+        pad_stop_controller_rumble(settings.android_haptic_target -
+                                   ANDROID_HAPTIC_CONTROLLER_FIRST);
+    else {
+        pad_android_java_vibrator_cancel(-1);
+        pad_stop_controller_rumble(device);
+    }
+#else
+    pad_stop_controller_rumble(device);
+#endif
 }
 
 static void pad_rumble_device(int device, int pct, int ms)
 {
-    if (pct <= 0 || device < 0 || device >= n_pads) return;
-    if (pct > 100) pct = 100;
-    Pad *p = &pads[device];
-    if (p->mapped && SDL_GameControllerHasRumble(p->gc)) {
-        Uint16 lo = (Uint16)(pct * 655);
-        Uint16 hi = (Uint16)(pct * 655 * 0.8f);
-        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms);
-    }
+    pad_rumble_device_mix(device, pct, pct * 80 / 100, ms);
 }
 
 void pad_rumble(int pct, int ms)
@@ -693,14 +1058,389 @@ void pad_rumble_selected(int game, int pct, int ms)
     pad_rumble_device(settings.g[game].pad_device[0], pct, ms);
 }
 
+int pad_android_haptic_option_count(void)
+{
+#ifdef __ANDROID__
+    int phone_motors = pad_android_java_vibrator_count();
+    if (phone_motors <= 1) phone_motors = 0;
+    if (phone_motors > ANDROID_HAPTIC_PHONE_MOTOR_SLOTS)
+        phone_motors = ANDROID_HAPTIC_PHONE_MOTOR_SLOTS;
+    return 2 + phone_motors + n_pads;
+#else
+    return 0;
+#endif
+}
+
+int pad_android_haptic_option_target(int option)
+{
+#ifdef __ANDROID__
+    if (option == 0) return ANDROID_HAPTIC_AUTO;
+    if (option == 1) return ANDROID_HAPTIC_PHONE;
+    int phone_motors = pad_android_java_vibrator_count();
+    if (phone_motors <= 1) phone_motors = 0;
+    if (phone_motors > ANDROID_HAPTIC_PHONE_MOTOR_SLOTS)
+        phone_motors = ANDROID_HAPTIC_PHONE_MOTOR_SLOTS;
+    if (option >= 2 && option < 2 + phone_motors)
+        return ANDROID_HAPTIC_PHONE_MOTOR_FIRST + option - 2;
+    int controller = option - (2 + phone_motors);
+    if (controller >= 0 && controller < n_pads)
+        return ANDROID_HAPTIC_CONTROLLER_FIRST + controller;
+#else
+    (void)option;
+#endif
+    return -1;
+}
+
+int pad_android_haptic_target_option(int target)
+{
+#ifdef __ANDROID__
+    if (target == ANDROID_HAPTIC_AUTO) return 0;
+    if (target == ANDROID_HAPTIC_PHONE) return 1;
+    int phone_motors = pad_android_java_vibrator_count();
+    if (phone_motors <= 1) phone_motors = 0;
+    if (phone_motors > ANDROID_HAPTIC_PHONE_MOTOR_SLOTS)
+        phone_motors = ANDROID_HAPTIC_PHONE_MOTOR_SLOTS;
+    if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+        target < ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        int slot = target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST;
+        return slot < phone_motors ? 2 + slot : 0;
+    }
+    if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        int controller = target - ANDROID_HAPTIC_CONTROLLER_FIRST;
+        if (controller < n_pads) return 2 + phone_motors + controller;
+    }
+#else
+    (void)target;
+#endif
+    return 0;
+}
+
+void pad_android_haptic_option_name(int option, char *buf, size_t n)
+{
+    if (!buf || n == 0) return;
+    buf[0] = 0;
+#ifdef __ANDROID__
+    int target = pad_android_haptic_option_target(option);
+    if (target == ANDROID_HAPTIC_AUTO) {
+        snprintf(buf, n, "Automatic (controller, then phone)");
+    } else if (target == ANDROID_HAPTIC_PHONE) {
+        snprintf(buf, n, "Android phone vibrator (default)");
+    } else if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+               target < ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        pad_android_java_vibrator_name(target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST, buf, n);
+    } else if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        snprintf(buf, n, "Controller: %.100s",
+                 name_of(&pads[target - ANDROID_HAPTIC_CONTROLLER_FIRST]));
+    } else {
+        snprintf(buf, n, "Unavailable vibration output");
+    }
+#else
+    (void)option;
+    snprintf(buf, n, "Android only");
+#endif
+}
+
+int pad_android_haptic_target_available(int target)
+{
+#ifdef __ANDROID__
+    if (target == ANDROID_HAPTIC_AUTO) {
+        if (pad_android_java_vibrator_count() > 0 || android_system_haptic) return 1;
+        for (int i = 0; i < n_pads; i++) if (pad_device_has_rumble(i)) return 1;
+        return 0;
+    }
+    if (target == ANDROID_HAPTIC_PHONE)
+        return pad_android_java_vibrator_count() > 0 || android_system_haptic != NULL;
+    if (target >= ANDROID_HAPTIC_PHONE_MOTOR_FIRST &&
+        target < ANDROID_HAPTIC_CONTROLLER_FIRST)
+        return target - ANDROID_HAPTIC_PHONE_MOTOR_FIRST < pad_android_java_vibrator_count();
+    if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST)
+        return pad_device_has_rumble(target - ANDROID_HAPTIC_CONTROLLER_FIRST);
+#else
+    (void)target;
+#endif
+    return 0;
+}
+
+int pad_android_haptic_test(int game, int strength_pct, int ms)
+{
+#ifdef __ANDROID__
+    if (game < 0 || game >= N_GAMES) return 0;
+    const int device = settings.g[game].pad_device[0];
+    return pad_rumble_device_mix(device, strength_pct, strength_pct * 80 / 100, ms);
+#else
+    (void)game; (void)strength_pct; (void)ms;
+    return 0;
+#endif
+}
+
+typedef struct {
+    uint8_t low, high;
+    uint16_t on_ms, gap_ms;
+} Sml2RumbleBeat;
+
+typedef struct {
+    const Sml2RumbleBeat *beats;
+    uint8_t count;
+    uint8_t priority;
+} Sml2RumbleProfile;
+
+typedef struct {
+    const Sml2RumbleBeat *beats;
+    uint8_t count, next, priority;
+    int device, scale;
+    float wait_s;
+    int active;
+} Sml2RumbleSequence;
+
+static const Sml2RumbleBeat sml2_rumble_coin[] = {
+    {32, 28, 32, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_enemy[] = {
+    {42, 28, 42, 34}, {52, 58, 48, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_life[] = {
+    {74, 14, 130, 70}, {100, 22, 170, 85}, {80, 10, 230, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_oneup[] = {
+    {30, 42, 40, 32}, {42, 66, 55, 36}, {48, 82, 82, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_power[] = {
+    {32, 28, 42, 35}, {48, 56, 82, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_star[] = {
+    {38, 55, 42, 26}, {56, 86, 68, 32}, {40, 94, 96, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_golden[] = {
+    {48, 24, 72, 38}, {64, 44, 88, 42}, {78, 60, 112, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_castle[] = {
+    {70, 18, 150, 42}, {100, 34, 230, 70}, {86, 24, 270, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_damage[] = {
+    {62, 20, 75, 42}, {48, 12, 145, 0}
+};
+
+static const Sml2RumbleProfile sml2_rumble_profiles[9] = {
+    {sml2_rumble_coin,   sizeof sml2_rumble_coin   / sizeof sml2_rumble_coin[0],   1},
+    {sml2_rumble_enemy,  sizeof sml2_rumble_enemy  / sizeof sml2_rumble_enemy[0],  3},
+    {sml2_rumble_life,   sizeof sml2_rumble_life   / sizeof sml2_rumble_life[0],   8},
+    {sml2_rumble_oneup,  sizeof sml2_rumble_oneup  / sizeof sml2_rumble_oneup[0],  6},
+    {sml2_rumble_power,  sizeof sml2_rumble_power  / sizeof sml2_rumble_power[0],  4},
+    {sml2_rumble_star,   sizeof sml2_rumble_star   / sizeof sml2_rumble_star[0],   7},
+    {sml2_rumble_golden, sizeof sml2_rumble_golden / sizeof sml2_rumble_golden[0], 9},
+    {sml2_rumble_castle, sizeof sml2_rumble_castle / sizeof sml2_rumble_castle[0], 10},
+    {sml2_rumble_damage, sizeof sml2_rumble_damage / sizeof sml2_rumble_damage[0], 7}
+};
+static Sml2RumbleSequence sml2_rumble_sequence;
+
+typedef struct {
+    uint32_t rgb;
+    uint16_t on_ms, gap_ms;
+} Sml2LightBeat;
+
+typedef struct {
+    const Sml2LightBeat *beats;
+    uint8_t count;
+} Sml2LightProfile;
+
+typedef struct {
+    const Sml2LightBeat *beats;
+    uint8_t count, next, priority;
+    float wait_s;
+    int active;
+} Sml2LightSequence;
+
+static const Sml2LightBeat sml2_light_coin[] = {
+    {0xFFD34Au, 150, 0}
+};
+static const Sml2LightBeat sml2_light_enemy[] = {
+    {0x68FF9Au, 125, 42}, {0xB8FFD0u, 105, 0}
+};
+static const Sml2LightBeat sml2_light_life[] = {
+    {0xFF2020u, 380, 95}, {0xC90020u, 280, 0}
+};
+static const Sml2LightBeat sml2_light_oneup[] = {
+    {0x49FF8Au, 125, 52}, {0xFFF1A0u, 160, 42}, {0x66FF9Au, 230, 0}
+};
+static const Sml2LightBeat sml2_light_power[] = {
+    {0xFF8CFFu, 160, 48}, {0xA8A0FFu, 150, 0}
+};
+static const Sml2LightBeat sml2_light_star[] = {
+    {0xFFFFFFu, 85, 32}, {0xFFE06Au, 170, 38}, {0xFFFFFFu, 145, 0}
+};
+static const Sml2LightBeat sml2_light_golden[] = {
+    {0xFFD34Au, 160, 58}, {0xFFF0A8u, 200, 58}, {0xFFD34Au, 270, 0}
+};
+static const Sml2LightBeat sml2_light_castle[] = {
+    {0xFFFFFFu, 190, 48}, {0xFFD34Au, 310, 62}, {0xFFF1A0u, 430, 0}
+};
+static const Sml2LightBeat sml2_light_damage[] = {
+    {0xFF6538u, 175, 45}, {0xFF3030u, 125, 0}
+};
+static const Sml2LightProfile sml2_light_profiles[9] = {
+    {sml2_light_coin,   sizeof sml2_light_coin   / sizeof sml2_light_coin[0]},
+    {sml2_light_enemy,  sizeof sml2_light_enemy  / sizeof sml2_light_enemy[0]},
+    {sml2_light_life,   sizeof sml2_light_life   / sizeof sml2_light_life[0]},
+    {sml2_light_oneup,  sizeof sml2_light_oneup  / sizeof sml2_light_oneup[0]},
+    {sml2_light_power,  sizeof sml2_light_power  / sizeof sml2_light_power[0]},
+    {sml2_light_star,   sizeof sml2_light_star   / sizeof sml2_light_star[0]},
+    {sml2_light_golden, sizeof sml2_light_golden / sizeof sml2_light_golden[0]},
+    {sml2_light_castle, sizeof sml2_light_castle / sizeof sml2_light_castle[0]},
+    {sml2_light_damage, sizeof sml2_light_damage / sizeof sml2_light_damage[0]}
+};
+static Sml2LightSequence sml2_light_sequence;
+
+static int sml2_event_priority(int ev)
+{
+    return ev >= 0 && ev < 9 ? sml2_rumble_profiles[ev].priority : 0;
+}
+
+static void pad_cancel_sml2_light(void)
+{
+    sml2_light_sequence.active = 0;
+    sml2_light_sequence.priority = 0;
+    sml2_light_sequence.next = 0;
+    sml2_light_sequence.wait_s = 0;
+    flash_t = 0;
+}
+
+static void pad_cancel_sml2_feedback(void)
+{
+    if (sml2_rumble_sequence.active)
+        pad_stop_rumble_device(sml2_rumble_sequence.device);
+    sml2_rumble_sequence.active = 0;
+    sml2_rumble_sequence.priority = 0;
+    sml2_rumble_sequence.next = 0;
+    sml2_rumble_sequence.wait_s = 0;
+    pad_cancel_sml2_light();
+}
+
+static void pad_schedule_sml2_rumble(int ev)
+{
+    if (ev < 0 || ev >= 9) return;
+    const GameCfg *c = &settings.g[GAME_SML2];
+    const Sml2RumbleProfile *profile = &sml2_rumble_profiles[ev];
+    const int device = c->pad_device[0];
+    if (c->ds_rumble <= 0) return;
+#ifndef __ANDROID__
+    if (device < 0 || device >= n_pads) return;
+#else
+    if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST &&
+        settings.android_haptic_target - ANDROID_HAPTIC_CONTROLLER_FIRST >= n_pads)
+        return;
+#endif
+    if (sml2_rumble_sequence.active &&
+        profile->priority <= sml2_rumble_sequence.priority)
+        return;
+    if (sml2_rumble_sequence.active)
+        pad_stop_rumble_device(sml2_rumble_sequence.device);
+
+    sml2_rumble_sequence.beats = profile->beats;
+    sml2_rumble_sequence.count = profile->count;
+    sml2_rumble_sequence.next = 0;
+    sml2_rumble_sequence.priority = profile->priority;
+    sml2_rumble_sequence.device = device;
+    sml2_rumble_sequence.scale = c->ds_rumble;
+    sml2_rumble_sequence.wait_s = 0;
+    sml2_rumble_sequence.active = 1;
+}
+
+static void pad_schedule_sml2_light(int ev)
+{
+    if (ev < 0 || ev >= 9) return;
+    const GameCfg *c = &settings.g[GAME_SML2];
+    const int device = c->pad_device[0];
+    if (device < 0 || device >= n_pads || !pad_is_dualsense(device) ||
+        !pads[device].mapped || !SDL_GameControllerHasLED(pads[device].gc))
+        return;
+    const Sml2LightProfile *profile = &sml2_light_profiles[ev];
+    const int priority = sml2_event_priority(ev);
+    if (sml2_light_sequence.active && priority <= sml2_light_sequence.priority)
+        return;
+
+    sml2_light_sequence.beats = profile->beats;
+    sml2_light_sequence.count = profile->count;
+    sml2_light_sequence.next = 0;
+    sml2_light_sequence.priority = (uint8_t)priority;
+    sml2_light_sequence.wait_s = 0;
+    sml2_light_sequence.active = 1;
+}
+
+static void pad_sml2_rumble_tick(float dt)
+{
+    if (!sml2_rumble_sequence.active) return;
+    if (sml2_rumble_sequence.wait_s > 0.0f) {
+        sml2_rumble_sequence.wait_s -= dt;
+        if (sml2_rumble_sequence.wait_s > 0.0f) return;
+    }
+    if (sml2_rumble_sequence.next >= sml2_rumble_sequence.count) {
+        sml2_rumble_sequence.active = 0;
+        sml2_rumble_sequence.priority = 0;
+        return;
+    }
+
+    const Sml2RumbleBeat *beat =
+        &sml2_rumble_sequence.beats[sml2_rumble_sequence.next++];
+    const int low = beat->low * sml2_rumble_sequence.scale / 100;
+    const int high = beat->high * sml2_rumble_sequence.scale / 100;
+    pad_rumble_device_mix(sml2_rumble_sequence.device, low, high, beat->on_ms);
+    sml2_rumble_sequence.wait_s =
+        ((float)beat->on_ms + (float)beat->gap_ms) / 1000.0f;
+}
+
+static void pad_sml2_light_tick(float dt)
+{
+    if (!sml2_light_sequence.active) return;
+    if (sml2_light_sequence.wait_s > 0.0f) {
+        sml2_light_sequence.wait_s -= dt;
+        if (sml2_light_sequence.wait_s > 0.0f) return;
+    }
+    if (sml2_light_sequence.next >= sml2_light_sequence.count) {
+        sml2_light_sequence.active = 0;
+        sml2_light_sequence.priority = 0;
+        flash_t = 0;
+        return;
+    }
+
+    const Sml2LightBeat *beat =
+        &sml2_light_sequence.beats[sml2_light_sequence.next++];
+    flash_rgb = beat->rgb;
+    flash_t = 1.0f;
+    flash_duration = (float)beat->on_ms / 1000.0f;
+    sml2_light_sequence.wait_s =
+        ((float)beat->on_ms + (float)beat->gap_ms) / 1000.0f;
+}
+
 void pad_event_fx(int game, int ev)
 {
     const EventDef *d = events_def(game, ev);
     if (!d) return;
     const GameCfg *c = &settings.g[game];
+    if (game == GAME_SML2) {
+        if ((c->ds_ev_rumble >> ev) & 1) pad_schedule_sml2_rumble(ev);
+        if ((c->ds_ev_led >> ev) & 1) pad_schedule_sml2_light(ev);
+        return;
+    }
     if ((c->ds_ev_rumble >> ev) & 1)
         pad_rumble_selected(game, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
-    if ((c->ds_ev_led >> ev) & 1) pad_flash(d->color);
+    if (((c->ds_ev_led >> ev) & 1) &&
+        c->pad_device[0] >= 0 && c->pad_device[0] < n_pads &&
+        pad_is_dualsense(c->pad_device[0]))
+        pad_flash(d->color);
+}
+
+void pad_event_preview(int game, int ev)
+{
+    const EventDef *d = events_def(game, ev);
+    if (!d) return;
+    if (game == GAME_SML2) {
+        pad_schedule_sml2_rumble(ev);
+        pad_schedule_sml2_light(ev);
+        return;
+    }
+    pad_flash(d->color);
+    pad_rumble_selected(game, settings.g[game].ds_rumble * d->rumble_str / 100,
+                        d->rumble_ms);
 }
 
 static uint32_t base_color(const GameCfg *c)
@@ -715,7 +1455,12 @@ static uint32_t base_color(const GameCfg *c)
 
 void pad_frame(float dt)
 {
-    if (ctx_game < 0 || !n_pads) return;
+    if (ctx_game < 0) return;
+#ifndef __ANDROID__
+    if (!n_pads) return;
+#endif
+    pad_sml2_light_tick(dt);
+    pad_sml2_rumble_tick(dt);
     const GameCfg *c = &settings.g[ctx_game];
     uint32_t base = base_color(c);
     float k = c->ds_bright / 100.0f;
@@ -723,7 +1468,7 @@ void pad_frame(float dt)
     if (flash_t > 0) {
         float f = flash_t * flash_t;
         r += (((flash_rgb >> 16) & 255) - r) * f; g += (((flash_rgb >> 8) & 255) - g) * f; b += ((flash_rgb & 255) - b) * f;
-        flash_t -= dt / 0.40f;
+        flash_t -= dt / (flash_duration > 0.01f ? flash_duration : 0.40f);
         if (flash_t < 0) flash_t = 0;
     }
     uint32_t out = ((uint32_t)(r + 0.5f) << 16) | ((uint32_t)(g + 0.5f) << 8) | (uint32_t)(b + 0.5f);
@@ -732,6 +1477,7 @@ void pad_frame(float dt)
     send_acc = 0;
     last_sent = out;
     int device = settings.g[ctx_game].pad_device[0];
-    if (device >= 0 && device < n_pads && pads[device].mapped && SDL_GameControllerHasLED(pads[device].gc))
+    if (device >= 0 && device < n_pads && pad_is_dualsense(device) &&
+        pads[device].mapped && SDL_GameControllerHasLED(pads[device].gc))
         SDL_GameControllerSetLED(pads[device].gc, (Uint8)(out >> 16), (Uint8)(out >> 8), (Uint8)out);
 }

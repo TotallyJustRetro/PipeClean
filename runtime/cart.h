@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 typedef struct { char title[17]; int mapper; int rom_banks; size_t ram_bytes; int battery; size_t size; uint32_t crc; uint8_t cgb_flag; } CartInfo;
-int cart_parse(const uint8_t *img,size_t n,CartInfo *ci); int cart_install(const uint8_t *img,size_t n); void cart_reset(void); const CartInfo *cart_info(void); int cart_load_save(const char *path); int cart_write_save(const char *path);
+int cart_parse(const uint8_t *img,size_t n,CartInfo *ci); int cart_install(const uint8_t *img,size_t n); void cart_reset(void); const CartInfo *cart_info(void); int cart_is_sml2dx_v181(const CartInfo *ci); int cart_load_save(const char *path); int cart_write_save(const char *path);
 size_t cart_state_size(void);
 int cart_state_save(void *dst, size_t n);
 int cart_state_load(const void *src, size_t n);
@@ -11,7 +11,9 @@ size_t cart_ram_state_size(void);
 int cart_ram_state_save(void *dst, size_t n);
 int cart_ram_state_load(const void *src, size_t n);
 extern const uint8_t *cart_lo,*cart_hi; void cart_write_ctrl(uint16_t a,uint8_t v); uint8_t cart_ram_read(uint16_t a); void cart_ram_write(uint16_t a,uint8_t v);
-/* Read a byte from a fixed physical ROM bank without changing the active MBC bank. */
+/* Read a byte from a switchable ROM bank's 4000-7FFF window. */
 uint8_t cart_rom_read_bank(int bank, uint16_t address);
+/* Read a byte from the fixed physical bank-0 0000-3FFF window. */
+uint8_t cart_rom_read_fixed(uint16_t address);
 /* Export the currently installed cartridge image without modifying its source file. */
 int cart_export_rom(const char *path);

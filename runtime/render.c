@@ -97,6 +97,15 @@ void render_reset(void)
 }
 uint32_t render_avg_color(void) { return avg_rgb; }
 
+int render_pixels(const uint32_t **pixels, int *w, int *h)
+{
+    if (!img || iw <= 0 || ih <= 0) return 0;
+    if (pixels) *pixels = img;
+    if (w) *w = iw;
+    if (h) *h = ih;
+    return 1;
+}
+
 static int gw = GB_W;
 int render_width(void) { return gw; }
 void frame_from_ppu(Frame *f)

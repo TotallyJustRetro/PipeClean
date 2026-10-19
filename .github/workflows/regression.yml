@@ -2,7 +2,7 @@ name: Regression Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/android-pipe-screen-swap]
   pull_request:
   workflow_dispatch:
 
@@ -40,6 +40,27 @@ jobs:
             tests/test_sml_wide.c runtime/widescreen.c \
             -o test_sml_wide
           ./test_sml_wide
+
+      - name: Build and run Wario Land widescreen regression
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime \
+            tests/test_wario_sml3_wide.c runtime/widescreen.c \
+            -o test_wario_sml3_wide
+          ./test_wario_sml3_wide
+
+      - name: Build and run Wario Land II GB/GBC widescreen regression
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime \
+            tests/test_wario_land2_wide.c runtime/widescreen.c \
+            -o test_wario_land2_wide
+          ./test_wario_land2_wide
+
+      - name: Build and run Wario Land 3 widescreen regression
+        run: |
+          gcc -std=c11 -Wall -Wextra -Iruntime \
+            tests/test_wario_land3_wide.c runtime/widescreen.c \
+            -o test_wario_land3_wide
+          ./test_wario_land3_wide
 
       - name: Build and run MBC1 mapper regression
         run: |
@@ -172,7 +193,7 @@ jobs:
 
       - name: Build full runtime and test target
         run: |
-          cmake --build build-ci --target PipeClean test_sml2_wide test_sml_wide test_cart_mbc1 test_recomp_guard --parallel 2
+          cmake --build build-ci --target PipeClean test_companion_deck_state test_sml2_wide test_sml_wide test_wario_sml3_wide test_wario_land2_wide test_wario_land3_wide test_wario_event_state test_wario_land2_state test_collectible_museum test_sml2_museum_state test_cart_mbc1 test_recomp_guard --parallel 2
           ctest --test-dir build-ci --output-on-failure
 
       - name: Smoke-test CGB STOP speed switching
@@ -199,6 +220,11 @@ jobs:
             --no-crc-check \
             --wide 100 \
             ci/sml2_smoke.gb
+
+      - name: Smoke-test Wario Land II GB/GBC CLI widescreen path
+        run: |
+          timeout 15s build-ci/PipeClean --headless --frames 2 --no-crc-check --wide 100 ci/wario-smoke/wario2-gb.gb
+          timeout 15s build-ci/PipeClean --headless --frames 2 --no-crc-check --wide 100 ci/wario-smoke/wario2-gbc.gbc
 
       - name: Test scripted multiplayer runner and deterministic replay
         run: |

@@ -139,6 +139,19 @@ endif()
 
 if(NOT ANDROID)
 enable_testing()
+add_executable(test_companion_deck_state tests/test_companion_deck_state.c)
+target_include_directories(test_companion_deck_state PRIVATE runtime)
+add_test(NAME companion_deck_state COMMAND test_companion_deck_state)
+
+add_executable(test_collectible_museum tests/test_collectible_museum.c runtime/museum.c)
+target_include_directories(test_collectible_museum PRIVATE runtime)
+target_link_libraries(test_collectible_museum PRIVATE SDL2::SDL2)
+add_test(NAME collectible_museum COMMAND test_collectible_museum)
+
+add_executable(test_sml2_museum_state tests/test_sml2_museum_state.c)
+target_include_directories(test_sml2_museum_state PRIVATE runtime)
+add_test(NAME sml2_museum_state COMMAND test_sml2_museum_state)
+
 add_executable(test_sml2_wide tests/test_sml2_wide.c runtime/widescreen.c)
 target_include_directories(test_sml2_wide PRIVATE runtime)
 add_test(NAME sml2_widescreen COMMAND test_sml2_wide)
@@ -146,6 +159,26 @@ add_test(NAME sml2_widescreen COMMAND test_sml2_wide)
 add_executable(test_sml_wide tests/test_sml_wide.c runtime/widescreen.c)
 target_include_directories(test_sml_wide PRIVATE runtime)
 add_test(NAME sml_wide COMMAND test_sml_wide)
+
+add_executable(test_wario_sml3_wide tests/test_wario_sml3_wide.c runtime/widescreen.c)
+target_include_directories(test_wario_sml3_wide PRIVATE runtime)
+add_test(NAME wario_sml3_widescreen COMMAND test_wario_sml3_wide)
+
+add_executable(test_wario_land2_wide tests/test_wario_land2_wide.c runtime/widescreen.c)
+target_include_directories(test_wario_land2_wide PRIVATE runtime)
+add_test(NAME wario_land2_widescreen COMMAND test_wario_land2_wide)
+
+add_executable(test_wario_land3_wide tests/test_wario_land3_wide.c runtime/widescreen.c)
+target_include_directories(test_wario_land3_wide PRIVATE runtime)
+add_test(NAME wario_land3_widescreen COMMAND test_wario_land3_wide)
+
+add_executable(test_wario_event_state tests/test_wario_event_state.c)
+target_include_directories(test_wario_event_state PRIVATE runtime)
+add_test(NAME wario_event_state COMMAND test_wario_event_state)
+
+add_executable(test_wario_land2_state tests/test_wario_land2_state.c)
+target_include_directories(test_wario_land2_state PRIVATE runtime)
+add_test(NAME wario_land2_state COMMAND test_wario_land2_state)
 
 add_executable(test_cart_mbc1 tests/test_cart_mbc1.c runtime/cart.c runtime/patch.c)
 target_include_directories(test_cart_mbc1 PRIVATE runtime)

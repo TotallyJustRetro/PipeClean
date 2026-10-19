@@ -37,9 +37,16 @@ static int mp_bank_game = GAME_SML;
 static long music_pos;
 static float music_gain, music_target;
 static int music_want_on;
+static int music_auto_advance, music_loop_pending;
 typedef struct { int clip; long pos; float vol; } Voice;
 static Voice voices[8];
 static float sfx_vol = 0.7f;
+/* Custom Companion Deck sounds are decoded once, cached by path, and mixed by
+   the same callback as other launcher sounds so Windows/Linux dev builds can
+   test the Android layout sound assignments without another audio device. */
+typedef struct { Clip clip; char path[512]; long pos; } DeckSoundVoice;
+static DeckSoundVoice deck_sound_voices[8];
+static unsigned deck_sound_next;
 
 /* controller speaker */
 static SDL_AudioDeviceID pdev;
@@ -385,7 +392,11 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
             music_gain += (music_target - music_gain) * 0.0004f;
             l += music.d[music_pos * 2] * music_gain;
             r += music.d[music_pos * 2 + 1] * music_gain;
-            if (++music_pos >= music.n) music_pos = 0;
+            if (++music_pos >= music.n) {
+                music_pos = 0;
+                if (music_auto_advance && settings.menu_music && !g_active)
+                    music_loop_pending = 1;
+            }
         }
         for (int v = 0; v < 8; v++) {
             if (voices[v].clip < 0) continue;
@@ -410,6 +421,18 @@ static void audio_cb(void *ud, Uint8 *stream, int len)
                 if (mp_sfx_pos[player][ev] >= clip->n) mp_sfx_pos[player][ev] = -1;
             }
         }
+        for (int i = 0; i < 8; i++) {
+            DeckSoundVoice *voice = &deck_sound_voices[i];
+            if (voice->pos < 0) continue;
+            if (!voice->clip.d || voice->pos >= voice->clip.n) {
+                voice->pos = -1;
+                continue;
+            }
+            l += voice->clip.d[voice->pos * 2] * 0.78f;
+            r += voice->clip.d[voice->pos * 2 + 1] * 0.78f;
+            voice->pos++;
+            if (voice->pos >= voice->clip.n) voice->pos = -1;
+        }
         if (l > 1) l = 1; else if (l < -1) l = -1;
         if (r > 1) r = 1; else if (r < -1) r = -1;
         out[i * 2] = l; out[i * 2 + 1] = r;
@@ -427,7 +450,10 @@ int audio_init(int latency)
     if (dev) return 0;
     SDL_SetHint(SDL_HINT_AUDIO_RESAMPLING_MODE, "3");
     mx = SDL_CreateMutex(); cv = SDL_CreateCond(); pmx = SDL_CreateMutex();
-    for (int i = 0; i < 8; i++) voices[i].clip = -1;
+    for (int i = 0; i < 8; i++) {
+        voices[i].clip = -1;
+        deck_sound_voices[i].pos = -1;
+    }
     SDL_AudioSpec want, have;
     SDL_zero(want);
     want.freq = 48000; want.format = AUDIO_F32SYS; want.channels = 2;
@@ -454,6 +480,14 @@ void audio_shutdown(void)
 {
     audio_pad_close();
     if (dev) { SDL_CloseAudioDevice(dev); dev = 0; }
+    for (int i = 0; i < 8; i++) {
+        free(deck_sound_voices[i].clip.d);
+        deck_sound_voices[i].clip.d = NULL;
+        deck_sound_voices[i].clip.n = 0;
+        deck_sound_voices[i].path[0] = 0;
+        deck_sound_voices[i].pos = -1;
+    }
+    deck_sound_next = 0;
     for (int player = 0; player < MAX_MP_PLAYERS - 1; player++) {
         for (int i = 0; i < N_P2_SFX; i++) {
             free(mp_sfx[player][i].d);
@@ -612,6 +646,19 @@ void audio_menu_apply(void)
             }
         }
     }
+    SDL_LockMutex(mx);
+    music_auto_advance = 0;
+    if (settings.menu_music_path[0] && settings.menu_playlist_count > 1) {
+        for (int i = 0; i < settings.menu_playlist_count && i < MAX_MENU_TRACKS; i++) {
+            if (settings.menu_playlist[i][0] &&
+                strcmp(settings.menu_playlist[i], settings.menu_music_path) == 0) {
+                music_auto_advance = 1;
+                break;
+            }
+        }
+    }
+    if (!music_auto_advance) music_loop_pending = 0;
+    SDL_UnlockMutex(mx);
     audio_menu_music(music_want_on);
 }
 
@@ -675,14 +722,70 @@ void audio_mp_sfx_preview(int player, int which)
 
 void audio_p2_sfx(int which) { audio_mp_sfx(2, which); }
 void audio_p2_sfx_preview(int which) { audio_mp_sfx_preview(2, which); }
+void audio_deck_sfx_play(const char *path)
+{
+    if (!dev || !path || !path[0]) return;
+
+    /* Replaying an already-decoded sound just rewinds its cached voice. */
+    SDL_LockMutex(mx);
+    for (int i = 0; i < 8; i++) {
+        if (deck_sound_voices[i].clip.d &&
+            strcmp(deck_sound_voices[i].path, path) == 0) {
+            deck_sound_voices[i].pos = 0;
+            SDL_UnlockMutex(mx);
+            return;
+        }
+    }
+    SDL_UnlockMutex(mx);
+
+    Clip decoded = {0};
+    if (load_clip(&decoded, path) != 0 || !decoded.d || decoded.n <= 0) {
+        free(decoded.d);
+        return;
+    }
+
+    SDL_LockMutex(mx);
+    int slot = -1;
+    for (int i = 0; i < 8; i++) {
+        if (deck_sound_voices[i].clip.d &&
+            strcmp(deck_sound_voices[i].path, path) == 0) {
+            deck_sound_voices[i].pos = 0;
+            SDL_UnlockMutex(mx);
+            free(decoded.d);
+            return;
+        }
+        if (slot < 0 && deck_sound_voices[i].pos < 0) slot = i;
+    }
+    if (slot < 0) {
+        slot = (int)(deck_sound_next++ % 8u);
+    }
+    Clip previous = deck_sound_voices[slot].clip;
+    deck_sound_voices[slot].clip = decoded;
+    snprintf(deck_sound_voices[slot].path, sizeof deck_sound_voices[slot].path, "%s", path);
+    deck_sound_voices[slot].pos = 0;
+    SDL_UnlockMutex(mx);
+    free(previous.d);
+}
+
 
 void audio_music_preview(void)
 {
     if (!dev) return;
     SDL_LockMutex(mx);
     music_pos = 0;
+    music_loop_pending = 0;
     music_target = settings.menu_music_vol / 100.0f * 0.6f;
     SDL_UnlockMutex(mx);
+}
+
+int audio_music_take_finished(void)
+{
+    if (!dev) return 0;
+    SDL_LockMutex(mx);
+    int pending = music_loop_pending;
+    music_loop_pending = 0;
+    SDL_UnlockMutex(mx);
+    return pending;
 }
 
 /* ------------------------------------------------------------ controller speaker */
@@ -742,12 +845,23 @@ int audio_pad_open(void)
         if (!pdev) continue;
         pch = have.channels; prate = have.freq;
         if (!beep.d) {
-            /* a little bank of synthesized sounds, one per kind, played back to back in one clip */
-            clip_alloc(&beep, prate * 5 / 2);
-            static const struct { float f1, f2; float t1; float len; float vol; } k[5] = {
-                {880, 1320, 0.08f, 0.35f, 0.5f}, {988, 1319, 0.07f, 0.40f, 0.5f}, {330, 220, 0.05f, 0.30f, 0.6f},
-                {392, 262, 0.15f, 0.55f, 0.6f}, {523, 784, 0.10f, 0.50f, 0.5f}};
-            for (int b = 0; b < 5; b++)
+            /* Eleven synthesized alerts at half-second slots. Keep kinds 0-7
+               stable for existing events; 8-10 are course entry, key, and results. */
+            clip_alloc(&beep, prate * 6);
+            static const struct { float f1, f2; float t1; float len; float vol; } k[11] = {
+                {880, 1320, 0.08f, 0.35f, 0.5f}, /* 0: coin */
+                {988, 1319, 0.07f, 0.40f, 0.5f}, /* 1: power-up */
+                {330, 220, 0.05f, 0.30f, 0.6f},  /* 2: damage / coin loss */
+                {392, 262, 0.15f, 0.55f, 0.6f},  /* 3: life lost / game over */
+                {523, 784, 0.10f, 0.50f, 0.5f},  /* 4: treasure */
+                {659, 988, 0.05f, 0.35f, 0.48f}, /* 5: recovery / stage change */
+                {1046, 1568, 0.04f, 0.40f, 0.50f},/* 6: extra-life / milestone */
+                {740, 1108, 0.05f, 0.30f, 0.42f},/* 7: picture piece */
+                {587, 880, 0.07f, 0.32f, 0.45f}, /* 8: course entry */
+                {1174, 1760, 0.03f, 0.38f, 0.50f},/* 9: key obtained */
+                {784, 1174, 0.12f, 0.50f, 0.52f} /* 10: course results */
+            };
+            for (int b = 0; b < 11; b++)
                 for (long j = 0; j < (long)(k[b].len * prate); j++) {
                     long o = b * (prate / 2) + j;
                     if (o >= beep.n) break;
@@ -786,7 +900,7 @@ void audio_pad_push(const int16_t *st, int frames)
 void audio_pad_play_beep(int kind)
 {
     if (!pdev) return;
-    if (kind < 0 || kind > 4) kind = 0;
+    if (kind < 0 || kind > 10) kind = 0;
     SDL_LockMutex(pmx);
     beep_pos = (long)kind * (prate / 2);
     beep_end = beep_pos + (long)(prate * 0.45);

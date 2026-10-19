@@ -26,6 +26,12 @@ int main(void)
     for (size_t b = 0; b < banks; b++)
         img[b * 0x4000] = (uint8_t)b;
 
+    /* SML2's sprite tile-source table lives in the fixed ROM0 window. */
+    img[0x362A] = 0x1B;
+    img[0x362B] = 0x00;
+    img[0x362C] = 0x00;
+    img[0x362D] = 0x70;
+
     if (cart_install(img, rom_size) != 0) {
         free(img);
         return fail(3, "cart_install rejected a valid MBC1 image");
@@ -34,6 +40,27 @@ int main(void)
     const CartInfo *ci = cart_info();
     if (!ci || ci->cgb_flag != 0xC0)
         return fail(15, "CGB-only cartridge header flag was not detected");
+    if (cart_is_sml2dx_v181(ci))
+        return fail(19, "ordinary test ROM was misidentified as SML2 DX v1.8.1");
+
+    CartInfo dx_info = {0};
+    dx_info.size = 0x100000u;
+    dx_info.crc = 0xF0799017u;
+    dx_info.cgb_flag = 0xC0u;
+    dx_info.mapper = 5;
+    if (!cart_is_sml2dx_v181(&dx_info))
+        return fail(20, "exact SML2 DX v1.8.1 ROM identity was not recognized");
+    dx_info.crc ^= 1u;
+    if (cart_is_sml2dx_v181(&dx_info))
+        return fail(21, "SML2 DX detector accepted an unexpected ROM checksum");
+
+    if (cart_rom_read_bank(0, 0x362A) != 0xFF)
+        return fail(16, "bank-window reader accepted an address below 0x4000");
+    if (cart_rom_read_fixed(0x362A) != 0x1B ||
+        cart_rom_read_fixed(0x362D) != 0x70)
+        return fail(17, "fixed-bank ROM0 table reads returned wrong bytes");
+    if (cart_rom_read_fixed(0x4000) != 0xFF)
+        return fail(18, "fixed-bank ROM0 reader accepted an address at 0x4000");
 
     if (cart_hi[0] != 1)
         return fail(4, "reset did not map bank 1");
@@ -83,6 +110,6 @@ int main(void)
         return fail(14, "cartridge RAM contents were not restored");
 
     free(img);
-    puts("MBC1 mapper and CGB header detection: PASS");
+    puts("MBC1 mapper, CGB header, and fixed-bank ROM reads: PASS");
     return 0;
 }

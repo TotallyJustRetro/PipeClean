@@ -2,7 +2,7 @@ name: PipeClean Dev Build
 
 on:
   push:
-    branches: [main, feature/online-android-foundation]
+    branches: [main, feature/online-android-foundation, feature/android-pipe-screen-swap]
   pull_request:
     branches: [main, fix/sml-dx-widescreen-revision, feature/online-android-foundation]
   workflow_dispatch:
@@ -24,7 +24,15 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake python3 libsdl2-dev libsdl2-image-dev
+          sudo apt-get install -y build-essential cmake git make python3 libsdl2-dev libsdl2-image-dev
+
+      - name: Build bundled Wario player
+        run: |
+          git clone --depth 1 --branch feature/wario-companion-deck https://github.com/TotallyJustRetro/warko.git ci/warko
+          echo "Wario player source commit: $(git -C ci/warko rev-parse HEAD)"
+          python3 ci/warko/gbrecomp.py --player -o ci/warko/build/player
+          make -C ci/warko/build/player OPT=-O2 -j2
+          test -x ci/warko/build/player/gbplayer
 
       - name: Verify Linux toolchain
         run: |
@@ -66,6 +74,7 @@ jobs:
         run: |
           mkdir -p dist/PipeClean-Dev-Linux-x64/assets
           cp build-dev/PipeClean dist/PipeClean-Dev-Linux-x64/PipeClean
+          cp ci/warko/build/player/gbplayer dist/PipeClean-Dev-Linux-x64/gbplayer
           cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Dev-Linux-x64/assets/
           cp README.md INSTALL.md LEGAL.md THIRD_PARTY.md dist/PipeClean-Dev-Linux-x64/
           printf '%s\n' \
@@ -79,10 +88,12 @@ jobs:
             '' \
             'Run from this directory with: ./PipeClean' \
             > dist/PipeClean-Dev-Linux-x64/README-Linux.txt
-          if ldd dist/PipeClean-Dev-Linux-x64/PipeClean | grep -q "not found"; then
-            ldd dist/PipeClean-Dev-Linux-x64/PipeClean
-            exit 1
-          fi
+          for bin in dist/PipeClean-Dev-Linux-x64/PipeClean dist/PipeClean-Dev-Linux-x64/gbplayer; do
+            if ldd "$bin" | grep -q "not found"; then
+              ldd "$bin"
+              exit 1
+            fi
+          done
           test -s dist/PipeClean-Dev-Linux-x64/assets/pipeclean-icon.svg
           test -s dist/PipeClean-Dev-Linux-x64/assets/pipeclean-logo.webp
           test -s dist/PipeClean-Dev-Linux-x64/assets/cacert.pem
@@ -114,6 +125,9 @@ jobs:
             mingw-w64-ucrt-x86_64-SDL2
             mingw-w64-ucrt-x86_64-SDL2_image
             mingw-w64-ucrt-x86_64-cmake
+            make
+            python
+            git
 
       - name: Verify Windows toolchain
         shell: msys2 {0}
@@ -135,6 +149,15 @@ jobs:
           New-Item -ItemType Directory -Force ci | Out-Null
           [IO.File]::WriteAllBytes("$PWD\ci\sml2_smoke.gb", $rom)
 
+      - name: Build bundled Wario player
+        shell: msys2 {0}
+        run: |
+          git clone --depth 1 --branch feature/wario-companion-deck https://github.com/TotallyJustRetro/warko.git ci/warko
+          echo "Wario player source commit: $(git -C ci/warko rev-parse HEAD)"
+          python ci/warko/gbrecomp.py --player -o ci/warko/build/player
+          make -C ci/warko/build/player OPT=-O2 -j2
+          test -f ci/warko/build/player/gbplayer.exe
+
       - name: Configure PipeClean Dev
         shell: msys2 {0}
         run: |
@@ -155,9 +178,11 @@ jobs:
         run: |
           mkdir -p dist/PipeClean-Dev-Windows-x64/assets
           cp build-dev/PipeClean.exe dist/PipeClean-Dev-Windows-x64/PipeClean.exe
+          cp ci/warko/build/player/gbplayer.exe dist/PipeClean-Dev-Windows-x64/gbplayer.exe
           cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Dev-Windows-x64/assets/
           {
             ldd build-dev/PipeClean.exe
+            ldd ci/warko/build/player/gbplayer.exe
             ldd /ucrt64/bin/SDL2.dll
           } | awk '/=> \/ucrt64\// {print $3}' | sort -u | while read -r dll; do
             cp "$dll" dist/PipeClean-Dev-Windows-x64/

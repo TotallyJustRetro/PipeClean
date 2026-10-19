@@ -21,16 +21,32 @@
 #include "branding.h"
 #include "widescreen.h"
 #include "netplay.h"
+#include "museum.h"
 
 static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
 void launcher_set_renderer(SDL_Renderer *r){g_ren=r;}
 void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32_t c, const char *s);
 
-enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, TAB_DISPLAY, N_TABS };
+enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, TAB_DISPLAY, TAB_MUSEUM, N_TABS };
 enum { SUB_GAME, SUB_ROMHACKS, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
+#ifdef __ANDROID__
+static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "Controllers", "Textures", "Save States"};
+#else
 static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
+#endif
 
 static int tab, sub[N_GAMES];
+static int museum_game = GAME_SML;
+static int museum_category = MUSEUM_CATEGORY_ALL;
+static int museum_filter_mode;
+static int museum_selected[N_GAMES];
+static float museum_scroll;
+static int museum_hacks_view;
+static int museum_hacks_filter;
+static int museum_reset_confirm;
+static float museum_reset_confirm_until;
+static int museum_hack_game = -1, museum_hack_index = -1;
+static float museum_hack_scroll;
 static RomStatus rs[N_GAMES];            /* is the configured ROM usable */
 static char hack_msg[N_GAMES][256];
 static int hack_ok[N_GAMES];
@@ -41,6 +57,8 @@ static int cap_kind, cap_btn, cap_slot;  /* 1 key, 2 pad, 3 shortcut key, 4 shor
 static char toast_msg[200];
 static float toast_t;
 static int click_id;
+static char museum_live_notice[160];
+static float museum_live_notice_age = -1.0f;
 static float save_timer;
 static int loaded_pack_game = -1, pack_n;
 static char loaded_pack_path[512];
@@ -49,6 +67,13 @@ static int export_scale = 8;
 static char bg_loaded[512], bg_msg[256];
 static int bg_for_game = -1;
 static float anim_clock;
+static int menu_playlist_page;
+static unsigned music_notice_serial;
+static unsigned music_notice_announced_serial;
+static float music_notice_age = -1.0f;
+static int music_notice_deferred;
+static char music_notice_path[512];
+static void menu_music_notice_start(void);
 static int wide_dirty, wide_note[N_GAMES];
 static SDL_Texture *state_thumb_tex[N_GAMES][10];
 static char state_thumb_path_cache[N_GAMES][10][1200];
@@ -81,6 +106,7 @@ static int launcher_controller_confirm_was_down, launcher_controller_back_was_do
 static int launcher_controller_wait_neutral, launcher_ignore_pad_confirm;
 static float launcher_controller_x, launcher_controller_y;
 static int clickable(float x, float y, float w, float h, int *over_out);
+static void ensure_pack(int g);
 
 static void controller_name(int device, char *out, size_t n)
 {
@@ -232,6 +258,77 @@ static SDL_Texture *state_thumb_get(int g, int slot)
 
 void launcher_toast(const char *m) { snprintf(toast_msg, sizeof toast_msg, "%s", m); toast_t = 3.0f; }
 
+void launcher_museum_notification_draw(float dt)
+{
+    const float slide_in = 0.34f;
+    const float hold = 2.25f;
+    const float slide_out = 0.42f;
+    const float total = slide_in + hold + slide_out;
+    if (!settings.museum_discovery_notifications) {
+        museum_live_notice[0] = 0;
+        museum_live_notice_age = -1.0f;
+        return;
+    }
+    if (museum_live_notice_age < 0.0f) {
+        if (!museum_take_notification(museum_live_notice, sizeof museum_live_notice))
+            return;
+        museum_live_notice_age = 0.0f;
+    } else {
+        museum_live_notice_age += dt > 0.0f ? dt : 0.0f;
+    }
+    if (museum_live_notice_age >= total) {
+        museum_live_notice[0] = 0;
+        museum_live_notice_age = -1.0f;
+        return;
+    }
+
+    const float view_x = ui_view_x0(), view_y = ui_view_y0();
+    const float view_w = ui_view_w();
+    float w = view_w - 32.0f;
+    if (w > 360.0f) w = 360.0f;
+    if (w < 220.0f) w = 220.0f;
+    const float h = 78.0f;
+    const float y = view_y + 18.0f;
+    const float target_x = view_x + view_w - w - 16.0f;
+    float slide = 0.0f, alpha = 1.0f;
+    if (museum_live_notice_age < slide_in) {
+        float t = museum_live_notice_age / slide_in;
+        slide = 1.0f - t;
+        slide = slide * slide * slide;
+        alpha = 0.18f + 0.82f * t;
+    } else if (museum_live_notice_age > slide_in + hold) {
+        float t = (museum_live_notice_age - slide_in - hold) / slide_out;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        slide = t * t * t;
+        alpha = 1.0f - t;
+    }
+    const float x = target_x + slide * (w + 22.0f);
+    const int a = (int)(255.0f * alpha);
+    const char *name = museum_live_notice;
+    if (strncmp(name, "New discovery: ", 15) == 0) name += 15;
+
+    ui_shadow(x, y, w, h, 12.0f, 9.0f, RGBA(0, 0, 0, (int)(100.0f * alpha)));
+    ui_rrect(x, y, w, h, 12.0f, HEXA(0x24180F, a));
+    ui_stroke(x, y, w, h, 12.0f, 2.0f, HEXA(0xE3AD50, a));
+    ui_rrect(x + 7.0f, y + 8.0f, 4.0f, h - 16.0f, 2.0f, HEXA(0xF2C467, a));
+
+    const float badge_x = x + 31.0f, badge_y = y + h * 0.5f;
+    ui_rrect(badge_x - 19.0f, badge_y - 19.0f, 38.0f, 38.0f,
+             19.0f, HEXA(0xD99B35, a));
+    ui_stroke(badge_x - 19.0f, badge_y - 19.0f, 38.0f, 38.0f, 19.0f, 2.0f,
+              HEXA(0xFFE1A0, a));
+    ui_line(badge_x, badge_y - 10.0f, badge_x, badge_y + 10.0f, 2.0f, HEXA(0x563017, a));
+    ui_line(badge_x - 10.0f, badge_y, badge_x + 10.0f, badge_y, 2.0f, HEXA(0x563017, a));
+    ui_rrect(badge_x - 2.0f, badge_y - 2.0f, 4.0f, 4.0f, 2.0f, HEXA(0xFFF0C8, a));
+
+    const float tx = x + 61.0f, tw = w - 76.0f;
+    ui_text(F_BOLD, 10.0f, tx, y + 11.0f, HEXA(0xF2C467, a), "MUSEUM DISCOVERY");
+    ui_text_fit(F_BOLD, 16.0f, tx, y + 29.0f, tw, HEXA(0xFFF4DB, a), name);
+    ui_text_fit(F_REG, 10.0f, tx, y + 53.0f, tw, HEXA(0xCBB99F, a),
+                "Added to your field guide");
+}
+
 /* ------------------------------------------------------------------ ROM / preview plumbing */
 static void rom_check(int g)
 {
@@ -274,14 +371,33 @@ int launcher_prepare(int g, char *err, size_t n)
         hack_ok[g] = 1;
         snprintf(hack_msg[g], sizeof hack_msg[g], "%s", st.msg);
     }
+    int wario_dx = g == GAME_WARIO_SML3 && wide_is_wario_dx_profile(NULL, NULL);
+    if (g == GAME_WARIO_SML3 && c->romhack_selected >= 0 &&
+        c->romhack_selected < c->romhack_count && c->romhack_selected < MAX_ROMHACKS) {
+        const RomHackEntry *profile = &c->romhacks[c->romhack_selected];
+        wario_dx = wide_is_wario_dx_profile(profile->title, profile->path);
+    }
     int wl, wr;
-    wide_dims(g, c->wide, &wl, &wr);
+    wide_dims_profile(g, c->wide, wario_dx, &wl, &wr);
+    /* Finalize any previous Wario Land 3 trace before replacing its profile. */
+    wide_wl3_trace_finish();
     /* Always call wide_install, including when the requested width is zero.
-     * It clears runtime SML/SML2 hooks left by a previous game/session before
-     * the native-width PPU setup. Skipping it at 0% can leave widened spawn
-     * and cull bounds active even though the picture is back to 160 pixels. */
-    int wide_ready = wide_install(g, wl, wr);
+     * It clears runtime hooks left by a previous game/session before the native
+     * width setup. Unsupported Wario ROM revisions safely return to 160px. */
+    int wide_ready = wide_install_profile(g, wl, wr, wario_dx);
     if (wl + wr > 0 && !wide_ready) { wl = wr = 0; wide_note[g] = 1; } else wide_note[g] = 0;
+    /* Keep diagnostics beside PipeClean instead of an unknown process working
+       directory (which can be System32 when launched from a shell). */
+    char trace_path[1200];
+    snprintf(trace_path, sizeof trace_path, "%spipeclean-wl2-wide-trace.txt", settings_dir());
+    wide_wl2_trace_set_path(trace_path);
+    wide_wl3_trace_set_path(trace_path);
+    wide_wl3_trace_begin(g == GAME_WARIO_LAND3_GBC && wl + wr > 0 && wide_ready ? wl : 0,
+                         g == GAME_WARIO_LAND3_GBC && wl + wr > 0 && wide_ready ? wr : 0);
+    ppu_set_wario_sml3(g == GAME_WARIO_SML3 && wl + wr > 0 && wide_ready);
+    ppu_set_wl2_wide((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC) &&
+                      wl + wr > 0 && wide_ready);
+    ppu_set_wl3_wide(g == GAME_WARIO_LAND3_GBC && wl + wr > 0 && wide_ready);
     ppu_set_wide(wl, wr, games[g].hud_lines, games[g].hud_window, games[g].wide_gate);
     return 0;
 }
@@ -432,6 +548,17 @@ static void make_preview(int g)
     prev_ok[g] = 1;
     tex_collect_frame(&prev[g]);
     tex_collect_save();
+}
+
+/* Render the selected ROM's cached preview into the shared CPU pixel buffer.
+ * The caller must consume the pointer before the next render_build/reset. */
+int launcher_preview_pixels(int game, const uint32_t **pixels, int *w, int *h)
+{
+    if (game < 0 || game >= N_GAMES || !prev_ok[game] || games[game].external_player)
+        return 0;
+    ensure_pack(game);
+    render_build(&prev[game], game, 0);
+    return render_pixels(pixels, w, h);
 }
 
 static void set_rom(int g, const char *path)
@@ -604,6 +731,7 @@ void launcher_enter(void)
     bg_for_game = -1;
     audio_menu_apply();
     audio_menu_music(1);
+    if (settings.menu_music) menu_music_notice_start();
 }
 
 void launcher_shutdown(void) { netplay_shutdown(); clear_state_thumbs(); clear_romhack_thumbs(); tex_collect_save(); }
@@ -826,7 +954,13 @@ static void sub_external_game(int g, float x, float y)
 
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
-                 "These four Wario Land entries currently run in the separate gbrecomp compatibility player while we work through game-specific issues. PipeClean's rendering filters, save-state slots and per-game controller bindings do not apply to that separate player window yet.", 4);
+                 g == GAME_WARIO_SML3
+                    ? "Wario Land: Super Mario Land 3 opens the Treasure Expedition Companion Deck when enabled. Controller events now include power-up, damage, treasure, coins, recovery, extra life, life lost, course entry, key pickup and course results."
+                    : ((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
+                       ? "Both Wario Land II releases use the Stolen Treasure Companion Deck: all 50 treasures and picture panels, course-entry and end-of-course-results tracking, an expedition log, collection animations, and event-specific DualSense lightbar, rumble and speaker alerts. Wario Land II has no key pickup mechanic."
+                       : (g == GAME_WARIO_LAND3_GBC
+                          ? "Wario Land 3 has ten live controller events, including power-up, damage/recovery, treasure, coins, story/game-over milestones, course entry, key obtained and the course-results screen. Events can trigger DualSense lightbar flashes, distinct rumble and speaker alerts; compatible other controllers can rumble."
+                          : "This title runs in the separate gbrecomp player. PipeClean's in-runtime filters and save-state slots do not apply to this player.")), 5);
 
     ui_text(F_BOLD, 12, x + 18, y + 276, C_MUTED, "CONTROLS");
     ui_text_wrap(F_REG, 12, x + 18, y + 300, 772, C_TEXT,
@@ -1091,10 +1225,7 @@ static void sub_display(int g, float x, float y)
     label(x + 18, yy, "Starting window size"); ui_seg(x + 18, yy + 22, 500, 36, size_names, N_SIZE, &c->size);
 
     float rx = x + 548, rw = 260;
-    const int dual_screen_available = g == GAME_SML || g == GAME_SML2;
-    /* The SML games need one short row for the Thor deck toggle. Keep the
-       other Display pages unchanged, but tighten this preview to make room. */
-    const float look_compact = dual_screen_available ? 40.0f : 0.0f;
+    const float look_compact = 0.0f; /* Dual-screen placement is a launcher-wide Android option. */
     card(rx, y, rw, 476, "LOOK");
     draw_preview(g, rx + 16, y + 40, rw - 32, 190 - look_compact, 1);
     label(rx + 18, y + 246 - look_compact, "Background picture");
@@ -1120,14 +1251,7 @@ static void sub_display(int g, float x, float y)
         label(rx + 18, y + 428 - look_compact, "Widescreen");
         ui_text(F_REG, 12, rx + 18, y + 450 - look_compact, C_DIM, "Not available for this game");
     }
-    if (dual_screen_available) {
-        label(rx + 18, y + 438, "Dual Screen");
-        if (ui_toggle(rx + rw - 62, y + 436, &c->dual_screen)) settings_save();
-        ui_text_fit(F_REG, 10, rx + 18, y + 462, rw - 36, C_DIM,
-                    "AYN Thor lower-screen deck (Android).");
-        if (ui_hover(rx + 18, y + 434, rw - 36, 40))
-            ui_hint("Shows the PipeClean control deck on a detected second display while this game is running.");
-    }
+    /* Dual-screen and Auto Pipe placement moved to Launcher Display settings. */
 }
 
 /* ------------------------------------------------------------------ game tab: Controls */
@@ -1819,7 +1943,15 @@ static void sub_dualsense(int g, float x, float y)
     pad_status(st, sizeof st);
     status_line(x + 18, y + 38, lw - 36, ds ? 1 : (pad_count() ? 2 : 3), st);
     if (ds) ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM, audio_pad_available() ? (edge ? "DualSense Edge: light, rumble and speaker ready" : "DualSense: light, rumble and speaker ready") : "Light and rumble ready. Speaker needs the USB cable.");
-    else ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM, "Plug in a DualSense or DualSense Edge (USB for the speaker).");
+#ifdef __ANDROID__
+    else ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM,
+                     pad_count() ? "Phone vibration can target this device or a connected controller." :
+                                   "Phone vibration works without a gamepad; choose and test an output below.");
+#else
+    else ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM,
+                     pad_count() ? "Rumble works with compatible controllers; DualSense lightbar and speaker are DualSense-only." :
+                                   "Connect a controller to test rumble. DualSense lightbar and speaker require a DualSense or Edge.");
+#endif
 
     label(x + 18, y + 90, "Light");
     ui_seg(x + 18, y + 112, lw - 36, 34, led_names, N_LED, &c->ds_led_mode);
@@ -1840,17 +1972,62 @@ static void sub_dualsense(int g, float x, float y)
     if (ui_slider(x + 160, y + 288, lw - 160 - 60, &c->ds_speaker_vol, 0, 100)) apply_pad_gain(g);
     snprintf(t, sizeof t, "%d%%", c->ds_speaker_vol); ui_text_r(F_REG, 13, x + lw - 18, y + 290, C_TEXT, t);
     float bw = (lw - 36 - 16) / 3;
+#ifdef __ANDROID__
+    label(x + 18, y + 320, "Vibration output");
+    int route_count = pad_android_haptic_option_count();
+    int route_option = pad_android_haptic_target_option(settings.android_haptic_target);
+    if (route_count < 2) route_count = 2;
+    if (route_option < 0 || route_option >= route_count ||
+        settings.android_haptic_target != pad_android_haptic_option_target(route_option)) {
+        route_option = 0;
+        settings.android_haptic_target = pad_android_haptic_option_target(route_option);
+        settings_save();
+    }
+    if (ui_button(x + 18, y + 338, 28, 28, "<", B_NORMAL, 1)) {
+        route_option = (route_option + route_count - 1) % route_count;
+        settings.android_haptic_target = pad_android_haptic_option_target(route_option);
+        settings_save();
+    }
+    if (ui_button(x + lw - 46, y + 338, 28, 28, ">", B_NORMAL, 1)) {
+        route_option = (route_option + 1) % route_count;
+        settings.android_haptic_target = pad_android_haptic_option_target(route_option);
+        settings_save();
+    }
+    int route = settings.android_haptic_target;
+    char route_name[160];
+    pad_android_haptic_option_name(route_option, route_name, sizeof route_name);
+    ui_text_fit(F_BOLD, 11, x + 52, y + 346, lw - 104, C_TEXT, route_name);
+
+    if (ui_button(x + 18, y + 374, bw, 36, "Test light", B_NORMAL, 1)) { pad_set_context(g, 0); pad_flash(0xFFFFFF); }
+    if (ui_button(x + 18 + bw + 8, y + 374, bw, 36, "Test motor", B_NORMAL, 1)) {
+        if (pad_android_haptic_test(g, c->ds_rumble, 450))
+            launcher_toast("Vibration test sent to the selected output.");
+        else
+            launcher_toast("No usable rumble route. Try another Android vibration output.");
+    }
+    if (ui_button(x + 18 + (bw + 8) * 2, y + 374, bw, 36, "Test speaker", B_NORMAL, 1)) {
+        if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(0); } else launcher_toast("Speaker not found. Connect the controller with the USB cable.");
+    }
+    ui_text_fit(F_REG, 10, x + 18, y + 419, lw - 36, C_DIM,
+                pad_android_haptic_target_available(route)
+                    ? "Output exposed by Android/SDL; hardware response depends on the device."
+                    : "Android/SDL has not exposed a usable haptic output for this route.");
+#else
     if (ui_button(x + 18, y + 334, bw, 36, "Test light", B_NORMAL, 1)) { pad_set_context(g, 0); pad_flash(0xFFFFFF); }
     if (ui_button(x + 18 + bw + 8, y + 334, bw, 36, "Test rumble", B_NORMAL, 1)) pad_rumble_selected(g, c->ds_rumble, 350);
     if (ui_button(x + 18 + (bw + 8) * 2, y + 334, bw, 36, "Test speaker", B_NORMAL, 1)) {
         if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(0); } else launcher_toast("Speaker not found. Connect the controller with the USB cable.");
     }
     ui_text_wrap(F_REG, 12, x + 18, y + 386, lw - 36, C_DIM,
-                 "The speaker plays the game's own sound effect while the event happens, so you hear a coin or a clear from the controller. Rumble and light follow the choices on the right.", 3);
+                 g == GAME_SML2
+                     ? "SML2 has distinct pulse patterns for pickups, stomps, damage, power-ups, stars and endgame milestones. Rumble strength and each event toggle still apply."
+                     : "Enabled events can flash the DualSense lightbar, rumble the selected controller and play an event-specific alert tone through a supported controller speaker. Other compatible controllers can rumble too.", 3);
+#endif
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 476, "WHEN THIS HAPPENS");
     int n = events_count(g);
+    float row_h = n > 7 ? 35.0f : 46.0f;
     float tx[3] = {rw - 18 - 44 - 64 - 64 - 44 + 0, 0, 0};
     (void)tx;
     float c1 = rx + rw - 18 - 44 * 3 - 20 * 2 - 0, c2 = c1 + 64, c3 = c2 + 64;
@@ -1858,8 +2035,8 @@ static void sub_dualsense(int g, float x, float y)
     ui_text_c(F_BOLD, 11, c1 + 22, y + 40, C_MUTED, "LIGHT"); ui_text_c(F_BOLD, 11, c2 + 22, y + 40, C_MUTED, "RUMBLE"); ui_text_c(F_BOLD, 11, c3 + 22, y + 40, C_MUTED, "SPEAKER");
     for (int i = 0; i < n; i++) {
         const EventDef *d = events_def(g, i);
-        float ry = y + 62 + i * 46;
-        ui_rrect(rx + 10, ry - 3, rw - 20, 44, 8, RGBA(255, 255, 255, i % 2 ? 0 : 6));
+        float ry = y + 62 + i * row_h;
+        ui_rrect(rx + 10, ry - 3, rw - 20, row_h - 2, 8, RGBA(255, 255, 255, i % 2 ? 0 : 6));
         ui_rrect(rx + 18, ry + 8, 8, 24, 3, HEX(d->color));
         ui_text_fit(F_BOLD, 13, rx + 34, ry + 2, 150, C_TEXT, d->name);
         ui_text_fit(F_REG, 11, rx + 34, ry + 20, 150, C_DIM, d->desc);
@@ -1871,14 +2048,17 @@ static void sub_dualsense(int g, float x, float y)
                 *m = (*m & ~(1 << i)) | (v[k] << i);
             }
         }
-        if (ui_button(c3 + 52, ry + 6, 46, 30, "Try", B_GHOST, 1)) {
+        if (ui_button(c3 + 52, ry + (row_h < 40 ? 1 : 6), 46,
+                       row_h < 40 ? 28 : 30, "Try", B_GHOST, 1)) {
             pad_set_context(g, 0);
-            pad_flash(d->color);
-            pad_rumble_selected(g, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
-            if ((c->ds_ev_speaker >> i) & 1 || 1) { if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(d->beep ? d->beep : 0); } }
+            pad_event_preview(g, i);
+            if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(d->beep); }
         }
     }
-    ui_text_wrap(F_REG, 11, rx + 18, y + 62 + n * 46 + 8, rw - 36, C_DIM, "The Try button tries the light, rumble and speaker together.", 2);
+    ui_text_wrap(F_REG, 11, rx + 18, y + 62 + n * row_h + 8, rw - 36, C_DIM,
+                 g == GAME_SML2
+                     ? "Try previews this event's full pulse rhythm, lightbar sequence and speaker tone."
+                     : "Try previews the light, rumble and speaker together.", 2);
 }
 
 /* ------------------------------------------------------------------ game tab: Textures */
@@ -1984,6 +2164,210 @@ static void tab_filters(float x, float y)
 }
 
 /* ------------------------------------------------------------------ audio tab */
+/* ------------------------------------------------------------------ menu music playlist + animated preview */
+static void menu_music_title_from_path(const char *path, char *out, size_t n)
+{
+    const char *base;
+    size_t len, w = 0;
+    if (!out || !n) return;
+    out[0] = 0;
+    if (!path || !path[0]) {
+        snprintf(out, n, "PipeClean Chiptune");
+        return;
+    }
+    base = path_base(path);
+    if (!base || !base[0]) base = path;
+    len = strlen(base);
+    const char *dot = strrchr(base, '.');
+    if (dot && dot > base) len = (size_t)(dot - base);
+    for (size_t i = 0; i < len && w + 1 < n; i++) {
+        char ch = base[i];
+        if (ch == '_') ch = ' ';
+        out[w++] = ch;
+    }
+    out[w] = 0;
+    while (w && out[w - 1] == ' ') out[--w] = 0;
+    if (!w) snprintf(out, n, "Untitled track");
+}
+
+static void menu_music_notice_start(void)
+{
+    if (!settings.menu_music) return;
+    music_notice_serial++;
+    if (!music_notice_serial) music_notice_serial = 1;
+    music_notice_age = 0.0f;
+    music_notice_deferred = tab == TAB_AUDIO;
+    snprintf(music_notice_path, sizeof music_notice_path, "%s", settings.menu_music_path);
+}
+
+int launcher_music_notification_serial(void)
+{
+    /* If a track changed on Audio & Menu, wait until the user leaves that
+       page before exposing the new serial to the Android Companion Deck. */
+    if (tab != TAB_AUDIO && music_notice_age >= 0.0f && music_notice_age <= 2.75f)
+        music_notice_announced_serial = music_notice_serial;
+    return (int)music_notice_announced_serial;
+}
+
+int launcher_music_notification_allowed(void)
+{
+    return tab != TAB_AUDIO;
+}
+
+static void menu_music_set_builtin(void)
+{
+    settings.menu_music_path[0] = 0;
+    settings.menu_music = 1;
+    audio_menu_apply();
+    audio_menu_music(1);
+    audio_music_preview();
+    menu_music_notice_start();
+    settings_save();
+}
+
+void launcher_menu_music_select(int index)
+{
+    if (index < 0 || index >= settings.menu_playlist_count ||
+        index >= MAX_MENU_TRACKS || !settings.menu_playlist[index][0]) return;
+    settings.menu_playlist_selected = index;
+    snprintf(settings.menu_music_path, sizeof settings.menu_music_path, "%s",
+             settings.menu_playlist[index]);
+    settings.menu_music = 1;
+    audio_menu_apply();
+    audio_menu_music(1);
+    audio_music_preview();
+    menu_music_notice_start();
+    settings_save();
+}
+
+void launcher_menu_music_step(int delta)
+{
+    int count = settings.menu_playlist_count;
+    if (count <= 0) {
+        menu_music_set_builtin();
+        return;
+    }
+    int current = settings.menu_playlist_selected;
+    if (current < 0 || current >= count) current = 0;
+    current = (current + (delta < 0 ? -1 : 1) + count) % count;
+    launcher_menu_music_select(current);
+}
+
+void launcher_menu_music_toggle(void)
+{
+    settings.menu_music = !settings.menu_music;
+    audio_menu_apply();
+    audio_menu_music(1);
+    if (settings.menu_music) {
+        audio_music_preview();
+        menu_music_notice_start();
+    }
+    settings_save();
+}
+
+static void menu_playlist_add_path(const char *path)
+{
+    if (!path || !path[0]) return;
+    if (strlen(path) >= sizeof settings.menu_playlist[0]) {
+        launcher_toast("That music path is too long to save.");
+        return;
+    }
+    for (int i = 0; i < settings.menu_playlist_count && i < MAX_MENU_TRACKS; i++) {
+        if (!strcmp(settings.menu_playlist[i], path)) {
+            launcher_menu_music_select(i);
+            launcher_toast("That track is already in the playlist.");
+            return;
+        }
+    }
+    if (settings.menu_playlist_count >= MAX_MENU_TRACKS) {
+        launcher_toast("Playlist is full. Remove a track before adding another.");
+        return;
+    }
+    int i = settings.menu_playlist_count++;
+    snprintf(settings.menu_playlist[i], sizeof settings.menu_playlist[i], "%s", path);
+    menu_playlist_page = i / 3;
+    launcher_menu_music_select(i);
+    launcher_toast("Track added to the menu playlist.");
+}
+
+static void menu_playlist_remove_selected(void)
+{
+    int count = settings.menu_playlist_count;
+    int index = settings.menu_playlist_selected;
+    if (count <= 0 || index < 0 || index >= count) {
+        launcher_toast("Select a playlist track to remove.");
+        return;
+    }
+    for (int i = index; i + 1 < count; i++)
+        snprintf(settings.menu_playlist[i], sizeof settings.menu_playlist[i], "%s",
+                 settings.menu_playlist[i + 1]);
+    settings.menu_playlist[--count][0] = 0;
+    settings.menu_playlist_count = count;
+    if (count == 0) {
+        settings.menu_playlist_selected = 0;
+        menu_music_set_builtin();
+    } else {
+        if (index >= count) index = count - 1;
+        settings.menu_playlist_selected = index;
+        launcher_menu_music_select(index);
+    }
+    menu_playlist_page = count > 0 ? (count - 1) / 3 : 0;
+    settings_save();
+    launcher_toast("Track removed from the menu playlist.");
+}
+
+static void menu_music_notice_draw(float vx, float vy)
+{
+    if (music_notice_age < 0.0f || music_notice_age > 2.75f || tab == TAB_AUDIO)
+        return;
+#if defined(__ANDROID__)
+    if (settings.launcher_dual_screen) return;
+#endif
+    const float w = 330.0f, h = 66.0f;
+    const float in_time = 0.30f, out_start = 2.34f, out_time = 0.36f;
+    float offset = 0.0f;
+    if (music_notice_age < in_time) {
+        float p = music_notice_age / in_time;
+        float e = 1.0f - (1.0f - p) * (1.0f - p) * (1.0f - p);
+        offset = -w * (1.0f - e);
+    } else if (music_notice_age > out_start) {
+        float p = (music_notice_age - out_start) / out_time;
+        if (p > 1.0f) p = 1.0f;
+        float e = p * p * (3.0f - 2.0f * p);
+        offset = -w * e;
+    }
+    float x = vx + 16.0f + offset;
+    float y = vy + 98.0f;
+    char title[512];
+    menu_music_title_from_path(music_notice_path, title, sizeof title);
+    float cx = x + 36.0f, cy = y + h * 0.5f;
+    ui_shadow(x, y, w, h, 13.0f, 9.0f, RGBA(0, 0, 0, 115));
+    ui_rrect(x, y, w, h, 13.0f, RGBA(17, 23, 34, 245));
+    ui_stroke(x, y, w, h, 13.0f, 1.0f, RGBA(92, 111, 147, 230));
+    ui_rrect(cx - 24, cy - 24, 48, 48, 24, HEX(0x080A10));
+    ui_stroke(cx - 22, cy - 22, 44, 44, 22, 1, HEX(0x495166));
+    ui_stroke(cx - 16, cy - 16, 32, 32, 16, 1, HEX(0x30394C));
+    ui_stroke(cx - 10, cy - 10, 20, 20, 10, 1, HEX(0x30394C));
+    float angle = anim_clock * 5.2f;
+    ui_line(cx, cy, cx + cosf(angle) * 17.0f, cy + sinf(angle) * 17.0f,
+            2, HEX(0xE9C66D));
+    ui_rrect(cx - 6, cy - 6, 12, 12, 6, HEX(ui_accent));
+    ui_rrect(cx - 1.5f, cy - 1.5f, 3, 3, 1.5f, HEX(0x0A0D14));
+    ui_text(F_BOLD, 8, x + 68, y + 10, C_OK, "NOW PLAYING");
+    ui_text_fit(F_BOLD, 13, x + 68, y + 24, w - 82, C_TEXT, title);
+    ui_text_fit(F_REG, 9, x + 68, y + 45, w - 82, C_MUTED,
+                music_notice_path[0] ? "PipeClean menu playlist" : "PipeClean built-in menu music");
+}
+
+
+
+static void menu_playlist_import_dialog(void)
+{
+    char path[1100];
+    if (!dlg_pick(DLG_AUDIO, "Add a track to the menu playlist", path, sizeof path)) return;
+    menu_playlist_add_path(path);
+}
+
 static const char *sfx_names[N_UI_SFX] = {"Hover", "Click", "Confirm", "Back", "Toggle"};
 
 static void tab_audio(float x, float y)
@@ -2007,26 +2391,67 @@ static void tab_audio(float x, float y)
 
     card(x, y + 212, lw, 292, "MENU MUSIC");
     label(x + 18, y + 256, "Play music in the launcher");
-    if (ui_toggle(x + lw - 18 - 44, y + 252, &s->menu_music)) audio_menu_apply();
+    if (ui_toggle(x + lw - 18 - 44, y + 252, &s->menu_music)) {
+        audio_menu_apply();
+        audio_menu_music(1);
+        if (s->menu_music) {
+            audio_music_preview();
+            menu_music_notice_start();
+        }
+        settings_save();
+    }
     label(x + 18, y + 296, "Volume");
-    if (ui_slider(x + 100, y + 294, lw - 100 - 70, &s->menu_music_vol, 0, 100)) audio_menu_apply();
+    if (ui_slider(x + 100, y + 294, lw - 100 - 70, &s->menu_music_vol, 0, 100)) {
+        audio_menu_apply();
+        settings_save();
+    }
     snprintf(t, sizeof t, "%d%%", s->menu_music_vol); ui_text_r(F_REG, 13, x + lw - 18, y + 296, C_TEXT, t);
-    label(x + 18, y + 334, "Track");
-    path_box(x + 18, y + 356, lw - 36, s->menu_music_path, "Built-in chiptune");
-    float bw = (lw - 36 - 16) / 3;
-    if (ui_button(x + 18, y + 404, bw, 36, "Import…", B_NORMAL, 1)) {
-        char p[1100];
-        if (dlg_pick(DLG_AUDIO, "Choose a music file", p, sizeof p)) {
-            char old[512]; snprintf(old, sizeof old, "%s", s->menu_music_path);
-            snprintf(s->menu_music_path, sizeof s->menu_music_path, "%s", p);
-            audio_menu_apply();
-            if (!s->menu_music_path[0]) { launcher_toast("Couldn't read that audio file."); snprintf(s->menu_music_path, sizeof s->menu_music_path, "%s", old); audio_menu_apply(); }
-            else { audio_music_preview(); launcher_toast("Menu music changed."); }
+    ui_text(F_BOLD, 10, x + 18, y + 321, C_TEXT, "PLAYLIST");
+    snprintf(t, sizeof t, "%02d / %02d", s->menu_playlist_count, MAX_MENU_TRACKS);
+    ui_text_r(F_REG, 9, x + lw - 122, y + 322, C_DIM, t);
+    int max_page = s->menu_playlist_count > 0 ? (s->menu_playlist_count - 1) / 3 : 0;
+    if (menu_playlist_page > max_page) menu_playlist_page = max_page;
+    if (menu_playlist_page < 0) menu_playlist_page = 0;
+    if (ui_button(x + lw - 92, y + 316, 36, 21, "Prev", B_GHOST, max_page > 0))
+        menu_playlist_page = (menu_playlist_page + max_page) % (max_page + 1);
+    if (ui_button(x + lw - 50, y + 316, 32, 21, "Next", B_GHOST, max_page > 0))
+        menu_playlist_page = (menu_playlist_page + 1) % (max_page + 1);
+
+    for (int row = 0; row < 3; row++) {
+        int index = menu_playlist_page * 3 + row;
+        float ry = y + 340 + row * 24.0f;
+        if (index < s->menu_playlist_count && index < MAX_MENU_TRACKS) {
+            char title[512];
+            menu_music_title_from_path(s->menu_playlist[index], title, sizeof title);
+            int active = s->menu_music_path[0] && !strcmp(s->menu_music_path, s->menu_playlist[index]);
+            if (ui_button(x + 18, ry, lw - 36, 22, title,
+                          active ? B_PRIMARY : B_GHOST, 1))
+                launcher_menu_music_select(index);
+        } else {
+            ui_rrect(x + 18, ry, lw - 36, 22, 6, HEX(0x171D2A));
+            ui_text_fit(F_REG, 9, x + 28, ry + 5, lw - 56, C_DIM,
+                        s->menu_playlist_count ? "Empty playlist slot" : "Add a WAV, MP3, OGG or FLAC track");
         }
     }
-    if (ui_button(x + 18 + bw + 8, y + 404, bw, 36, "Built-in", B_GHOST, s->menu_music_path[0] != 0)) { s->menu_music_path[0] = 0; audio_menu_apply(); }
-    if (ui_button(x + 18 + (bw + 8) * 2, y + 404, bw, 36, "Restart", B_GHOST, 1)) audio_music_preview();
-    ui_text_wrap(F_REG, 12, x + 18, y + 456, lw - 36, C_DIM, "WAV, MP3, OGG or FLAC. It loops while you are in the launcher and stops when a game starts. You can also drop a file onto this tab.", 3);
+
+    float action_w = (lw - 36 - 18) / 4.0f;
+    float action_y = y + 421;
+    if (ui_button(x + 18, action_y, action_w, 28, "Add track", B_NORMAL, 1))
+        menu_playlist_import_dialog();
+    if (ui_button(x + 18 + action_w + 6, action_y, action_w, 28, "Remove", B_GHOST,
+                  s->menu_playlist_count > 0))
+        menu_playlist_remove_selected();
+    if (ui_button(x + 18 + (action_w + 6) * 2, action_y, action_w, 28, "Built-in", B_GHOST,
+                  s->menu_music_path[0] != 0))
+        menu_music_set_builtin();
+    if (ui_button(x + 18 + (action_w + 6) * 3, action_y, action_w, 28, "Restart", B_GHOST, 1)) {
+        settings.menu_music = 1;
+        audio_menu_apply();
+        audio_music_preview();
+        audio_menu_music(1);
+        menu_music_notice_start();
+        settings_save();
+    }
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 504, "INTERFACE SOUNDS");
@@ -2535,8 +2960,1506 @@ static void tab_online(float x, float y)
                 np.status[0] ? np.status : "Not connected");
 }
 
+
+#if defined(__ANDROID__) || defined(PIPECLEAN_DEV_BUILD)
+/* Companion Deck layout editor. Wario built-ins have independent transform
+ * layers alongside user-added image decorations. */
+enum {
+    DECK_PICK_BACKGROUND = 1, DECK_PICK_BUTTON_TEXTURE, DECK_PICK_ITEM_TEXTURE,
+    DECK_PICK_DECORATION, DECK_PICK_SOUND_SAVE, DECK_PICK_SOUND_LOAD,
+    DECK_PICK_SOUND_PAUSE, DECK_PICK_SOUND_REWIND, DECK_PICK_SOUND_BACKGROUND,
+    DECK_PICK_SOUND_CLOSE, DECK_PICK_ITEM_SOUND, DECK_PICK_EMPTY_SOUND,
+    DECK_PICK_IMPORT, DECK_PICK_EXPORT,
+    DECK_PICK_ITEM_MUSHROOM = 15, DECK_PICK_ITEM_SPECIAL = 16,
+    DECK_PICK_ITEM_CARROT = 17,
+    DECK_PICK_HEADER_TEXTURE = 18, DECK_PICK_STATUS_TEXTURE = 19,
+    DECK_PICK_BUTTON_SAVE_TEXTURE = 20, DECK_PICK_BUTTON_LOAD_TEXTURE = 21,
+    DECK_PICK_BUTTON_PAUSE_TEXTURE = 22, DECK_PICK_BUTTON_REWIND_TEXTURE = 23,
+    DECK_PICK_BUTTON_BACKGROUND_TEXTURE = 24, DECK_PICK_BUTTON_CLOSE_TEXTURE = 25
+};
+enum {
+    DECK_ELEM_HEADER, DECK_ELEM_ITEM, DECK_ELEM_CONTROLS, DECK_ELEM_TIMELINE,
+    DECK_ELEM_STATUS, DECK_ELEM_DECORATION, DECK_ELEM_DECORATION_2, DECK_ELEM_DECORATION_3,
+    DECK_ELEM_DECORATION_4, DECK_ELEM_DECORATION_5, DECK_ELEM_DECORATION_6,
+    DECK_ELEM_DECORATION_7, DECK_ELEM_DECORATION_8, DECK_ELEM_DECORATION_9,
+    DECK_ELEM_DECORATION_10, DECK_ELEM_DECORATION_11, DECK_ELEM_DECORATION_12,
+    DECK_ELEM_DECORATION_13, DECK_ELEM_DECORATION_14, DECK_ELEM_DECORATION_15,
+    DECK_ELEM_DECORATION_16, N_DECK_ELEM
+};
+static const char *deck_element_names[N_DECK_ELEM] = {
+    "Header", "Reserve item", "Control buttons", "Save timeline", "Adventure status",
+    "Decoration 1", "Decoration 2", "Decoration 3", "Decoration 4",
+    "Decoration 5", "Decoration 6", "Decoration 7", "Decoration 8",
+    "Decoration 9", "Decoration 10", "Decoration 11", "Decoration 12",
+    "Decoration 13", "Decoration 14", "Decoration 15", "Decoration 16"
+};
+static int companion_editor_pending_decoration_slot;
+static char *deck_decoration_path(CompanionLayoutCfg *d, int slot)
+{
+    if (!d || slot < 0 || slot >= N_DECK_DECORATIONS) return NULL;
+    return slot == 0 ? d->decoration_path : d->decoration_extra_path[slot - 1];
+}
+static const char *deck_decoration_path_const(const CompanionLayoutCfg *d, int slot)
+{
+    if (!d || slot < 0 || slot >= N_DECK_DECORATIONS) return "";
+    return slot == 0 ? d->decoration_path : d->decoration_extra_path[slot - 1];
+}
+static int deck_decoration_asset_index(int slot)
+{
+    if (slot < 0 || slot >= N_DECK_DECORATIONS) return -1;
+    if (slot == 0) return 3;                 /* legacy first decoration */
+    if (slot <= 7) return 20 + slot;         /* stable indices 21..27 */
+    return 22 + slot;                        /* new layers occupy indices 30..37 */
+}
+static int companion_editor_open, companion_editor_page;
+static int companion_editor_game = GAME_SML;
+static int companion_editor_element = DECK_ELEM_CONTROLS;
+static int companion_editor_preview_item = 1;
+static int companion_editor_sound_selection;
+static int companion_editor_dragging, companion_editor_resizing;
+static float companion_editor_last_x, companion_editor_last_y;
+static float companion_editor_drag_residual_x, companion_editor_drag_residual_y;
+static int companion_editor_preview_hover;
+static CompanionLayoutCfg companion_undo[16], companion_redo[16];
+static int companion_undo_count, companion_redo_count;
+
+static int deck_game_ready(int game)
+{
+    return game == GAME_DRMARIO || game == GAME_SML || game == GAME_SML2 ||
+           game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
+           game == GAME_WARIO_LAND3_GBC || game == GAME_WARIO_LAND2_GBC;
+}
+#define DECK_WARIO_BUILTIN_SLOTS 4
+static int deck_editor_is_wario_game(int game)
+{
+    return game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND3_GBC ||
+           game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC;
+}
+static int deck_editor_first_decoration_slot(int game)
+{
+    return deck_editor_is_wario_game(game) ? DECK_WARIO_BUILTIN_SLOTS : 0;
+}
+static const char *deck_editor_element_label(int element)
+{
+    if (deck_editor_is_wario_game(companion_editor_game)) {
+        if (element == DECK_ELEM_DECORATION) return "Treasure Vault";
+        if (element == DECK_ELEM_DECORATION_2)
+            return companion_editor_game == GAME_WARIO_SML3 ? "Current Course" :
+                   companion_editor_game == GAME_WARIO_LAND3_GBC ? "Four Keys" : "Picture Panel";
+        if (element == DECK_ELEM_DECORATION_3) return "Expedition Log";
+        if (element == DECK_ELEM_DECORATION_4) return "Gold Pile";
+    }
+    return (element >= 0 && element < N_DECK_ELEM) ? deck_element_names[element] : "Layer";
+}
+
+static void deck_layout_defaults(CompanionLayoutCfg *d)
+{
+    if (!d) return;
+    memset(d, 0, sizeof *d);
+    d->header_scale = d->item_scale = d->controls_scale =
+        d->timeline_scale = d->status_scale = d->decoration_scale = 100;
+    for (int i = 0; i < N_DECK_DECORATIONS - 1; i++) d->decoration_extra_scale[i] = d->decoration_extra_scale_y[i] = 100;
+d->header_scale_y = d->item_scale_y = d->controls_scale_y = d->timeline_scale_y = d->status_scale_y = d->decoration_scale_y = 100;
+    d->sounds_enabled = 1;
+}
+
+static void deck_editor_history_clear(void)
+{
+    companion_undo_count = companion_redo_count = 0;
+    companion_editor_dragging = companion_editor_resizing = 0;
+}
+
+static void deck_editor_push(CompanionLayoutCfg stack[16], int *count,
+                             const CompanionLayoutCfg *d)
+{
+    if (*count >= 16) {
+        memmove(stack, stack + 1, 15 * sizeof stack[0]);
+        *count = 15;
+    }
+    stack[(*count)++] = *d;
+}
+
+static void deck_editor_snapshot(void)
+{
+    if (companion_editor_game < 0 || companion_editor_game >= N_GAMES) return;
+    deck_editor_push(companion_undo, &companion_undo_count,
+                     &settings.deck_layout[companion_editor_game]);
+    companion_redo_count = 0;
+}
+
+static int *deck_element_x(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_dx;
+    case DECK_ELEM_ITEM: return &d->item_dx;
+    case DECK_ELEM_CONTROLS: return &d->controls_dx;
+    case DECK_ELEM_TIMELINE: return &d->timeline_dx;
+    case DECK_ELEM_STATUS: return &d->status_dx;
+    case DECK_ELEM_DECORATION: return &d->decoration_dx;
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
+        ? &d->decoration_extra_dx[element - DECK_ELEM_DECORATION_2] : &d->decoration_dx;
+    }
+}
+static int *deck_element_y(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_dy;
+    case DECK_ELEM_ITEM: return &d->item_dy;
+    case DECK_ELEM_CONTROLS: return &d->controls_dy;
+    case DECK_ELEM_TIMELINE: return &d->timeline_dy;
+    case DECK_ELEM_STATUS: return &d->status_dy;
+    case DECK_ELEM_DECORATION: return &d->decoration_dy;
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
+        ? &d->decoration_extra_dy[element - DECK_ELEM_DECORATION_2] : &d->decoration_dy;
+    }
+}
+static int *deck_element_scale(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_scale;
+    case DECK_ELEM_ITEM: return &d->item_scale;
+    case DECK_ELEM_CONTROLS: return &d->controls_scale;
+    case DECK_ELEM_TIMELINE: return &d->timeline_scale;
+    case DECK_ELEM_STATUS: return &d->status_scale;
+    case DECK_ELEM_DECORATION: return &d->decoration_scale;
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
+        ? &d->decoration_extra_scale[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale;
+    }
+}
+
+static int *deck_element_scale_y(CompanionLayoutCfg *d, int element)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: return &d->header_scale_y;
+    case DECK_ELEM_ITEM: return &d->item_scale_y;
+    case DECK_ELEM_CONTROLS: return &d->controls_scale_y;
+    case DECK_ELEM_TIMELINE: return &d->timeline_scale_y;
+    case DECK_ELEM_STATUS: return &d->status_scale_y;
+    case DECK_ELEM_DECORATION: return &d->decoration_scale_y;
+    default: return element >= DECK_ELEM_DECORATION_2 && element < N_DECK_ELEM
+        ? &d->decoration_extra_scale_y[element - DECK_ELEM_DECORATION_2] : &d->decoration_scale_y;
+    }
+}
+
+#define DECK_EDITOR_THOR_H (800.0f * 27.0f / 31.0f)
+
+static void deck_editor_element_base(int element, float *x, float *y, float *w, float *h)
+{
+    switch (element) {
+    case DECK_ELEM_HEADER: *x=18; *y=7; *w=764; *h=49; break;
+    case DECK_ELEM_ITEM:
+        if (companion_editor_game == GAME_DRMARIO) { *x=20; *y=78; *w=358; *h=304; }
+        else if (companion_editor_game == GAME_WARIO_SML3 ||
+                 companion_editor_game == GAME_WARIO_LAND3_GBC ||
+                 companion_editor_game == GAME_WARIO_LAND2_GB ||
+                 companion_editor_game == GAME_WARIO_LAND2_GBC) {
+            *x=350; *y=208; *w=100; *h=100;
+        } else { *x=300; *y=155; *w=200; *h=200; }
+        break;
+    case DECK_ELEM_CONTROLS: *x=20; *y=420; *w=760; *h=48; break;
+    case DECK_ELEM_TIMELINE: *x=20; *y=510; *w=760; *h=DECK_EDITOR_THOR_H-520.0f; break;
+    case DECK_ELEM_STATUS:
+        if (companion_editor_game == GAME_DRMARIO) { *x=397; *y=78; *w=383; *h=304; }
+        else if (companion_editor_game == GAME_WARIO_SML3) { *x=485; *y=78; *w=295; *h=138; }
+        else if (companion_editor_game == GAME_WARIO_LAND3_GBC ||
+                 companion_editor_game == GAME_WARIO_LAND2_GB ||
+                 companion_editor_game == GAME_WARIO_LAND2_GBC) { *x=485; *y=300; *w=295; *h=110; }
+        else { *x=606; *y=136; *w=174; *h=242; }
+        break;
+    default:
+        if (deck_editor_is_wario_game(companion_editor_game) &&
+            element >= DECK_ELEM_DECORATION && element <= DECK_ELEM_DECORATION_4) {
+            int slot = element - DECK_ELEM_DECORATION;
+            if (slot == 0) { *x=20; *y=78; *w=295; *h=138; }
+            else if (slot == 1 && companion_editor_game == GAME_WARIO_SML3) {
+                *x=485; *y=300; *w=295; *h=110;
+            } else if (slot == 1) { *x=485; *y=78; *w=295; *h=138; }
+            else if (slot == 2) { *x=20; *y=300; *w=295; *h=110; }
+            else { *x=32; *y=DECK_EDITOR_THOR_H-125; *w=736; *h=130; }
+        } else if (element >= DECK_ELEM_DECORATION && element < N_DECK_ELEM) {
+            static const float bx[N_DECK_DECORATIONS]={280,20,610,315,26,634,190,488,26,675,195,565,40,695,315,495};
+            static const float by[N_DECK_DECORATIONS]={150,78,78,295,218,218,95,285,135,135,410,410,35,35,190,190};
+            static const float bw[N_DECK_DECORATIONS]={240,170,170,170,140,140,122,122,100,100,100,100,95,95,112,112};
+            static const float bh[N_DECK_DECORATIONS]={135,115,115,115,90,90,84,84,68,68,68,68,64,64,72,72};
+            int slot=element-DECK_ELEM_DECORATION;
+            *x=bx[slot]; *y=by[slot]; *w=bw[slot]; *h=bh[slot];
+        } else { *x=400; *y=250; *w=112; *h=74; }
+        break;
+    }
+}
+static void deck_editor_element_anchor(int element, float *cx, float *cy)
+{
+    *cx=400.0f; *cy=34.0f;
+    switch(element) {
+    case DECK_ELEM_HEADER: *cx=400; *cy=34; break;
+    case DECK_ELEM_ITEM:
+        if (companion_editor_game==GAME_DRMARIO) { *cx=199; *cy=228; }
+        else if (companion_editor_game==GAME_WARIO_SML3 ||
+                 companion_editor_game==GAME_WARIO_LAND2_GB ||
+                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=400; *cy=258; }
+        else { *cx=400; *cy=255; }
+        break;
+    case DECK_ELEM_CONTROLS: *cx=400; *cy=444; break;
+    case DECK_ELEM_TIMELINE: *cx=400; *cy=596; break;
+    case DECK_ELEM_STATUS:
+        if (companion_editor_game==GAME_DRMARIO) { *cx=590; *cy=230; }
+        else if (companion_editor_game==GAME_WARIO_SML3) { *cx=633; *cy=147; }
+        else if (companion_editor_game==GAME_WARIO_LAND2_GB ||
+                 companion_editor_game==GAME_WARIO_LAND2_GBC) { *cx=633; *cy=355; }
+        else { *cx=690; *cy=255; }
+        break;
+    default: break;
+    }
+}
+
+static void deck_editor_element_rect(CompanionLayoutCfg *d, int element,
+                                     float px, float py, float pw, float ph,
+                                     float *rx, float *ry, float *rw, float *rh)
+{
+    float x,y,w,h,cx,cy;
+    deck_editor_element_base(element,&x,&y,&w,&h);
+    deck_editor_element_anchor(element,&cx,&cy);
+    if (element >= DECK_ELEM_DECORATION) { cx=x+w*.5f; cy=y+h*.5f; }
+    float sx=(float)*deck_element_scale(d,element)/100.f;
+    float sy=(float)*deck_element_scale_y(d,element)/100.f;
+    float dx=(float)*deck_element_x(d,element);
+    float dy=(float)*deck_element_y(d,element)*(DECK_EDITOR_THOR_H/450.f);
+    x=cx+(x-cx)*sx+dx; y=cy+(y-cy)*sy+dy;
+    *rx=px+x*(pw/800.f); *ry=py+y*(ph/DECK_EDITOR_THOR_H);
+    *rw=w*(pw/800.f)*sx; *rh=h*(ph/DECK_EDITOR_THOR_H)*sy;
+}
+
+static const char *deck_editor_preview_asset_path(const CompanionLayoutCfg *d, int index)
+{
+    if (!d) return "";
+    if (index == 0) return d->background_path;
+    if (index == 1) return d->button_texture_path;
+    if (index == 2) return d->item_texture_path;
+    if (index == 3) return d->decoration_path;
+    if (index >= 12 && index <= 14) return d->item_texture_by_id[index - 11];
+    if (index == 15) return d->header_texture_path;
+    if (index == 16) return d->status_texture_path;
+    if (index >= 17 && index <= 20) return d->button_texture_by_action[index - 17];
+    if (index >= 21 && index < 28) return d->decoration_extra_path[index - 21];
+    if (index == 28) return d->button_texture_by_action[4];
+    if (index == 29) return d->button_texture_by_action[5];
+    if (index >= 30 && index < N_DECK_ASSET_PATHS) return d->decoration_extra_path[index - 23];
+    return "";
+}
+
+static void deck_editor_preview_asset(const CompanionLayoutCfg *d, int asset_index,
+                                     const char *path, float x, float y, float w, float h)
+{
+    if (!path || !path[0] || w <= 0 || h <= 0) return;
+    if (d && asset_index >= 0 && asset_index < N_DECK_ASSET_PATHS &&
+        d->asset_stretch[asset_index])
+        ui_image_file_stretch(path, x, y, w, h);
+    else
+        ui_image_file_fit(path, x, y, w, h);
+}
+
+static void deck_editor_preview_card(float x,float y,float w,float h,int game,const char *title)
+{
+    uint32_t fill=game==GAME_DRMARIO?RGBA(236,249,247,245):game==GAME_SML?RGBA(35,57,43,242):game==GAME_SML2?RGBA(53,35,66,242):RGBA(36,53,76,242);
+    uint32_t edge=game==GAME_DRMARIO?RGBA(21,157,173,230):game==GAME_SML?RGBA(128,169,81,230):RGBA(189,133,55,230);
+    ui_rrect(x,y,w,h,6,fill); ui_stroke(x,y,w,h,6,.8f,edge);
+    ui_rect(x+9,y+8,fmaxf(4.f,w-18),2.f,edge);
+    ui_text_fit(F_BOLD,5.5f,x+9,y+14,w-18,game==GAME_DRMARIO?RGBA(60,91,104,255):RGBA(214,203,179,255),title);
+}
+static void deck_editor_preview_emblem(float cx,float cy,float size)
+{
+    ui_rrect(cx-size,cy-size,size*2,size*2,size,RGBA(67,42,18,180));
+    ui_stroke(cx-size+3,cy-size+3,size*2-6,size*2-6,size,1.1f,RGBA(255,214,107,255));
+    ui_rrect(cx-size*.55f,cy-size*.18f,size*1.1f,size*.65f,5,RGBA(142,79,34,255));
+    ui_rrect(cx-size*.55f,cy-size*.46f,size*1.1f,size*.48f,5,RGBA(199,129,52,255));
+    ui_rect(cx-size*.07f,cy-size*.45f,size*.14f,size*.9f,RGBA(255,214,107,255));
+    ui_rrect(cx-size*.12f,cy-size*.05f,size*.24f,size*.24f,size*.12f,RGBA(255,241,181,255));
+}
+static void deck_editor_preview_gold_pile(CompanionLayoutCfg *d,float x,float y,float w,float h)
+{
+    float rx,ry,rw,rh;
+    deck_editor_element_rect(d,DECK_ELEM_DECORATION_4,x,y,w,h,&rx,&ry,&rw,&rh);
+    const int columns=39,center=columns/2;
+    int drawn=0;
+    for(int row=0;row<14 && drawn<180;row++){
+        for(int dist=0;dist<=center && drawn<180;dist++){
+            for(int side=dist==0?0:-1;side<=1 && drawn<180;side+=2){
+                if(dist==0 && side==1)continue;
+                int col=center+side*dist;
+                if(col<0 || col>=columns)continue;
+                float norm=fabsf((float)(col-center)/(float)center);
+                int wobble=((col*7+row*11)%5)-2;
+                int stack=3+(int)lroundf((1.f-norm)*10.f)+wobble;
+                if(stack<2)stack=2;
+                if(row>=stack)continue;
+                float cx=rx+rw*(.055f+col*.0235f);
+                float coinw=rw*.028f, coinh=rh*.055f;
+                float cy=ry+rh-coinh*.55f-row*rh*.047f;
+                ui_rrect(cx-coinw*.5f+rw*.003f,cy-coinh*.35f,coinw,coinh,coinh*.48f,RGBA(78,42,7,115));
+                ui_rrect(cx-coinw*.5f,cy-coinh*.5f,coinw,coinh,coinh*.48f,RGBA(184,108,18,245));
+                ui_stroke(cx-coinw*.5f,cy-coinh*.5f,coinw,coinh,coinh*.48f,.65f,RGBA(255,211,96,235));
+                ui_rect(cx-coinw*.28f,cy-coinh*.25f,coinw*.25f,coinh*.16f,RGBA(255,244,172,220));
+                drawn++;
+            }
+        }
+    }
+}
+
+static void deck_editor_preview_collection(float x,float y,float w,float h,int game,const char *title,int pieces)
+{
+    deck_editor_preview_card(x,y,w,h,game,title);
+    ui_text_fit(F_BOLD,5.0f,x+w*.035f,y+h*.20f,w*.93f,RGBA(255,224,164,255),
+                pieces?"00 / 50 PICTURE PIECES":"00 / 50 TREASURES");
+    ui_rrect(x+w*.035f,y+h*.29f,w*.93f,fmaxf(2.f,h*.035f),2,RGBA(70,53,34,255));
+    float stepx=w*.093f,stepy=h*.105f;
+    float dot=fmaxf(1.5f,fminf(w*.016f,h*.035f));
+    for(int i=0;i<50;i++){
+        float cx=x+w*.035f+stepx*((i%10)+.5f);
+        float cy=y+h*.39f+stepy*((i/10)+.5f);
+        if(pieces)ui_rrect(cx-dot*.5f,cy-dot*.5f,dot,dot,1,RGBA(119,94,64,220));
+        else ui_rrect(cx-dot*.5f,cy-dot*.5f,dot,dot,dot*.5f,RGBA(143,95,43,255));
+    }
+}
+static void deck_editor_preview_log(float x,float y,float w,float h,int game,int wario2)
+{
+    deck_editor_preview_card(x,y,w,h,game,"EXPEDITION LOG");
+    const char *rows[4]={wario2?"TREASURE VAULT READY":"COURSE ENTRY RECORDED",wario2?"PICTURE PANEL  00 / 50":"COIN BANK  SYNCED","SAVE STATE TIMELINE LINKED","CURRENT RUN MONITORED"};
+    float gap=h*.15f, row_y=y+h*.34f;
+    float dot=fmaxf(1.5f,fminf(w*.018f,h*.055f));
+    float font=fmaxf(3.8f,fminf(5.2f,h*.105f));
+    for(int i=0;i<4;i++){
+        float ry=row_y+i*gap;
+        ui_rrect(x+w*.04f,ry+2,dot,dot,dot*.5f,i==0?RGBA(255,200,87,255):RGBA(184,170,149,255));
+        ui_text_fit(F_REG,font,x+w*.11f,ry,w*.84f,i==0?RGBA(255,223,165,255):RGBA(190,186,176,255),rows[i]);
+    }
+}
+
+static void deck_editor_preview(CompanionLayoutCfg *d, float x, float y, float w, float h)
+{
+    int game=companion_editor_game;
+    int wario=game==GAME_WARIO_SML3;
+    int wario3=game==GAME_WARIO_LAND3_GBC;
+    int wario2=game==GAME_WARIO_LAND2_GB||game==GAME_WARIO_LAND2_GBC;
+    int dr_mario=game==GAME_DRMARIO;
+    ui_shadow(x,y,w,h,11,5,RGBA(0,0,0,110)); ui_rrect(x,y,w,h,10,RGBA(12,20,34,255));
+    ui_vgrad(x+2,y+2,w-4,h-4,dr_mario?RGBA(218,239,237,255):game==GAME_SML?RGBA(52,87,62,255):game==GAME_SML2?RGBA(67,49,88,255):RGBA(72,52,30,255),RGBA(16,22,38,255));
+    ui_clip(x+2,y+2,w-4,h-4); deck_editor_preview_asset(d,0,d->background_path,x+2,y+2,w-4,h-4);
+    if(wario || wario2 || wario3) deck_editor_preview_gold_pile(d,x,y,w,h);
+
+    if(wario || wario2 || wario3){
+        float vx,vy,vw,vh,ax,ay,aw,ah,lx,ly,lw,lh;
+        deck_editor_element_rect(d,DECK_ELEM_DECORATION,x,y,w,h,&vx,&vy,&vw,&vh);
+        if(wario){
+            deck_editor_preview_card(vx,vy,vw,vh,game,"TREASURE VAULT");
+            ui_text_fit(F_BOLD,5.0f,vx+vw*.045f,vy+vh*.34f,vw*.91f,RGBA(255,224,164,255),"00 / 15 TREASURES");
+            ui_rrect(vx+vw*.045f,vy+vh*.42f,vw*.91f,fmaxf(2.f,vh*.035f),2,RGBA(70,53,34,255));
+            for(int i=0;i<15;i++)ui_rrect(vx+vw*(.06f+i*.062f),vy+vh*.82f,vw*.025f,vh*.055f,3,RGBA(143,95,43,255));
+            deck_editor_element_rect(d,DECK_ELEM_DECORATION_2,x,y,w,h,&ax,&ay,&aw,&ah);
+            deck_editor_preview_card(ax,ay,aw,ah,game,"CURRENT COURSE");
+            ui_text_fit(F_BOLD,7.0f,ax+aw*.05f,ay+ah*.39f,aw*.9f,RGBA(255,200,87,255),"COURSE --");
+            ui_text_fit(F_REG,5.0f,ax+aw*.05f,ay+ah*.60f,aw*.9f,RGBA(255,241,212,255),"COIN BANK -----");
+            ui_text_fit(F_REG,4.5f,ax+aw*.05f,ay+ah*.81f,aw*.9f,RGBA(184,170,149,255),"COURSE IN PROGRESS");
+        } else if (wario3) {
+            deck_editor_preview_card(vx,vy,vw,vh,game,"TREASURE VAULT");
+            ui_text_fit(F_BOLD,5.0f,vx+vw*.045f,vy+vh*.34f,vw*.91f,RGBA(255,224,164,255),"00 / 100 TREASURES");
+            ui_rrect(vx+vw*.045f,vy+vh*.42f,vw*.91f,fmaxf(2.f,vh*.035f),2,RGBA(70,53,34,255));
+            for(int i=0;i<100;i++) {
+                int row=i/20,col=i%20;
+                float dotw=vw*.91f/20.f;
+                ui_rrect(vx+vw*.045f+col*dotw+1.f,vy+vh*.57f+row*vh*.058f,
+                         fmaxf(1.0f,dotw-2.f),fmaxf(1.2f,vh*.032f),1.2f,
+                         i<22?RGBA(255,214,107,230):RGBA(73,58,42,255));
+            }
+            deck_editor_element_rect(d,DECK_ELEM_DECORATION_2,x,y,w,h,&ax,&ay,&aw,&ah);
+            deck_editor_preview_card(ax,ay,aw,ah,game,"THE FOUR KEYS");
+            for(int key=0;key<4;key++) {
+                float step=aw*.205f,cx=ax+aw*(.145f+key*.235f),cy=ay+ah*.48f,sz=fminf(aw*.09f,ah*.23f);
+                uint32_t kc=key==0?RGBA(201,209,216,255):key==1?RGBA(255,98,103,255):key==2?RGBA(98,215,131,255):RGBA(93,159,255,255);
+                /* Show one collected example and keep the other three greyed out. */
+                if(key>0)kc=RGBA(87,83,77,255);
+                float ringY=cy-sz*.23f;
+                ui_rrect(cx-sz*.25f,ringY-sz*.25f,sz*.5f,sz*.5f,sz*.25f,RGBA(36,27,21,255));
+                ui_rrect(cx-sz*.19f,ringY-sz*.19f,sz*.38f,sz*.38f,sz*.19f,kc);
+                ui_rrect(cx-sz*.075f,ringY-sz*.075f,sz*.15f,sz*.15f,sz*.075f,RGBA(38,29,22,255));
+                ui_rrect(cx-sz*.07f,ringY+sz*.12f,sz*.14f,sz*.55f,sz*.035f,RGBA(36,27,21,255));
+                ui_rrect(cx-sz*.035f,ringY+sz*.13f,sz*.07f,sz*.51f,sz*.025f,kc);
+                ui_rrect(cx-sz*.02f,cy+sz*.12f,sz*.23f,sz*.09f,sz*.025f,kc);
+                ui_rrect(cx-sz*.02f,cy+sz*.28f,sz*.17f,sz*.09f,sz*.025f,kc);
+                ui_text_fit(F_BOLD,4.2f,cx-step*.46f,ay+ah*.82f,step*.92f,
+                            key==0?RGBA(201,209,216,255):RGBA(160,151,139,255),
+                            key==0?"GRAY":key==1?"RED":key==2?"GREEN":"BLUE");
+            }
+        } else {
+            deck_editor_preview_collection(vx,vy,vw,vh,game,"TREASURE VAULT",0);
+            deck_editor_element_rect(d,DECK_ELEM_DECORATION_2,x,y,w,h,&ax,&ay,&aw,&ah);
+            deck_editor_preview_collection(ax,ay,aw,ah,game,"PICTURE PANEL",1);
+        }
+        deck_editor_element_rect(d,DECK_ELEM_DECORATION_3,x,y,w,h,&lx,&ly,&lw,&lh);
+        deck_editor_preview_log(lx,ly,lw,lh,game,wario2);
+        if (wario3) {
+            float sx,sy,sw,sh;
+            deck_editor_element_rect(d,DECK_ELEM_STATUS,x,y,w,h,&sx,&sy,&sw,&sh);
+            deck_editor_preview_card(sx,sy,sw,sh,game,"COURSE TRACKER");
+            ui_text_fit(F_BOLD,6.5f,sx+sw*.05f,sy+sh*.40f,sw*.90f,
+                        RGBA(255,214,107,255),"COURSE --  •  DAY");
+            ui_text_fit(F_REG,5.2f,sx+sw*.05f,sy+sh*.60f,sw*.90f,
+                        RGBA(255,241,212,255),"COINS ---  /  MUSIC COINS -- / 8");
+            ui_text_fit(F_REG,4.5f,sx+sw*.05f,sy+sh*.80f,sw*.90f,
+                        RGBA(184,170,149,255),"COURSE IN PROGRESS");
+        }
+    } else if(!dr_mario){
+        deck_editor_preview_card(x+w*20/800.f,y+h*70/DECK_EDITOR_THOR_H,w*210/800.f,h*50/DECK_EDITOR_THOR_H,game,"LIVES");
+        ui_text_fit(F_BOLD,6.5f,x+w*32/800.f,y+h*94/DECK_EDITOR_THOR_H,w*186/800.f,RGBA(250,240,220,255),"x 03");
+        deck_editor_preview_card(x+w*244/800.f,y+h*70/DECK_EDITOR_THOR_H,w*320/800.f,h*50/DECK_EDITOR_THOR_H,game,game==GAME_SML?"WORLD / LEVEL":"CURRENT STAGE");
+        ui_text_fit(F_BOLD,6.5f,x+w*258/800.f,y+h*94/DECK_EDITOR_THOR_H,w*290/800.f,RGBA(255,214,107,255),game==GAME_SML?"WORLD 1 - 1":"STAGE 01");
+        deck_editor_preview_card(x+w*578/800.f,y+h*70/DECK_EDITOR_THOR_H,w*202/800.f,h*50/DECK_EDITOR_THOR_H,game,"SESSION");
+        ui_text_fit(F_BOLD,6.5f,x+w*592/800.f,y+h*94/DECK_EDITOR_THOR_H,w*174/800.f,RGBA(250,240,220,255),"IN PLAY");
+    }
+
+    /* The header and its quick actions share one transform. */
+    {
+        float sx=(float)(d->header_scale>0?d->header_scale:100)/100.f, sy=(float)(d->header_scale_y>0?d->header_scale_y:100)/100.f;
+        float dx=d->header_dx,dy=d->header_dy*(DECK_EDITOR_THOR_H/450.f);
+        float hx=400+(18-400)*sx+dx,hy=34+(7-34)*sy+dy,hw=390*sx,hh=49*sy;
+        float rx=x+w*hx/800.f,ry=y+h*hy/DECK_EDITOR_THOR_H,rw=w*hw/800.f,rh=h*hh/DECK_EDITOR_THOR_H;
+        ui_rrect(rx,ry,rw,rh,5,RGBA(28,40,58,210));deck_editor_preview_asset(d,15,d->header_texture_path,rx+1,ry+1,rw-2,rh-2);
+        float tx=x+w*(400+(27-400)*sx+dx)/800.f,top=y+h*(34+(22-34)*sy+dy)/DECK_EDITOR_THOR_H,titley=y+h*(34+(42-34)*sy+dy)/DECK_EDITOR_THOR_H;
+        ui_text_fit(F_BOLD,6.8f,tx,top,rw-14,RGBA(127,220,236,255),dr_mario?"PIPE CLEAN / MEDICAL DECK":wario?"PIPE CLEAN / TREASURE EXPEDITION":wario2?"PIPE CLEAN / STOLEN TREASURE":"PIPE CLEAN / POCKET QUEST");
+        ui_text_fit(F_BOLD,9,tx,titley,rw-14,RGBA(247,249,255,255),dr_mario?"DR. MARIO":game==GAME_SML?"SUPER MARIO LAND":game==GAME_SML2?"SUPER MARIO LAND 2":wario2?"WARIO LAND II: STOLEN TREASURE":"WARIO LAND: TREASURE EXPEDITION");
+        float bx=542,by=12,bw=112,bh=39;bx=400+(bx-400)*sx+dx;by=34+(by-34)*sy+dy;bw*=sx;bh*=sy;
+        const char *path=d->button_texture_by_action[4][0]?d->button_texture_by_action[4]:d->button_texture_path;
+        ui_rrect(x+w*bx/800.f,y+h*by/DECK_EDITOR_THOR_H,w*bw/800.f,h*bh/DECK_EDITOR_THOR_H,4,RGBA(34,48,67,240));
+        deck_editor_preview_asset(d,path==d->button_texture_path?1:28,path,x+w*bx/800.f+1,y+h*by/DECK_EDITOR_THOR_H+1,w*bw/800.f-2,h*bh/DECK_EDITOR_THOR_H-2);
+        ui_text_c(F_BOLD,5.4f,x+w*(bx+bw*.5f)/800.f,y+h*(by+bh*.43f)/DECK_EDITOR_THOR_H,RGBA(246,249,255,255),"BACKGROUND");
+        bx=662;by=12;bw=120;bh=39;bx=400+(bx-400)*sx+dx;by=34+(by-34)*sy+dy;bw*=sx;bh*=sy;
+        path=d->button_texture_by_action[5][0]?d->button_texture_by_action[5]:d->button_texture_path;
+        ui_rrect(x+w*bx/800.f,y+h*by/DECK_EDITOR_THOR_H,w*bw/800.f,h*bh/DECK_EDITOR_THOR_H,4,RGBA(34,48,67,240));
+        deck_editor_preview_asset(d,path==d->button_texture_path?1:29,path,x+w*bx/800.f+1,y+h*by/DECK_EDITOR_THOR_H+1,w*bw/800.f-2,h*bh/DECK_EDITOR_THOR_H-2);
+        ui_text_c(F_BOLD,5.4f,x+w*(bx+bw*.5f)/800.f,y+h*(by+bh*.43f)/DECK_EDITOR_THOR_H,RGBA(246,249,255,255),"CLOSE");
+    }
+
+    {
+        float ix,iy,iw,ih;deck_editor_element_rect(d,DECK_ELEM_ITEM,x,y,w,h,&ix,&iy,&iw,&ih);
+        if(dr_mario){
+            deck_editor_preview_card(ix,iy,iw,ih,game,"NEXT CAPSULE");
+            ui_rrect(ix+iw*.81f,iy+ih*.07f,iw*.08f,ih*.12f,3,RGBA(21,157,173,255));
+            ui_rrect(ix+iw*.79f,iy+ih*.09f,iw*.12f,ih*.06f,3,RGBA(21,157,173,255));
+            ui_rrect(ix+iw*.27f,iy+ih*.42f,iw*.23f,ih*.19f,ih*.095f,RGBA(29,180,218,255));
+            ui_rrect(ix+iw*.50f,iy+ih*.42f,iw*.23f,ih*.19f,ih*.095f,RGBA(230,91,105,255));
+            ui_text_c(F_BOLD,5.3f,ix+iw*.5f,iy+ih*.82f,RGBA(112,137,146,255),"NEXT PILL READY");
+        } else if(wario||wario2){
+            deck_editor_preview_emblem(ix+iw*.5f,iy+ih*.5f,fminf(iw,ih)*.44f);
+        } else {
+            int item_id=companion_editor_preview_item;
+            const char *item_path=item_id>=1&&item_id<=3?deck_editor_preview_asset_path(d,11+item_id):"";
+            if(!item_path[0])item_path=d->item_texture_path;
+            float inset_x=iw*.16f,inset_y=ih*.13f;
+            if(item_path[0])deck_editor_preview_asset(d,item_path==d->item_texture_path?2:11+item_id,item_path,ix+inset_x,iy+inset_y,iw-inset_x*2,ih-inset_y*2);
+            else {ui_rrect(ix+iw*.25f,iy+ih*.25f,iw*.5f,ih*.48f,8,RGBA(255,205,75,245));ui_text_c(F_BOLD,13,ix+iw*.5f,iy+ih*.36f,RGBA(61,43,20,255),"?");}
+            ui_text_c(F_BOLD,5.6f,ix+iw*.5f,iy+ih*.81f,RGBA(248,245,230,255),item_id==1?"MUSHROOM":item_id==2?(game==GAME_SML?"SUPERBALL FLOWER":"FIRE FLOWER"):item_id==3?"CARROT":"RESERVE ITEM");
+        }
+    }
+
+    {
+        float sx,sy,sw,sh;deck_editor_element_rect(d,DECK_ELEM_STATUS,x,y,w,h,&sx,&sy,&sw,&sh);
+        ui_rrect(sx,sy,sw,sh,7,dr_mario?RGBA(27,47,57,240):game==GAME_SML?RGBA(240,245,213,245):RGBA(34,44,62,240));
+        if(d->status_texture_path[0])deck_editor_preview_asset(d,16,d->status_texture_path,sx+1,sy+1,sw-2,sh-2);
+        if(dr_mario){
+            ui_text_fit(F_BOLD,5.8f,sx+10,sy+8,sw-20,RGBA(159,221,231,255),"SCORE");
+            ui_text_fit(F_BOLD,11,sx+10,sy+sh*.14f,sw-20,RGBA(255,214,107,255),"00000000");
+            ui_rrect(sx+8,sy+sh*.37f,sw-16,sh*.27f,5,RGBA(34,61,72,255));
+            ui_text_fit(F_BOLD,5.5f,sx+14,sy+sh*.42f,sw*.46f,RGBA(159,221,231,255),"VIRUS LEVEL");
+            ui_text_fit(F_BOLD,10,sx+14,sy+sh*.49f,sw*.46f,RGBA(255,241,212,255),"00");
+            ui_text_fit(F_BOLD,5.5f,sx+sw*.53f,sy+sh*.42f,sw*.38f,RGBA(159,221,231,255),"SPEED");
+            ui_text_fit(F_BOLD,10,sx+sw*.53f,sy+sh*.49f,sw*.38f,RGBA(255,241,212,255),"LOW");
+            ui_text_fit(F_BOLD,5.3f,sx+10,sy+sh*.73f,sw-20,RGBA(159,221,231,255),"SESSION / CLINIC STATUS");
+            ui_text_fit(F_REG,5.2f,sx+10,sy+sh*.83f,sw-20,RGBA(234,241,244,255),"Live game information");
+        } else if(wario){
+            ui_text_fit(F_BOLD,5.0f,sx+10,sy+8,sw-20,RGBA(255,214,107,255),"EXPEDITION STATUS");
+            const char *rows[4]={"LIVES                  --","HEARTS                --","POWER             UNKNOWN","TIME LEFT              ---"};
+            for(int i=0;i<4;i++)ui_text_fit(F_REG,4.4f,sx+10,sy+31+i*21.f,sw-20,RGBA(224,207,178,255),rows[i]);
+        } else if(wario2){
+            ui_text_fit(F_BOLD,5.0f,sx+10,sy+8,sw-20,RGBA(255,214,107,255),"ADVENTURE TRACKER");
+            ui_text_fit(F_BOLD,6.6f,sx+10,sy+32,sw-20,RGBA(255,214,107,255),"STAGE --");
+            ui_text_fit(F_REG,4.8f,sx+10,sy+56,sw-20,RGBA(255,241,212,255),"COIN BANK ------");
+            ui_text_fit(F_REG,4.6f,sx+10,sy+78,sw-20,RGBA(184,170,149,255),"POCKET COINS ----");
+        } else {
+            ui_text_fit(F_BOLD,6,sx+5,sy+6,sw-10,RGBA(191,202,222,255),"ADVENTURE STATUS");
+            ui_text_fit(F_BOLD,8,sx+5,sy+sh*.45f,sw-10,RGBA(250,240,220,255),"LIVES x 03");
+            ui_text_fit(F_BOLD,7,sx+5,sy+sh*.66f,sw-10,RGBA(112,225,182,255),game==GAME_SML?"WORLD 1 - 1":"STAGE 01");
+        }
+    }
+
+    {
+        float rx,ry,rw,rh;deck_editor_element_rect(d,DECK_ELEM_CONTROLS,x,y,w,h,&rx,&ry,&rw,&rh);
+        static const char *labels[4]={"SAVE","LOAD","PAUSE","REWIND"};
+        float bw=(rw-24.f)/4.f,bh=rh;
+        for(int b=0;b<4;b++){
+            float bx=rx+b*(bw+8.f),by=ry;
+            int texture_index=17+b;const char *custom=deck_editor_preview_asset_path(d,texture_index);
+            if(!custom[0])texture_index=1,custom=d->button_texture_path;
+            ui_rrect(bx,by,bw,bh,4,RGBA(29,42,60,240));
+            deck_editor_preview_asset(d,texture_index,custom,bx+1,by+1,bw-2,bh-2);
+            ui_stroke(bx,by,bw,bh,4,.7f,RGBA(105,137,174,230));
+            ui_text_c(F_BOLD,6.1f,bx+bw*.5f,by+bh*.39f,RGBA(246,249,255,255),labels[b]);
+        }
+    }
+    {
+        float rx,ry,rw,rh;deck_editor_element_rect(d,DECK_ELEM_TIMELINE,x,y,w,h,&rx,&ry,&rw,&rh);
+        ui_rrect(rx,ry,rw,rh,5,RGBA(24,34,51,235));
+        ui_text_fit(F_BOLD,6.5f,rx+5,ry+4,rw-10,RGBA(218,228,245,255),"SAVE-STATE TIMELINE");
+        for(int slot=0;slot<10;slot++){float tile_w=(rw-18)/10.f,tx=rx+3+slot*(tile_w+1);
+            ui_rrect(tx,ry+rh*.28f,tile_w,rh*.54f,2,slot==0?RGBA(86,180,200,190):RGBA(66,81,106,200));}
+    }
+    for(int e=DECK_ELEM_DECORATION+deck_editor_first_decoration_slot(game);e<N_DECK_ELEM;e++){
+        int slot=e-DECK_ELEM_DECORATION;const char *asset=deck_decoration_path_const(d,slot);if(!asset[0])continue;
+        float rx,ry,rw,rh;deck_editor_element_rect(d,e,x,y,w,h,&rx,&ry,&rw,&rh);
+        deck_editor_preview_asset(d,deck_decoration_asset_index(slot),asset,rx,ry,rw,rh);
+        if(e==companion_editor_element)ui_stroke(rx,ry,rw,rh,5,1.5f,RGBA(108,218,255,255));
+    }
+    ui_unclip();
+    float sx,sy,sw,sh;deck_editor_element_rect(d,companion_editor_element,x,y,w,h,&sx,&sy,&sw,&sh);
+    ui_stroke(sx,sy,sw,sh,5,2,RGBA(117,213,255,255));
+    ui_rrect(sx+sw-26,sy+sh*.5f-13,26,26,7,RGBA(250,252,255,255));
+    ui_rrect(sx+sw*.5f-13,sy+sh-26,26,26,7,RGBA(250,252,255,255));
+    ui_rrect(sx+sw-26,sy+sh-26,26,26,7,RGBA(93,207,255,255));
+}
+static void deck_editor_begin_drag(float x, float y, float preview_x, float preview_y,
+                                   float preview_w, float preview_h)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    /* Give the selected layer first refusal so it remains draggable when art overlaps it. */
+    if (companion_editor_element >= 0 && companion_editor_element < N_DECK_ELEM) {
+        float sx, sy, sw, sh;
+        deck_editor_element_rect(d, companion_editor_element, preview_x, preview_y,
+                                 preview_w, preview_h, &sx, &sy, &sw, &sh);
+        if (x >= sx && y >= sy && x < sx + sw && y < sy + sh) {
+            int right_handle = x >= sx + sw - 30 && fabsf(y - (sy + sh * .5f)) <= 30;
+            int bottom_handle = y >= sy + sh - 30 && fabsf(x - (sx + sw * .5f)) <= 30;
+            int corner_handle = x >= sx + sw - 30 && y >= sy + sh - 30;
+            companion_editor_dragging = 1;
+            companion_editor_resizing = corner_handle ? 1 : right_handle ? 2 : bottom_handle ? 3 : 0;
+            companion_editor_last_x = x; companion_editor_last_y = y;
+            companion_editor_drag_residual_x = companion_editor_drag_residual_y = 0.f;
+            deck_editor_snapshot(); return;
+        }
+    }
+    int order[N_DECK_ELEM];
+    int n = 0;
+    for (int e = N_DECK_ELEM - 1; e >= DECK_ELEM_DECORATION + deck_editor_first_decoration_slot(companion_editor_game); e--) {
+        int slot = e - DECK_ELEM_DECORATION;
+        if (deck_decoration_path_const(d, slot)[0]) order[n++] = e;
+    }
+    if (deck_editor_is_wario_game(companion_editor_game)) {
+        order[n++] = DECK_ELEM_DECORATION_4;
+        order[n++] = DECK_ELEM_DECORATION_3;
+        order[n++] = DECK_ELEM_DECORATION_2;
+        order[n++] = DECK_ELEM_DECORATION;
+    }
+    order[n++] = DECK_ELEM_STATUS;
+    order[n++] = DECK_ELEM_ITEM;
+    order[n++] = DECK_ELEM_CONTROLS;
+    order[n++] = DECK_ELEM_TIMELINE;
+    order[n++] = DECK_ELEM_HEADER;
+    for (int i = 0; i < n; i++) {
+        int e = order[i];
+        float rx, ry, rw, rh;
+        deck_editor_element_rect(d, e, preview_x, preview_y, preview_w, preview_h,
+                                 &rx, &ry, &rw, &rh);
+        if (x < rx || y < ry || x >= rx + rw || y >= ry + rh) continue;
+        companion_editor_element = e;
+        int right_handle = x >= rx + rw - 30 && fabsf(y - (ry + rh * .5f)) <= 30;
+        int bottom_handle = y >= ry + rh - 30 && fabsf(x - (rx + rw * .5f)) <= 30;
+        int corner_handle = x >= rx + rw - 30 && y >= ry + rh - 30;
+        companion_editor_resizing = corner_handle ? 1 : right_handle ? 2 : bottom_handle ? 3 : 0;
+        companion_editor_dragging = 1;
+        companion_editor_drag_residual_x = companion_editor_drag_residual_y = 0.f;
+        companion_editor_last_x = x;
+        companion_editor_last_y = y;
+        deck_editor_snapshot();
+        return;
+    }
+}
+
+static void deck_editor_drag(float x, float y, float preview_w, float preview_h)
+{
+    if (!companion_editor_dragging || companion_editor_game < 0 ||
+        companion_editor_game >= N_GAMES) return;
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    float dx = x - companion_editor_last_x, dy = y - companion_editor_last_y;
+    if (companion_editor_resizing) {
+        int *scale_x = deck_element_scale(d, companion_editor_element);
+        int *scale_y = deck_element_scale_y(d, companion_editor_element);
+            if (companion_editor_resizing == 1 || companion_editor_resizing == 2)
+            *scale_x += (int)((dx / (preview_w / 800.0f)) * 0.35f);
+        if (companion_editor_resizing == 1 || companion_editor_resizing == 3)
+            *scale_y += (int)((dy / (preview_h / DECK_EDITOR_THOR_H)) * 0.35f);
+        if (*scale_x < 25) *scale_x = 25;
+        if (*scale_x > 250) *scale_x = 250;
+        if (*scale_y < 25) *scale_y = 25;
+        if (*scale_y > 250) *scale_y = 250;
+    } else {
+        int *ox = deck_element_x(d, companion_editor_element);
+        int *oy = deck_element_y(d, companion_editor_element);
+        companion_editor_drag_residual_x += dx * (800.0f / preview_w);
+        companion_editor_drag_residual_y += dy * (450.0f / preview_h);
+        int move_x = (int)truncf(companion_editor_drag_residual_x);
+        int move_y = (int)truncf(companion_editor_drag_residual_y);
+        companion_editor_drag_residual_x -= move_x;
+        companion_editor_drag_residual_y -= move_y;
+        *ox += move_x;
+        *oy += move_y;
+        if (*ox < -400) *ox = -400;
+        if (*ox > 400) *ox = 400;
+        if (*oy < -400) *oy = -400;
+        if (*oy > 400) *oy = 400;
+    }
+    companion_editor_last_x = x;
+    companion_editor_last_y = y;
+}
+
+static void deck_editor_open_decoration_picker(int slot)
+{
+    if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
+    companion_editor_pending_decoration_slot = slot;
+    companion_editor_element = DECK_ELEM_DECORATION + slot;
+    deck_editor_snapshot();
+    launcher_open_companion_layout_picker(DECK_PICK_DECORATION, companion_editor_game);
+}
+
+static int companion_editor_selected_decoration_slot(void)
+{
+    if (companion_editor_element < DECK_ELEM_DECORATION ||
+        companion_editor_element >= N_DECK_ELEM) return -1;
+    int slot = companion_editor_element - DECK_ELEM_DECORATION;
+    if (deck_editor_first_decoration_slot(companion_editor_game) > slot) return -1;
+    return slot;
+}
+
+static void deck_editor_remove_selected_decoration(void)
+{
+    int slot = companion_editor_selected_decoration_slot();
+    if (slot < 0 || companion_editor_game < 0 || companion_editor_game >= N_GAMES) {
+        launcher_toast("Select a decoration on the preview first.");
+        return;
+    }
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    char *path = deck_decoration_path(d, slot);
+    if (!path || !path[0]) {
+        launcher_toast("Select an existing decoration first.");
+        return;
+    }
+    deck_editor_snapshot();
+    path[0] = 0;
+    int asset_index = deck_decoration_asset_index(slot);
+    if (asset_index >= 0) d->asset_stretch[asset_index] = 0;
+    companion_editor_element = DECK_ELEM_DECORATION;
+    settings_save();
+    launcher_toast("Decoration removed.");
+}
+
+static void deck_editor_swap_decoration_layers(CompanionLayoutCfg *d, int a, int b)
+{
+    if (!d || a < deck_editor_first_decoration_slot(companion_editor_game) ||
+        b < deck_editor_first_decoration_slot(companion_editor_game) ||
+        a >= N_DECK_DECORATIONS || b >= N_DECK_DECORATIONS || a == b) return;
+    char path_tmp[512];
+    char *pa = deck_decoration_path(d, a);
+    char *pb = deck_decoration_path(d, b);
+    if (!pa || !pb) return;
+    memcpy(path_tmp, pa, sizeof path_tmp);
+    memcpy(pa, pb, sizeof path_tmp);
+    memcpy(pb, path_tmp, sizeof path_tmp);
+    int *ax = deck_element_x(d, DECK_ELEM_DECORATION + a);
+    int *ay = deck_element_y(d, DECK_ELEM_DECORATION + a);
+    int *asx = deck_element_scale(d, DECK_ELEM_DECORATION + a);
+    int *asy = deck_element_scale_y(d, DECK_ELEM_DECORATION + a);
+    int *bx = deck_element_x(d, DECK_ELEM_DECORATION + b);
+    int *by = deck_element_y(d, DECK_ELEM_DECORATION + b);
+    int *bsx = deck_element_scale(d, DECK_ELEM_DECORATION + b);
+    int *bsy = deck_element_scale_y(d, DECK_ELEM_DECORATION + b);
+    int t;
+#define DECK_SWAP_INT(p, q) do { t = *(p); *(p) = *(q); *(q) = t; } while (0)
+    DECK_SWAP_INT(ax, bx);
+    DECK_SWAP_INT(ay, by);
+    DECK_SWAP_INT(asx, bsx);
+    DECK_SWAP_INT(asy, bsy);
+#undef DECK_SWAP_INT
+    int ia = deck_decoration_asset_index(a);
+    int ib = deck_decoration_asset_index(b);
+    if (ia >= 0 && ib >= 0) {
+        t = d->asset_stretch[ia];
+        d->asset_stretch[ia] = d->asset_stretch[ib];
+        d->asset_stretch[ib] = t;
+    }
+}
+
+static void deck_editor_move_decoration(int slot, int delta)
+{
+    int other = slot + delta;
+    if (slot < deck_editor_first_decoration_slot(companion_editor_game) ||
+        slot >= N_DECK_DECORATIONS ||
+        other < deck_editor_first_decoration_slot(companion_editor_game) ||
+        other >= N_DECK_DECORATIONS) return;
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    deck_editor_snapshot();
+    deck_editor_swap_decoration_layers(d, slot, other);
+    companion_editor_element = DECK_ELEM_DECORATION + other;
+    settings_save();
+    launcher_toast(delta < 0 ? "Layer moved back." : "Layer moved forward.");
+}
+
+static void deck_editor_duplicate_decoration(int slot)
+{
+    if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    char *source = deck_decoration_path(d, slot);
+    if (!source || !source[0]) {
+        launcher_toast("Choose an image before duplicating this layer.");
+        return;
+    }
+    int target = -1;
+    for (int i = deck_editor_first_decoration_slot(companion_editor_game); i < N_DECK_DECORATIONS; i++) {
+        const char *candidate = deck_decoration_path_const(d, i);
+        if (!candidate[0]) { target = i; break; }
+    }
+    if (target < 0) {
+        launcher_toast("All sixteen image layers are in use.");
+        return;
+    }
+    deck_editor_snapshot();
+    char *destination = deck_decoration_path(d, target);
+    snprintf(destination, 512, "%s", source);
+    *deck_element_x(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_x(d, DECK_ELEM_DECORATION + slot) + 10;
+    *deck_element_y(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_y(d, DECK_ELEM_DECORATION + slot) + 10;
+    *deck_element_scale(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_scale(d, DECK_ELEM_DECORATION + slot);
+    *deck_element_scale_y(d, DECK_ELEM_DECORATION + target) =
+        *deck_element_scale_y(d, DECK_ELEM_DECORATION + slot);
+    if (*deck_element_x(d, DECK_ELEM_DECORATION + target) > 400)
+        *deck_element_x(d, DECK_ELEM_DECORATION + target) = 400;
+    if (*deck_element_y(d, DECK_ELEM_DECORATION + target) > 400)
+        *deck_element_y(d, DECK_ELEM_DECORATION + target) = 400;
+    int source_asset = deck_decoration_asset_index(slot);
+    int target_asset = deck_decoration_asset_index(target);
+    if (source_asset >= 0 && target_asset >= 0)
+        d->asset_stretch[target_asset] = d->asset_stretch[source_asset];
+    companion_editor_element = DECK_ELEM_DECORATION + target;
+    settings_save();
+    launcher_toast("Image layer duplicated.");
+}
+
+static void deck_editor_open_picker(int kind)
+{
+    if (kind == DECK_PICK_DECORATION) {
+        CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+        for (int slot = deck_editor_first_decoration_slot(companion_editor_game); slot < N_DECK_DECORATIONS; slot++) {
+            const char *path = deck_decoration_path_const(d, slot);
+            if (!path[0]) {
+                companion_editor_pending_decoration_slot = slot;
+                companion_editor_element = DECK_ELEM_DECORATION + slot;
+                deck_editor_snapshot();
+                launcher_open_companion_layout_picker(kind, companion_editor_game);
+                return;
+            }
+        }
+        launcher_toast("All decoration slots are full. Remove one to add another.");
+        return;
+    }
+    if (kind != DECK_PICK_EXPORT) deck_editor_snapshot();
+    launcher_open_companion_layout_picker(kind, companion_editor_game);
+}
+
+static void deck_editor_undo(void)
+{
+    if (!companion_undo_count) { launcher_toast("Nothing to undo."); return; }
+    deck_editor_push(companion_redo, &companion_redo_count,
+                     &settings.deck_layout[companion_editor_game]);
+    settings.deck_layout[companion_editor_game] = companion_undo[--companion_undo_count];
+}
+static void deck_editor_redo(void)
+{
+    if (!companion_redo_count) { launcher_toast("Nothing to redo."); return; }
+    deck_editor_push(companion_undo, &companion_undo_count,
+                     &settings.deck_layout[companion_editor_game]);
+    settings.deck_layout[companion_editor_game] = companion_redo[--companion_redo_count];
+}
+
+static void deck_editor_list(float x, float y)
+{
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "COMPANION DECK LAYOUTS");
+    ui_text_fit(F_REG, 10, x + 36, y + 109, 708, C_MUTED,
+                "Choose a game layout. Unreleased layouts are shown here but cannot be edited yet.");
+    ui_rect(x + 36, y + 128, 728, 1, C_LINE);
+    for (int g = 0; g < N_GAMES; g++) {
+        float ry = y + 134 + g * 39.5f;
+        int ready = deck_game_ready(g);
+        if (ready) ui_rrect(x + 32, ry - 2, 734, 35, 7, RGBA(255,255,255, g == companion_editor_game ? 14 : 5));
+        ui_text_fit(F_BOLD, 11, x + 40, ry + 5, 190, ready ? C_TEXT : C_DIM, games[g].name);
+        ui_text_fit(F_REG, 9, x + 238, ry + 6, 105, ready ? C_OK : C_DIM,
+                    ready ? "READY TO EDIT" : "COMING SOON");
+        if (ui_button(x + 468, ry, 76, 29, "Edit", B_PRIMARY, ready)) {
+            companion_editor_game = g;
+            companion_editor_page = 1;
+            companion_editor_element = DECK_ELEM_CONTROLS;
+            deck_editor_history_clear();
+        }
+        if (ui_button(x + 550, ry, 76, 29, "Import", B_GHOST, ready)) {
+            companion_editor_game = g;
+            deck_editor_history_clear();
+            deck_editor_open_picker(DECK_PICK_IMPORT);
+        }
+        if (ui_button(x + 632, ry, 76, 29, "Export", B_GHOST, ready)) {
+            companion_editor_game = g;
+            deck_editor_open_picker(DECK_PICK_EXPORT);
+        }
+    }
+    if (ui_button(x + 36, y + 435, 156, 28, "Back to Display", B_NORMAL, 1))
+        companion_editor_open = 0;
+    ui_text_fit(F_REG, 9, x + 210, y + 442, 540, C_DIM,
+                "Bundles include the layout config and any assigned images and sounds.");
+}
+
+static void deck_editor_layout(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, "COMPANION DECK STUDIO");
+    ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, RGBA(116, 222, 255, 255),
+                companion_editor_game == GAME_DRMARIO ? "DR. MARIO  /  CLINIC CANVAS" :
+                companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" :
+                companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2  /  LIVE CANVAS" :
+                companion_editor_game == GAME_WARIO_LAND3_GBC ? "WARIO LAND 3  /  FOUR KEYS" :
+                "WARIO LAND  /  TREASURE EXPEDITION");
+
+    if (ui_button(x + 36, y + 105, 58, 34, "Back", B_GHOST, 1)) {
+        companion_editor_page = 0;
+        companion_editor_dragging = 0;
+        deck_editor_history_clear();
+        return;
+    }
+    if (ui_button(x + 100, y + 105, 68, 34, "Save", B_PRIMARY, 1)) {
+        settings_save();
+        launcher_toast("Companion Deck layout saved.");
+    }
+    if (ui_button(x + 174, y + 105, 58, 34, "Undo", B_GHOST, companion_undo_count > 0)) deck_editor_undo();
+    if (ui_button(x + 238, y + 105, 58, 34, "Redo", B_GHOST, companion_redo_count > 0)) deck_editor_redo();
+    if (ui_button(x + 302, y + 105, 66, 34, "Reset", B_GHOST, 1)) {
+        deck_editor_snapshot();
+        deck_layout_defaults(d);
+    }
+
+    const char *tab_labels[] = {"Canvas", "Assets", "Items", "Sounds", "Layers"};
+    const int tab_pages[] = {1, 4, 3, 2, 5};
+    for (int t = 0; t < 5; t++) {
+        float tx = x + 36 + t * 83;
+        if (ui_button(tx, y + 146, 78, 32, tab_labels[t],
+                      t == 0 ? B_PRIMARY : B_GHOST, 1)) {
+            companion_editor_page = tab_pages[t];
+            companion_editor_dragging = 0;
+            return;
+        }
+    }
+    if (ui_button(x + 548, y + 146, 102, 32, "Add Decoration", B_NORMAL, 1)) {
+        deck_editor_open_picker(DECK_PICK_DECORATION);
+        return;
+    }
+    int toolbar_selected_decoration = companion_editor_selected_decoration_slot();
+    int can_remove_decoration = toolbar_selected_decoration >= 0 &&
+        deck_decoration_path_const(d, toolbar_selected_decoration)[0];
+    if (ui_button(x + 656, y + 146, 100, 32, "Remove", B_DANGER,
+                  can_remove_decoration)) {
+        deck_editor_remove_selected_decoration();
+        return;
+    }
+
+    /* A larger landscape work surface makes hit targets usable with a finger,
+       while the compact inspector keeps all scale and selection controls visible. */
+    float px = x + 36, py = y + 194, pw = 295, ph = 295 * (27.0f / 31.0f);
+    ui_rrect(px - 7, py - 7, pw + 14, ph + 14, 12, RGBA(7, 13, 24, 255));
+    ui_stroke(px - 1, py - 1, pw + 2, ph + 2, 8, 1.0f, RGBA(66, 102, 148, 225));
+    deck_editor_preview(d, px, py, pw, ph);
+    companion_editor_preview_hover = ui_hover(px, py, pw, ph);
+    if (ui_mouse.pressed && companion_editor_preview_hover)
+        deck_editor_begin_drag(ui_mouse.x, ui_mouse.y, px, py, pw, ph);
+    if (ui_mouse.down && companion_editor_dragging)
+        deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
+    if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
+    ui_text_fit(F_BOLD, 8.2f, px, py + ph + 10, pw,
+                RGBA(112, 225, 255, 245), "31:27 THOR  •  FIT = NO CROP  •  DRAG TO RESIZE");
+
+    float rx = x + 350;
+    ui_text(F_BOLD, 10, rx, y + 190, C_TEXT, "LAYERS & TRANSFORM");
+    ui_text_fit(F_REG, 8, rx + 148, y + 190, 180, C_MUTED,
+                "Select, move, reshape");
+    /* Three compact columns prevent the element picker from colliding with
+       the independent width/height controls below it. */
+    int layer_limit = deck_editor_is_wario_game(companion_editor_game)
+        ? DECK_ELEM_DECORATION_4 : DECK_ELEM_STATUS;
+    for (int e = 0; e <= layer_limit; e++) {
+        int col = e % 3, row = e / 3;
+        float by = y + 204 + row * 21.0f;
+        if (ui_button(rx + col * 109, by, 105, 19,
+                      deck_editor_element_label(e),
+                      e == companion_editor_element ? B_PRIMARY : B_GHOST, 1))
+            companion_editor_element = e;
+    }
+    int selected_decoration = companion_editor_selected_decoration_slot();
+    if (ui_button(rx + 218, y + 267, 105, 19, "Decoration",
+                  selected_decoration >= 0 ? B_PRIMARY : B_GHOST, 1)) {
+        if (selected_decoration < 0) {
+            CompanionLayoutCfg *layout = &settings.deck_layout[companion_editor_game];
+            int first = -1;
+            for (int slot = deck_editor_first_decoration_slot(companion_editor_game); slot < N_DECK_DECORATIONS; slot++)
+                if (deck_decoration_path_const(layout, slot)[0]) { first = slot; break; }
+            companion_editor_element = DECK_ELEM_DECORATION + (first >= 0 ? first : 0);
+        }
+    }
+
+    int *scale_x = deck_element_scale(d, companion_editor_element);
+    int *scale_y = deck_element_scale_y(d, companion_editor_element);
+    char scale_text[48];
+    snprintf(scale_text, sizeof scale_text, "W %d%%", *scale_x);
+    ui_text(F_BOLD, 9, rx, y + 380, C_TEXT, scale_text);
+    if (ui_button(rx + 62, y + 367, 30, 30, "−", B_GHOST, *scale_x > 25)) {
+        deck_editor_snapshot(); *scale_x -= 5; if (*scale_x < 25) *scale_x = 25;
+    }
+    if (ui_button(rx + 96, y + 367, 30, 30, "+", B_GHOST, *scale_x < 250)) {
+        deck_editor_snapshot(); *scale_x += 5; if (*scale_x > 250) *scale_x = 250;
+    }
+    snprintf(scale_text, sizeof scale_text, "H %d%%", *scale_y);
+    ui_text(F_BOLD, 9, rx + 137, y + 380, C_TEXT, scale_text);
+    if (ui_button(rx + 202, y + 367, 30, 30, "−", B_GHOST, *scale_y > 25)) {
+        deck_editor_snapshot(); *scale_y -= 5; if (*scale_y < 25) *scale_y = 25;
+    }
+    if (ui_button(rx + 236, y + 367, 30, 30, "+", B_GHOST, *scale_y < 250)) {
+        deck_editor_snapshot(); *scale_y += 5; if (*scale_y > 250) *scale_y = 250;
+    }
+    if (ui_button(rx, y + 405, 105, 28, "Center layer", B_GHOST, 1)) {
+        deck_editor_snapshot();
+        *deck_element_x(d, companion_editor_element) = 0;
+        *deck_element_y(d, companion_editor_element) = 0;
+    }
+    ui_text_fit(F_REG, 8, rx + 112, y + 412, 210, C_MUTED,
+                "Width and height are independent.");
+    ui_text_fit(F_REG, 8, rx, y + 441, 324, C_DIM,
+                "Fit keeps every pixel visible; Stretch fills the layer box.");
+}
+
+static void deck_editor_sounds(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "COMPANION SOUNDS");
+    if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1))
+        companion_editor_page = 1;
+    ui_text(F_REG, 11, x + 114, y + 114, C_TEXT, "Enable custom action sounds");
+    if (ui_mouse.pressed && ui_hover(x + 320, y + 110, 52, 24))
+        deck_editor_snapshot();
+    (void)ui_toggle(x + 320, y + 110, &d->sounds_enabled);
+    static const char *labels[N_DECK_BUTTON_SOUNDS] = {
+        "Save button", "Load button", "Pause button", "Rewind button",
+        "Background button", "Close button"
+    };
+    for (int i = 0; i < N_DECK_BUTTON_SOUNDS; i++) {
+        int col = i % 2, row = i / 2;
+        float bx = x + 36 + col * 365, by = y + 151 + row * 65;
+        ui_rrect(bx, by, 350, 54, 8, C_PANEL);
+        ui_text_fit(F_BOLD, 10, bx + 12, by + 9, 155, C_TEXT, labels[i]);
+        ui_text_fit(F_REG, 8, bx + 12, by + 28, 225, C_DIM,
+                    d->button_sound_path[i][0] ? d->button_sound_path[i] : "Use built-in / silent default");
+        char b[32]; snprintf(b, sizeof b, "Choose…");
+        if (ui_button(bx + 266, by + 13, 72, 29, b, B_GHOST, 1))
+            deck_editor_open_picker(DECK_PICK_SOUND_SAVE + i);
+    }
+    ui_rrect(x + 36, y + 352, 350, 56, 8, C_PANEL);
+    ui_text_fit(F_BOLD, 10, x + 48, y + 362, 170, C_TEXT, "Item used");
+    ui_text_fit(F_REG, 8, x + 48, y + 381, 220, C_DIM,
+                d->item_sound_path[0] ? d->item_sound_path : "Choose a sound for a usable item");
+    if (ui_button(x + 302, y + 366, 70, 28, "Choose…", B_GHOST, 1))
+        deck_editor_open_picker(DECK_PICK_ITEM_SOUND);
+    ui_rrect(x + 402, y + 352, 360, 56, 8, C_PANEL);
+    ui_text_fit(F_BOLD, 10, x + 414, y + 362, 180, C_TEXT, "Empty item slot");
+    ui_text_fit(F_REG, 8, x + 414, y + 381, 220, C_DIM,
+                d->empty_item_sound_path[0] ? d->empty_item_sound_path : "Choose a sound when the slot is empty");
+    if (ui_button(x + 674, y + 366, 74, 28, "Choose…", B_GHOST, 1))
+        deck_editor_open_picker(DECK_PICK_EMPTY_SOUND);
+}
+
+static void deck_editor_items(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    const int item_ids[3] = {1, 2, 3};
+    const int pick_kinds[3] = {DECK_PICK_ITEM_MUSHROOM, DECK_PICK_ITEM_SPECIAL, DECK_PICK_ITEM_CARROT};
+    const char *labels[3];
+    labels[0] = "Mushroom";
+    labels[1] = companion_editor_game == GAME_SML ? "Superball Flower" : "Fire Flower";
+    labels[2] = "Carrot";
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "RESERVE ITEM TEXTURES");
+    if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1)) {
+        companion_editor_page = 1;
+        return;
+    }
+    ui_text_wrap(F_REG, 10, x + 114, y + 108, 640, C_MUTED,
+                 "Choose a separate transparent PNG or GIF for each power-up. An empty per-item path falls back to the legacy generic item texture.", 2);
+    for (int row = 0; row < 3; row++) {
+        int item = item_ids[row];
+        float ry = y + 153 + row * 82;
+        int ready = item != 3 || companion_editor_game == GAME_SML2;
+        ui_rrect(x + 36, ry, 728, 70, 8, C_PANEL);
+        ui_text_fit(F_BOLD, 11, x + 50, ry + 12, 195, ready ? C_TEXT : C_DIM, labels[row]);
+        const char *asset_path = d->item_texture_by_id[item];
+        int asset_index = 11 + item;
+        ui_text_fit(F_REG, 8, x + 50, ry + 34, 260, asset_path[0] ? C_MUTED : C_DIM,
+                    asset_path[0] ? path_base(asset_path) :
+                    d->item_texture_path[0] ? "Using shared fallback texture" : "Using built-in item art");
+        ui_rrect(x + 320, ry + 8, 60, 54, 6, RGBA(7, 13, 24, 255));
+        ui_stroke(x + 320, ry + 8, 60, 54, 6, 1.0f, RGBA(77, 111, 149, 180));
+        const char *preview_path = asset_path[0] ? asset_path : d->item_texture_path;
+        if (preview_path[0])
+            ui_image_file_fit(preview_path, x + 324, ry + 11, 52, 48);
+        else
+            ui_text_fit(F_BOLD, 7, x + 324, ry + 30, 52, C_DIM, "BUILT-IN");
+        if (!ready) {
+            ui_text_fit(F_REG, 8, x + 394, ry + 39, 110, C_DIM, "SML2 ONLY");
+            continue;
+        }
+        if (ui_button(x + 394, ry + 18, 70, 32,
+                      companion_editor_preview_item == item ? "Preview*" : "Preview",
+                      companion_editor_preview_item == item ? B_PRIMARY : B_GHOST, 1)) {
+            companion_editor_preview_item = item;
+        }
+        if (ui_button(x + 470, ry + 18, 72, 32,
+                      d->asset_stretch[asset_index] ? "STRETCH" : "FIT / NO CROP",
+                      d->asset_stretch[asset_index] ? B_PRIMARY : B_NORMAL, 1)) {
+            deck_editor_snapshot();
+            d->asset_stretch[asset_index] = !d->asset_stretch[asset_index];
+            settings_save();
+        }
+        if (ui_button(x + 548, ry + 18, 82, 32, "Choose…", B_GHOST, 1))
+            deck_editor_open_picker(pick_kinds[row]);
+        if (ui_button(x + 636, ry + 18, 112, 32, "Clear texture", B_DANGER, asset_path[0] != 0)) {
+            deck_editor_snapshot();
+            d->item_texture_by_id[item][0] = 0;
+            d->asset_stretch[asset_index] = 0;
+            settings_save();
+            launcher_toast("Item texture cleared.");
+        }
+    }
+}
+
+static void deck_editor_assets(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "DECK ASSETS");
+    if (ui_button(x + 36, y + 107, 65, 28, "Back", B_GHOST, 1)) {
+        companion_editor_page = 1;
+        return;
+    }
+    ui_text_wrap(F_REG, 10, x + 114, y + 108, 490, C_MUTED,
+        "Each region and action button has its own artwork. Fit shows the whole image; Stretch fills its box without cropping.", 2);
+    if (ui_button(x + 638, y + 107, 126, 28, "Decorations…", B_GHOST, 1)) {
+        companion_editor_page = 5;
+        return;
+    }
+
+    struct AssetRow { const char *label; char *path; int kind; int asset_index; } rows[] = {
+        {"Background image", d->background_path, DECK_PICK_BACKGROUND, 0},
+        {"Header plate", d->header_texture_path, DECK_PICK_HEADER_TEXTURE, 15},
+        {"Adventure status", d->status_texture_path, DECK_PICK_STATUS_TEXTURE, 16},
+        {"Save button", d->button_texture_by_action[0], DECK_PICK_BUTTON_SAVE_TEXTURE, 17},
+        {"Load button", d->button_texture_by_action[1], DECK_PICK_BUTTON_LOAD_TEXTURE, 18},
+        {"Pause / Resume", d->button_texture_by_action[2], DECK_PICK_BUTTON_PAUSE_TEXTURE, 19},
+        {"Rewind button", d->button_texture_by_action[3], DECK_PICK_BUTTON_REWIND_TEXTURE, 20},
+        {"Background button", d->button_texture_by_action[4], DECK_PICK_BUTTON_BACKGROUND_TEXTURE, 28},
+        {"Close Game button", d->button_texture_by_action[5], DECK_PICK_BUTTON_CLOSE_TEXTURE, 29}
+    };
+    for (int i = 0; i < (int)(sizeof rows / sizeof rows[0]); i++) {
+        float ry = y + 151 + i * 31.0f;
+        ui_rrect(x + 36, ry, 728, 28, 6,
+                 i == 0 ? RGBA(44, 85, 117, 180) : C_PANEL);
+        ui_text_fit(F_BOLD, 9, x + 49, ry + 9, 164, C_TEXT, rows[i].label);
+        const char *name = rows[i].path[0] ? path_base(rows[i].path) : "Built-in appearance";
+        ui_text_fit(F_REG, 7.5f, x + 218, ry + 9, 140,
+                    rows[i].path[0] ? C_MUTED : C_DIM, name);
+        ui_rrect(x + 366, ry + 3, 56, 22, 5, RGBA(7, 13, 24, 255));
+        ui_stroke(x + 366, ry + 3, 56, 22, 5, 1.0f, RGBA(77, 111, 149, 180));
+        if (rows[i].path[0])
+            ui_image_file_fit(rows[i].path, x + 369, ry + 4, 50, 20);
+        else
+            ui_text_fit(F_BOLD, 6.5f, x + 369, ry + 9, 50, C_DIM, "DEFAULT");
+        int stretch = d->asset_stretch[rows[i].asset_index];
+        if (ui_button(x + 450, ry + 3, 78, 22, stretch ? "STRETCH" : "FIT / NO CROP",
+                      stretch ? B_PRIMARY : B_NORMAL, 1)) {
+            deck_editor_snapshot();
+            d->asset_stretch[rows[i].asset_index] = !stretch;
+            settings_save();
+        }
+        if (ui_button(x + 536, ry + 3, 82, 22, "Choose…", B_GHOST, 1))
+            deck_editor_open_picker(rows[i].kind);
+        if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
+            deck_editor_snapshot();
+            rows[i].path[0] = 0;
+            d->asset_stretch[rows[i].asset_index] = 0;
+            settings_save();
+            launcher_toast("Asset cleared.");
+        }
+    }
+}
+
+static void deck_editor_decorations(float x, float y)
+{
+    CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
+    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "DECORATIONS");
+    if (ui_button(x + 36, y + 107, 65, 30, "Back", B_GHOST, 1)) {
+        companion_editor_page = 1;
+        return;
+    }
+    ui_text_fit(F_REG, 9, x + 114, y + 114, 410, C_MUTED,
+        "Select an image below, then add another or remove the selected one.");
+    if (ui_button(x + 548, y + 107, 102, 30, "Add Decoration", B_PRIMARY, 1)) {
+        deck_editor_open_picker(DECK_PICK_DECORATION);
+        return;
+    }
+    int selected_slot = companion_editor_selected_decoration_slot();
+    int selected_exists = selected_slot >= 0 &&
+        deck_decoration_path_const(d, selected_slot)[0];
+    if (ui_button(x + 656, y + 107, 100, 30, "Remove", B_DANGER, selected_exists)) {
+        deck_editor_remove_selected_decoration();
+        return;
+    }
+
+    int visible = 0;
+    for (int slot = deck_editor_first_decoration_slot(companion_editor_game); slot < N_DECK_DECORATIONS; slot++) {
+        const char *asset_path = deck_decoration_path_const(d, slot);
+        if (!asset_path[0]) continue;
+        float colx = x + 36 + (visible % 4) * 183.0f;
+        float ry = y + 151 + (visible / 4) * 65.0f;
+        int selected = selected_slot == slot;
+        ui_rrect(colx, ry, 174, 56, 7,
+                 selected ? RGBA(65, 130, 190, 68) : C_PANEL);
+        if (selected)
+            ui_stroke(colx, ry, 174, 56, 7, 1.2f, C_ACCENT);
+        ui_rrect(colx + 7, ry + 6, 42, 42, 5, RGBA(7, 13, 24, 255));
+        ui_stroke(colx + 7, ry + 6, 42, 42, 5, 0.8f, RGBA(77, 111, 149, 180));
+        ui_image_file_fit(asset_path, colx + 9, ry + 8, 38, 38);
+        ui_text_fit(F_BOLD, 8.2f, colx + 57, ry + 11, 109,
+                    selected ? C_ACCENT : C_TEXT, "DECORATION");
+        ui_text_fit(F_REG, 7.0f, colx + 57, ry + 31, 109, C_MUTED,
+                    path_base(asset_path));
+        if (ui_mouse.pressed && ui_hover(colx, ry, 174, 56))
+            companion_editor_element = DECK_ELEM_DECORATION + slot;
+        visible++;
+    }
+    if (visible == 0)
+        ui_text_wrap(F_REG, 10, x + 44, y + 190, 680, C_MUTED,
+                    "No decorations yet. Choose Add Decoration to place artwork on this deck.", 2);
+}
+
+static void deck_editor_draw(float x, float y)
+{
+    /* Shared studio frame: depth, restrained neon accent, and a header rail
+       make the individual editor pages feel like one finished tool. */
+    ui_shadow(x + 18, y + 70, 772, 404, 14, 7, RGBA(0, 0, 0, 112));
+    ui_rrect(x + 18, y + 70, 772, 404, 12, RGBA(15, 22, 35, 255));
+    ui_vgrad(x + 20, y + 72, 768, 48,
+             RGBA(43, 68, 96, 255), RGBA(22, 31, 47, 255));
+    ui_rect(x + 30, y + 72, 748, 2, RGBA(99, 220, 255, 230));
+    ui_stroke(x + 18, y + 70, 772, 404, 12, 1.0f, RGBA(77, 111, 149, 190));
+    if (companion_editor_page == 0) deck_editor_list(x, y);
+    else if (companion_editor_page == 2) deck_editor_sounds(x, y);
+    else if (companion_editor_page == 3) deck_editor_items(x, y);
+    else if (companion_editor_page == 4) deck_editor_assets(x, y);
+    else if (companion_editor_page == 5) deck_editor_decorations(x, y);
+    else deck_editor_layout(x, y);
+}
+
+int launcher_companion_layout_target_game(int selected_game)
+{
+    if (companion_editor_open && companion_editor_game >= 0 && companion_editor_game < N_GAMES)
+        return companion_editor_game;
+    return selected_game;
+}
+
+int launcher_companion_layout_preview_enabled(void)
+{
+    return companion_editor_open && companion_editor_page != 0;
+}
+
+int launcher_companion_layout_preview_item(void)
+{
+    if (!companion_editor_open || companion_editor_page != 3) return 0;
+    if (companion_editor_preview_item < 1 ||
+        companion_editor_preview_item >= N_DECK_ITEM_TEXTURE_IDS) return 0;
+    if (companion_editor_preview_item == 3 && companion_editor_game != GAME_SML2) return 0;
+    return companion_editor_preview_item;
+}
+
+static int deck_bundle_path_is_relative(const char *value)
+{
+    if (!value || !value[0] || value[0] == '/' || value[0] == '\\' ||
+        strchr(value, '\\') || (strlen(value) > 1 && value[1] == ':'))
+        return 0;
+    const char *segment = value;
+    for (const char *p = value; ; p++) {
+        if (*p == '/' || *p == 0) {
+            size_t length = (size_t)(p - segment);
+            if (length == 0 || (length == 1 && segment[0] == '.') ||
+                (length == 2 && segment[0] == '.' && segment[1] == '.'))
+                return 0;
+            if (!*p) break;
+            segment = p + 1;
+        }
+    }
+    return 1;
+}
+
+static void deck_set_path(char *dst, size_t cap, const char *value,
+                          const char *base_dir)
+{
+    if (!dst || cap == 0) return;
+    dst[0] = 0;
+    if (!value || !value[0]) return;
+    /* Bundles may reference only assets inside their own extracted directory. */
+    if (!deck_bundle_path_is_relative(value)) return;
+    if (base_dir && base_dir[0])
+        snprintf(dst, cap, "%s%s%s", base_dir,
+                 (base_dir[strlen(base_dir) - 1] == '/' ||
+                  base_dir[strlen(base_dir) - 1] == '\\') ? "" : "/", value);
+}
+
+static int deck_manifest_apply(int game, const char *path)
+{
+    if (game < 0 || game >= N_GAMES || !path || !path[0]) return 0;
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char directory[1024];
+    snprintf(directory, sizeof directory, "%s", path);
+    char *slash = strrchr(directory, '/');
+#ifdef _WIN32
+    char *backslash = strrchr(directory, '\\');
+    if (!slash || (backslash && backslash > slash)) slash = backslash;
+#endif
+    if (slash) slash[1] = 0; else directory[0] = 0;
+    CompanionLayoutCfg fresh;
+    deck_layout_defaults(&fresh);
+    char line[1400];
+    while (fgets(line, sizeof line, f)) {
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq++ = 0;
+        size_t n = strlen(eq);
+        while (n && (eq[n - 1] == '\n' || eq[n - 1] == '\r')) eq[--n] = 0;
+        int v = atoi(eq);
+        if (!strcmp(line, "header_dx")) fresh.header_dx = v;
+        else if (!strcmp(line, "header_dy")) fresh.header_dy = v;
+        else if (!strcmp(line, "header_scale")) fresh.header_scale = v;
+        else if (!strcmp(line, "header_scale_y")) fresh.header_scale_y = v;
+        else if (!strcmp(line, "item_dx")) fresh.item_dx = v;
+        else if (!strcmp(line, "item_dy")) fresh.item_dy = v;
+        else if (!strcmp(line, "item_scale")) fresh.item_scale = v;
+        else if (!strcmp(line, "item_scale_y")) fresh.item_scale_y = v;
+        else if (!strcmp(line, "controls_dx")) fresh.controls_dx = v;
+        else if (!strcmp(line, "controls_dy")) fresh.controls_dy = v;
+        else if (!strcmp(line, "controls_scale")) fresh.controls_scale = v;
+        else if (!strcmp(line, "controls_scale_y")) fresh.controls_scale_y = v;
+        else if (!strcmp(line, "timeline_dx")) fresh.timeline_dx = v;
+        else if (!strcmp(line, "timeline_dy")) fresh.timeline_dy = v;
+        else if (!strcmp(line, "timeline_scale")) fresh.timeline_scale = v;
+        else if (!strcmp(line, "timeline_scale_y")) fresh.timeline_scale_y = v;
+        else if (!strcmp(line, "status_dx")) fresh.status_dx = v;
+        else if (!strcmp(line, "status_dy")) fresh.status_dy = v;
+        else if (!strcmp(line, "status_scale")) fresh.status_scale = v;
+        else if (!strcmp(line, "status_scale_y")) fresh.status_scale_y = v;
+        else if (!strcmp(line, "decoration_dx")) fresh.decoration_dx = v;
+        else if (!strcmp(line, "decoration_dy")) fresh.decoration_dy = v;
+        else if (!strcmp(line, "decoration_scale")) fresh.decoration_scale = v;
+        else if (!strcmp(line, "decoration_scale_y")) fresh.decoration_scale_y = v;
+        else if (!strcmp(line, "decoration_2_dx")) fresh.decoration_extra_dx[0] = v;
+        else if (!strcmp(line, "decoration_2_dy")) fresh.decoration_extra_dy[0] = v;
+        else if (!strcmp(line, "decoration_2_scale")) fresh.decoration_extra_scale[0] = v;
+        else if (!strcmp(line, "decoration_2_scale_y")) fresh.decoration_extra_scale_y[0] = v;
+        else if (!strcmp(line, "decoration_3_dx")) fresh.decoration_extra_dx[1] = v;
+        else if (!strcmp(line, "decoration_3_dy")) fresh.decoration_extra_dy[1] = v;
+        else if (!strcmp(line, "decoration_3_scale")) fresh.decoration_extra_scale[1] = v;
+        else if (!strcmp(line, "decoration_3_scale_y")) fresh.decoration_extra_scale_y[1] = v;
+        else if (!strcmp(line, "decoration_4_dx")) fresh.decoration_extra_dx[2] = v;
+        else if (!strcmp(line, "decoration_4_dy")) fresh.decoration_extra_dy[2] = v;
+        else if (!strcmp(line, "decoration_4_scale")) fresh.decoration_extra_scale[2] = v;
+        else if (!strcmp(line, "decoration_4_scale_y")) fresh.decoration_extra_scale_y[2] = v;
+        else if (!strcmp(line, "decoration_5_dx")) fresh.decoration_extra_dx[3] = v;
+        else if (!strcmp(line, "decoration_5_dy")) fresh.decoration_extra_dy[3] = v;
+        else if (!strcmp(line, "decoration_5_scale")) fresh.decoration_extra_scale[3] = v;
+        else if (!strcmp(line, "decoration_5_scale_y")) fresh.decoration_extra_scale_y[3] = v;
+        else if (!strcmp(line, "decoration_6_dx")) fresh.decoration_extra_dx[4] = v;
+        else if (!strcmp(line, "decoration_6_dy")) fresh.decoration_extra_dy[4] = v;
+        else if (!strcmp(line, "decoration_6_scale")) fresh.decoration_extra_scale[4] = v;
+        else if (!strcmp(line, "decoration_6_scale_y")) fresh.decoration_extra_scale_y[4] = v;
+        else if (!strcmp(line, "decoration_7_dx")) fresh.decoration_extra_dx[5] = v;
+        else if (!strcmp(line, "decoration_7_dy")) fresh.decoration_extra_dy[5] = v;
+        else if (!strcmp(line, "decoration_7_scale")) fresh.decoration_extra_scale[5] = v;
+        else if (!strcmp(line, "decoration_7_scale_y")) fresh.decoration_extra_scale_y[5] = v;
+        else if (!strcmp(line, "decoration_8_dx")) fresh.decoration_extra_dx[6] = v;
+        else if (!strcmp(line, "decoration_8_dy")) fresh.decoration_extra_dy[6] = v;
+        else if (!strcmp(line, "decoration_8_scale")) fresh.decoration_extra_scale[6] = v;
+        else if (!strcmp(line, "decoration_8_scale_y")) fresh.decoration_extra_scale_y[6] = v;
+        else if (!strncmp(line, "decoration_", 11) && strncmp(line, "decoration_path_", 16) != 0) {
+            int layer = 0;
+            char component[16] = {0};
+            if (sscanf(line, "decoration_%d_%15s", &layer, component) == 2 &&
+                layer >= 9 && layer <= N_DECK_DECORATIONS) {
+                int slot = layer - 2;
+                if (!strcmp(component, "dx")) fresh.decoration_extra_dx[slot] = v;
+                else if (!strcmp(component, "dy")) fresh.decoration_extra_dy[slot] = v;
+                else if (!strcmp(component, "scale")) fresh.decoration_extra_scale[slot] = v;
+                else if (!strcmp(component, "scale_y")) fresh.decoration_extra_scale_y[slot] = v;
+            }
+        }
+        else if (!strcmp(line, "sounds_enabled")) fresh.sounds_enabled = v ? 1 : 0;
+        else if (!strcmp(line, "background_path")) deck_set_path(fresh.background_path, sizeof fresh.background_path, eq, directory);
+        else if (!strcmp(line, "button_texture_path")) deck_set_path(fresh.button_texture_path, sizeof fresh.button_texture_path, eq, directory);
+        else if (!strcmp(line, "item_texture_path")) deck_set_path(fresh.item_texture_path, sizeof fresh.item_texture_path, eq, directory);
+        else if (!strcmp(line, "item_texture_path_1")) deck_set_path(fresh.item_texture_by_id[1], sizeof fresh.item_texture_by_id[1], eq, directory);
+        else if (!strcmp(line, "item_texture_path_2")) deck_set_path(fresh.item_texture_by_id[2], sizeof fresh.item_texture_by_id[2], eq, directory);
+        else if (!strcmp(line, "item_texture_path_3")) deck_set_path(fresh.item_texture_by_id[3], sizeof fresh.item_texture_by_id[3], eq, directory);
+        else if (!strcmp(line, "decoration_path")) deck_set_path(fresh.decoration_path, sizeof fresh.decoration_path, eq, directory);
+        else if (!strcmp(line, "decoration_path_1")) deck_set_path(fresh.decoration_extra_path[0], sizeof fresh.decoration_extra_path[0], eq, directory);
+        else if (!strcmp(line, "decoration_path_2")) deck_set_path(fresh.decoration_extra_path[1], sizeof fresh.decoration_extra_path[1], eq, directory);
+        else if (!strcmp(line, "decoration_path_3")) deck_set_path(fresh.decoration_extra_path[2], sizeof fresh.decoration_extra_path[2], eq, directory);
+        else if (!strcmp(line, "decoration_path_4")) deck_set_path(fresh.decoration_extra_path[3], sizeof fresh.decoration_extra_path[3], eq, directory);
+        else if (!strcmp(line, "decoration_path_5")) deck_set_path(fresh.decoration_extra_path[4], sizeof fresh.decoration_extra_path[4], eq, directory);
+        else if (!strcmp(line, "decoration_path_6")) deck_set_path(fresh.decoration_extra_path[5], sizeof fresh.decoration_extra_path[5], eq, directory);
+        else if (!strcmp(line, "decoration_path_7")) deck_set_path(fresh.decoration_extra_path[6], sizeof fresh.decoration_extra_path[6], eq, directory);
+        else if (!strncmp(line, "decoration_path_", 16)) {
+            char *end = NULL;
+            long layer_key = strtol(line + 16, &end, 10);
+            if (end && *end == 0 && layer_key >= 8 && layer_key < N_DECK_DECORATIONS) {
+                int slot = (int)layer_key - 1; /* manifest suffix 8 is the ninth visual layer */
+                deck_set_path(fresh.decoration_extra_path[slot], sizeof fresh.decoration_extra_path[slot], eq, directory);
+            }
+        }
+        else if (!strcmp(line, "header_texture_path")) deck_set_path(fresh.header_texture_path, sizeof fresh.header_texture_path, eq, directory);
+        else if (!strcmp(line, "status_texture_path")) deck_set_path(fresh.status_texture_path, sizeof fresh.status_texture_path, eq, directory);
+        else if (!strcmp(line, "button_texture_save_path")) deck_set_path(fresh.button_texture_by_action[0], sizeof fresh.button_texture_by_action[0], eq, directory);
+        else if (!strcmp(line, "button_texture_load_path")) deck_set_path(fresh.button_texture_by_action[1], sizeof fresh.button_texture_by_action[1], eq, directory);
+        else if (!strcmp(line, "button_texture_pause_path")) deck_set_path(fresh.button_texture_by_action[2], sizeof fresh.button_texture_by_action[2], eq, directory);
+        else if (!strcmp(line, "button_texture_rewind_path")) deck_set_path(fresh.button_texture_by_action[3], sizeof fresh.button_texture_by_action[3], eq, directory);
+        else if (!strcmp(line, "button_texture_background_path")) deck_set_path(fresh.button_texture_by_action[4], sizeof fresh.button_texture_by_action[4], eq, directory);
+        else if (!strcmp(line, "button_texture_close_path")) deck_set_path(fresh.button_texture_by_action[5], sizeof fresh.button_texture_by_action[5], eq, directory);
+        else if (!strcmp(line, "item_sound_path")) deck_set_path(fresh.item_sound_path, sizeof fresh.item_sound_path, eq, directory);
+        else if (!strcmp(line, "empty_item_sound_path")) deck_set_path(fresh.empty_item_sound_path, sizeof fresh.empty_item_sound_path, eq, directory);
+        else if (!strncmp(line, "asset_stretch_", 13)) {
+            char *end = NULL;
+            long asset = strtol(line + 13, &end, 10);
+            if (end && *end == 0 && asset >= 0 && asset < N_DECK_ASSET_PATHS)
+                fresh.asset_stretch[asset] = v ? 1 : 0;
+        }
+        else {
+            for (int b = 0; b < N_DECK_BUTTON_SOUNDS; b++) {
+                char key[48];
+                snprintf(key, sizeof key, "button_sound_path%d", b);
+                if (!strcmp(line, key)) {
+                    deck_set_path(fresh.button_sound_path[b], sizeof fresh.button_sound_path[b], eq, directory);
+                    break;
+                }
+            }
+        }
+    }
+    fclose(f);
+    if (fresh.header_dx < -400) fresh.header_dx = -400; if (fresh.header_dx > 400) fresh.header_dx = 400;
+    if (fresh.header_dy < -400) fresh.header_dy = -400; if (fresh.header_dy > 400) fresh.header_dy = 400;
+    if (fresh.item_dx < -400) fresh.item_dx = -400; if (fresh.item_dx > 400) fresh.item_dx = 400;
+    if (fresh.item_dy < -400) fresh.item_dy = -400; if (fresh.item_dy > 400) fresh.item_dy = 400;
+    if (fresh.controls_dx < -400) fresh.controls_dx = -400; if (fresh.controls_dx > 400) fresh.controls_dx = 400;
+    if (fresh.controls_dy < -400) fresh.controls_dy = -400; if (fresh.controls_dy > 400) fresh.controls_dy = 400;
+    if (fresh.timeline_dx < -400) fresh.timeline_dx = -400; if (fresh.timeline_dx > 400) fresh.timeline_dx = 400;
+    if (fresh.timeline_dy < -400) fresh.timeline_dy = -400; if (fresh.timeline_dy > 400) fresh.timeline_dy = 400;
+    if (fresh.status_dx < -400) fresh.status_dx = -400; if (fresh.status_dx > 400) fresh.status_dx = 400;
+    if (fresh.status_dy < -400) fresh.status_dy = -400; if (fresh.status_dy > 400) fresh.status_dy = 400;
+    if (fresh.decoration_dx < -400) fresh.decoration_dx = -400; if (fresh.decoration_dx > 400) fresh.decoration_dx = 400;
+    if (fresh.decoration_dy < -400) fresh.decoration_dy = -400; if (fresh.decoration_dy > 400) fresh.decoration_dy = 400;
+    for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+        if (fresh.decoration_extra_dx[slot] < -400) fresh.decoration_extra_dx[slot] = -400;
+        if (fresh.decoration_extra_dx[slot] > 400) fresh.decoration_extra_dx[slot] = 400;
+        if (fresh.decoration_extra_dy[slot] < -400) fresh.decoration_extra_dy[slot] = -400;
+        if (fresh.decoration_extra_dy[slot] > 400) fresh.decoration_extra_dy[slot] = 400;
+        if (fresh.decoration_extra_scale[slot] < 25) fresh.decoration_extra_scale[slot] = 25;
+        if (fresh.decoration_extra_scale[slot] > 250) fresh.decoration_extra_scale[slot] = 250;
+        if (fresh.decoration_extra_scale_y[slot] < 25) fresh.decoration_extra_scale_y[slot] = 25;
+        if (fresh.decoration_extra_scale_y[slot] > 250) fresh.decoration_extra_scale_y[slot] = 250;
+    }
+    if (fresh.header_scale < 25) fresh.header_scale = 25; if (fresh.header_scale > 250) fresh.header_scale = 250;
+    if (fresh.item_scale < 25) fresh.item_scale = 25; if (fresh.item_scale > 250) fresh.item_scale = 250;
+    if (fresh.controls_scale < 25) fresh.controls_scale = 25; if (fresh.controls_scale > 250) fresh.controls_scale = 250;
+    if (fresh.timeline_scale < 25) fresh.timeline_scale = 25; if (fresh.timeline_scale > 250) fresh.timeline_scale = 250;
+    if (fresh.status_scale < 25) fresh.status_scale = 25; if (fresh.status_scale > 250) fresh.status_scale = 250;
+    if (fresh.status_scale_y < 25) fresh.status_scale_y = 25; if (fresh.status_scale_y > 250) fresh.status_scale_y = 250;
+    if (fresh.decoration_scale < 25) fresh.decoration_scale = 25; if (fresh.decoration_scale > 250) fresh.decoration_scale = 250;
+    settings.deck_layout[game] = fresh;
+    return 1;
+}
+
+void launcher_companion_layout_picker_result(int kind, int game, const char *path)
+{
+    if (game < 0 || game >= N_GAMES) return;
+    if (!path || !path[0]) return; /* user canceled the Android picker */
+    CompanionLayoutCfg *d = &settings.deck_layout[game];
+    if (kind == DECK_PICK_IMPORT) {
+        if (deck_manifest_apply(game, path)) {
+            companion_editor_game = game;
+            companion_editor_page = 1;
+            companion_editor_open = 1;
+            companion_editor_dragging = companion_editor_resizing = 0;
+            companion_redo_count = 0;
+            settings_save();
+            launcher_toast("Companion Deck bundle imported.");
+        } else launcher_toast("That bundle has no valid layout manifest.");
+        return;
+    }
+    if (kind == DECK_PICK_EXPORT) {
+        launcher_toast("Companion Deck bundle exported.");
+        return;
+    }
+    if (kind == DECK_PICK_BACKGROUND) snprintf(d->background_path, sizeof d->background_path, "%s", path);
+    else if (kind == DECK_PICK_BUTTON_TEXTURE) snprintf(d->button_texture_path, sizeof d->button_texture_path, "%s", path);
+    else if (kind == DECK_PICK_ITEM_TEXTURE) snprintf(d->item_texture_path, sizeof d->item_texture_path, "%s", path);
+    else if (kind == DECK_PICK_ITEM_MUSHROOM) snprintf(d->item_texture_by_id[1], sizeof d->item_texture_by_id[1], "%s", path);
+    else if (kind == DECK_PICK_ITEM_SPECIAL) snprintf(d->item_texture_by_id[2], sizeof d->item_texture_by_id[2], "%s", path);
+    else if (kind == DECK_PICK_ITEM_CARROT) snprintf(d->item_texture_by_id[3], sizeof d->item_texture_by_id[3], "%s", path);
+    else if (kind == DECK_PICK_HEADER_TEXTURE) snprintf(d->header_texture_path, sizeof d->header_texture_path, "%s", path);
+    else if (kind == DECK_PICK_STATUS_TEXTURE) snprintf(d->status_texture_path, sizeof d->status_texture_path, "%s", path);
+    else if (kind == DECK_PICK_BUTTON_SAVE_TEXTURE) snprintf(d->button_texture_by_action[0], sizeof d->button_texture_by_action[0], "%s", path);
+    else if (kind == DECK_PICK_BUTTON_LOAD_TEXTURE) snprintf(d->button_texture_by_action[1], sizeof d->button_texture_by_action[1], "%s", path);
+    else if (kind == DECK_PICK_BUTTON_PAUSE_TEXTURE) snprintf(d->button_texture_by_action[2], sizeof d->button_texture_by_action[2], "%s", path);
+    else if (kind == DECK_PICK_BUTTON_REWIND_TEXTURE) snprintf(d->button_texture_by_action[3], sizeof d->button_texture_by_action[3], "%s", path);
+    else if (kind == DECK_PICK_BUTTON_BACKGROUND_TEXTURE) snprintf(d->button_texture_by_action[4], sizeof d->button_texture_by_action[4], "%s", path);
+    else if (kind == DECK_PICK_BUTTON_CLOSE_TEXTURE) snprintf(d->button_texture_by_action[5], sizeof d->button_texture_by_action[5], "%s", path);
+    else if (kind == DECK_PICK_DECORATION) {
+        int slot = companion_editor_pending_decoration_slot;
+        if (slot < 0 || slot >= N_DECK_DECORATIONS) return;
+        char *target = deck_decoration_path(d, slot);
+        if (!target) return;
+        snprintf(target, 512, "%s", path);
+        companion_editor_element = DECK_ELEM_DECORATION + slot;
+    }
+    else if (kind >= DECK_PICK_SOUND_SAVE && kind <= DECK_PICK_SOUND_CLOSE)
+        snprintf(d->button_sound_path[kind - DECK_PICK_SOUND_SAVE],
+                 sizeof d->button_sound_path[0], "%s", path);
+    else if (kind == DECK_PICK_ITEM_SOUND) snprintf(d->item_sound_path, sizeof d->item_sound_path, "%s", path);
+    else if (kind == DECK_PICK_EMPTY_SOUND) snprintf(d->empty_item_sound_path, sizeof d->empty_item_sound_path, "%s", path);
+    settings_save();
+    launcher_toast("Companion Deck asset assigned.");
+}
+#endif /* Android or developer build */
+
 static void tab_display(float x, float y)
 {
+#if defined(__ANDROID__) || defined(PIPECLEAN_DEV_BUILD)
+    if (companion_editor_open) {
+        deck_editor_draw(x, y);
+        return;
+    }
+#endif
     ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
     ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "LAUNCHER DISPLAY");
     ui_text_wrap(F_REG, 12, x + 36, y + 112, 724, C_MUTED,
@@ -2561,8 +4484,20 @@ static void tab_display(float x, float y)
     ui_text(F_REG, 13, x + 210, y + 245, C_OK, "Adapts to device");
     ui_text_fit(F_REG, 11, x + 36, y + 287, 700, C_DIM,
                 "Android sizes the app to your device. Interface size still applies; rotate or resize the app window if your device supports it.");
-    ui_text(F_REG, 13, x + 36, y + 327, C_TEXT, "Fullscreen");
-    ui_text(F_REG, 12, x + 210, y + 327, C_DIM, "Managed by Android");
+
+    ui_text(F_REG, 13, x + 36, y + 327, C_TEXT, "Second-screen Companion Deck");
+    if (ui_toggle(x + 310, y + 323, &settings.launcher_dual_screen))
+        settings_save();
+    ui_text_fit(F_REG, 10, x + 36, y + 352, 710, C_DIM,
+                settings.launcher_dual_screen
+                    ? "Track changes slide a vinyl/song banner onto the bottom of the Companion Deck. Playlist stays in Audio & Menu."
+                    : "Track changes slide a vinyl/song banner into the launcher’s top-left. Playlist stays in Audio & Menu.");
+
+    ui_text(F_REG, 13, x + 36, y + 380, C_TEXT, "Auto Pipe Swap (SML1)");
+    if (ui_toggle(x + 310, y + 376, &settings.launcher_pipe_screen_swap))
+        settings_save();
+    ui_text_fit(F_REG, 10, x + 36, y + 405, 710, C_DIM,
+                "When enabled, Super Mario Land swaps gameplay to the lower display in pipe and bonus rooms. Requires the Companion Deck.");
 #else
     ui_text(F_REG, 13, x + 36, y + 245, C_TEXT, "Desktop window size");
     static const char *sizes[] = {"Compact", "Balanced", "Large"};
@@ -2576,15 +4511,484 @@ static void tab_display(float x, float y)
         settings_save();
     ui_text_fit(F_REG, 11, x + 36, y + 330, 700, C_DIM,
                 "Window size is restored when fullscreen is turned off. The game's own Display settings can still change game window size.");
+    ui_text(F_REG, 13, x + 36, y + 369, C_TEXT, "Companion Deck simulator");
+    if (ui_toggle(x + 310, y + 365, &settings.launcher_dual_screen)) {
+        settings_save();
+        launcher_toast(settings.launcher_dual_screen
+            ? "Companion Deck simulator enabled. A second window will open."
+            : "Companion Deck simulator disabled.");
+    }
+    ui_text_fit(F_REG, 10, x + 36, y + 396, 710, C_DIM,
+                "Opens a resizable second window for testing deck layouts and game state without a physical second display.");
 #endif
-    if (ui_button(x + 36, y + 394, 180, 36, "Reset display options", B_NORMAL, 1)) {
+    if (ui_button(x + 36, y + 434, 180, 30, "Reset display options", B_NORMAL, 1)) {
         settings.launcher_ui_scale = 100;
         settings.launcher_window_size = 1;
         settings.launcher_fullscreen = 0;
+        settings.launcher_dual_screen = 0;
+        settings.launcher_pipe_screen_swap = 0;
         ui_set_scale_preference(100);
         settings_save();
         launcher_toast("Launcher display options reset.");
     }
+#if defined(__ANDROID__) || defined(PIPECLEAN_DEV_BUILD)
+    if (settings.launcher_dual_screen) {
+        if (ui_button(x + 230, y + 434, 280, 30, "Companion Deck layout editor", B_PRIMARY, 1)) {
+            companion_editor_open = 1;
+            companion_editor_page = 0;
+            companion_editor_game = GAME_SML;
+            deck_editor_history_clear();
+        }
+    } else {
+        ui_text_fit(F_REG, 10, x + 230, y + 441, 520, C_DIM,
+                    "Enable the Companion Deck to edit its per-game layouts.");
+    }
+#endif
+}
+
+/* ------------------------------------------------------------------ collectible museum */
+static int museum_entry_matches(const MuseumEntry *entry)
+{
+    if (!entry) return 0;
+    if (museum_category != MUSEUM_CATEGORY_ALL && entry->category != museum_category)
+        return 0;
+    int found = museum_is_discovered(museum_game, entry->id);
+    if (museum_filter_mode == 1 && !found) return 0;
+    if (museum_filter_mode == 2 && found) return 0;
+    return 1;
+}
+
+static int museum_first_visible(void)
+{
+    for (int i = 0; i < museum_catalog_count(museum_game); ++i)
+        if (museum_entry_matches(museum_catalog_entry(museum_game, i))) return i;
+    return -1;
+}
+
+static int museum_visible_count(void)
+{
+    int total = 0;
+    for (int i = 0; i < museum_catalog_count(museum_game); ++i)
+        if (museum_entry_matches(museum_catalog_entry(museum_game, i))) total++;
+    return total;
+}
+
+static int museum_sprite_file(int game, const MuseumEntry *entry, char *path, size_t cap)
+{
+    return entry && museum_is_discovered(game, entry->id) &&
+           rs[game].ok && museum_sprite_asset_path(game, entry->id, path, cap);
+}
+
+static void museum_lock_glyph(float x, float y, float w, float h, int large)
+{
+    const float shackle_w = w * 0.42f;
+    const float shackle_h = h * 0.36f;
+    const float sx = x + (w - shackle_w) * 0.5f;
+    const float sy = y + h * 0.11f;
+    const float thick = large ? 4.0f : 2.0f;
+    const uint32_t gold = HEX(0xF4D49A), dark = HEX(0x542712);
+    ui_line(sx, sy + shackle_h, sx, sy + shackle_h * 0.52f, thick, gold);
+    ui_line(sx, sy + shackle_h * 0.52f, sx + shackle_w * 0.22f, sy, thick, gold);
+    ui_line(sx + shackle_w * 0.22f, sy, sx + shackle_w * 0.78f, sy, thick, gold);
+    ui_line(sx + shackle_w * 0.78f, sy, sx + shackle_w, sy + shackle_h * 0.52f, thick, gold);
+    ui_line(sx + shackle_w, sy + shackle_h * 0.52f, sx + shackle_w, sy + shackle_h, thick, gold);
+    ui_rrect(x + w * 0.20f, y + h * 0.43f, w * 0.60f, h * 0.43f, large ? 6 : 3, HEX(0xF0C16D));
+    ui_stroke(x + w * 0.20f, y + h * 0.43f, w * 0.60f, h * 0.43f, large ? 6 : 3,
+              large ? 2.0f : 1.0f, dark);
+    ui_rrect(x + w * 0.47f, y + h * 0.56f, w * 0.06f, h * 0.11f, 2, dark);
+    ui_line(x + w * 0.50f, y + h * 0.64f, x + w * 0.50f, y + h * 0.73f,
+            large ? 2.4f : 1.2f, dark);
+}
+
+static void museum_draw_entry_art(int game, const MuseumEntry *entry,
+                                  float x, float y, float w, float h, int found)
+{
+    ui_rrect(x, y, w, h, 5, HEX(0x29170F));
+    ui_stroke(x, y, w, h, 5, 1, HEX(0xA86B3C));
+    char path[1200];
+    if (museum_sprite_file(game, entry, path, sizeof path)) {
+        ui_rrect(x + 4, y + 4, w - 8, h - 8, 3, HEX(0xF1E2B9));
+        ui_image_file_fit_pixel(path, x + 5, y + 5, w - 10, h - 10);
+    } else if (!found) {
+        museum_lock_glyph(x + 4, y + 4, w - 8, h - 8, w > 82);
+    } else {
+        ui_rrect(x + 4, y + 4, w - 8, h - 8, 3, HEX(0xEAD8A8));
+        ui_text_c(F_BOLD, 8, x + w * 0.5f, y + h * 0.39f, HEX(0x80502D), "ARTWORK");
+        ui_text_c(F_BOLD, 8, x + w * 0.5f, y + h * 0.57f, HEX(0x80502D), "NOT CAPTURED");
+    }
+}
+ 
+static int museum_hack_visible(int g, int i)
+{
+    if (g < 0 || g >= N_GAMES || i < 0 || i >= settings.g[g].romhack_count ||
+        i >= MAX_ROMHACKS || !settings.g[g].romhacks[i].path[0]) return 0;
+    const int exists = file_exists(settings.g[g].romhacks[i].path);
+    return museum_hacks_filter == 1 ? exists :
+           museum_hacks_filter == 2 ? !exists : 1;
+}
+static int museum_hack_count(void)
+{
+    int n = 0;
+    for (int g = 0; g < N_GAMES; ++g) {
+        int count = settings.g[g].romhack_count;
+        if (count < 0) count = 0;
+        if (count > MAX_ROMHACKS) count = MAX_ROMHACKS;
+        for (int i = 0; i < count; ++i) if (museum_hack_visible(g, i)) n++;
+    }
+    return n;
+}
+static int museum_hack_at(int wanted, int *game, int *profile)
+{
+    int n = 0;
+    for (int g = 0; g < N_GAMES; ++g) {
+        int count = settings.g[g].romhack_count;
+        if (count < 0) count = 0;
+        if (count > MAX_ROMHACKS) count = MAX_ROMHACKS;
+        for (int i = 0; i < count; ++i) {
+            if (!museum_hack_visible(g, i)) continue;
+            if (n++ == wanted) { *game = g; *profile = i; return 1; }
+        }
+    }
+    return 0;
+}
+static void tab_museum_romhacks(float x, float y, float width)
+{
+    const float by = y + 63.0f, bh = 413.0f, lw = 390.0f;
+    const float rx = x + lw + 8.0f, rw = width - lw - 8.0f;
+    int count = museum_hack_count(), selected_row = -1, g = -1, i = -1;
+    for (int row = 0; row < count; ++row) {
+        int gg, ii;
+        if (museum_hack_at(row, &gg, &ii) && gg == museum_hack_game && ii == museum_hack_index)
+            selected_row = row;
+    }
+    if (selected_row < 0 && count) {
+        selected_row = 0;
+        museum_hack_at(0, &museum_hack_game, &museum_hack_index);
+    }
+
+    ui_rrect(x, by, width, bh, 9, HEX(0x302016));
+    ui_stroke(x, by, width, bh, 9, 2, HEX(0x0E0A08));
+    ui_rrect(x + 5, by + 5, lw - 10, bh - 10, 5, HEX(0xF2E5B7));
+    ui_rrect(x + 5, by + 5, lw - 10, 26, 4, HEX(0x84340F));
+    ui_text(F_BOLD, 12, x + 16, by + 10, HEX(0xFFF3D4), "ROM HACK PROFILES");
+    char count_text[40]; snprintf(count_text, sizeof count_text, "%d", count);
+    ui_text_r(F_BOLD, 11, x + lw - 16, by + 11, HEX(0xF4D19A), count_text);
+
+    const float lx = x + 11, ly = by + 39, lwidth = lw - 22, lheight = bh - 50;
+    const float row_h = 62, step = 67, content_h = count * step;
+    const float max_scroll = content_h > lheight ? content_h - lheight : 0;
+    if (ui_mouse.x >= lx && ui_mouse.x <= lx + lwidth &&
+        ui_mouse.y >= ly && ui_mouse.y <= ly + lheight && ui_mouse.wheel)
+        museum_hack_scroll -= ui_mouse.wheel * step;
+    if (museum_hack_scroll < 0) museum_hack_scroll = 0;
+    if (museum_hack_scroll > max_scroll) museum_hack_scroll = max_scroll;
+    ui_clip(lx, ly, lwidth, lheight);
+    for (int row = 0; row < count; ++row) {
+        if (!museum_hack_at(row, &g, &i)) continue;
+        const RomHackEntry *e = &settings.g[g].romhacks[i];
+        const float ry = ly + row * step - museum_hack_scroll;
+        if (ry + row_h < ly || ry > ly + lheight) continue;
+        if (ui_button(lx + 2, ry, lwidth - 4, row_h, "",
+                      row == selected_row ? B_PRIMARY : B_NORMAL, 1)) {
+            museum_hack_game = g; museum_hack_index = i; selected_row = row;
+        }
+        draw_romhack_thumb(g, i, lx + 7, ry + 5, 66, 52);
+        ui_text_fit(F_BOLD, 11, lx + 80, ry + 9, lwidth - 92, HEX(0x33251A),
+                    e->title[0] ? e->title : "Untitled ROM hack");
+        ui_text_fit(F_REG, 9, lx + 80, ry + 31, lwidth - 92, HEX(0x795A3B),
+                    games[g].name);
+        if (!file_exists(e->path))
+            ui_text(F_BOLD, 8, lx + 80, ry + 45, HEX(0x75401E), "FILE MISSING");
+    }
+    ui_unclip();
+
+    ui_rrect(rx, by + 5, rw - 5, bh - 10, 5, HEX(0xA75A2D));
+    ui_stroke(rx, by + 5, rw - 5, bh - 10, 5, 1, HEX(0x552713));
+    ui_rrect(rx + 5, by + 10, rw - 15, 26, 4, HEX(0x81320F));
+    ui_text(F_BOLD, 12, rx + 14, by + 15, HEX(0xFFF0D1), "PROFILE DETAILS");
+    if (!count) {
+        ui_text(F_BOLD, 15, rx + 18, by + 55, HEX(0xFFF0D1), "No ROM hacks registered");
+        ui_text_wrap(F_REG, 11, rx + 18, by + 86, rw - 42, HEX(0xF5D6B2),
+                     "Add a hack from Settings > ROM Hacks on any game's page. Profiles appear here without distributing ROMs or patches.",
+                     1.18f);
+    } else if (museum_hack_at(selected_row < 0 ? 0 : selected_row, &g, &i)) {
+        const RomHackEntry *e = &settings.g[g].romhacks[i];
+        const int exists = file_exists(e->path);
+        draw_romhack_thumb(g, i, rx + 16, by + 47, 144, 96);
+        ui_text_fit(F_BOLD, 15, rx + 173, by + 52, rw - 190, HEX(0xFFF0D1),
+                    e->title[0] ? e->title : "Untitled ROM hack");
+        ui_text_fit(F_REG, 11, rx + 173, by + 77, rw - 190, HEX(0xF5D6B2), games[g].name);
+        ui_text(F_BOLD, 10, rx + 173, by + 99, HEX(0xF6D19A),
+                exists ? "FILE AVAILABLE" : "FILE MISSING");
+        ui_line(rx + 15, by + 153, rx + rw - 16, by + 153, 1, HEX(0xD39C63));
+        ui_text(F_BOLD, 11, rx + 17, by + 163, HEX(0xFFF0D1), "PROFILE STATUS");
+        ui_text_wrap(F_REG, 10, rx + 17, by + 184, rw - 40, HEX(0xF5D6B2),
+                     settings.g[g].romhack_selected == i
+                         ? "This profile is selected for the next launch."
+                         : "Select this profile under Settings > ROM Hacks to launch it.",
+                     1.16f);
+        ui_text(F_BOLD, 10, rx + 17, by + 246, HEX(0xFFF0D1), "LOCAL FILE");
+        ui_text_fit(F_REG, 9, rx + 17, by + 265, rw - 40, HEX(0xF5D6B2), e->path);
+        ui_line(rx + 15, by + 292, rx + rw - 16, by + 292, 1, HEX(0xD39C63));
+        ui_text_wrap(F_REG, 10, rx + 17, by + 303, rw - 40, HEX(0xFFF0D1),
+                     "This view indexes your registered local profiles. Hack-specific collectible catalogs can be added when its changed content has been mapped.",
+                     1.14f);
+    }
+    ui_text_fit(F_REG, 10, x + 3, y + 485, width - 6, C_DIM,
+                "ROM hacks stay on your device · PipeClean does not bundle ROMs or patch files.");
+}
+
+static void tab_museum(float x, float y)
+{
+    static const char *game_labels[N_GAMES] = {
+        "Dr. Mario", "Mario Land", "Land 2", "Wario Land",
+        "Wario II · GB", "Wario III · GBC", "Wario II · GBC"
+    };
+    static const char *category_labels[] = {
+        "All", "Enemies", "Items", "Treasures", "Stages", "Milestones", "Characters"
+    };
+    static const int category_values[] = {
+        MUSEUM_CATEGORY_ALL, MUSEUM_CATEGORY_ENEMY, MUSEUM_CATEGORY_ITEM,
+        MUSEUM_CATEGORY_TREASURE, MUSEUM_CATEGORY_STAGE,
+        MUSEUM_CATEGORY_MILESTONE, MUSEUM_CATEGORY_CHARACTER
+    };
+    /* Treasures are a Wario-series mechanic. Keep that filter out of Mario
+       and Dr. Mario tabs rather than showing an empty, misleading category. */
+    const int has_treasures = museum_game == GAME_WARIO_SML3 ||
+        museum_game == GAME_WARIO_LAND2_GB ||
+        museum_game == GAME_WARIO_LAND2_GBC ||
+        museum_game == GAME_WARIO_LAND3_GBC;
+    const int category_count = has_treasures ? 7 : 6;
+    static const char *filter_labels[] = {"All Entries", "Collected", "Undiscovered"};
+    const float width = 808.0f;
+    ui_accent = museum_hacks_view ? 0xC77B44u : games[museum_game].accent;
+    const float game_gap = 4.0f, game_h = 27.0f;
+    const float game_w = (width - game_gap * N_GAMES) / (float)(N_GAMES + 1);
+    for (int g = 0; g < N_GAMES; ++g) {
+        float bx = x + g * (game_w + game_gap);
+        if (ui_chip(bx, y, game_w, game_h, game_labels[g],
+                    !museum_hacks_view && g == museum_game)) {
+            museum_game = g; museum_hacks_view = 0; museum_scroll = 0.0f;
+            museum_selected[g] = 0;
+            museum_reset_confirm = 0;
+        }
+    }
+    const float hacks_x = x + N_GAMES * (game_w + game_gap);
+    if (ui_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view)) {
+        museum_hacks_view = 1; museum_hack_scroll = 0.0f;
+        museum_reset_confirm = 0;
+    }
+    if (museum_hacks_view) {
+        static const char *hack_filters[] = {"All Profiles", "File Available", "Missing File"};
+        for (int i = 0; i < 3; ++i) {
+            if (ui_chip(x + i * 136.0f, y + 31, 130, 25, hack_filters[i],
+                        museum_hacks_filter == i)) {
+                museum_hacks_filter = i; museum_hack_scroll = 0.0f;
+            }
+        }
+        tab_museum_romhacks(x, y, width);
+        return;
+    }
+
+    /* Keep reset in this fixed header row, outside the scrollable specimen
+       grid. On short/touch displays, footer controls could be mistaken for
+       the last visible discovery tile. */
+    const float cat_gap = 4.0f;
+    const float reset_w = 124.0f;
+    const float cat_area_w = width - reset_w - cat_gap;
+    const float cat_w = (cat_area_w - cat_gap * (category_count - 1)) / (float)category_count;
+    for (int i = 0; i < category_count; ++i) {
+        int category_index = i;
+        if (!has_treasures && i >= 3) category_index = i + 1;
+        float bx = x + i * (cat_w + cat_gap);
+        if (ui_chip(bx, y + 31, cat_w, 25, category_labels[category_index],
+                    museum_category == category_values[category_index])) {
+            museum_category = category_values[category_index]; museum_scroll = 0.0f;
+            museum_reset_confirm = 0;
+        }
+    }
+
+    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until)
+        museum_reset_confirm = 0;
+    if (ui_button(x + cat_area_w + cat_gap, y + 31, reset_w, 25,
+                  museum_reset_confirm ? "Confirm reset" : "Reset all",
+                  museum_reset_confirm ? B_DANGER : B_GHOST, 1)) {
+        if (!museum_reset_confirm) {
+            museum_reset_confirm = 1;
+            museum_reset_confirm_until = anim_clock + 4.0f;
+            launcher_toast("Press Confirm reset within 4 seconds to clear discoveries for every game.");
+        } else if (museum_clear_discoveries()) {
+            museum_reset_confirm = 0;
+            museum_category = MUSEUM_CATEGORY_ALL;
+            museum_filter_mode = 0;
+            museum_scroll = 0.0f;
+            for (int game = 0; game < N_GAMES; ++game)
+                museum_selected[game] = 0;
+            launcher_toast("All Museum discoveries cleared. Play again to start a fresh collection.");
+        } else {
+            museum_reset_confirm = 0;
+            launcher_toast(museum_last_storage_error()[0]
+                ? museum_last_storage_error() : "Couldn't reset Museum discoveries.");
+        }
+    }
+
+    int all_count = museum_catalog_count(museum_game);
+    int found_count = museum_discovered_count(museum_game);
+    int visible = museum_visible_count();
+    int selected_index = museum_selected[museum_game];
+    const MuseumEntry *selected = museum_catalog_entry(museum_game, selected_index);
+    if (!museum_entry_matches(selected)) {
+        selected_index = museum_first_visible();
+        museum_selected[museum_game] = selected_index >= 0 ? selected_index : 0;
+        selected = museum_catalog_entry(museum_game, museum_selected[museum_game]);
+    }
+    int selected_found = selected && museum_is_discovered(museum_game, selected->id);
+
+    const float body_y = y + 63.0f, body_h = 413.0f;
+    const float left_w = 450.0f, gap = 8.0f, right_x = x + left_w + gap;
+    const float right_w = width - left_w - gap;
+
+    /* Original handheld palette: warm paper, dark ink and a timber header. */
+    ui_rrect(x, body_y, width, body_h, 9, HEX(0x302016));
+    ui_stroke(x, body_y, width, body_h, 9, 2, HEX(0x0E0A08));
+
+    /* Detail / field-guide side. */
+    ui_rrect(x + 5, body_y + 5, left_w - 10, body_h - 10, 5, HEX(0xF2E5B7));
+    ui_rrect(x + 5, body_y + 5, left_w - 10, 25, 4, HEX(0x84340F));
+    ui_text(F_BOLD, 13, x + 16, body_y + 9, HEX(0xFFF3D4), "FIELD GUIDE");
+    ui_text_r(F_BOLD, 11, x + left_w - 16, body_y + 10, HEX(0xF4D19A),
+              selected_found ? museum_category_name(selected->category) :
+              (selected ? "LOCKED" : "EMPTY"));
+
+    museum_draw_entry_art(museum_game, selected, x + 13, body_y + 39, 108, 108,
+                          selected_found);
+    const float info_x = x + 132;
+    char provenance[120];
+    snprintf(provenance, sizeof provenance, "%s: %s",
+             selected_found ? "First seen" : "Game", games[museum_game].name);
+    if (selected_found && selected) {
+        ui_text_fit(F_BOLD, 18, info_x, body_y + 42, left_w - 153,
+                    HEX(0x25170E), selected->name);
+        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "SPECIMEN RECORDED");
+        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 1 / 1");
+        ui_text(F_REG, 10, info_x, body_y + 101, HEX(0x65452F),
+                rs[museum_game].ok ? "Cartridge: ready" : "Add this game's ROM for sprite capture");
+        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
+    } else {
+        ui_text_fit(F_BOLD, 17, info_x, body_y + 42, left_w - 153,
+                    HEX(0x25170E), "NOT YET UNLOCKED");
+        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "LOCKED SPECIMEN");
+        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 0 / 1");
+        ui_text_wrap(F_REG, 10, info_x, body_y + 101, left_w - 153, HEX(0x65452F),
+                     "This entry hasn't been unlocked. Discover it in-game to reveal its details.", 1.0f);
+        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
+    }
+
+    ui_line(x + 13, body_y + 156, x + left_w - 13, body_y + 156, 2, HEX(0xB87C3A));
+    ui_text(F_BOLD, 12, x + 15, body_y + 164, HEX(0x5F2E16),
+            selected_found ? "FIELD NOTES" : "LOCKED ENTRY");
+    if (selected_found && selected) {
+        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
+                     HEX(0x33251A), selected->description, 1.15f);
+    } else {
+        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
+                     HEX(0x65452F),
+                     "This entry hasn't been unlocked yet. Play the game and encounter it to reveal the name, sprite, and description.",
+                     1.15f);
+    }
+
+    ui_line(x + 13, body_y + 268, x + left_w - 13, body_y + 268, 1, HEX(0xC79A62));
+    ui_text(F_BOLD, 11, x + 15, body_y + 276, HEX(0x5F2E16), "RECENT DISCOVERIES");
+    int recent = 0;
+    for (int i = all_count - 1; i >= 0 && recent < 2; --i) {
+        const MuseumEntry *entry = museum_catalog_entry(museum_game, i);
+        if (!entry || !museum_is_discovered(museum_game, entry->id) ||
+            (selected && !strcmp(selected->id, entry->id))) continue;
+        float ry = body_y + 297 + recent * 49.0f;
+        museum_draw_entry_art(museum_game, entry, x + 15, ry, 38, 38, 1);
+        ui_text_fit(F_BOLD, 11, x + 62, ry + 2, left_w - 83,
+                    HEX(0x33251A), entry->name);
+        ui_text_fit(F_REG, 9, x + 62, ry + 20, left_w - 83,
+                    HEX(0x795A3B), museum_category_name(entry->category));
+        recent++;
+    }
+    if (!recent)
+        ui_text(F_REG, 10, x + 15, body_y + 300, HEX(0x795A3B),
+                "Your discoveries will be catalogued here.");
+
+    /* Collection shelf. The unknown slots look like a retro museum display. */
+    ui_rrect(right_x, body_y + 5, right_w - 5, body_h - 10, 5, HEX(0xA75A2D));
+    ui_stroke(right_x, body_y + 5, right_w - 5, body_h - 10, 5, 1, HEX(0x552713));
+    ui_rrect(right_x + 5, body_y + 10, right_w - 15, 25, 4, HEX(0x81320F));
+    ui_text(F_BOLD, 12, right_x + 14, body_y + 15, HEX(0xFFF0D1), "COLLECTION SHELF");
+    char progress[64];
+    snprintf(progress, sizeof progress, "%d / %d", found_count, all_count);
+    ui_text_r(F_BOLD, 11, right_x + right_w - 13, body_y + 16, HEX(0xF6D19A), progress);
+    if (ui_seg(right_x + 9, body_y + 40, right_w - 27, 24,
+               filter_labels, 3, &museum_filter_mode))
+        museum_scroll = 0.0f;
+
+    const float grid_x = right_x + 9, grid_y = body_y + 71;
+    const float grid_w = right_w - 27, grid_h = body_h - 83;
+    const float tile_gap_x = 7.0f, tile_gap_y = 7.0f;
+    const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
+    const float tile_h = 75.0f, row_step = tile_h + tile_gap_y;
+    int rows = (visible + 2) / 3;
+    float content_h = rows * row_step;
+    float max_scroll = content_h > grid_h ? content_h - grid_h : 0.0f;
+    if (ui_mouse.x >= grid_x && ui_mouse.x <= grid_x + grid_w &&
+        ui_mouse.y >= grid_y && ui_mouse.y <= grid_y + grid_h &&
+        ui_mouse.wheel != 0.0f)
+        museum_scroll -= ui_mouse.wheel * row_step;
+    if (museum_scroll < 0.0f) museum_scroll = 0.0f;
+    if (museum_scroll > max_scroll) museum_scroll = max_scroll;
+
+    ui_clip(grid_x, grid_y, grid_w, grid_h);
+    int shown = 0;
+    for (int i = 0; i < all_count; ++i) {
+        const MuseumEntry *entry = museum_catalog_entry(museum_game, i);
+        if (!museum_entry_matches(entry)) continue;
+        int row = shown / 3, col = shown % 3;
+        shown++;
+        float tx = grid_x + col * (tile_w + tile_gap_x);
+        float ty = grid_y + row * row_step - museum_scroll;
+        if (ty + tile_h < grid_y || ty > grid_y + grid_h) continue;
+        int found = museum_is_discovered(museum_game, entry->id);
+        int selected_tile = selected && !strcmp(selected->id, entry->id);
+        if (ui_button(tx, ty, tile_w, tile_h, "", selected_tile ? B_PRIMARY : B_NORMAL, 1)) {
+            museum_selected[museum_game] = i;
+        }
+        ui_rrect(tx + 3, ty + 3, tile_w - 6, 51, 3,
+                 found ? HEX(0xE9D6A5) : HEX(0x814322));
+        if (found) {
+            museum_draw_entry_art(museum_game, entry, tx + 9, ty + 5, tile_w - 18, 47, 1);
+            ui_text_fit(F_BOLD, 9, tx + 4, ty + 57, tile_w - 8,
+                        HEX(0xFFF0D5), entry->name);
+        } else {
+            museum_lock_glyph(tx + 13, ty + 5, tile_w - 26, 46, 0);
+            ui_text_c(F_BOLD, 9, tx + tile_w * 0.5f, ty + 57, HEX(0xDDB98C), "LOCKED");
+        }
+        if (selected_tile)
+            ui_stroke(tx + 1, ty + 1, tile_w - 2, tile_h - 2, 5, 2, HEX(0xFFE39A));
+    }
+    ui_unclip();
+
+    ui_text(F_BOLD, 10, x + 3, y + 486, HEX(0xD8B78A), "Discovery alerts");
+    if (ui_toggle(x + 112, y + 481, &settings.museum_discovery_notifications)) {
+        settings_save();
+        launcher_toast(settings.museum_discovery_notifications
+            ? "Museum discovery notifications enabled."
+            : "Museum discovery notifications disabled.");
+    }
+    ui_text_fit(F_REG, 10, x + 164, y + 486, 430, C_DIM,
+                settings.museum_discovery_notifications
+                    ? "Pop-ups appear over gameplay."
+                    : "Pop-ups off; progress still saves.");
+
+    /* Reset action is handled beside the category filters above. */
+    if (museum_last_storage_error()[0])
+        ui_text_fit(F_REG, 9, x + 3, y + 503, width - 6, C_ERR,
+                    museum_last_storage_error());
 }
 
 /* ------------------------------------------------------------------ frame */
@@ -2596,7 +5000,8 @@ static const char *tab_labels[N_TABS] = {
     [TAB_FILTERS] = "Filters",
     [TAB_AUDIO] = "Audio & menu",
     [TAB_ONLINE] = "Online",
-    [TAB_DISPLAY] = "Display"
+    [TAB_DISPLAY] = "Display",
+    [TAB_MUSEUM] = "Museum"
 };
 
 static int tab_button(float x, float y, float w, float h, int selected, uint32_t accent)
@@ -2635,6 +5040,24 @@ LauncherResult launcher_frame(float dt)
     }
     launcher_controller_update(dt);
     anim_clock += dt;
+    museum_init();
+    if (toast_t <= 0.0f) {
+        char discovery_notice[160];
+        if (museum_take_notification(discovery_notice, sizeof discovery_notice))
+            launcher_toast(discovery_notice);
+    }
+    if (tab != TAB_AUDIO && music_notice_deferred && music_notice_age >= 0.0f) {
+        /* Re-enter the animation at the start when leaving the management tab. */
+        music_notice_age = 0.0f;
+        music_notice_deferred = 0;
+    }
+    if (music_notice_age >= 0.0f) {
+        music_notice_age += dt;
+        if (music_notice_age > 2.75f) {
+            music_notice_age = -1.0f;
+            music_notice_deferred = 0;
+        }
+    }
     int g = (tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? mp_config_game : launcher_current_game();
     if (tab < N_GAMES) last_game_tab = tab;
     ui_accent = tab < N_GAMES ? games[tab].accent : ((tab == TAB_MULTIPLAYER || tab == TAB_MP_CONTROLLERS) ? games[mp_config_game].accent : 0x4C8DFF);
@@ -2808,10 +5231,14 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Online");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Session invites, player identity, and cross-platform play.");
         tab_online(cx, cy + 58);
-    } else {
+    } else if (tab == TAB_DISPLAY) {
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Display & layout");
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Adjust the launcher's size on desktop and Android.");
         tab_display(cx, cy + 58);
+    } else {
+        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Collectible Museum");
+        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "A shared collection for every game: enemies, items, treasures, stages, and milestones.");
+        tab_museum(cx, cy + 58);
     }
 
     /* footer */
@@ -2833,6 +5260,19 @@ LauncherResult launcher_frame(float dt)
         ui_rrect(tx, ty, tw, 40, 12, RGBA(40, 46, 66, (int)(250 * a)));
         ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
+
+    /* Cancel an older notification when entering Audio & Menu, but retain a
+       fresh track change made inside that page so it can show after leaving. */
+    if (tab == TAB_AUDIO && !music_notice_deferred)
+        music_notice_age = -1.0f;
+    /* If navigation left Audio & Menu during this frame, start the deferred
+       notification now so both the launcher and Companion Deck slide in together. */
+    if (tab != TAB_AUDIO && music_notice_deferred && music_notice_age >= 0.0f) {
+        music_notice_age = 0.0f;
+        music_notice_deferred = 0;
+    }
+    /* Music status is a temporary overlay, never part of the Audio & Menu page. */
+    menu_music_notice_draw(vx, vy);
 
     /* Draw a high-contrast virtual pointer while controller navigation is active. */
     if (launcher_controller_cursor_active) {
@@ -2868,7 +5308,8 @@ LauncherResult launcher_frame(float dt)
 void launcher_event(const SDL_Event *e)
 {
     if (e && (e->type == SDL_MOUSEMOTION || e->type == SDL_MOUSEBUTTONDOWN ||
-              e->type == SDL_MOUSEWHEEL)) {
+              e->type == SDL_MOUSEWHEEL || e->type == SDL_FINGERDOWN ||
+              e->type == SDL_FINGERMOTION || e->type == SDL_FINGERUP)) {
         launcher_leave_controller_cursor();
     }
     if (romhack_title_editing_game >= 0) {
@@ -2919,7 +5360,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             if (!entry->title[0])
                 romhack_title_from_path(entry->path, entry->title, sizeof entry->title);
             romhack_title_editing_game = romhack_title_editing_index = -1;
@@ -2966,7 +5407,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             online_commit_shared_name();
         }
         return;
@@ -3068,7 +5509,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             online_name_editing = online_code_editing = online_server_editing = online_chat_editing = 0;
             SDL_StopTextInput();
             if (!editing_chat && !dst[0]) snprintf(dst, cap, "%s", fallback);
@@ -3112,7 +5553,7 @@ void launcher_event(const SDL_Event *e)
             }
         }
         if ((e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
-            e->type == SDL_MOUSEBUTTONDOWN) {
+            (e->type == SDL_MOUSEBUTTONDOWN || e->type == SDL_FINGERDOWN)) {
             multiplayer_name_editing = 0;
             SDL_StopTextInput();
             if (!name[0]) snprintf(name, 32, "%s", fallback);

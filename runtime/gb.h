@@ -31,6 +31,8 @@ extern int cart_ram_on;
 /* ---- memory ---- */
 uint8_t rd8(uint16_t a);
 void wr8(uint16_t a, uint8_t v);
+/* Read the linear WRAM backing store without the currently selected CGB bank. */
+uint8_t gb_wram_peek(size_t offset);
 void gb_watch_range(uint16_t lo, uint16_t hi, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
 void gb_watch_set(const uint16_t *addrs, int n, void (*cb)(uint16_t addr, uint8_t old_v, uint8_t new_v));
 void gb_watch_override(uint16_t addr, uint8_t value); /* Replace the value for the active watched write. */
@@ -94,6 +96,13 @@ void ppu_vram_write(uint16_t address, uint8_t value);
 uint8_t ppu_vram_bank_read(void);
 void ppu_vram_bank1_copy(uint8_t out[0x1800]);
 void ppu_cgb_obj_palette_copy(uint32_t out[32]);
+/* Rebuild a complete object directly from OAM/tile VRAM for crisp Museum art.
+ * Pixels are packed 0xRRGGBBAA; transparent pixels are zero. The output uses
+ * max_dim as its row stride. */
+int ppu_museum_capture_object(uint8_t object_y, uint8_t object_x,
+                              uint32_t *rgba, size_t pixel_capacity,
+                              int max_dim, int *out_w, int *out_h,
+                              const uint32_t ob0[4], const uint32_t ob1[4]);
 void ppu_set_cgb_mode(int enabled);
 int ppu_cgb_mode_enabled(void);
 extern uint32_t ppu_rgb[GB_H][GB_WMAX];
@@ -147,3 +156,6 @@ extern int ppu_w, ppu_xoff;
 /* gate: 0 = always wide, 1 = only while the timer interrupt is enabled (Super Mario Land levels),
  * 2 = legacy bottom-status-window gating (kept for compatibility). Otherwise the normal screen with bars. */
 void ppu_set_wide(int left, int right, int hud_lines, int centre_window, int gate);
+void ppu_set_wario_sml3(int enabled);
+void ppu_set_wl2_wide(int enabled);
+void ppu_set_wl3_wide(int enabled);

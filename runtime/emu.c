@@ -11,6 +11,7 @@
 #include "events.h"
 #include "settings.h"
 #include "dev_diag.h"
+#include "widescreen.h"
 
 EmuDev emu_dev = {.max_frames = -1};
 
@@ -20,13 +21,20 @@ static SDL_mutex *fmx;
 static Frame pub;                         /* latest published frame */
 
 typedef struct {
-    uint8_t kind;          /* 0 = empty; 1 = mushroom, 2 = second power-up, 3 = carrot. */
+    uint8_t kind;          /* Raw value: SML1 1 = mushroom/2 = flower; SML2 2 = carrot/3 = Fire Flower. */
     uint8_t spawn_pending; /* SML1 defers respawn until the object slot is free. */
     uint8_t object[16];    /* Original SML1 power-up record at D190-D19F. */
 } ReserveItemState;
 
 static ReserveItemState reserve_item_state;
 static volatile int reserve_item_use_request;
+/* SML2's main loop consumes A26C as a native pickup event. Keep the reserve
+ * until the ROM acknowledges the requested form through A216 and clears A26C. */
+static int reserve_item_apply_active;
+static int reserve_item_native_use_pending;
+static uint8_t reserve_item_native_use_kind;
+static uint8_t reserve_item_native_use_event;
+static unsigned reserve_item_native_use_frames;
 static volatile int abort_flag, paused, turbo, thread_mode, preview_target, previewing;
 static volatile uint32_t input_word;     /* buttons | dpad << 8 */
 static SDL_mutex *rewind_sync_mx;
@@ -104,6 +112,10 @@ static void publish(void)
     pub.scroll_x = rd8(0xFFA4); pub.game_state = rd8(0xFFB3);
     pub.level_id = 0xFF; pub.level_bank = 0xFF; pub.p1_lives = 0;
     pub.reserve_item = reserve_item_state.kind;
+    pub.dr_mario_score = 0;
+    pub.dr_mario_level = 0xFF;
+    pub.dr_mario_speed = 0xFF;
+    pub.dr_mario_capsule = 0xFF;
     int active_game = rom_loaded_game();
     if (active_game == GAME_SML) {
         uint8_t world_level = rd8(0xFFB4); /* Packed BCD: high nibble world, low nibble level. */
@@ -113,6 +125,28 @@ static void publish(void)
     } else if (active_game == GAME_SML2) {
         pub.p1_lives = rd8(0xA22C);
         pub.level_id = rd8(0xA269);
+    } else if (active_game == GAME_DRMARIO) {
+        /* Dr. Mario GB: $C0A0-$C0A3 is an eight-digit packed-BCD score,
+         * $FFC3 is the virus level, $FFAD is speed (2=LOW, 3=MED, 4=HI),
+         * and $C213 describes the capsule shown as the next pill. */
+        uint32_t score = 0;
+        int valid_score = 1;
+        for (int address = 0xC0A3; address >= 0xC0A0; --address) {
+            uint8_t bcd = rd8((uint16_t)address);
+            unsigned tens = (unsigned)((bcd >> 4) & 0x0F);
+            unsigned ones = (unsigned)(bcd & 0x0F);
+            if (tens > 9 || ones > 9) { valid_score = 0; break; }
+            score = score * 100u + tens * 10u + ones;
+        }
+        if (valid_score) pub.dr_mario_score = score;
+        uint8_t level_bcd = rd8(0xFFC3);
+        unsigned level_tens = (unsigned)((level_bcd >> 4) & 0x0F);
+        unsigned level_ones = (unsigned)(level_bcd & 0x0F);
+        if (level_tens <= 9 && level_ones <= 9)
+            pub.dr_mario_level = (uint8_t)(level_tens * 10u + level_ones);
+        pub.dr_mario_speed = rd8(0xFFAD);
+        uint8_t capsule = rd8(0xC213);
+        if (capsule <= 0x17) pub.dr_mario_capsule = capsule;
     }
     pub.obp0 = ppu_read(0x48); pub.obp1 = ppu_read(0x49); pub.sprite_size16 = (uint8_t)((ppu_read(0x40) & 0x04) != 0);
     memcpy(pub.mario_oam, &oam[0x0C], sizeof pub.mario_oam);
@@ -420,22 +454,26 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     int game = rom_loaded_game();
     if (mp_ready || mp_active) return;
 
-    /* SML2 power-up values in $A216 are 1 (mushroom), 2 (fire flower),
-     * and 3 (carrot). Preserve the current form when a newly collected
-     * power-up goes into the empty reserve. Damage no longer consumes the
-     * reserve automatically; the player chooses when to use it. */
+    /* SML2 $A216 tracks the active power-up: 1 = Mushroom/big, 2 = Carrot,
+     * 3 = Fire Flower. The reserve holds the form Mario is switching away from,
+     * not the newly collected form. Mushroom/big Mario is not reserved.
+     * Flower/Carrot transitions save the previous special form and allow the
+     * game's active value through; stars use a separate path. */
     if (game == GAME_SML2 && addr == 0xA216) {
-        if (old_v >= 1 && old_v <= 3 && new_v >= 1 && new_v <= 3 &&
-            reserve_item_state.kind == 0) {
-            reserve_item_state.kind = new_v;
+        if (reserve_item_apply_active) return;
+        if (old_v >= 2 && old_v <= 3 && new_v >= 2 && new_v <= 3) {
+            reserve_item_state.kind = old_v;
             reserve_item_state.spawn_pending = 0;
-            gb_watch_override(addr, old_v);
         }
         return;
     }
 
     if (game != GAME_SML) return;
-    if (addr == 0xD190 && new_v == 0xFF && reserve_item_state.kind == 0 &&
+    /* SML1 pocket has last-item-wins behavior, but only recognized mushroom
+     * and Superball Flower objects picked up while powered up are eligible.
+     * A small Mario's mushroom remains a normal growth pickup; stars are not
+     * one of the recognized object types below. */
+    if (addr == 0xD190 && new_v == 0xFF &&
         reserve_item_gameplay_active() && (rd8(0xFF99) == 1 || rd8(0xFF99) == 2)) {
         uint8_t kind = old_v == 0x29 ? 1 : (old_v == 0x2E ? 2 : 0);
         if (kind) {
@@ -456,29 +494,109 @@ static void reserve_item_watch(uint16_t addr, uint8_t old_v, uint8_t new_v)
     }
 }
 
-/* Consume a requested reserve item on the emulation thread, not the Android
- * UI thread. SML1 uses the game's original pickup object; SML2's active
- * power-up selector is the game's native item state. */
+/* FF9B is SML2's game-mode dispatcher; only queue a power-up event during
+ * active level play, not on the world map, title screen, or transition scenes.
+ * FF B3 is an SML1-specific value and must not be used as the SML2 game gate. */
+static int reserve_item_sml2_gameplay_active(void)
+{
+    uint16_t timer = (uint16_t)rd8(0xA254) | ((uint16_t)rd8(0xA255) << 8);
+    return rd8(0xFF9B) == 4 && timer != 0 && rd8(0xA221) == 0 &&
+           rd8(0xA23C) != 0 && rd8(0xA23B) != 0;
+}
+
+/* The native SML2 gameplay loop calls the stock handler at $3451, which
+ * consumes A26C: 1 = Mushroom, 2 = Fire Flower, 3 = Carrot. It then performs
+ * the game's own power-up write, sound/timer updates, sprite transition and
+ * A217 animation setup. Refuse unknown ROM layouts rather than silently
+ * falling back to a forced RAM change. */
+static int reserve_item_sml2_native_powerup_handler_available(void)
+{
+    return rom && rom[0x3451] == 0xFA && rom[0x3452] == 0x6C &&
+           rom[0x3453] == 0xA2 && rom[0x3454] == 0xA7 &&
+           rom[0x3455] == 0xC8 && rom[0x3456] == 0xFE &&
+           rom[0x3457] == 0x01;
+}
+
+static void reserve_item_cancel_native_use(void)
+{
+    reserve_item_native_use_pending = 0;
+    reserve_item_native_use_kind = 0;
+    reserve_item_native_use_event = 0;
+    reserve_item_native_use_frames = 0;
+    reserve_item_apply_active = 0;
+}
+
+/* Consume reserve requests on the emulation thread. SML1 still re-spawns the
+ * captured native object. SML2 queues the item through the game's existing
+ * native pickup event, so its original transition logic knows it was collected. */
 static void reserve_item_process_use_request(void)
 {
-    if (!reserve_item_use_request) return;
-    reserve_item_use_request = 0;
-
     int game = rom_loaded_game();
-    if (mp_ready || mp_active || !reserve_item_state.kind) return;
 
-    if (game == GAME_SML2 && reserve_item_state.kind >= 1 &&
-        reserve_item_state.kind <= 3) {
+    if (reserve_item_native_use_pending) {
+        /* The ROM has acknowledged the event once it updates the selected form
+         * and clears A26C. Only then empty the custom reserve slot. */
+        if (game == GAME_SML2 && !mp_ready && !mp_active &&
+            rd8(0xA26C) == 0 &&
+            rd8(0xA216) == reserve_item_native_use_kind) {
+            memset(&reserve_item_state, 0, sizeof reserve_item_state);
+            reserve_item_cancel_native_use();
+            return;
+        }
+
+        if (reserve_item_native_use_frames > 0) {
+            reserve_item_native_use_frames--;
+            return;
+        }
+
+        /* The game did not consume the event. Cancel only our own pending
+         * request and leave the reserved item available for another attempt. */
+        if (game == GAME_SML2 &&
+            rd8(0xA26C) == reserve_item_native_use_event)
+            wr8(0xA26C, 0);
+        reserve_item_cancel_native_use();
+        return;
+    }
+
+    if (!reserve_item_use_request) return;
+    if (mp_ready || mp_active || !reserve_item_state.kind) {
+        reserve_item_use_request = 0;
+        return;
+    }
+
+    if (game == GAME_SML2) {
         uint8_t stored = reserve_item_state.kind;
-        /* Keep the reserve occupied during this write so the watcher cannot
-         * mistake an intentional use for a newly collected pickup. */
-        wr8(0xA216, stored);
-        memset(&reserve_item_state, 0, sizeof reserve_item_state);
-    } else if (game == GAME_SML && reserve_item_state.kind <= 2 &&
-               reserve_item_gameplay_active()) {
-        /* Pressing the pocket releases the stored original item into play.
-         * The item stays in reserve until its object slot is available. */
-        reserve_item_state.spawn_pending = 1;
+        if ((stored != 2 && stored != 3) || !reserve_item_sml2_gameplay_active()) {
+            reserve_item_use_request = 0;
+            return;
+        }
+        /* Don't stomp another game-native power-up event already being handled. */
+        if (rd8(0xA26C) != 0) {
+            reserve_item_use_request = 0;
+            return;
+        }
+        if (!reserve_item_sml2_native_powerup_handler_available()) {
+            reserve_item_use_request = 0;
+            return;
+        }
+
+        /* Raw power-up IDs: 2 = Carrot, 3 = Fire Flower.
+         * Native event IDs: 3 = Carrot, 2 = Fire Flower. */
+        uint8_t event = stored == 3 ? 2 : 3;
+        reserve_item_use_request = 0;
+        reserve_item_native_use_pending = 1;
+        reserve_item_native_use_kind = stored;
+        reserve_item_native_use_event = event;
+        reserve_item_native_use_frames = 120;
+        reserve_item_apply_active = 1;
+        wr8(0xA26C, event);
+    } else {
+        reserve_item_use_request = 0;
+        if (game == GAME_SML && reserve_item_state.kind <= 2 &&
+            reserve_item_gameplay_active()) {
+            /* The item stays in reserve until its original object slot is free. */
+            reserve_item_state.spawn_pending = 1;
+        }
     }
 }
 
@@ -1003,6 +1121,7 @@ int emu_mp_begin(void)
     if (!fmx) fmx = SDL_CreateMutex();
     memset(&reserve_item_state, 0, sizeof reserve_item_state);
     reserve_item_use_request = 0;
+    reserve_item_cancel_native_use();
     gb_watch_set(NULL, 0, NULL);
     gb_reset();
     if (save_path[0]) cart_load_save(save_path);
@@ -3696,6 +3815,7 @@ void emu_mp_end(void)
     gb_watch_set(NULL, 0, NULL);
     memset(&reserve_item_state, 0, sizeof reserve_item_state);
     reserve_item_use_request = 0;
+    reserve_item_cancel_native_use();
     gb_set_instruction_hook(NULL);
     gb_set_timing_suppressed(0);
     mp_active = 0;
@@ -4012,6 +4132,8 @@ static int emu_state_load_blob(const void *src, size_t n)
     } else {
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
     }
+    /* Native event bookkeeping is transient; RAM loaded from the save remains authoritative. */
+    reserve_item_cancel_native_use();
     return 0;
 }
 
@@ -4309,6 +4431,7 @@ static int emu_start_internal(int force_interp, int reset)
     core_faulted = 0; core_fault_opcode = 0; core_fault_pc = 0;
     abort_flag = 0; paused = 0; turbo = 0; save_tick = 0; pace_next = 0;
     reserve_item_use_request = 0;
+    reserve_item_cancel_native_use();
     if (reset) {
         memset(&reserve_item_state, 0, sizeof reserve_item_state);
         gb_watch_set(NULL, 0, NULL);
@@ -4345,6 +4468,7 @@ void emu_stop(void)
     audio_game_abort();
     SDL_WaitThread(thr, NULL);
     thr = NULL;
+    wide_wl3_trace_finish();
     audio_game_end();
     events_end();
     rewind_free();

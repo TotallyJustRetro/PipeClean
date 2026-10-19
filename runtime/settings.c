@@ -169,7 +169,12 @@ void game_cfg_defaults(GameCfg *c, int game)
     c->tex_collect = 1;
     c->ds_led_mode = LED_PALETTE; c->ds_bright = 60; c->ds_color = 0x40A0FF;
     c->ds_rumble = 70; c->ds_speaker_vol = 55;
-    c->ds_ev_led = 0xFF; c->ds_ev_rumble = 0xFF; c->ds_ev_speaker = 0;
+    c->ds_ev_led = 0x3FF; c->ds_ev_rumble = 0x3FF;
+    int wario_game = game == GAME_WARIO_SML3 || game == GAME_WARIO_LAND2_GB ||
+                     game == GAME_WARIO_LAND3_GBC || game == GAME_WARIO_LAND2_GBC;
+    c->ds_ev_speaker = !wario_game ? 0 :
+        ((game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) ? 0x3F : 0x3FF);
+    c->ds_fx_version = 3;
     controls_defaults(c);
 }
 
@@ -189,7 +194,25 @@ void settings_defaults(Settings *s)
     s->launcher_ui_scale = 100;
     s->launcher_window_size = 1;
     s->launcher_fullscreen = 0;
-    for (int i = 0; i < N_GAMES; i++) game_cfg_defaults(&s->g[i], i);
+    s->launcher_dual_screen = 0;
+    s->launcher_pipe_screen_swap = 0;
+    s->museum_discovery_notifications = 1;
+    s->recent_played_count = 0;
+    s->menu_playlist_count = 0;
+    s->menu_playlist_selected = 0;
+    for (int i = 0; i < N_RECENT_PLAYED; i++) s->recent_played[i] = -1;
+    for (int i = 0; i < N_GAMES; i++) {
+        s->game_play_seconds[i] = 0;
+        game_cfg_defaults(&s->g[i], i);
+        CompanionLayoutCfg *d = &s->deck_layout[i];
+        d->header_scale = d->item_scale = d->controls_scale =
+            d->timeline_scale = d->status_scale = d->decoration_scale = 100;
+        d->header_scale_y = d->item_scale_y = d->controls_scale_y =
+            d->timeline_scale_y = d->status_scale_y = d->decoration_scale_y = 100;
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++)
+            d->decoration_extra_scale[slot] = d->decoration_extra_scale_y[slot] = 100;
+        d->sounds_enabled = 1;
+    }
 }
 
 const char *settings_dir(void)
@@ -239,6 +262,29 @@ static int field_table(Field *t, int cap)
     I("launcher_ui_scale", s->launcher_ui_scale, 75, 125);
     I("launcher_window_size", s->launcher_window_size, 0, 2);
     I("launcher_fullscreen", s->launcher_fullscreen, 0, 1);
+    I("launcher_dual_screen", s->launcher_dual_screen, 0, 1);
+    I("launcher_pipe_screen_swap", s->launcher_pipe_screen_swap, 0, 1);
+    I("android_haptic_target", s->android_haptic_target, 0, N_ANDROID_HAPTIC_TARGETS - 1);
+    I("android_haptic_target_version", s->android_haptic_target_version, 0, 1);
+    I("museum_discovery_notifications", s->museum_discovery_notifications, 0, 1);
+    I("recent_played_count", s->recent_played_count, 0, N_RECENT_PLAYED);
+    static char recent_names[N_RECENT_PLAYED][32];
+    for (int i = 0; i < N_RECENT_PLAYED; i++) {
+        snprintf(recent_names[i], sizeof recent_names[i], "recent_played_%d", i);
+        I(recent_names[i], s->recent_played[i], -1, N_GAMES - 1);
+    }
+    static char played_seconds_names[N_GAMES][40];
+    for (int i = 0; i < N_GAMES; i++) {
+        snprintf(played_seconds_names[i], sizeof played_seconds_names[i], "game_play_seconds_%d", i);
+        I(played_seconds_names[i], s->game_play_seconds[i], 0, 2147483647);
+    }
+    I("menu_playlist_count", s->menu_playlist_count, 0, MAX_MENU_TRACKS);
+    I("menu_playlist_selected", s->menu_playlist_selected, 0, MAX_MENU_TRACKS - 1);
+    static char playlist_names[MAX_MENU_TRACKS][40];
+    for (int i = 0; i < MAX_MENU_TRACKS; i++) {
+        snprintf(playlist_names[i], sizeof playlist_names[i], "menu_playlist_%d", i);
+        S(playlist_names[i], s->menu_playlist[i]);
+    }
     S("online_name", s->online_name); S("online_server", s->online_server); I("online_connection_mode", s->online_connection_mode, 0, 1); I("online_color", s->online_color, 0, 0xFFFFFF);
     I("touch_controls", s->touch_controls, 0, 1);
     FilterCfg *f = &s->flt;
@@ -246,13 +292,14 @@ static int field_table(Field *t, int cap)
     I("f_mask", f->mask, 0, 100); I("f_curve", f->curve, 0, 100); I("f_bloom", f->bloom, 0, 100);
     I("f_hdr", f->hdr, 0, 100); I("f_vignette", f->vignette, 0, 100); I("f_blur", f->blur, 0, 100);
     I("f_preset", f->preset, 0, n_filter_presets - 1);
-    static char gn[N_GAMES][72][40];
+    /* Includes the added Companion Deck layer paths/transforms and per-asset modes. */
+    static char gn[N_GAMES][512][64];
     static int gi = 0; (void)gi;
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &s->g[g];
         int k = 0;
-#define GI(nm, p, l, h) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
-#define GS(nm, p) do { snprintf(gn[g][k], 32, "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
+#define GI(nm, p, l, h) do { snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
+#define GS(nm, p) do { snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
         GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path);
         GI("romhack_count", c->romhack_count, 0, MAX_ROMHACKS);
         GI("romhack_selected", c->romhack_selected, -1, MAX_ROMHACKS - 1);
@@ -274,7 +321,7 @@ static int field_table(Field *t, int cap)
         GI("multiplayer_players", c->multiplayer_players, 2, MAX_MP_PLAYERS);
         GI("palette", c->palette, 0, n_palettes - 1); GI("aspect", c->aspect, 0, N_ASPECT - 1);
         GI("scaling", c->scaling, 0, N_SCALE - 1); GI("size", c->size, 0, N_SIZE - 1);
-        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1); GI("dual_screen", c->dual_screen, 0, 1);
+        GI("bg_dim", c->bg_dim, 0, 80); GI("wide", c->wide, 0, 100); GI("tex_on", c->tex_on, 0, 1); GI("state_slot", c->state_slot, 0, 9); GI("tex_collect", c->tex_collect, 0, 1); GI("multiplayer", c->multiplayer, 0, 1); GI("dual_screen", c->dual_screen, 0, 1); GI("pipe_screen_swap", c->pipe_screen_swap, 0, 1);
         GI("p2_respawn_key", c->p2_respawn_key, 0, 0x7FFFFFFF); GI("p2_respawn_pad", c->p2_respawn_pad, -1, PAD_AXIS_BASE + 1);
         GI("p3_respawn_key", c->p3_respawn_key, 0, 0x7FFFFFFF); GI("p3_respawn_pad", c->p3_respawn_pad, -1, PAD_AXIS_BASE + 1);
         GI("p4_respawn_key", c->p4_respawn_key, 0, 0x7FFFFFFF); GI("p4_respawn_pad", c->p4_respawn_pad, -1, PAD_AXIS_BASE + 1);
@@ -284,7 +331,63 @@ static int field_table(Field *t, int cap)
         GS("pad_guid3", c->pad_guid[2]); GS("pad_guid4", c->pad_guid[3]);
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
-        GI("ev_led", c->ds_ev_led, 0, 255); GI("ev_rumble", c->ds_ev_rumble, 0, 255); GI("ev_speaker", c->ds_ev_speaker, 0, 255);
+        GI("ev_led", c->ds_ev_led, 0, 1023); GI("ev_rumble", c->ds_ev_rumble, 0, 1023); GI("ev_speaker", c->ds_ev_speaker, 0, 1023);
+        GI("fx_version", c->ds_fx_version, 0, 3);
+
+        CompanionLayoutCfg *d = &s->deck_layout[g];
+        GI("deck_header_dx", d->header_dx, -400, 400); GI("deck_header_dy", d->header_dy, -400, 400); GI("deck_header_scale", d->header_scale, 25, 250); GI("deck_header_scale_y", d->header_scale_y, 25, 250);
+        GI("deck_item_dx", d->item_dx, -400, 400); GI("deck_item_dy", d->item_dy, -400, 400); GI("deck_item_scale", d->item_scale, 25, 250); GI("deck_item_scale_y", d->item_scale_y, 25, 250);
+        GI("deck_controls_dx", d->controls_dx, -400, 400); GI("deck_controls_dy", d->controls_dy, -400, 400); GI("deck_controls_scale", d->controls_scale, 25, 250); GI("deck_controls_scale_y", d->controls_scale_y, 25, 250);
+        GI("deck_timeline_dx", d->timeline_dx, -400, 400); GI("deck_timeline_dy", d->timeline_dy, -400, 400); GI("deck_timeline_scale", d->timeline_scale, 25, 250); GI("deck_timeline_scale_y", d->timeline_scale_y, 25, 250);
+        GI("deck_status_dx", d->status_dx, -400, 400); GI("deck_status_dy", d->status_dy, -400, 400); GI("deck_status_scale", d->status_scale, 25, 250); GI("deck_status_scale_y", d->status_scale_y, 25, 250);
+        GI("deck_decoration_dx", d->decoration_dx, -400, 400); GI("deck_decoration_dy", d->decoration_dy, -400, 400); GI("deck_decoration_scale", d->decoration_scale, 25, 250); GI("deck_decoration_scale_y", d->decoration_scale_y, 25, 250);
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+            int slot_id = slot + 2;
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_dx", games[g].id, slot_id);
+            I(gn[g][k], d->decoration_extra_dx[slot], -400, 400); k++;
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_dy", games[g].id, slot_id);
+            I(gn[g][k], d->decoration_extra_dy[slot], -400, 400); k++;
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_scale", games[g].id, slot_id);
+            I(gn[g][k], d->decoration_extra_scale[slot], 25, 250); k++;
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d_scale_y", games[g].id, slot_id);
+            I(gn[g][k], d->decoration_extra_scale_y[slot], 25, 250); k++;
+        }
+        GI("deck_sounds_enabled", d->sounds_enabled, 0, 1);
+        GS("deck_background", d->background_path);
+        GS("deck_header_texture", d->header_texture_path);
+        GS("deck_status_texture", d->status_texture_path);
+        GS("deck_button_texture", d->button_texture_path);
+        GS("deck_item_texture", d->item_texture_path); GS("deck_decoration", d->decoration_path);
+        for (int slot = 0; slot < N_DECK_DECORATIONS - 1; slot++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_decoration_%d", games[g].id, slot + 2);
+            S(gn[g][k], d->decoration_extra_path[slot]); k++;
+        }
+        static const char *deck_button_texture_names[6] = {
+            "deck_button_save_texture", "deck_button_load_texture",
+            "deck_button_pause_texture", "deck_button_rewind_texture",
+            "deck_button_background_texture", "deck_button_close_texture"
+        };
+        for (int b = 0; b < 6; b++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, deck_button_texture_names[b]);
+            S(gn[g][k], d->button_texture_by_action[b]); k++;
+        }
+        for (int item_id = 1; item_id < N_DECK_ITEM_TEXTURE_IDS; item_id++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_item_texture_%d", games[g].id, item_id);
+            S(gn[g][k], d->item_texture_by_id[item_id]); k++;
+        }
+        static const char *deck_sound_names[N_DECK_BUTTON_SOUNDS] = {
+            "deck_sound_save", "deck_sound_load", "deck_sound_pause", "deck_sound_rewind",
+            "deck_sound_background", "deck_sound_close"
+        };
+        for (int b = 0; b < N_DECK_BUTTON_SOUNDS; b++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, deck_sound_names[b]);
+            S(gn[g][k], d->button_sound_path[b]); k++;
+        }
+        GS("deck_item_sound", d->item_sound_path); GS("deck_empty_item_sound", d->empty_item_sound_path);
+        for (int asset = 0; asset < N_DECK_ASSET_PATHS; asset++) {
+            snprintf(gn[g][k], sizeof gn[g][k], "%s.deck_asset_stretch_%d", games[g].id, asset);
+            I(gn[g][k], d->asset_stretch[asset], 0, 1); k++;
+        }
 #undef GI
 #undef GS
     }
@@ -301,13 +404,25 @@ void settings_load(void)
     FILE *f = fopen(path, "r");
     if (!f) { legacy_ini_path(path, sizeof path); f = fopen(path, "r"); }
     if (!f) return;
-    Field tab[800];
-    int nf = field_table(tab, 800);
-    char line[700];
+    /* Per-game Companion Deck fit/stretch flags add 28 keys for each game.
+       Keep capacity comfortably above the full global + per-game settings table. */
+    Field tab[1800];
+    int nf = field_table(tab, 1800);
+    int saw_launcher_dual_screen = 0;
+    int saw_launcher_pipe_screen_swap = 0;
+    int saw_wario_fx_version[N_GAMES] = {0};
+    char line[1100];
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
         if (!eq) continue;
         *eq = 0;
+        if (!strcmp(line, "launcher_dual_screen")) saw_launcher_dual_screen = 1;
+        if (!strcmp(line, "launcher_pipe_screen_swap")) saw_launcher_pipe_screen_swap = 1;
+        for (int g = GAME_WARIO_SML3; g < N_GAMES; g++) {
+            char fx_key[80];
+            snprintf(fx_key, sizeof fx_key, "%s.fx_version", games[g].id);
+            if (!strcmp(line, fx_key)) saw_wario_fx_version[g] = 1;
+        }
         char *v = eq + 1;
         size_t l = strlen(v);
         while (l && (v[l - 1] == '\n' || v[l - 1] == '\r')) v[--l] = 0;
@@ -340,6 +455,73 @@ void settings_load(void)
         }
     }
     fclose(f);
+    /* Wario effects migration: old files predate event-speaker defaults,
+       later files predate coin-loss, and v2 files predate course/key/results
+       events. Extend masks without clearing the user's existing toggles. */
+    int wario_fx_migrated = 0;
+    for (int g = GAME_WARIO_SML3; g < N_GAMES; g++) {
+        GameCfg *c = &settings.g[g];
+        const int wario_land2 = g == GAME_WARIO_LAND2_GB ||
+                                g == GAME_WARIO_LAND2_GBC;
+        if (!saw_wario_fx_version[g] || c->ds_fx_version < 1) {
+            c->ds_ev_speaker = wario_land2 ? 0x3F : 0x3FF;
+            c->ds_ev_led |= wario_land2 ? 0x20 : 0x380;
+            c->ds_ev_rumble |= wario_land2 ? 0x20 : 0x380;
+            c->ds_fx_version = 3;
+            wario_fx_migrated = 1;
+        } else if (c->ds_fx_version < 2) {
+            if (wario_land2) c->ds_ev_speaker |= 0x10;
+            c->ds_fx_version = 2;
+            wario_fx_migrated = 1;
+        }
+        if (c->ds_fx_version < 3) {
+            if (wario_land2) {
+                c->ds_ev_led |= 0x20;
+                c->ds_ev_rumble |= 0x20;
+                c->ds_ev_speaker |= 0x20;
+            } else {
+                c->ds_ev_led |= 0x380;
+                c->ds_ev_rumble |= 0x380;
+                c->ds_ev_speaker |= 0x380;
+            }
+            c->ds_fx_version = 3;
+            wario_fx_migrated = 1;
+        }
+    }
+    if (wario_fx_migrated) settings_save();
+    if (!saw_launcher_dual_screen) {
+        /* Migrate the old per-game switch so existing Android users keep their
+         * preference after the option moves into Launcher Display settings. */
+        for (int g = 0; g < N_GAMES; g++) {
+            if (settings.g[g].dual_screen) {
+                settings.launcher_dual_screen = 1;
+                break;
+            }
+        }
+    }
+    if (!saw_launcher_pipe_screen_swap)
+        settings.launcher_pipe_screen_swap = settings.g[GAME_SML].pipe_screen_swap;
+    int highest_playlist = 0;
+    for (int i = 0; i < MAX_MENU_TRACKS; i++)
+        if (settings.menu_playlist[i][0]) highest_playlist = i + 1;
+    if (settings.menu_playlist_count < highest_playlist)
+        settings.menu_playlist_count = highest_playlist;
+    if (settings.menu_playlist_count > MAX_MENU_TRACKS)
+        settings.menu_playlist_count = MAX_MENU_TRACKS;
+    if (settings.menu_playlist_count == 0 && settings.menu_music_path[0]) {
+        snprintf(settings.menu_playlist[0], sizeof settings.menu_playlist[0], "%s",
+                 settings.menu_music_path);
+        settings.menu_playlist_count = 1;
+        settings.menu_playlist_selected = 0;
+    }
+    if (settings.menu_playlist_count <= 0) settings.menu_playlist_selected = 0;
+    else if (settings.menu_playlist_selected >= settings.menu_playlist_count)
+        settings.menu_playlist_selected = settings.menu_playlist_count - 1;
+    if (settings.recent_played_count > N_RECENT_PLAYED)
+        settings.recent_played_count = N_RECENT_PLAYED;
+    for (int i = 0; i < N_RECENT_PLAYED; i++)
+        if (settings.recent_played[i] < -1 || settings.recent_played[i] >= N_GAMES)
+            settings.recent_played[i] = -1;
     for (int g = 0; g < N_GAMES; g++) {
         GameCfg *c = &settings.g[g];
         int highest = 0;
@@ -350,7 +532,7 @@ void settings_load(void)
         if (c->romhack_selected < -1 || c->romhack_selected >= c->romhack_count)
             c->romhack_selected = -1;
     }
-    if (settings.last_tab > N_GAMES + 5) settings.last_tab = 0;
+    if (settings.last_tab > N_GAMES + 6) settings.last_tab = 0;
 
     /* Migrate the prior local-only default to the deployed traversal endpoint.
        If the user explicitly configured another address, leave it untouched. */
@@ -368,8 +550,10 @@ void settings_save(void)
     ini_path(path, sizeof path);
     FILE *f = fopen(path, "w");
     if (!f) return;
-    Field tab[800];
-    int nf = field_table(tab, 800);
+    /* Per-game Companion Deck fit/stretch flags add 28 keys for each game.
+       Keep capacity comfortably above the full global + per-game settings table. */
+    Field tab[1800];
+    int nf = field_table(tab, 1800);
     for (int i = 0; i < nf; i++) {
         if (tab[i].ip) fprintf(f, "%s=%d\n", tab[i].name, *tab[i].ip);
         else fprintf(f, "%s=%s\n", tab[i].name, tab[i].sp);

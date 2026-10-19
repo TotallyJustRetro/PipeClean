@@ -18,6 +18,13 @@ static uint32_t ram_crc_saved;
 
 const CartInfo *cart_info(void) { return &info; }
 
+/* CRC32 of the SML2 DX v1.8.1 patch applied to the supported World v1.0 ROM. */
+int cart_is_sml2dx_v181(const CartInfo *ci)
+{
+    return ci && ci->size == 0x100000u && ci->crc == 0xF0799017u &&
+           ci->cgb_flag == 0xC0u && ci->mapper == 5;
+}
+
 int cart_export_rom(const char *path)
 {
     if (!path || !path[0] || !rom || info.size < 0x150 || info.size > rom_len)
@@ -37,6 +44,15 @@ uint8_t cart_rom_read_bank(int bank, uint16_t address)
         return 0xFF;
     size_t offset = (size_t)bank * 0x4000u + (size_t)(address - 0x4000u);
     return offset < rom_len ? rom[offset] : 0xFF;
+}
+
+/* Read from the cartridge's fixed 0000-3FFF ROM window. This is a physical
+ * bank-0 read for tables that live outside the switchable 4000-7FFF window. */
+uint8_t cart_rom_read_fixed(uint16_t address)
+{
+    if (!rom || address >= 0x4000u || (size_t)address >= rom_len)
+        return 0xFF;
+    return rom[address];
 }
 
 static size_t ram_size_from_code(int c)

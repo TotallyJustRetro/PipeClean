@@ -10,7 +10,7 @@ const char *path_base(const char *path);                 /* file name part */
 #define fopen fopen_u
 #endif
 
-enum { DLG_ROM, DLG_PATCH, DLG_IMAGE, DLG_AUDIO, DLG_FOLDER };
+enum { DLG_ROM, DLG_PATCH, DLG_IMAGE, DLG_AUDIO, DLG_FOLDER, DLG_ZIP_OPEN, DLG_ZIP_SAVE };
 /* Blocking native dialog. Returns 1 and fills `out` (UTF-8) if the user picked something. */
 int dlg_pick(int kind, const char *title, char *out, size_t n);
 void open_folder(const char *path);                      /* show in the file manager */
