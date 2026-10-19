@@ -1943,9 +1943,15 @@ static void sub_dualsense(int g, float x, float y)
     pad_status(st, sizeof st);
     status_line(x + 18, y + 38, lw - 36, ds ? 1 : (pad_count() ? 2 : 3), st);
     if (ds) ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM, audio_pad_available() ? (edge ? "DualSense Edge: light, rumble and speaker ready" : "DualSense: light, rumble and speaker ready") : "Light and rumble ready. Speaker needs the USB cable.");
+#ifdef __ANDROID__
+    else ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM,
+                     pad_count() ? "Phone vibration can target this device or a connected controller." :
+                                   "Phone vibration works without a gamepad; choose and test an output below.");
+#else
     else ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM,
                      pad_count() ? "Rumble works with compatible controllers; DualSense lightbar and speaker are DualSense-only." :
                                    "Connect a controller to test rumble. DualSense lightbar and speaker require a DualSense or Edge.");
+#endif
 
     label(x + 18, y + 90, "Light");
     ui_seg(x + 18, y + 112, lw - 36, 34, led_names, N_LED, &c->ds_led_mode);

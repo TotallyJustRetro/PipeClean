@@ -937,8 +937,15 @@ static int pad_try_controller_rumble(int device, int low_pct, int high_pct, int 
     const Uint16 high = (Uint16)((unsigned)high_pct * 65535u / 100u);
     Pad *p = &pads[device];
 
-    /* Prefer SDL's native controller backend. On Android this routes to the
-       controller's InputDevice vibrator(s), rather than the phone vibrator. */
+#ifdef __ANDROID__
+    /* SDL's Android joystick rumble backend can be unavailable even on a pad
+       that has a working haptic handle, so try that handle first. */
+    const int strongest = low_pct > high_pct ? low_pct : high_pct;
+    if (p->haptic &&
+        SDL_HapticRumblePlay(p->haptic, strongest / 100.0f, (Uint32)ms) == 0)
+        return 1;
+#endif
+
     if (p->mapped && SDL_GameControllerHasRumble(p->gc) &&
         SDL_GameControllerRumble(p->gc, low, high, (Uint32)ms) == 0)
         return 1;
@@ -947,14 +954,6 @@ static int pad_try_controller_rumble(int device, int low_pct, int high_pct, int 
     if (j && SDL_JoystickHasRumble(j) &&
         SDL_JoystickRumble(j, low, high, (Uint32)ms) == 0)
         return 1;
-
-#ifdef __ANDROID__
-    /* Compatibility path for SDL haptic devices exposed directly from a pad. */
-    const int strongest = low_pct > high_pct ? low_pct : high_pct;
-    if (p->haptic &&
-        SDL_HapticRumblePlay(p->haptic, strongest / 100.0f, (Uint32)ms) == 0)
-        return 1;
-#endif
     return 0;
 }
 

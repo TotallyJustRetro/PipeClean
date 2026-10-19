@@ -39,7 +39,7 @@ void pad_event_preview(int game, int ev);
 void pad_frame(float dt);
 void pad_rumble(int strength_pct, int ms);
 void pad_rumble_selected(int game, int strength_pct, int ms);
-/* Android-only vibration routing/test controls; option 0 is Auto, 1 is phone, 2+ are controller slots. */
+/* Android-only vibration route/test controls; the selector maps menu options to stable target IDs. */
 int  pad_android_haptic_option_count(void);
 int  pad_android_haptic_option_target(int option);
 int  pad_android_haptic_target_option(int target);
