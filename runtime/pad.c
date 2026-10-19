@@ -790,12 +790,29 @@ static int ctx_game = -1, ctx_in_game;
 static uint32_t screen_rgb = 0x808080;
 static uint32_t flash_rgb;
 static float flash_t;
+static float flash_duration = 0.40f;
 static uint32_t last_sent = 0xFFFFFFFFu;
 static float send_acc;
 
-void pad_set_context(int game, int in_game) { ctx_game = game; ctx_in_game = in_game; last_sent = 0xFFFFFFFFu; }
+static void pad_cancel_sml2_feedback(void);
+static void pad_cancel_sml2_light(void);
+
+void pad_set_context(int game, int in_game)
+{
+    if (ctx_in_game && (!in_game || game != ctx_game))
+        pad_cancel_sml2_feedback();
+    ctx_game = game;
+    ctx_in_game = in_game;
+    last_sent = 0xFFFFFFFFu;
+}
 void pad_set_screen_color(uint32_t rgb) { screen_rgb = rgb; }
-void pad_flash(uint32_t rgb) { flash_rgb = rgb; flash_t = 1.0f; }
+void pad_flash(uint32_t rgb)
+{
+    pad_cancel_sml2_light();
+    flash_rgb = rgb;
+    flash_t = 1.0f;
+    flash_duration = 0.40f;
+}
 
 int pad_has_light(void)
 {
@@ -805,34 +822,59 @@ int pad_has_light(void)
     return 0;
 }
 
-static void pad_rumble_device(int device, int pct, int ms)
+static void pad_rumble_device_mix(int device, int low_pct, int high_pct, int ms)
 {
-    if (pct <= 0 || device < 0 || device >= n_pads) return;
-    if (pct > 100) pct = 100;
-    Pad *p = &pads[device];
-    Uint16 lo = (Uint16)(pct * 655);
-    Uint16 hi = (Uint16)(pct * 655 * 0.8f);
+    if ((low_pct <= 0 && high_pct <= 0) || ms <= 0 ||
+        device < 0 || device >= n_pads)
+        return;
+    if (low_pct < 0) low_pct = 0;
+    if (high_pct < 0) high_pct = 0;
+    if (low_pct > 100) low_pct = 100;
+    if (high_pct > 100) high_pct = 100;
 
+    Pad *p = &pads[device];
 #ifdef __ANDROID__
-    /* SDL 2.32.10's Android SDL_JoystickRumble implementation returns
-     * SDL_Unsupported(). Use SDL's Android Haptic backend first. For the Thor's
-     * built-in "Odin" gamepad, Android may expose only the device-wide
-     * VIBRATOR_SERVICE rather than a vibrator attached to the joystick. */
-    if (p->haptic && SDL_HapticRumblePlay(p->haptic, pct / 100.0f, (Uint32)ms) == 0)
+    /* Android's public haptic API exposes one normalized intensity rather than
+     * separate motor strengths. Preserve the requested cue timing and use the
+     * stronger motor as the fallback amplitude. */
+    const int strongest = low_pct > high_pct ? low_pct : high_pct;
+    if (p->haptic &&
+        SDL_HapticRumblePlay(p->haptic, strongest / 100.0f, (Uint32)ms) == 0)
         return;
     if (android_system_haptic &&
-        SDL_HapticRumblePlay(android_system_haptic, pct / 100.0f, (Uint32)ms) == 0)
+        SDL_HapticRumblePlay(android_system_haptic, strongest / 100.0f, (Uint32)ms) == 0)
         return;
 #endif
 
-    /* Desktop and Android controllers that expose SDL's direct rumble API. */
+    const Uint16 low = (Uint16)((unsigned)low_pct * 65535u / 100u);
+    const Uint16 high = (Uint16)((unsigned)high_pct * 65535u / 100u);
     if (p->mapped && SDL_GameControllerHasRumble(p->gc) &&
-        SDL_GameControllerRumble(p->gc, lo, hi, (Uint32)ms) == 0)
+        SDL_GameControllerRumble(p->gc, low, high, (Uint32)ms) == 0)
         return;
 
     SDL_Joystick *j = joystick_for_device(device);
     if (j && SDL_JoystickHasRumble(j))
-        SDL_JoystickRumble(j, lo, hi, (Uint32)ms);
+        SDL_JoystickRumble(j, low, high, (Uint32)ms);
+}
+
+static void pad_stop_rumble_device(int device)
+{
+    if (device < 0 || device >= n_pads) return;
+    Pad *p = &pads[device];
+#ifdef __ANDROID__
+    if (p->haptic) SDL_HapticRumbleStop(p->haptic);
+    if (android_system_haptic) SDL_HapticRumbleStop(android_system_haptic);
+#endif
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc))
+        (void)SDL_GameControllerRumble(p->gc, 0, 0, 0);
+    SDL_Joystick *j = joystick_for_device(device);
+    if (j && SDL_JoystickHasRumble(j))
+        (void)SDL_JoystickRumble(j, 0, 0, 0);
+}
+
+static void pad_rumble_device(int device, int pct, int ms)
+{
+    pad_rumble_device_mix(device, pct, pct * 80 / 100, ms);
 }
 
 void pad_rumble(int pct, int ms)
@@ -847,17 +889,259 @@ void pad_rumble_selected(int game, int pct, int ms)
     pad_rumble_device(settings.g[game].pad_device[0], pct, ms);
 }
 
+typedef struct {
+    uint8_t low, high;
+    uint16_t on_ms, gap_ms;
+} Sml2RumbleBeat;
+
+typedef struct {
+    const Sml2RumbleBeat *beats;
+    uint8_t count;
+    uint8_t priority;
+} Sml2RumbleProfile;
+
+typedef struct {
+    const Sml2RumbleBeat *beats;
+    uint8_t count, next, priority;
+    int device, scale;
+    float wait_s;
+    int active;
+} Sml2RumbleSequence;
+
+static const Sml2RumbleBeat sml2_rumble_coin[] = {
+    {32, 28, 32, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_enemy[] = {
+    {42, 28, 42, 34}, {52, 58, 48, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_life[] = {
+    {74, 14, 130, 70}, {100, 22, 170, 85}, {80, 10, 230, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_oneup[] = {
+    {30, 42, 40, 32}, {42, 66, 55, 36}, {48, 82, 82, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_power[] = {
+    {32, 28, 42, 35}, {48, 56, 82, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_star[] = {
+    {38, 55, 42, 26}, {56, 86, 68, 32}, {40, 94, 96, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_golden[] = {
+    {48, 24, 72, 38}, {64, 44, 88, 42}, {78, 60, 112, 0}
+};
+static const Sml2RumbleBeat sml2_rumble_castle[] = {
+    {70, 18, 150, 42}, {100, 34, 230, 70}, {86, 24, 270, 0}
+};
+
+static const Sml2RumbleProfile sml2_rumble_profiles[8] = {
+    {sml2_rumble_coin,   sizeof sml2_rumble_coin   / sizeof sml2_rumble_coin[0],   1},
+    {sml2_rumble_enemy,  sizeof sml2_rumble_enemy  / sizeof sml2_rumble_enemy[0],  3},
+    {sml2_rumble_life,   sizeof sml2_rumble_life   / sizeof sml2_rumble_life[0],   8},
+    {sml2_rumble_oneup,  sizeof sml2_rumble_oneup  / sizeof sml2_rumble_oneup[0],  6},
+    {sml2_rumble_power,  sizeof sml2_rumble_power  / sizeof sml2_rumble_power[0],  4},
+    {sml2_rumble_star,   sizeof sml2_rumble_star   / sizeof sml2_rumble_star[0],   7},
+    {sml2_rumble_golden, sizeof sml2_rumble_golden / sizeof sml2_rumble_golden[0], 9},
+    {sml2_rumble_castle, sizeof sml2_rumble_castle / sizeof sml2_rumble_castle[0], 10}
+};
+static Sml2RumbleSequence sml2_rumble_sequence;
+
+typedef struct {
+    uint32_t rgb;
+    uint16_t on_ms, gap_ms;
+} Sml2LightBeat;
+
+typedef struct {
+    const Sml2LightBeat *beats;
+    uint8_t count;
+} Sml2LightProfile;
+
+typedef struct {
+    const Sml2LightBeat *beats;
+    uint8_t count, next, priority;
+    float wait_s;
+    int active;
+} Sml2LightSequence;
+
+static const Sml2LightBeat sml2_light_coin[] = {
+    {0xFFD34Au, 150, 0}
+};
+static const Sml2LightBeat sml2_light_enemy[] = {
+    {0x68FF9Au, 125, 42}, {0xB8FFD0u, 105, 0}
+};
+static const Sml2LightBeat sml2_light_life[] = {
+    {0xFF2020u, 380, 95}, {0xC90020u, 280, 0}
+};
+static const Sml2LightBeat sml2_light_oneup[] = {
+    {0x49FF8Au, 125, 52}, {0xFFF1A0u, 160, 42}, {0x66FF9Au, 230, 0}
+};
+static const Sml2LightBeat sml2_light_power[] = {
+    {0xFF8CFFu, 160, 48}, {0xA8A0FFu, 150, 0}
+};
+static const Sml2LightBeat sml2_light_star[] = {
+    {0xFFFFFFu, 85, 32}, {0xFFE06Au, 170, 38}, {0xFFFFFFu, 145, 0}
+};
+static const Sml2LightBeat sml2_light_golden[] = {
+    {0xFFD34Au, 160, 58}, {0xFFF0A8u, 200, 58}, {0xFFD34Au, 270, 0}
+};
+static const Sml2LightBeat sml2_light_castle[] = {
+    {0xFFFFFFu, 190, 48}, {0xFFD34Au, 310, 62}, {0xFFF1A0u, 430, 0}
+};
+static const Sml2LightProfile sml2_light_profiles[8] = {
+    {sml2_light_coin,   sizeof sml2_light_coin   / sizeof sml2_light_coin[0]},
+    {sml2_light_enemy,  sizeof sml2_light_enemy  / sizeof sml2_light_enemy[0]},
+    {sml2_light_life,   sizeof sml2_light_life   / sizeof sml2_light_life[0]},
+    {sml2_light_oneup,  sizeof sml2_light_oneup  / sizeof sml2_light_oneup[0]},
+    {sml2_light_power,  sizeof sml2_light_power  / sizeof sml2_light_power[0]},
+    {sml2_light_star,   sizeof sml2_light_star   / sizeof sml2_light_star[0]},
+    {sml2_light_golden, sizeof sml2_light_golden / sizeof sml2_light_golden[0]},
+    {sml2_light_castle, sizeof sml2_light_castle / sizeof sml2_light_castle[0]}
+};
+static Sml2LightSequence sml2_light_sequence;
+
+static int sml2_event_priority(int ev)
+{
+    return ev >= 0 && ev < 8 ? sml2_rumble_profiles[ev].priority : 0;
+}
+
+static void pad_cancel_sml2_light(void)
+{
+    sml2_light_sequence.active = 0;
+    sml2_light_sequence.priority = 0;
+    sml2_light_sequence.next = 0;
+    sml2_light_sequence.wait_s = 0;
+    flash_t = 0;
+}
+
+static void pad_cancel_sml2_feedback(void)
+{
+    if (sml2_rumble_sequence.active)
+        pad_stop_rumble_device(sml2_rumble_sequence.device);
+    sml2_rumble_sequence.active = 0;
+    sml2_rumble_sequence.priority = 0;
+    sml2_rumble_sequence.next = 0;
+    sml2_rumble_sequence.wait_s = 0;
+    pad_cancel_sml2_light();
+}
+
+static void pad_schedule_sml2_rumble(int ev)
+{
+    if (ev < 0 || ev >= 8) return;
+    const GameCfg *c = &settings.g[GAME_SML2];
+    const Sml2RumbleProfile *profile = &sml2_rumble_profiles[ev];
+    const int device = c->pad_device[0];
+    if (c->ds_rumble <= 0 || device < 0 || device >= n_pads) return;
+    if (sml2_rumble_sequence.active &&
+        profile->priority <= sml2_rumble_sequence.priority)
+        return;
+    if (sml2_rumble_sequence.active)
+        pad_stop_rumble_device(sml2_rumble_sequence.device);
+
+    sml2_rumble_sequence.beats = profile->beats;
+    sml2_rumble_sequence.count = profile->count;
+    sml2_rumble_sequence.next = 0;
+    sml2_rumble_sequence.priority = profile->priority;
+    sml2_rumble_sequence.device = device;
+    sml2_rumble_sequence.scale = c->ds_rumble;
+    sml2_rumble_sequence.wait_s = 0;
+    sml2_rumble_sequence.active = 1;
+}
+
+static void pad_schedule_sml2_light(int ev)
+{
+    if (ev < 0 || ev >= 8) return;
+    const GameCfg *c = &settings.g[GAME_SML2];
+    const int device = c->pad_device[0];
+    if (device < 0 || device >= n_pads || !pad_is_dualsense(device) ||
+        !pads[device].mapped || !SDL_GameControllerHasLED(pads[device].gc))
+        return;
+    const Sml2LightProfile *profile = &sml2_light_profiles[ev];
+    const int priority = sml2_event_priority(ev);
+    if (sml2_light_sequence.active && priority <= sml2_light_sequence.priority)
+        return;
+
+    sml2_light_sequence.beats = profile->beats;
+    sml2_light_sequence.count = profile->count;
+    sml2_light_sequence.next = 0;
+    sml2_light_sequence.priority = (uint8_t)priority;
+    sml2_light_sequence.wait_s = 0;
+    sml2_light_sequence.active = 1;
+}
+
+static void pad_sml2_rumble_tick(float dt)
+{
+    if (!sml2_rumble_sequence.active) return;
+    if (sml2_rumble_sequence.wait_s > 0.0f) {
+        sml2_rumble_sequence.wait_s -= dt;
+        if (sml2_rumble_sequence.wait_s > 0.0f) return;
+    }
+    if (sml2_rumble_sequence.next >= sml2_rumble_sequence.count) {
+        sml2_rumble_sequence.active = 0;
+        sml2_rumble_sequence.priority = 0;
+        return;
+    }
+
+    const Sml2RumbleBeat *beat =
+        &sml2_rumble_sequence.beats[sml2_rumble_sequence.next++];
+    const int low = beat->low * sml2_rumble_sequence.scale / 100;
+    const int high = beat->high * sml2_rumble_sequence.scale / 100;
+    pad_rumble_device_mix(sml2_rumble_sequence.device, low, high, beat->on_ms);
+    sml2_rumble_sequence.wait_s =
+        ((float)beat->on_ms + (float)beat->gap_ms) / 1000.0f;
+}
+
+static void pad_sml2_light_tick(float dt)
+{
+    if (!sml2_light_sequence.active) return;
+    if (sml2_light_sequence.wait_s > 0.0f) {
+        sml2_light_sequence.wait_s -= dt;
+        if (sml2_light_sequence.wait_s > 0.0f) return;
+    }
+    if (sml2_light_sequence.next >= sml2_light_sequence.count) {
+        sml2_light_sequence.active = 0;
+        sml2_light_sequence.priority = 0;
+        flash_t = 0;
+        return;
+    }
+
+    const Sml2LightBeat *beat =
+        &sml2_light_sequence.beats[sml2_light_sequence.next++];
+    flash_rgb = beat->rgb;
+    flash_t = 1.0f;
+    flash_duration = (float)beat->on_ms / 1000.0f;
+    sml2_light_sequence.wait_s =
+        ((float)beat->on_ms + (float)beat->gap_ms) / 1000.0f;
+}
+
 void pad_event_fx(int game, int ev)
 {
     const EventDef *d = events_def(game, ev);
     if (!d) return;
     const GameCfg *c = &settings.g[game];
+    if (game == GAME_SML2) {
+        if ((c->ds_ev_rumble >> ev) & 1) pad_schedule_sml2_rumble(ev);
+        if ((c->ds_ev_led >> ev) & 1) pad_schedule_sml2_light(ev);
+        return;
+    }
     if ((c->ds_ev_rumble >> ev) & 1)
         pad_rumble_selected(game, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
     if (((c->ds_ev_led >> ev) & 1) &&
         c->pad_device[0] >= 0 && c->pad_device[0] < n_pads &&
         pad_is_dualsense(c->pad_device[0]))
         pad_flash(d->color);
+}
+
+void pad_event_preview(int game, int ev)
+{
+    const EventDef *d = events_def(game, ev);
+    if (!d) return;
+    if (game == GAME_SML2) {
+        pad_schedule_sml2_rumble(ev);
+        pad_schedule_sml2_light(ev);
+        return;
+    }
+    pad_flash(d->color);
+    pad_rumble_selected(game, settings.g[game].ds_rumble * d->rumble_str / 100,
+                        d->rumble_ms);
 }
 
 static uint32_t base_color(const GameCfg *c)
@@ -873,6 +1157,8 @@ static uint32_t base_color(const GameCfg *c)
 void pad_frame(float dt)
 {
     if (ctx_game < 0 || !n_pads) return;
+    pad_sml2_light_tick(dt);
+    pad_sml2_rumble_tick(dt);
     const GameCfg *c = &settings.g[ctx_game];
     uint32_t base = base_color(c);
     float k = c->ds_bright / 100.0f;
@@ -880,7 +1166,7 @@ void pad_frame(float dt)
     if (flash_t > 0) {
         float f = flash_t * flash_t;
         r += (((flash_rgb >> 16) & 255) - r) * f; g += (((flash_rgb >> 8) & 255) - g) * f; b += ((flash_rgb & 255) - b) * f;
-        flash_t -= dt / 0.40f;
+        flash_t -= dt / (flash_duration > 0.01f ? flash_duration : 0.40f);
         if (flash_t < 0) flash_t = 0;
     }
     uint32_t out = ((uint32_t)(r + 0.5f) << 16) | ((uint32_t)(g + 0.5f) << 8) | (uint32_t)(b + 0.5f);

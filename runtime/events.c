@@ -41,10 +41,14 @@ static const EventDef sml_defs[] = {
     {"over",   "Game over",        "No lives left",                   15, 3000, 0, 0xFF3030, 800, 100},
 };
 static const EventDef sml2_defs[] = {
-    {"coin",   "Coin",             "The coin counter goes up",        0, 0, 1, 0xFFD23C, 90, 40},
-    {"enemy",  "Enemy defeated",   "The defeated counter goes up",    0, 0, 2, 0x8CE0A0, 140, 70},
-    {"life",   "Lose a life",      "Lives go down",                   0, 0, 3, 0xFF3030, 600, 100},
-    {"oneup",  "Extra life",       "Lives go up",                     0, 0, 4, 0x6CFF8C, 400, 60},
+    {"coin",   "Coin collected",   "A small, crisp pickup pulse",             0, 0, 0, 0xFFD23C, 55, 35},
+    {"enemy",  "Enemy defeated",   "A two-part impact confirms the stomp",    0, 0, 2, 0x8CE0A0, 105, 58},
+    {"life",   "Life lost",        "A heavy red warning pulse",               0, 0, 3, 0xFF3030, 520, 100},
+    {"oneup",  "Extra life",       "A bright, rising reward sequence",        0, 0, 6, 0x6CFF8C, 270, 70},
+    {"power",  "Power-up",         "A layered pulse for a new Mario form",    0, 0, 1, 0xFF8CFF, 150, 60},
+    {"star",   "Super Star",       "A quick, sparkling invincibility cue",   0, 0, 1, 0xFFF1A0, 270, 78},
+    {"golden", "Golden Coins",     "A three-pulse collection milestone",      0, 0, 9, 0xFFD34A, 360, 88},
+    {"castle", "Castle reclaimed", "A longer finale cue after Wario",         0, 0, 10, 0xFFFFFF, 640, 100},
 };
 /* Wario Land SML3 shares these state values with its Companion Deck tracker. */
 static const EventDef wario_sml3_defs[] = {
@@ -221,6 +225,11 @@ static void sml2_museum_discover(uint32_t discoveries)
     if (discoveries & SML2_MUSEUM_ENEMY) fire(1);
     if (discoveries & SML2_MUSEUM_LIFE_LOST) fire(2);
     if (discoveries & SML2_MUSEUM_EXTRA_LIFE) fire(3);
+    if (discoveries & (SML2_MUSEUM_MUSHROOM | SML2_MUSEUM_MAGIC_CARROT |
+                       SML2_MUSEUM_FIRE_FLOWER)) fire(4);
+    if (discoveries & SML2_MUSEUM_SUPER_STAR) fire(5);
+    if (discoveries & SML2_MUSEUM_GOLDEN_COINS) fire(6);
+    if (discoveries & SML2_MUSEUM_CASTLE_CLEARED) fire(7);
     if (discoveries & SML2_MUSEUM_MUSHROOM)
         (void)museum_discover_entry(GAME_SML2, "mushroom");
     if (discoveries & SML2_MUSEUM_MAGIC_CARROT)

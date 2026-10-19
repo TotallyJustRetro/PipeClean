@@ -1968,7 +1968,9 @@ static void sub_dualsense(int g, float x, float y)
         if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(0); } else launcher_toast("Speaker not found. Connect the controller with the USB cable.");
     }
     ui_text_wrap(F_REG, 12, x + 18, y + 386, lw - 36, C_DIM,
-                 "Enabled events can flash the DualSense lightbar, rumble the selected controller and play an event-specific alert tone through a supported controller speaker. Non-DualSense controllers can rumble when SDL exposes a rumble motor.", 3);
+                 g == GAME_SML2
+                     ? "SML2 has distinct pulse patterns for pickups, stomps, damage, power-ups, stars and endgame milestones. Rumble strength and each event toggle still apply."
+                     : "Enabled events can flash the DualSense lightbar, rumble the selected controller and play an event-specific alert tone through a supported controller speaker. Other compatible controllers can rumble too.", 3);
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 476, "WHEN THIS HAPPENS");
@@ -1997,12 +1999,14 @@ static void sub_dualsense(int g, float x, float y)
         if (ui_button(c3 + 52, ry + (row_h < 40 ? 1 : 6), 46,
                        row_h < 40 ? 28 : 30, "Try", B_GHOST, 1)) {
             pad_set_context(g, 0);
-            pad_flash(d->color);
-            pad_rumble_selected(g, c->ds_rumble * d->rumble_str / 100, d->rumble_ms);
-            if ((c->ds_ev_speaker >> i) & 1 || 1) { if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(d->beep ? d->beep : 0); } }
+            pad_event_preview(g, i);
+            if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(d->beep); }
         }
     }
-    ui_text_wrap(F_REG, 11, rx + 18, y + 62 + n * row_h + 8, rw - 36, C_DIM, "The Try button tries the light, rumble and speaker together.", 2);
+    ui_text_wrap(F_REG, 11, rx + 18, y + 62 + n * row_h + 8, rw - 36, C_DIM,
+                 g == GAME_SML2
+                     ? "Try previews this event's full pulse rhythm, lightbar sequence and speaker tone."
+                     : "Try previews the light, rumble and speaker together.", 2);
 }
 
 /* ------------------------------------------------------------------ game tab: Textures */
