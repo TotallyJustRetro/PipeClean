@@ -29,7 +29,11 @@ void ui_text_fit_tail(int font, float size, float x, float y, float maxw, uint32
 
 enum { TAB_MULTIPLAYER = N_GAMES, TAB_MP_CONTROLLERS, TAB_FILTERS, TAB_AUDIO, TAB_ONLINE, TAB_DISPLAY, TAB_MUSEUM, N_TABS };
 enum { SUB_GAME, SUB_ROMHACKS, SUB_DISPLAY, SUB_CONTROLS, SUB_BINDINGS, SUB_DUALSENSE, SUB_TEXTURES, SUB_SAVE_STATES, N_SUB };
+#ifdef __ANDROID__
+static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "Controllers", "Textures", "Save States"};
+#else
 static const char *sub_names[N_SUB] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense", "Textures", "Save States"};
+#endif
 
 static int tab, sub[N_GAMES];
 static int museum_game = GAME_SML;
@@ -1967,7 +1971,8 @@ static void sub_dualsense(int g, float x, float y)
     int route_count = pad_android_haptic_option_count();
     int route_option = pad_android_haptic_target_option(settings.android_haptic_target);
     if (route_count < 2) route_count = 2;
-    if (route_option < 0 || route_option >= route_count) {
+    if (route_option < 0 || route_option >= route_count ||
+        settings.android_haptic_target != pad_android_haptic_option_target(route_option)) {
         route_option = 0;
         settings.android_haptic_target = pad_android_haptic_option_target(route_option);
         settings_save();

@@ -167,6 +167,7 @@ typedef struct {
     int launcher_dual_screen;            /* Android: use the second display; desktop: open the Companion Deck simulator window. */
     int launcher_pipe_screen_swap;        /* Android: swap SML1 gameplay to the companion screen in pipes/bonus rooms. */
     int android_haptic_target;             /* Android only: auto, phone default, individual motor slots, then controller slots. */
+    int android_haptic_target_version;      /* One-time migration from the original auto/phone/controller indices. */
     int museum_discovery_notifications;   /* Show a launcher toast when a new Museum entry is unlocked. */
     int recent_played_count;
     int recent_played[N_RECENT_PLAYED];  /* Game indices, most recent first; -1 = unused. */

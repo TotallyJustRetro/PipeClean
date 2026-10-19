@@ -299,6 +299,18 @@ void pad_init(void)
 #else
     SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER | SDL_INIT_JOYSTICK);
 #endif
+#ifdef __ANDROID__
+    /* The first selector stored controller slots as 2..5. The extended selector
+       reserves 2..15 for separately selectable phone actuators. Migrate once. */
+    if (settings.android_haptic_target_version < 1) {
+        if (settings.android_haptic_target >= 2 &&
+            settings.android_haptic_target <= 5)
+            settings.android_haptic_target =
+                ANDROID_HAPTIC_CONTROLLER_FIRST + settings.android_haptic_target - 2;
+        settings.android_haptic_target_version = 1;
+        settings_save();
+    }
+#endif
     for (int g = 0; g < N_GAMES; g++)
         for (int player = 0; player < MAX_MP_PLAYERS; player++)
             assigned_instance[g][player] = (SDL_JoystickID)-1;

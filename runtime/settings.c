@@ -265,6 +265,7 @@ static int field_table(Field *t, int cap)
     I("launcher_dual_screen", s->launcher_dual_screen, 0, 1);
     I("launcher_pipe_screen_swap", s->launcher_pipe_screen_swap, 0, 1);
     I("android_haptic_target", s->android_haptic_target, 0, N_ANDROID_HAPTIC_TARGETS - 1);
+    I("android_haptic_target_version", s->android_haptic_target_version, 0, 1);
     I("museum_discovery_notifications", s->museum_discovery_notifications, 0, 1);
     I("recent_played_count", s->recent_played_count, 0, N_RECENT_PLAYED);
     static char recent_names[N_RECENT_PLAYED][32];
