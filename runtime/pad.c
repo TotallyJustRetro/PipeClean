@@ -199,6 +199,10 @@ static void rescan(void)
     }
 #ifdef __ANDROID__
     pad_open_android_system_haptic();
+    if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST + n_pads) {
+        settings.android_haptic_target = ANDROID_HAPTIC_AUTO;
+        settings_save();
+    }
 #endif
 }
 
@@ -822,54 +826,114 @@ int pad_has_light(void)
     return 0;
 }
 
-static void pad_rumble_device_mix(int device, int low_pct, int high_pct, int ms)
+static int pad_device_has_rumble(int device)
 {
-    if ((low_pct <= 0 && high_pct <= 0) || ms <= 0 ||
-        device < 0 || device >= n_pads)
-        return;
+    if (device < 0 || device >= n_pads) return 0;
+    Pad *p = &pads[device];
+#ifdef __ANDROID__
+    if (p->haptic) return 1;
+#endif
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc)) return 1;
+    SDL_Joystick *j = joystick_for_device(device);
+    return j && SDL_JoystickHasRumble(j);
+}
+
+static int pad_try_controller_rumble(int device, int low_pct, int high_pct, int ms)
+{
+    if (device < 0 || device >= n_pads || ms <= 0) return 0;
+    const Uint16 low = (Uint16)((unsigned)low_pct * 65535u / 100u);
+    const Uint16 high = (Uint16)((unsigned)high_pct * 65535u / 100u);
+    Pad *p = &pads[device];
+
+    /* Prefer SDL's native controller backend. On Android this routes to the
+       controller's InputDevice vibrator(s), rather than the phone vibrator. */
+    if (p->mapped && SDL_GameControllerHasRumble(p->gc) &&
+        SDL_GameControllerRumble(p->gc, low, high, (Uint32)ms) == 0)
+        return 1;
+
+    SDL_Joystick *j = joystick_for_device(device);
+    if (j && SDL_JoystickHasRumble(j) &&
+        SDL_JoystickRumble(j, low, high, (Uint32)ms) == 0)
+        return 1;
+
+#ifdef __ANDROID__
+    /* Compatibility path for SDL haptic devices exposed directly from a pad. */
+    const int strongest = low_pct > high_pct ? low_pct : high_pct;
+    if (p->haptic &&
+        SDL_HapticRumblePlay(p->haptic, strongest / 100.0f, (Uint32)ms) == 0)
+        return 1;
+#endif
+    return 0;
+}
+
+static int pad_rumble_device_mix(int device, int low_pct, int high_pct, int ms)
+{
+    if ((low_pct <= 0 && high_pct <= 0) || ms <= 0) return 0;
     if (low_pct < 0) low_pct = 0;
     if (high_pct < 0) high_pct = 0;
     if (low_pct > 100) low_pct = 100;
     if (high_pct > 100) high_pct = 100;
 
-    Pad *p = &pads[device];
 #ifdef __ANDROID__
-    /* Android's public haptic API exposes one normalized intensity rather than
-     * separate motor strengths. Preserve the requested cue timing and use the
-     * stronger motor as the fallback amplitude. */
+    const int target = settings.android_haptic_target;
     const int strongest = low_pct > high_pct ? low_pct : high_pct;
-    if (p->haptic &&
-        SDL_HapticRumblePlay(p->haptic, strongest / 100.0f, (Uint32)ms) == 0)
-        return;
+
+    /* Explicit phone mode never vibrates a connected controller. This also
+       works when no physical controller is assigned to Player 1. */
+    if (target == ANDROID_HAPTIC_PHONE) {
+        return android_system_haptic &&
+               SDL_HapticRumblePlay(android_system_haptic,
+                                    strongest / 100.0f, (Uint32)ms) == 0;
+    }
+
+    /* A numbered controller route is strict for diagnostics: don't fall back
+       to the phone, because that could make a broken controller look healthy. */
+    if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST) {
+        const int selected = target - ANDROID_HAPTIC_CONTROLLER_FIRST;
+        return pad_try_controller_rumble(selected, low_pct, high_pct, ms);
+    }
+
+    /* Auto tries Player 1's controller first, then Android's system vibrator.
+       The fallback intentionally does not require a connected controller. */
+    if (pad_try_controller_rumble(device, low_pct, high_pct, ms)) return 1;
     if (android_system_haptic &&
-        SDL_HapticRumblePlay(android_system_haptic, strongest / 100.0f, (Uint32)ms) == 0)
-        return;
+        SDL_HapticRumblePlay(android_system_haptic,
+                             strongest / 100.0f, (Uint32)ms) == 0)
+        return 1;
+    return 0;
+#else
+    return pad_try_controller_rumble(device, low_pct, high_pct, ms);
 #endif
-
-    const Uint16 low = (Uint16)((unsigned)low_pct * 65535u / 100u);
-    const Uint16 high = (Uint16)((unsigned)high_pct * 65535u / 100u);
-    if (p->mapped && SDL_GameControllerHasRumble(p->gc) &&
-        SDL_GameControllerRumble(p->gc, low, high, (Uint32)ms) == 0)
-        return;
-
-    SDL_Joystick *j = joystick_for_device(device);
-    if (j && SDL_JoystickHasRumble(j))
-        SDL_JoystickRumble(j, low, high, (Uint32)ms);
 }
 
-static void pad_stop_rumble_device(int device)
+static void pad_stop_controller_rumble(int device)
 {
     if (device < 0 || device >= n_pads) return;
     Pad *p = &pads[device];
 #ifdef __ANDROID__
     if (p->haptic) SDL_HapticRumbleStop(p->haptic);
-    if (android_system_haptic) SDL_HapticRumbleStop(android_system_haptic);
 #endif
     if (p->mapped && SDL_GameControllerHasRumble(p->gc))
         (void)SDL_GameControllerRumble(p->gc, 0, 0, 0);
     SDL_Joystick *j = joystick_for_device(device);
     if (j && SDL_JoystickHasRumble(j))
         (void)SDL_JoystickRumble(j, 0, 0, 0);
+}
+
+static void pad_stop_rumble_device(int device)
+{
+#ifdef __ANDROID__
+    /* The phone motor is a shared system output, and the sequence's controller
+       index may be -1 when the game is being played with touch controls. */
+    if (android_system_haptic) SDL_HapticRumbleStop(android_system_haptic);
+    if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST)
+        pad_stop_controller_rumble(settings.android_haptic_target -
+                                   ANDROID_HAPTIC_CONTROLLER_FIRST);
+    else
+        pad_stop_controller_rumble(device);
+#else
+    pad_stop_controller_rumble(device);
+#endif
 }
 
 static void pad_rumble_device(int device, int pct, int ms)
@@ -887,6 +951,66 @@ void pad_rumble_selected(int game, int pct, int ms)
 {
     if (game < 0 || game >= N_GAMES) return;
     pad_rumble_device(settings.g[game].pad_device[0], pct, ms);
+}
+
+int pad_android_haptic_option_count(void)
+{
+#ifdef __ANDROID__
+    return 2 + n_pads;
+#else
+    return 0;
+#endif
+}
+
+void pad_android_haptic_option_name(int option, char *buf, size_t n)
+{
+    if (!buf || n == 0) return;
+    buf[0] = 0;
+#ifdef __ANDROID__
+    if (option == ANDROID_HAPTIC_AUTO) {
+        snprintf(buf, n, "Automatic (controller, then phone)");
+    } else if (option == ANDROID_HAPTIC_PHONE) {
+        snprintf(buf, n, "Android phone vibrator");
+    } else if (option >= ANDROID_HAPTIC_CONTROLLER_FIRST &&
+               option < ANDROID_HAPTIC_CONTROLLER_FIRST + n_pads) {
+        snprintf(buf, n, "Controller: %.100s",
+                 name_of(&pads[option - ANDROID_HAPTIC_CONTROLLER_FIRST]));
+    } else {
+        snprintf(buf, n, "Unavailable controller output");
+    }
+#else
+    (void)option;
+    snprintf(buf, n, "Android only");
+#endif
+}
+
+int pad_android_haptic_target_available(int target)
+{
+#ifdef __ANDROID__
+    if (target == ANDROID_HAPTIC_AUTO) {
+        if (android_system_haptic) return 1;
+        for (int i = 0; i < n_pads; i++) if (pad_device_has_rumble(i)) return 1;
+        return 0;
+    }
+    if (target == ANDROID_HAPTIC_PHONE) return android_system_haptic != NULL;
+    if (target >= ANDROID_HAPTIC_CONTROLLER_FIRST)
+        return pad_device_has_rumble(target - ANDROID_HAPTIC_CONTROLLER_FIRST);
+#else
+    (void)target;
+#endif
+    return 0;
+}
+
+int pad_android_haptic_test(int game, int strength_pct, int ms)
+{
+#ifdef __ANDROID__
+    if (game < 0 || game >= N_GAMES) return 0;
+    const int device = settings.g[game].pad_device[0];
+    return pad_rumble_device_mix(device, strength_pct, strength_pct * 80 / 100, ms);
+#else
+    (void)game; (void)strength_pct; (void)ms;
+    return 0;
+#endif
 }
 
 typedef struct {
@@ -1037,7 +1161,14 @@ static void pad_schedule_sml2_rumble(int ev)
     const GameCfg *c = &settings.g[GAME_SML2];
     const Sml2RumbleProfile *profile = &sml2_rumble_profiles[ev];
     const int device = c->pad_device[0];
-    if (c->ds_rumble <= 0 || device < 0 || device >= n_pads) return;
+    if (c->ds_rumble <= 0) return;
+#ifndef __ANDROID__
+    if (device < 0 || device >= n_pads) return;
+#else
+    if (settings.android_haptic_target >= ANDROID_HAPTIC_CONTROLLER_FIRST &&
+        settings.android_haptic_target - ANDROID_HAPTIC_CONTROLLER_FIRST >= n_pads)
+        return;
+#endif
     if (sml2_rumble_sequence.active &&
         profile->priority <= sml2_rumble_sequence.priority)
         return;
@@ -1164,7 +1295,10 @@ static uint32_t base_color(const GameCfg *c)
 
 void pad_frame(float dt)
 {
-    if (ctx_game < 0 || !n_pads) return;
+    if (ctx_game < 0) return;
+#ifndef __ANDROID__
+    if (!n_pads) return;
+#endif
     pad_sml2_light_tick(dt);
     pad_sml2_rumble_tick(dt);
     const GameCfg *c = &settings.g[ctx_game];

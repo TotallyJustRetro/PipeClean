@@ -1962,6 +1962,45 @@ static void sub_dualsense(int g, float x, float y)
     if (ui_slider(x + 160, y + 288, lw - 160 - 60, &c->ds_speaker_vol, 0, 100)) apply_pad_gain(g);
     snprintf(t, sizeof t, "%d%%", c->ds_speaker_vol); ui_text_r(F_REG, 13, x + lw - 18, y + 290, C_TEXT, t);
     float bw = (lw - 36 - 16) / 3;
+#ifdef __ANDROID__
+    label(x + 18, y + 320, "Vibration output");
+    int route_count = pad_android_haptic_option_count();
+    int route = settings.android_haptic_target;
+    if (route_count < 2) route_count = 2;
+    if (route < 0 || route >= route_count) {
+        route = ANDROID_HAPTIC_AUTO;
+        settings.android_haptic_target = route;
+        settings_save();
+    }
+    if (ui_button(x + 18, y + 338, 28, 28, "<", B_NORMAL, 1)) {
+        route = (route + route_count - 1) % route_count;
+        settings.android_haptic_target = route;
+        settings_save();
+    }
+    if (ui_button(x + lw - 46, y + 338, 28, 28, ">", B_NORMAL, 1)) {
+        route = (route + 1) % route_count;
+        settings.android_haptic_target = route;
+        settings_save();
+    }
+    char route_name[160];
+    pad_android_haptic_option_name(route, route_name, sizeof route_name);
+    ui_text_fit(F_BOLD, 11, x + 52, y + 346, lw - 104, C_TEXT, route_name);
+
+    if (ui_button(x + 18, y + 374, bw, 36, "Test light", B_NORMAL, 1)) { pad_set_context(g, 0); pad_flash(0xFFFFFF); }
+    if (ui_button(x + 18 + bw + 8, y + 374, bw, 36, "Test motor", B_NORMAL, 1)) {
+        if (pad_android_haptic_test(g, c->ds_rumble, 450))
+            launcher_toast("Vibration test sent to the selected output.");
+        else
+            launcher_toast("No usable rumble route. Try another Android vibration output.");
+    }
+    if (ui_button(x + 18 + (bw + 8) * 2, y + 374, bw, 36, "Test speaker", B_NORMAL, 1)) {
+        if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(0); } else launcher_toast("Speaker not found. Connect the controller with the USB cable.");
+    }
+    ui_text_fit(F_REG, 10, x + 18, y + 419, lw - 36, C_DIM,
+                pad_android_haptic_target_available(route)
+                    ? "Output exposed by Android/SDL; hardware response depends on the device."
+                    : "Android/SDL has not exposed a usable haptic output for this route.");
+#else
     if (ui_button(x + 18, y + 334, bw, 36, "Test light", B_NORMAL, 1)) { pad_set_context(g, 0); pad_flash(0xFFFFFF); }
     if (ui_button(x + 18 + bw + 8, y + 334, bw, 36, "Test rumble", B_NORMAL, 1)) pad_rumble_selected(g, c->ds_rumble, 350);
     if (ui_button(x + 18 + (bw + 8) * 2, y + 334, bw, 36, "Test speaker", B_NORMAL, 1)) {
@@ -1971,6 +2010,7 @@ static void sub_dualsense(int g, float x, float y)
                  g == GAME_SML2
                      ? "SML2 has distinct pulse patterns for pickups, stomps, damage, power-ups, stars and endgame milestones. Rumble strength and each event toggle still apply."
                      : "Enabled events can flash the DualSense lightbar, rumble the selected controller and play an event-specific alert tone through a supported controller speaker. Other compatible controllers can rumble too.", 3);
+#endif
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 476, "WHEN THIS HAPPENS");
