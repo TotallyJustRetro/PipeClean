@@ -344,6 +344,17 @@ int launcher_prepare(int g, char *err, size_t n)
     if (g < 0 || g >= N_GAMES) { snprintf(err, n, "Invalid game selection."); return 1; }
     GameCfg *c = &settings.g[g];
     RomStatus st;
+    if (g == GAME_GBA_SAGA) {
+        if (c->romhack_selected >= 0) {
+            snprintf(err, n, "The experimental GBA profile currently requires an unpatched ROM.");
+            return 1;
+        }
+        if (!c->rom_path[0] || rom_probe(g, c->rom_path, &st)) {
+            snprintf(err, n, "%s", c->rom_path[0] ? st.msg : "Choose your GBA ROM on this game's tab first.");
+            return 1;
+        }
+        return 0;
+    }
     if (!c->rom_path[0] || rom_load(g, c->rom_path, &st)) {
         snprintf(err, n, "%s", c->rom_path[0] ? st.msg : "Choose your ROM on this game's tab first.");
         return 1;
@@ -933,7 +944,7 @@ static void sub_external_game(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "GAME ROM");
-    label(x + 18, y + 42, "Game Boy / Game Boy Color ROM");
+    label(x + 18, y + 42, g == GAME_GBA_SAGA ? "Game Boy Advance ROM" : "Game Boy / Game Boy Color ROM");
     path_box(x + 18, y + 64, 808 - 36 - 110, c->rom_path, "Drop a ROM here or browse");
     if (ui_button(x + 808 - 18 - 100, y + 64, 100, 36, "Browse…", B_NORMAL, 1)) {
         char p[1100];
@@ -954,19 +965,25 @@ static void sub_external_game(int g, float x, float y)
 
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
-                 g == GAME_WARIO_SML3
-                    ? "Wario Land: Super Mario Land 3 opens the Treasure Expedition Companion Deck when enabled. Controller events now include power-up, damage, treasure, coins, recovery, extra life, life lost, course entry, key pickup and course results."
-                    : ((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
-                       ? "Both Wario Land II releases use the Stolen Treasure Companion Deck: all 50 treasures and picture panels, course-entry and end-of-course-results tracking, an expedition log, collection animations, and event-specific DualSense lightbar, rumble and speaker alerts. Wario Land II has no key pickup mechanic."
-                       : (g == GAME_WARIO_LAND3_GBC
-                          ? "Wario Land 3 has ten live controller events, including power-up, damage/recovery, treasure, coins, story/game-over milestones, course entry, key obtained and the course-results screen. Events can trigger DualSense lightbar flashes, distinct rumble and speaker alerts; compatible other controllers can rumble."
-                          : "This title runs in the separate gbrecomp player. PipeClean's in-runtime filters and save-state slots do not apply to this player.")), 5);
+                 g == GAME_GBA_SAGA
+                    ? "Experimental Windows-only test: PipeClean launches the locally built MarioLuigi.exe and keeps the GBA game in its own process. This proves launcher handoff, not full in-runtime GBA integration; PipeClean filters, save states, controller mapping, and Companion Deck features do not apply."
+                    : (g == GAME_WARIO_SML3
+                       ? "Wario Land: Super Mario Land 3 opens the Treasure Expedition Companion Deck when enabled. Controller events now include power-up, damage, treasure, coins, recovery, extra life, life lost, course entry, key pickup and course results."
+                       : ((g == GAME_WARIO_LAND2_GB || g == GAME_WARIO_LAND2_GBC)
+                          ? "Both Wario Land II releases use the Stolen Treasure Companion Deck: all 50 treasures and picture panels, course-entry and end-of-course-results tracking, an expedition log, collection animations, and event-specific DualSense lightbar, rumble and speaker alerts. Wario Land II has no key pickup mechanic."
+                          : (g == GAME_WARIO_LAND3_GBC
+                             ? "Wario Land 3 has ten live controller events, including power-up, damage/recovery, treasure, coins, story/game-over milestones, course entry, key obtained and the course-results screen. Events can trigger DualSense lightbar flashes, distinct rumble and speaker alerts; compatible other controllers can rumble."
+                             : "This title runs in the separate gbrecomp player. PipeClean's in-runtime filters and save-state slots do not apply to this player."))), 5);
 
     ui_text(F_BOLD, 12, x + 18, y + 276, C_MUTED, "CONTROLS");
     ui_text_wrap(F_REG, 12, x + 18, y + 300, 772, C_TEXT,
-                 "Keyboard: arrows or WASD to move, Z/J for A, X/K for B, Enter/Space for Start, Backspace/Tab/Right Shift for Select. Controller: D-pad or left stick, A/Y for Game Boy A, B/X for B, Start and Back.", 3);
+                 g == GAME_GBA_SAGA
+                    ? "Keyboard only in this prototype: arrows move, Z = A, X = B, Enter = Start, Backspace = Select, A = L, S = R. PipeClean controller bindings are not forwarded to the GBA window yet."
+                    : "Keyboard: arrows or WASD to move, Z/J for A, X/K for B, Enter/Space for Start, Backspace/Tab/Right Shift for Select. Controller: D-pad or left stick, A/Y for Game Boy A, B/X for B, Start and Back.", 3);
     ui_text_wrap(F_REG, 12, x + 18, y + 382, 772, C_DIM,
-                 "Battery saves are written alongside the selected ROM as a .sav file. Keep each ROM and its save file together.", 2);
+                 g == GAME_GBA_SAGA
+                    ? "Place MarioLuigi.exe and its matching overlays.cfg in the gba-recomp folder beside PipeClean.exe. Build both locally from the provided GBA recompiler source; do not commit generated game code or ROM data."
+                    : "Battery saves are written alongside the selected ROM as a .sav file. Keep each ROM and its save file together.", 2);
 }
 
 static void romhack_select_profile(int g, int index)
@@ -974,6 +991,10 @@ static void romhack_select_profile(int g, int index)
     if (g < 0 || g >= N_GAMES) return;
     GameCfg *c = &settings.g[g];
     if (index < -1 || index >= c->romhack_count || index >= MAX_ROMHACKS) return;
+    if (g == GAME_GBA_SAGA && index >= 0) {
+        launcher_toast("The experimental GBA profile currently requires an unpatched ROM.");
+        return;
+    }
     c->romhack_selected = index;
     settings_save();
 
@@ -1188,7 +1209,8 @@ static void sub_game(int g, float x, float y)
     /* save data */
     label(rx + 18, y + 330, "Save data");
     char sp[1200];
-    int bat = games[g].crc == 0 && (g == GAME_SML2 || g >= GAME_WARIO_SML3);
+    int bat = games[g].crc == 0 &&
+              (g == GAME_SML2 || (g >= GAME_WARIO_SML3 && g <= GAME_WARIO_LAND2_GBC));
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
     ui_text_wrap(F_REG, 12, rx + 18, y + 352, rw - 36, C_DIM, bat ? "Saved games are kept automatically next to the program, in the \"saves\" folder, one file per game." : "This cartridge has no save memory.", 3);
     if (bat && ui_button(rx + 18, y + 396, 180, 36, "Open saves folder", B_NORMAL, 1)) { mkdir_u(sp); open_folder(sp); }

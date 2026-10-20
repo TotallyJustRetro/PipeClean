@@ -16,6 +16,7 @@ const GameDef games[N_GAMES] = {
     {"wario2-gb",  "Wario Land II (GB)",    "The monochrome Game Boy release.",       "WARIOLAND2",       0,           0, 0xC77B44, 420, 32, 32,  0, 0, 0, 0},
     {"wario3-gbc", "Wario Land 3 (GBC)",    "Wario's color-era adventure.",           "WARIOLAND3",       0,           0, 0x58B5C9, 500, 32, 32,  0, 0, 0, 0},
     {"wario2-gbc", "Wario Land II (GBC)",  "The Game Boy Color release.",             "CGBWARIOLAND2",    0,           0, 0x8A80D4, 420, 32, 32,  0, 0, 0, 0},
+    {"mario-luigi-ss", "Superstar Saga (GBA)", "Experimental BIOS-free GBA recompilation test.", "MARIO&LUIGIU", 0, 0, 0x72B95B, 0, 0, 0, 0, 0, 0, 1},
 };
 
 #define MAX_ROM (8u << 20)
@@ -45,6 +46,17 @@ static long read_file(const char *path, uint8_t **buf)
     return (long)got;
 }
 
+/* The experimental GBA profile intentionally recognizes only the US Superstar
+ * Saga header used to generate the local recompilation. No GBA ROM data is
+ * shipped with PipeClean. */
+static int is_superstar_saga_gba_header(const uint8_t *img, size_t n)
+{
+    return img && n >= 0xC0 &&
+           memcmp(img + 0xA0, "MARIO&LUIGIU", 12) == 0 &&
+           memcmp(img + 0xAC, "A88E", 4) == 0 &&
+           img[0xB2] == 0x96;
+}
+
 /* Header titles are not consistently terminated on CGB cartridges: some
  * dumps put the manufacturer code immediately after the title. Compare a
  * normalized title prefix, and use the CGB flag to distinguish the two
@@ -64,6 +76,7 @@ static void normalize_title(const char *src, char *dst, size_t cap)
 
 int rom_identify(const uint8_t *img, size_t n)
 {
+    if (is_superstar_saga_gba_header(img, n)) return GAME_GBA_SAGA;
     CartInfo ci;
     if (!cart_parse(img, n, &ci)) return -1;
 
@@ -126,6 +139,31 @@ static int check(int game, const uint8_t *buf, long n, RomStatus *st)
 int rom_probe(int game, const char *path, RomStatus *st)
 {
     memset(st, 0, sizeof *st);
+    if (game == GAME_GBA_SAGA) {
+        FILE *f = fopen(path, "rb");
+        if (!f) { snprintf(st->msg, sizeof st->msg, "Can't open that GBA ROM."); return 1; }
+        if (fseek(f, 0, SEEK_END) != 0) {
+            fclose(f);
+            snprintf(st->msg, sizeof st->msg, "Couldn't read the GBA ROM size.");
+            return 1;
+        }
+        long size = ftell(f);
+        rewind(f);
+        uint8_t header[0xC0];
+        size_t got = fread(header, 1, sizeof header, f);
+        fclose(f);
+        if (size < (1L << 20) || size > (64L << 20) ||
+            got != sizeof header || !is_superstar_saga_gba_header(header, got)) {
+            snprintf(st->msg, sizeof st->msg,
+                     "Choose the USA Mario & Luigi: Superstar Saga GBA ROM (game code A88E).");
+            return 1;
+        }
+        st->ok = 1;
+        st->exact = 1;
+        snprintf(st->msg, sizeof st->msg,
+                 "Superstar Saga GBA header verified. Ready for the external static recompiler.");
+        return 0;
+    }
     uint8_t *buf = NULL;
     long n = read_file(path, &buf);
     if (n < 0) { snprintf(st->msg, sizeof st->msg, n == -2 ? "That file is too big for a Game Boy ROM." : "Can't open that file."); return 1; }
@@ -147,6 +185,11 @@ static void install_base(void)
 int rom_load(int game, const char *path, RomStatus *st)
 {
     memset(st, 0, sizeof *st);
+    if (game == GAME_GBA_SAGA) {
+        snprintf(st->msg, sizeof st->msg,
+                 "GBA titles run through the experimental external recompiler, not the Game Boy core.");
+        return 1;
+    }
     uint8_t *buf = NULL;
     long n = read_file(path, &buf);
     if (n < 0) { snprintf(st->msg, sizeof st->msg, "Can't open that file."); return 1; }
@@ -294,7 +337,8 @@ static int has_ext(const char *n)
     if (!strcmp(e, ".gb") || !strcmp(e, ".GB") || !strcmp(e, ".Gb")) return 1;
     if (l >= 5) {
         e = n + l - 4;
-        return !strcmp(e, ".gbc") || !strcmp(e, ".GBC");
+        if (!strcmp(e, ".gbc") || !strcmp(e, ".GBC") || !strcmp(e, ".Gbc")) return 1;
+        if (!strcmp(e, ".gba") || !strcmp(e, ".GBA") || !strcmp(e, ".Gba")) return 1;
     }
     return 0;
 }
@@ -322,7 +366,9 @@ void rom_scan(char paths[N_GAMES][512])
             fseek(f, 0, SEEK_END);
             long sz = ftell(f);
             fclose(f);
-            if (got < 0x150 || sz > (long)MAX_ROM) continue;
+            /* GBA ROMs can be larger than the Game Boy core's 8 MiB limit.
+               rom_probe applies the profile-specific size/header checks. */
+            if (got < 0x150 || sz < 0 || sz > (64L << 20)) continue;
             int g = rom_identify(head, got);
             if (g < 0 || paths[g][0]) continue;
             RomStatus st;

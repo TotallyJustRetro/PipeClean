@@ -2505,6 +2505,16 @@ static int play_external_game(int g)
     if (g < 0 || g >= N_GAMES || !games[g].external_player) return 0;
     GameCfg *c = &settings.g[g];
     RomStatus st;
+    if (g == GAME_GBA_SAGA && c->romhack_selected >= 0) {
+        launcher_toast("The experimental GBA profile currently requires an unpatched ROM.");
+        return 0;
+    }
+#if !defined(_WIN32)
+    if (g == GAME_GBA_SAGA) {
+        launcher_toast("The experimental GBA recompiler frontend is Windows-only for now.");
+        return 0;
+    }
+#endif
     if (!c->rom_path[0]) {
         launcher_toast("Choose this game's ROM on the Game tab first.");
         return 0;
@@ -2548,17 +2558,34 @@ static int play_external_game(int g)
         SDL_free(base_path);
     }
 #ifdef _WIN32
-    snprintf(player, sizeof player, "%sgbplayer.exe", base);
+    if (g == GAME_GBA_SAGA)
+        snprintf(player, sizeof player, "%sgba-recomp\\MarioLuigi.exe", base);
+    else
+        snprintf(player, sizeof player, "%sgbplayer.exe", base);
 #else
     snprintf(player, sizeof player, "%sgbplayer", base);
 #endif
 
     FILE *test = fopen(player, "rb");
     if (!test) {
-        launcher_toast("The bundled gbrecomp player is missing. Rebuild or reinstall PipeClean.");
+        launcher_toast(g == GAME_GBA_SAGA
+            ? "GBA frontend missing: put MarioLuigi.exe in gba-recomp beside PipeClean.exe."
+            : "The bundled gbrecomp player is missing. Rebuild or reinstall PipeClean.");
         return 0;
     }
     fclose(test);
+#ifdef _WIN32
+    if (g == GAME_GBA_SAGA) {
+        char overlays[1500];
+        snprintf(overlays, sizeof overlays, "%sgba-recomp\\overlays.cfg", base);
+        test = fopen(overlays, "rb");
+        if (!test) {
+            launcher_toast("GBA overlays.cfg missing: copy it beside MarioLuigi.exe in gba-recomp.");
+            return 0;
+        }
+        fclose(test);
+    }
+#endif
     game_session_begin(g);
     settings_save();
     audio_menu_music(0);
@@ -2594,7 +2621,9 @@ static int play_external_game(int g)
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
     } else {
-        launcher_toast("Couldn't start the Wario game runtime.");
+        launcher_toast(g == GAME_GBA_SAGA
+            ? "Couldn't start the external GBA recompiler."
+            : "Couldn't start the Wario game runtime.");
         ok = 0;
     }
 #else
@@ -2605,7 +2634,9 @@ static int play_external_game(int g)
         _exit(127);
     }
     if (pid < 0) {
-        launcher_toast("Couldn't start the Wario game runtime.");
+        launcher_toast(g == GAME_GBA_SAGA
+            ? "Couldn't start the external GBA recompiler."
+            : "Couldn't start the Wario game runtime.");
         ok = 0;
     } else {
         int status = 0;

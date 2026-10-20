@@ -418,7 +418,7 @@ void settings_load(void)
         *eq = 0;
         if (!strcmp(line, "launcher_dual_screen")) saw_launcher_dual_screen = 1;
         if (!strcmp(line, "launcher_pipe_screen_swap")) saw_launcher_pipe_screen_swap = 1;
-        for (int g = GAME_WARIO_SML3; g < N_GAMES; g++) {
+        for (int g = GAME_WARIO_SML3; g <= GAME_WARIO_LAND2_GBC; g++) {
             char fx_key[80];
             snprintf(fx_key, sizeof fx_key, "%s.fx_version", games[g].id);
             if (!strcmp(line, fx_key)) saw_wario_fx_version[g] = 1;
@@ -459,7 +459,7 @@ void settings_load(void)
        later files predate coin-loss, and v2 files predate course/key/results
        events. Extend masks without clearing the user's existing toggles. */
     int wario_fx_migrated = 0;
-    for (int g = GAME_WARIO_SML3; g < N_GAMES; g++) {
+    for (int g = GAME_WARIO_SML3; g <= GAME_WARIO_LAND2_GBC; g++) {
         GameCfg *c = &settings.g[g];
         const int wario_land2 = g == GAME_WARIO_LAND2_GB ||
                                 g == GAME_WARIO_LAND2_GBC;

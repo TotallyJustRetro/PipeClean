@@ -72,7 +72,7 @@ static int dlg_win(int kind, const char *title, char *out, size_t n)
         return 1;
     }
     static const wchar_t *filters[] = {
-        L"Game Boy ROM (*.gb;*.gbc)\0*.gb;*.gbc\0All files\0*.*\0",
+        L"Game Boy / Game Boy Advance ROM (*.gb;*.gbc;*.gba)\0*.gb;*.gbc;*.gba\0All files\0*.*\0",
         L"Romhack or patch (*.ips;*.bps;*.ups;*.gb;*.gbc)\0*.ips;*.bps;*.ups;*.gb;*.gbc\0All files\0*.*\0",
         L"Images (*.png;*.gif)\0*.png;*.gif\0All files\0*.*\0",
         L"Audio (*.wav;*.mp3;*.ogg;*.flac)\0*.wav;*.mp3;*.ogg;*.flac\0All files\0*.*\0",

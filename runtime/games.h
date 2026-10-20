@@ -5,6 +5,7 @@
 enum {
     GAME_DRMARIO, GAME_SML, GAME_SML2,
     GAME_WARIO_SML3, GAME_WARIO_LAND2_GB, GAME_WARIO_LAND3_GBC, GAME_WARIO_LAND2_GBC,
+    GAME_GBA_SAGA,
     N_GAMES
 };
 
@@ -21,7 +22,7 @@ typedef struct {
     int hud_lines;
     int hud_window;
     int wide_gate;
-    int external_player;              /* launch through the bundled ROM-independent gbrecomp player */
+    int external_player;              /* launch through a separate, ROM-specific recompilation frontend */
 } GameDef;
 
 extern const GameDef games[N_GAMES];

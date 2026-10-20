@@ -19,6 +19,7 @@ interp.c
 # Local ROMs / copyrighted game dumps
 roms/*.gb
 roms/*.gbc
+roms/*.gba
 roms/*.bin
 roms/*.zip
 roms/*.7z
