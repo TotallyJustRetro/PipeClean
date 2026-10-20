@@ -14,7 +14,7 @@ PipeClean brings classic Game Boy games into a modern runtime with configurable 
 
 ## Games
 
-PipeClean now has seven game profiles across the Dr. Mario, Super Mario Land, and Wario Land series.
+PipeClean now has eight game profiles across the Dr. Mario, Super Mario Land, Wario Land, and experimental GBA recompilation profiles.
 
 | Game | Current support |
 | --- | --- |

@@ -2,7 +2,7 @@ name: Regression Tests
 
 on:
   push:
-    branches: [main, feature/android-pipe-screen-swap]
+    branches: [main, feature/android-pipe-screen-swap, feature/gba-superstar-saga-pipeclean-test]
   pull_request:
   workflow_dispatch:
 

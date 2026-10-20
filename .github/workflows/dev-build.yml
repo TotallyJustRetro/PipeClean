@@ -2,7 +2,7 @@ name: PipeClean Dev Build
 
 on:
   push:
-    branches: [main, feature/online-android-foundation, feature/android-pipe-screen-swap]
+    branches: [main, feature/online-android-foundation, feature/android-pipe-screen-swap, feature/gba-superstar-saga-pipeclean-test]
   pull_request:
     branches: [main, fix/sml-dx-widescreen-revision, feature/online-android-foundation]
   workflow_dispatch:
