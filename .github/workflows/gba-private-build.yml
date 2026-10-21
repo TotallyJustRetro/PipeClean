@@ -58,16 +58,35 @@ jobs:
           $sourcePath = Join-Path $inputDir 'gba-recomp-source.zip'
           $romPath = Join-Path $inputDir 'superstar-saga.gba'
 
+          function ConvertTo-DownloadUrl([string]$url) {
+            # Dropbox shared links commonly have dl=0 (preview); switch to the actual file download.
+            if ($url -match '^https://(www\.)?dropbox\.com/') {
+              if ($url -match '([?&])dl=') {
+                return ($url -replace '([?&])dl=[^&]*', '$1dl=1')
+              }
+              if ($url.Contains('?')) { return "$url&dl=1" }
+              return "$url?dl=1"
+            }
+            return $url
+          }
+
+          $sourceUrl = ConvertTo-DownloadUrl $env:GBA_RECOMP_SOURCE_URL
+          $romUrl = ConvertTo-DownloadUrl $env:GBA_ROM_URL
+          if (-not $sourceUrl.StartsWith('https://') -or -not $romUrl.StartsWith('https://')) {
+            Write-Error 'Both private build input URLs must use HTTPS.'
+            exit 1
+          }
+
           try {
-            Invoke-WebRequest -Uri $env:GBA_RECOMP_SOURCE_URL -OutFile $sourcePath -TimeoutSec 180 -MaximumRedirection 8
+            Invoke-WebRequest -Uri $sourceUrl -OutFile $sourcePath -TimeoutSec 180 -MaximumRedirection 8
           } catch {
-            Write-Error 'Could not download the source archive. Check GBA_RECOMP_SOURCE_URL is a direct HTTPS download URL.'
+            Write-Error 'Could not download the source archive. Check GBA_RECOMP_SOURCE_URL points to a downloadable file.'
             exit 1
           }
           try {
-            Invoke-WebRequest -Uri $env:GBA_ROM_URL -OutFile $romPath -TimeoutSec 180 -MaximumRedirection 8
+            Invoke-WebRequest -Uri $romUrl -OutFile $romPath -TimeoutSec 180 -MaximumRedirection 8
           } catch {
-            Write-Error 'Could not download the ROM. Check GBA_ROM_URL is a direct HTTPS download URL.'
+            Write-Error 'Could not download the ROM. Check GBA_ROM_URL points to a downloadable file.'
             exit 1
           }
 
