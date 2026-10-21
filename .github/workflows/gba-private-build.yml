@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/gba-private-build.yml
       - docs/GBA_RECOMP_PRIVATE_BUILD.md
+      - ci/patch_gba_recomp.py
   workflow_dispatch:
 
 permissions:
@@ -139,14 +140,17 @@ jobs:
           [[ -s "$SRC/data/events_all.txt" ]] || { echo "Source archive is missing its event seed data"; exit 1; }
           [[ -s "$SRC/data/profile_keys.txt" ]] || { echo "Source archive is missing profile_keys.txt"; exit 1; }
 
+          # Reapply the tested frontend/audio/timing fixes after unpacking the user's original source archive.
+          python "$GITHUB_WORKSPACE/ci/patch_gba_recomp.py" "$SRC"
+
           cd "$SRC"
           export SEED_EVENTS="$SRC/data/events_all.txt"
           export PASSES=1
           export DEFER_IRQ_WHILE=0x03000C7C
           export PROFILE_KEYS="$(grep -v '^#' data/profile_keys.txt | tr -d '\r\n')"
 
-          ./build_recomp.sh "$ROM" "$SRC/work" 1500
-          CC_OPT=-O1 ./build_win.sh "$SRC/work"
+          CC_OPT=-O2 ./build_recomp.sh "$ROM" "$SRC/work" 1500
+          CC_OPT=-O2 ./build_win.sh "$SRC/work"
 
           cd "$GITHUB_WORKSPACE"
           mkdir -p dist
