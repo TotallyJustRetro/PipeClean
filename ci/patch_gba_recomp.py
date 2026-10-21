@@ -97,6 +97,56 @@ s = s.replace("keysched[32]", "keysched[8192]", 1)
 s = s.replace("nkeys < 32", "nkeys < 8192", 1)
 p.write_text(s, encoding="utf-8", newline="\n")
 
+# Strip old per-event timing wrappers that were useful while profiling but added
+# counters and conditional stderr output to the real-time runtime. This is safe on
+# already-cleaned versions of the source archive as each replacement is conditional.
+p = root / "gba_platform.c"
+s = p.read_text(encoding="utf-8")
+old = """static uint64_t dbg_vb_raise, dbg_vb_merged;
+static uint64_t dbg_swi_cyc, dbg_halt_cyc, dbg_dma_cyc;
+static void raise_irq(uint32_t bits) { if (bits & 1) { dbg_vb_raise++; if (IO16(IF_) & 1) dbg_vb_merged++; } IO16(IF_) |= bits; }"""
+s = s.replace(old, "static void raise_irq(uint32_t bits) { IO16(IF_) |= bits; }", 1)
+
+old = """static void dma_run_body(int n);
+static void dma_run(int n) {
+    uint64_t t0 = g_cyc; dma_run_body(n); dbg_dma_cyc += g_cyc - t0;
+    if (g_cyc - t0 > 100000) fprintf(stderr, "[slow-dma] ch%d %llu cyc frame=%llu ctl=%04x cnt=%u\\n", n, (unsigned long long)(g_cyc - t0), (unsigned long long)plat_frames, dma[n].ctl, dma[n].icnt);
+}
+static void dma_run_body(int n) {"""
+s = s.replace(old, "static void dma_run(int n) {", 1)
+
+s = s.replace("static uint64_t dbg_irq_ime, dbg_irq_i, dbg_irq_depth;\n", "", 1)
+old = """    if (IO16(IE) & IO16(IF_)) {                                                    /* diagnostic: why is a pending IRQ not taken? */
+        if (!(IO16(IME) & 1)) dbg_irq_ime++; else if (c->psr_rest & 0x80) dbg_irq_i++; else if (irq_depth > 3) dbg_irq_depth++;
+    }
+"""
+s = s.replace(old, "", 1)
+
+old = """    { static uint64_t last_tick = 0; static uint32_t last_site = 0; static int reports = 0; static uint64_t gap_hist[8];   /* diagnostic: gaps between back-edge ticks */
+      uint64_t gap = g_cyc - last_tick;
+      static uint64_t p_swi, p_halt, p_dma; if (gap > 150000 && reports < 2000) { reports++; fprintf(stderr, "[gap] %llu cyc frame=%llu from=%08x to=%08x swi=%llu halt=%llu dma=%llu\\n", (unsigned long long)gap, (unsigned long long)plat_frames, last_site, site, (unsigned long long)(dbg_swi_cyc-p_swi), (unsigned long long)(dbg_halt_cyc-p_halt), (unsigned long long)(dbg_dma_cyc-p_dma)); } p_swi = dbg_swi_cyc; p_halt = dbg_halt_cyc; p_dma = dbg_dma_cyc;
+      last_tick = g_cyc; last_site = site; (void)gap_hist; }
+"""
+s = s.replace(old, "", 1)
+old = """    fprintf(stderr, "[irq-block] ime=%llu i-bit=%llu depth=%llu vblank_raised=%llu merged_while_pending=%llu DISPSTAT=%04x\\n", (unsigned long long)dbg_irq_ime, (unsigned long long)dbg_irq_i, (unsigned long long)dbg_irq_depth, (unsigned long long)dbg_vb_raise, (unsigned long long)dbg_vb_merged, IO16(DISPSTAT));
+"""
+s = s.replace(old, "", 1)
+
+s = s.replace("    uint64_t start = plat_frames, c0 = g_cyc; uint64_t irq0 = plat_stats.irqs;\n", "    uint64_t start = plat_frames;\n", 1)
+s = s.replace("    uint64_t waited = g_cyc - c0; dbg_halt_cyc += waited;\n", "", 1)
+old = """    { static int rep = 0; if (waited > 1000000 && rep < 10) { rep++; fprintf(stderr, "[halt] waited %llu cyc frame=%llu psr=%08x IME=%u IE=%04x IF=%04x delivered=%llu\\n", (unsigned long long)waited, (unsigned long long)plat_frames, c->psr_rest, IO16(IME)&1, IO16(IE), IO16(IF_), (unsigned long long)(plat_stats.irqs - irq0)); } }
+"""
+s = s.replace(old, "", 1)
+
+old = """void rt_swi_body(Cpu *c, uint32_t n);
+void rt_swi(Cpu *c, uint32_t n) {
+    uint64_t t0 = g_cyc; rt_swi_body(c, n); dbg_swi_cyc += g_cyc - t0;
+    if (g_cyc - t0 > 100000) fprintf(stderr, "[slow-swi] %02x %llu cyc frame=%llu\\n", n, (unsigned long long)(g_cyc - t0), (unsigned long long)plat_frames);
+}
+void rt_swi_body(Cpu *c, uint32_t n) {"""
+s = s.replace(old, "void rt_swi(Cpu *c, uint32_t n) {", 1)
+p.write_text(s, encoding="utf-8", newline="\n")
+
 # Add approximate legacy PSG synthesis (square 1/2, wave and noise) to the
 # Direct Sound FIFO mixer. This remains an HLE approximation, not cycle-accurate audio.
 p = root / "gba_platform.c"
