@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gba-private-build-${{ github.ref }}
+  group: gba-private-build-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
