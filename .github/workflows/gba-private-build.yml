@@ -164,6 +164,32 @@ jobs:
           In PipeClean, open Superstar Saga (GBA), select your own compatible ROM, then press Play.
           This build does not include the ROM or a BIOS image. The BIOS high-level implementation is partial.
           The recompiler is experimental; later-game overlays may require additional profiling.
+
+          AUDIO DIAGNOSTIC
+          To record the audio sent to Windows, create a text file beside your ROM named:
+            <ROM filename>.cfg
+          For example, if the ROM is Mario.gba, the file is Mario.gba.cfg.
+          Put this line in it (create C:\Temp first):
+            record C:\Temp\audio_out.wav
+          Play for about 30 seconds while the buzzing or stuttering occurs, then close the game.
+          The WAV is finalized when the game closes. It records the PCM sent to waveOut, not your microphone.
+          Do not include or upload your ROM when sharing diagnostic results.
+          EOF
+
+          cat > dist/AUDIO_DEBUG.md <<'EOF'
+          # GBA Windows audio capture
+
+          This build can capture exactly the PCM samples the recompiled game submits to Windows' waveOut device.
+
+          1. Create C:\Temp if it does not exist.
+          2. Beside your own ROM, create a text file named <ROM filename>.cfg (for Mario.gba, use Mario.gba.cfg).
+          3. Put this line in it: record C:\Temp\audio_out.wav
+          4. Launch the game, reproduce the buzzing/stutter for about 30 seconds, and close the game normally.
+          5. The WAV header is finalized on exit. Upload audio_out.wav here and note where in the game the glitch occurred.
+
+          The file records the PCM sent to waveOut, not microphone audio. If the WAV itself sounds distorted, the issue is in the generated audio stream. If the WAV sounds clean but playback does not, we should focus on Windows audio scheduling/device playback.
+
+          Keep your ROM private; the recording is enough for diagnosis.
           EOF
 
           test -s dist/MarioLuigi.exe
@@ -192,7 +218,7 @@ jobs:
           $archive = Join-Path $env:GITHUB_WORKSPACE 'gba-recomp-output.7z'
           Push-Location (Join-Path $env:GITHUB_WORKSPACE 'dist')
           try {
-            & $sevenZip a -t7z -mhe=on "-p$env:GBA_OUTPUT_KEY" $archive 'MarioLuigi.exe' 'overlays.cfg' 'README-GBA-Build.txt' | Out-Null
+            & $sevenZip a -t7z -mhe=on "-p$env:GBA_OUTPUT_KEY" $archive 'MarioLuigi.exe' 'overlays.cfg' 'README-GBA-Build.txt' 'AUDIO_DEBUG.md' | Out-Null
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path $archive)) {
               Write-Error 'Could not encrypt the GBA build; no artifact will be uploaded.'
               exit 1
