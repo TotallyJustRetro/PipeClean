@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: gba-private-build-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-windows-gba:
