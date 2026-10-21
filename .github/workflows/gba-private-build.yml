@@ -141,7 +141,7 @@ jobs:
           [[ -s "$SRC/data/profile_keys.txt" ]] || { echo "Source archive is missing profile_keys.txt"; exit 1; }
 
           # Reapply the tested frontend/audio/timing fixes after unpacking the user's original source archive.
-          python "$GITHUB_WORKSPACE/ci/patch_gba_recomp.py" "$SRC"
+          python ci/patch_gba_recomp.py "$SRC"
 
           cd "$SRC"
           export SEED_EVENTS="$SRC/data/events_all.txt"
