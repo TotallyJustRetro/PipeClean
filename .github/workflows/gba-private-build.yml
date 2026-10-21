@@ -1,3 +1,4 @@
+# Each fresh run re-downloads the source archive and ROM from repository Actions secrets.
 name: Private GBA Recompiler Build (Encrypted)
 
 on:
