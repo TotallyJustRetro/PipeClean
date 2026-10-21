@@ -149,7 +149,7 @@ jobs:
           export DEFER_IRQ_WHILE=0x03000C7C
           export PROFILE_KEYS="$(grep -v '^#' data/profile_keys.txt | tr -d '\r\n')"
 
-          CC_OPT=-O2 ./build_recomp.sh "$ROM" "$SRC/work" 1500
+          CC_OPT=-O1 ./build_recomp.sh "$ROM" "$SRC/work" 1500
           CC_OPT=-O2 ./build_win.sh "$SRC/work"
 
           cd "$GITHUB_WORKSPACE"
