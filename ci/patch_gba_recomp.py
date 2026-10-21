@@ -10,12 +10,15 @@ for name in ("gba_platform.c", "gba_win.c", "gba_emit.py", "build_recomp.sh", "b
     if not (root / name).is_file():
         raise SystemExit(f"Expected {name} in {root}")
 
-# Six waveOut buffers added a noticeable queue delay. Two provide modest scheduler tolerance.
+# Four queued waveOut buffers are a compromise: enough tolerance for brief scheduling jitter
+# without the long queue latency of six buffers. The output must still sustain real-time emulation.
 p = root / "gba_win.c"
 s = p.read_text(encoding="utf-8")
 if "#define AUDIO_BUFS 6" in s:
-    s = s.replace("#define AUDIO_BUFS 6", "#define AUDIO_BUFS 2", 1)
-elif "#define AUDIO_BUFS 2" not in s:
+    s = s.replace("#define AUDIO_BUFS 6", "#define AUDIO_BUFS 4", 1)
+elif "#define AUDIO_BUFS 2" in s:
+    s = s.replace("#define AUDIO_BUFS 2", "#define AUDIO_BUFS 4", 1)
+elif "#define AUDIO_BUFS 4" not in s:
     raise SystemExit("Unrecognized AUDIO_BUFS definition in gba_win.c")
 p.write_text(s, encoding="utf-8", newline="\n")
 
@@ -27,12 +30,13 @@ for source in ("gba_platform", "gba_ppu", "gba_win"):
     s = s.replace(f"gcc -O1 -w -c -I \"$HERE\" \"$HERE/{source}.c\"", f"gcc $CC_OPT -w -c -I \"$HERE\" \"$HERE/{source}.c\"")
 p.write_text(s, encoding="utf-8", newline="\n")
 
-# A same-function address span can be much larger than the executed loop body.
+# Retain the recompiler's 4096-cycle ceiling. Lowering this to 512 caused many
+# more RT_TICK calls and repeated interrupt/timing checks in tight loops, hurting frame rate.
 p = root / "gba_emit.py"
 s = p.read_text(encoding="utf-8")
-if ")), 4096)" in s:
-    s = s.replace(")), 4096)", ")), 512)", 1)
-elif ")), 512)" not in s:
+if ")), 512)" in s:
+    s = s.replace(")), 512)", ")), 4096)", 1)
+elif ")), 4096)" not in s:
     raise SystemExit("Unrecognized loop-backedge cycle cap in gba_emit.py")
 p.write_text(s, encoding="utf-8", newline="\n")
 
