@@ -112,14 +112,10 @@ jobs:
           msystem: MINGW64
           update: false
           install: >-
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-SDL2
-            mingw-w64-x86_64-SDL2_image
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-python
             mingw-w64-x86_64-7zip
-            make
-            python
             unzip
-            git
 
       - name: Generate and compile the game-specific recompiler privately
         if: steps.preflight.outputs.skip != 'true'
