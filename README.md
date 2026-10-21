@@ -25,7 +25,7 @@ PipeClean now has eight game profiles across the Dr. Mario, Super Mario Land, Wa
 | **Wario Land II (Game Boy)** | Added as a separate monochrome Game Boy profile. |
 | **Wario Land II (Game Boy Color)** | Separate GBC profile; cartridge identification distinguishes it from the original Game Boy release. |
 | **Wario Land 3 (Game Boy Color)** | Added as a separate GBC profile. |
-| **Superstar Saga (GBA, experimental)** | Optional Windows-only launcher handoff to a locally generated BIOS-independent static recompilation. This is a separate process, not a GBA backend inside PipeClean yet. See [the experimental test guide](docs/GBA_RECOMP_EXPERIMENT.md). |
+| **Superstar Saga (GBA, experimental)** | Windows-only, ROM-specific static recompilation launched as a separate process. Its dedicated profile provides compiled ROM variants, RGB display/scaling, controller selection and bindings, plus DualSense lightbar and rumble options; Game Boy palettes and LCD filters are not applied. Save states, online play, and in-game controller-speaker routing are not yet integrated. See [the experimental test guide](docs/GBA_RECOMP_EXPERIMENT.md). |
 
 ### A note about the Wario Land games
 

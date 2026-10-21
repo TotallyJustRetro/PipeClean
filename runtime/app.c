@@ -2500,14 +2500,47 @@ static int play_multiplayer(int g)
     return quit == 2;
 }
 
+static int write_gba_frontend_config(int g, const char *overlay_path,
+                                       char *out_path, size_t out_n)
+{
+    if (g != GAME_GBA_SAGA || !overlay_path || !overlay_path[0] || !out_path || !out_n) return 0;
+    snprintf(out_path, out_n, "%spipeclean-gba-profile.cfg", settings_dir());
+    FILE *f = fopen(out_path, "w");
+    if (!f) return 0;
+    const GameCfg *c = &settings.g[g];
+    fprintf(f, "overlays %s\n", overlay_path);
+    fprintf(f, "defer_irq_while 0x03000C7C\n");
+    fprintf(f, "size %d\naspect %d\nscaling %d\n", c->size, c->aspect, c->scaling);
+    fprintf(f, "pad_device %d\npad_guid %s\ndeadzone %d\n",
+            c->pad_device[0], c->pad_guid[0], settings.pad_deadzone);
+    fprintf(f, "ds_led_mode %d\nds_bright %d\nds_color %06X\nds_rumble %d\n",
+            c->ds_led_mode, c->ds_bright, c->ds_color & 0xFFFFFFu, c->ds_rumble);
+    for (int b = 0; b < N_BTN; b++)
+        fprintf(f, "key%d %d\npad%d %d\n", b, c->key[b][0], b, c->pad[b][0]);
+    fprintf(f, "gba_l_key %d\ngba_l_pad %d\ngba_r_key %d\ngba_r_pad %d\n",
+            c->gba_l_key, c->gba_l_pad, c->gba_r_key, c->gba_r_pad);
+    int ok = ferror(f) == 0;
+    if (fclose(f) != 0) ok = 0;
+    return ok;
+}
+
 static int play_external_game(int g)
 {
     if (g < 0 || g >= N_GAMES || !games[g].external_player) return 0;
     GameCfg *c = &settings.g[g];
     RomStatus st;
-    if (g == GAME_GBA_SAGA && c->romhack_selected >= 0) {
-        launcher_toast("The experimental GBA profile currently requires an unpatched ROM.");
-        return 0;
+    const char *launch_rom = c->rom_path;
+    const char *gba_exe_override = NULL;
+    const char *gba_overlay_override = NULL;
+    if (g == GAME_GBA_SAGA && c->romhack_selected >= 0 &&
+        c->romhack_selected < c->romhack_count && c->romhack_selected < MAX_ROMHACKS) {
+        const RomHackEntry *entry = &c->romhacks[c->romhack_selected];
+        launch_rom = entry->path;
+        gba_exe_override = entry->recomp_path;
+        gba_overlay_override = entry->overlay_path;
+    } else if (g == GAME_GBA_SAGA) {
+        gba_exe_override = c->gba_recomp_exe;
+        gba_overlay_override = c->gba_overlays_path;
     }
 #if !defined(_WIN32)
     if (g == GAME_GBA_SAGA) {
@@ -2515,21 +2548,24 @@ static int play_external_game(int g)
         return 0;
     }
 #endif
-    if (!c->rom_path[0]) {
-        launcher_toast("Choose this game's ROM on the Game tab first.");
+    if (!launch_rom || !launch_rom[0]) {
+        launcher_toast("Choose this game's ROM on the Game tab or select a compiled GBA profile.");
         return 0;
     }
-    if (rom_probe(g, c->rom_path, &st)) {
+    int is_compiled_gba_profile = g == GAME_GBA_SAGA && c->romhack_selected >= 0 &&
+                                  c->romhack_selected < c->romhack_count &&
+                                  c->romhack_selected < MAX_ROMHACKS;
+    if ((is_compiled_gba_profile ? rom_probe_gba_profile_file(launch_rom, &st)
+                                 : rom_probe(g, launch_rom, &st)) != 0) {
         launcher_toast(st.msg);
         return 0;
     }
 
     /* External Wario entries run in a separate process. Materialize the
-     * selected hack as its own cached .gb file so the base ROM is never
-     * written or passed to the external player in patched form. */
-    const char *launch_rom = c->rom_path;
+     * selected GB/GBC patch as its own cached .gb file.
+     * GBA profiles already include a compiled ROM and use that ROM directly. */
     char hack_copy[1200] = "";
-    if (c->romhack_selected >= 0 &&
+    if (g != GAME_GBA_SAGA && c->romhack_selected >= 0 &&
         c->romhack_selected < c->romhack_count &&
         c->romhack_selected < MAX_ROMHACKS) {
         char cache_dir[1200];
@@ -2558,10 +2594,12 @@ static int play_external_game(int g)
         SDL_free(base_path);
     }
 #ifdef _WIN32
-    if (g == GAME_GBA_SAGA)
-        snprintf(player, sizeof player, "%sgba-recomp\\MarioLuigi.exe", base);
-    else
+    if (g == GAME_GBA_SAGA) {
+        if (gba_exe_override && gba_exe_override[0]) snprintf(player, sizeof player, "%s", gba_exe_override);
+        else snprintf(player, sizeof player, "%sgba-recomp\\MarioLuigi.exe", base);
+    } else {
         snprintf(player, sizeof player, "%sgbplayer.exe", base);
+    }
 #else
     snprintf(player, sizeof player, "%sgbplayer", base);
 #endif
@@ -2574,16 +2612,24 @@ static int play_external_game(int g)
         return 0;
     }
     fclose(test);
+    char overlays[1500] = "";
+    char gba_config[1200] = "";
 #ifdef _WIN32
     if (g == GAME_GBA_SAGA) {
-        char overlays[1500];
-        snprintf(overlays, sizeof overlays, "%sgba-recomp\\overlays.cfg", base);
+        if (gba_overlay_override && gba_overlay_override[0])
+            snprintf(overlays, sizeof overlays, "%s", gba_overlay_override);
+        else
+            snprintf(overlays, sizeof overlays, "%sgba-recomp\\overlays.cfg", base);
         test = fopen(overlays, "rb");
         if (!test) {
-            launcher_toast("GBA overlays.cfg missing: copy it beside MarioLuigi.exe in gba-recomp.");
+            launcher_toast("GBA overlays.cfg missing. Choose the matching overlay config on the Game tab or ROM Hacks tab.");
             return 0;
         }
         fclose(test);
+        if (!write_gba_frontend_config(g, overlays, gba_config, sizeof gba_config)) {
+            launcher_toast("Couldn't write PipeClean's GBA frontend configuration.");
+            return 0;
+        }
     }
 #endif
     game_session_begin(g);
@@ -2614,8 +2660,12 @@ static int play_external_game(int g)
     memset(&pi, 0, sizeof pi);
     si.cb = sizeof si;
     /* ROM paths are ordinary Windows paths and are quoted to preserve spaces. */
-    snprintf(command, sizeof command, "\"%s\" \"%s\"%s",
-             player, launch_rom, launch_companion ? " --companion" : "");
+    if (g == GAME_GBA_SAGA)
+        snprintf(command, sizeof command, "\"%s\" \"%s\" --pipeclean-config \"%s\"",
+                 player, launch_rom, gba_config);
+    else
+        snprintf(command, sizeof command, "\"%s\" \"%s\"%s",
+                 player, launch_rom, launch_companion ? " --companion" : "");
     if (CreateProcessA(player, command, NULL, NULL, FALSE, 0, NULL, base[0] ? base : NULL, &si, &pi)) {
         WaitForSingleObject(pi.hProcess, INFINITE);
         CloseHandle(pi.hThread);

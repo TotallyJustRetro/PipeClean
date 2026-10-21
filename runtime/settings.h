@@ -56,10 +56,15 @@ typedef struct {
     char path[512];
     char title[ROMHACK_TITLE_LEN];
     char thumbnail[512];
+    /* GBA profiles need a matching ROM-specific recompilation and overlays. */
+    char recomp_path[512];
+    char overlay_path[512];
 } RomHackEntry;
 
 typedef struct {
     char rom_path[512], hack_path[512], bg_path[512], tex_path[512];
+    /* Optional overrides for the standalone GBA recompiler frontend. */
+    char gba_recomp_exe[512], gba_overlays_path[512];
     int romhack_count;                  /* number of registered secondary ROM profiles */
     int romhack_selected;                /* -1 = original ROM, otherwise index in romhacks[] */
     RomHackEntry romhacks[MAX_ROMHACKS];
@@ -96,6 +101,8 @@ typedef struct {
     int pad[N_BTN][MAX_MP_PLAYERS];     /* SDL_GameControllerButton or PAD_AXIS_BASE+n, -1 = unbound */
     int pad_device[MAX_MP_PLAYERS];     /* controller slot assigned to each player */
     char pad_guid[MAX_MP_PLAYERS][512]; /* persisted physical controller identities */
+    int gba_l_key, gba_l_pad, gba_r_key, gba_r_pad; /* GBA shoulder buttons */
+    int gba_bindings_version;          /* one-time default keyboard migration */
     /* DualSense / DualSense Edge */
     int ds_led_mode, ds_bright;         /* LED_*, 0..100 */
     uint32_t ds_color;                  /* 0xRRGGBB for LED_CUSTOM */

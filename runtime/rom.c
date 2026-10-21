@@ -136,6 +136,42 @@ static int check(int game, const uint8_t *buf, long n, RomStatus *st)
     return 0;
 }
 
+int rom_probe_gba_profile_file(const char *path, RomStatus *st)
+{
+    if (!st) return 1;
+    memset(st, 0, sizeof *st);
+    if (!path || !path[0]) {
+        snprintf(st->msg, sizeof st->msg, "Choose a GBA ROM for this compiled profile.");
+        return 1;
+    }
+    const char *ext = strrchr(path, '.');
+    if (!ext || strlen(ext) != 4 ||
+        (ext[1] | 32) != 'g' || (ext[2] | 32) != 'b' || (ext[3] | 32) != 'a') {
+        snprintf(st->msg, sizeof st->msg, "Compiled GBA profiles require a .gba ROM file.");
+        return 1;
+    }
+    FILE *f = fopen(path, "rb");
+    if (!f) { snprintf(st->msg, sizeof st->msg, "Can't open that GBA ROM."); return 1; }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        snprintf(st->msg, sizeof st->msg, "Couldn't read the GBA ROM size.");
+        return 1;
+    }
+    long size = ftell(f);
+    rewind(f);
+    uint8_t header[0xC0];
+    size_t got = fread(header, 1, sizeof header, f);
+    fclose(f);
+    if (size < (1L << 20) || size > (64L << 20) || got != sizeof header) {
+        snprintf(st->msg, sizeof st->msg, "That file doesn't look like a valid GBA ROM (expected 1–64 MiB).");
+        return 1;
+    }
+    st->ok = 1;
+    st->exact = 0;
+    snprintf(st->msg, sizeof st->msg, "GBA ROM file ready. Compatibility is determined by the selected static recompilation.");
+    return 0;
+}
+
 int rom_probe(int game, const char *path, RomStatus *st)
 {
     memset(st, 0, sizeof *st);

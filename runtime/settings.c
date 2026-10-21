@@ -176,6 +176,16 @@ void game_cfg_defaults(GameCfg *c, int game)
         ((game == GAME_WARIO_LAND2_GB || game == GAME_WARIO_LAND2_GBC) ? 0x3F : 0x3FF);
     c->ds_fx_version = 3;
     controls_defaults(c);
+    c->gba_l_key = SDLK_a;
+    c->gba_l_pad = SDL_CONTROLLER_BUTTON_LEFTSHOULDER;
+    c->gba_r_key = SDLK_s;
+    c->gba_r_pad = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER;
+    if (game == GAME_GBA_SAGA) {
+        c->key[BTN_A][0] = SDLK_z;
+        c->key[BTN_B][0] = SDLK_x;
+        c->key[BTN_SELECT][0] = SDLK_BACKSPACE;
+        c->gba_bindings_version = 1;
+    }
 }
 
 void settings_defaults(Settings *s)
@@ -301,6 +311,7 @@ static int field_table(Field *t, int cap)
 #define GI(nm, p, l, h) do { snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, nm); I(gn[g][k], p, l, h); k++; } while (0)
 #define GS(nm, p) do { snprintf(gn[g][k], sizeof gn[g][k], "%s.%s", games[g].id, nm); S(gn[g][k], p); k++; } while (0)
         GS("rom", c->rom_path); GS("hack", c->hack_path); GS("background", c->bg_path); GS("texpack", c->tex_path);
+        GS("gba_recomp_exe", c->gba_recomp_exe); GS("gba_overlays_path", c->gba_overlays_path);
         GI("romhack_count", c->romhack_count, 0, MAX_ROMHACKS);
         GI("romhack_selected", c->romhack_selected, -1, MAX_ROMHACKS - 1);
         GS("p2_name", c->p2_name);
@@ -329,6 +340,9 @@ static int field_table(Field *t, int cap)
         GI("pad_device3", c->pad_device[2], -1, 3); GI("pad_device4", c->pad_device[3], -1, 3);
         GS("pad_guid1", c->pad_guid[0]); GS("pad_guid2", c->pad_guid[1]);
         GS("pad_guid3", c->pad_guid[2]); GS("pad_guid4", c->pad_guid[3]);
+        GI("gba_l_key", c->gba_l_key, 0, 0x7FFFFFFF); GI("gba_l_pad", c->gba_l_pad, -1, PAD_AXIS_BASE + 1);
+        GI("gba_r_key", c->gba_r_key, 0, 0x7FFFFFFF); GI("gba_r_pad", c->gba_r_pad, -1, PAD_AXIS_BASE + 1);
+        GI("gba_bindings_version", c->gba_bindings_version, 0, 1);
         GI("led", c->ds_led_mode, 0, N_LED - 1); GI("led_bright", c->ds_bright, 0, 100);
         GI("rumble", c->ds_rumble, 0, 100); GI("spk_vol", c->ds_speaker_vol, 0, 100);
         GI("ev_led", c->ds_ev_led, 0, 1023); GI("ev_rumble", c->ds_ev_rumble, 0, 1023); GI("ev_speaker", c->ds_ev_speaker, 0, 1023);
@@ -410,6 +424,7 @@ void settings_load(void)
     int nf = field_table(tab, 1800);
     int saw_launcher_dual_screen = 0;
     int saw_launcher_pipe_screen_swap = 0;
+    int saw_gba_bindings_version = 0;
     int saw_wario_fx_version[N_GAMES] = {0};
     char line[1100];
     while (fgets(line, sizeof line, f)) {
@@ -418,6 +433,7 @@ void settings_load(void)
         *eq = 0;
         if (!strcmp(line, "launcher_dual_screen")) saw_launcher_dual_screen = 1;
         if (!strcmp(line, "launcher_pipe_screen_swap")) saw_launcher_pipe_screen_swap = 1;
+        if (!strcmp(line, "mario-luigi-ss.gba_bindings_version")) saw_gba_bindings_version = 1;
         for (int g = GAME_WARIO_SML3; g <= GAME_WARIO_LAND2_GBC; g++) {
             char fx_key[80];
             snprintf(fx_key, sizeof fx_key, "%s.fx_version", games[g].id);
@@ -447,6 +463,8 @@ void settings_load(void)
                 if (!strcmp(profile_field, "path")) snprintf(entry->path, sizeof entry->path, "%s", v);
                 else if (!strcmp(profile_field, "title")) snprintf(entry->title, sizeof entry->title, "%s", v);
                 else if (!strcmp(profile_field, "thumbnail")) snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", v);
+                else if (!strcmp(profile_field, "recomp")) snprintf(entry->recomp_path, sizeof entry->recomp_path, "%s", v);
+                else if (!strcmp(profile_field, "overlays")) snprintf(entry->overlay_path, sizeof entry->overlay_path, "%s", v);
             } else if (sscanf(k, "key%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < MAX_MP_PLAYERS) settings.g[g].key[b][s2] = atoi(v);
             else if (sscanf(k, "pad%d_%d", &b, &s2) == 2 && b >= 0 && b < N_BTN && s2 >= 0 && s2 < MAX_MP_PLAYERS) settings.g[g].pad[b][s2] = atoi(v);
             else if (sscanf(k, "actionkey%d", &b) == 1 && b >= 0 && b < N_ACTION) settings.g[g].action_key[b] = atoi(v);
@@ -455,6 +473,14 @@ void settings_load(void)
         }
     }
     fclose(f);
+    int gba_bindings_migrated = !saw_gba_bindings_version;
+    if (gba_bindings_migrated) {
+        GameCfg *gba = &settings.g[GAME_GBA_SAGA];
+        gba->key[BTN_A][0] = SDLK_z;
+        gba->key[BTN_B][0] = SDLK_x;
+        gba->key[BTN_SELECT][0] = SDLK_BACKSPACE;
+        gba->gba_bindings_version = 1;
+    }
     /* Wario effects migration: old files predate event-speaker defaults,
        later files predate coin-loss, and v2 files predate course/key/results
        events. Extend masks without clearing the user's existing toggles. */
@@ -488,7 +514,7 @@ void settings_load(void)
             wario_fx_migrated = 1;
         }
     }
-    if (wario_fx_migrated) settings_save();
+    if (wario_fx_migrated || gba_bindings_migrated) settings_save();
     if (!saw_launcher_dual_screen) {
         /* Migrate the old per-game switch so existing Android users keep their
          * preference after the option moves into Launcher Display settings. */
@@ -575,6 +601,8 @@ void settings_save(void)
             fprintf(f, "%s.romhack%d_path=%s\n", games[g].id, i, entry->path);
             fprintf(f, "%s.romhack%d_title=%s\n", games[g].id, i, entry->title);
             fprintf(f, "%s.romhack%d_thumbnail=%s\n", games[g].id, i, entry->thumbnail);
+            if (entry->recomp_path[0]) fprintf(f, "%s.romhack%d_recomp=%s\n", games[g].id, i, entry->recomp_path);
+            if (entry->overlay_path[0]) fprintf(f, "%s.romhack%d_overlays=%s\n", games[g].id, i, entry->overlay_path);
         }
     }
     fclose(f);

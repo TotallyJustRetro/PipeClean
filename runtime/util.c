@@ -78,7 +78,9 @@ static int dlg_win(int kind, const char *title, char *out, size_t n)
         L"Audio (*.wav;*.mp3;*.ogg;*.flac)\0*.wav;*.mp3;*.ogg;*.flac\0All files\0*.*\0",
         L"All files\0*.*\0",
         L"ZIP archive (*.zip)\0*.zip\0All files\0*.*\0",
-        L"ZIP archive (*.zip)\0*.zip\0All files\0*.*\0"};
+        L"ZIP archive (*.zip)\0*.zip\0All files\0*.*\0",
+        L"Windows executable (*.exe)\0*.exe\0All files\0*.*\0",
+        L"Overlay configuration (*.cfg)\0*.cfg\0All files\0*.*\0"};
     OPENFILENAMEW o;
     memset(&o, 0, sizeof o);
     o.lStructSize = sizeof o;

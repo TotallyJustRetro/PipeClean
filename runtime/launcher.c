@@ -330,10 +330,70 @@ void launcher_museum_notification_draw(float dt)
 }
 
 /* ------------------------------------------------------------------ ROM / preview plumbing */
+static void gba_effective_paths(int g, char *rom, size_t rom_n,
+                                char *exe, size_t exe_n,
+                                char *overlays, size_t overlays_n)
+{
+    GameCfg *c = &settings.g[g];
+    rom[0] = exe[0] = overlays[0] = 0;
+    if (c->romhack_selected >= 0 && c->romhack_selected < c->romhack_count &&
+        c->romhack_selected < MAX_ROMHACKS) {
+        const RomHackEntry *entry = &c->romhacks[c->romhack_selected];
+        snprintf(rom, rom_n, "%s", entry->path);
+        snprintf(exe, exe_n, "%s", entry->recomp_path);
+        snprintf(overlays, overlays_n, "%s", entry->overlay_path);
+    } else {
+        snprintf(rom, rom_n, "%s", c->rom_path);
+        snprintf(exe, exe_n, "%s", c->gba_recomp_exe);
+        snprintf(overlays, overlays_n, "%s", c->gba_overlays_path);
+    }
+    char fallback[1200];
+    if (!exe[0]) {
+#ifdef _WIN32
+        snprintf(fallback, sizeof fallback, "%sgba-recomp\\MarioLuigi.exe", settings_dir());
+#else
+        snprintf(fallback, sizeof fallback, "%sgba-recomp/MarioLuigi.exe", settings_dir());
+#endif
+        snprintf(exe, exe_n, "%s", fallback);
+    }
+    if (!overlays[0]) {
+#ifdef _WIN32
+        snprintf(fallback, sizeof fallback, "%sgba-recomp\\overlays.cfg", settings_dir());
+#else
+        snprintf(fallback, sizeof fallback, "%sgba-recomp/overlays.cfg", settings_dir());
+#endif
+        snprintf(overlays, overlays_n, "%s", fallback);
+    }
+}
+
 static void rom_check(int g)
 {
     GameCfg *c = &settings.g[g];
     memset(&rs[g], 0, sizeof rs[g]);
+    if (g == GAME_GBA_SAGA) {
+        char rom[1200], exe[1200], overlays[1200];
+        gba_effective_paths(g, rom, sizeof rom, exe, sizeof exe, overlays, sizeof overlays);
+        if (!rom[0]) { snprintf(rs[g].msg, sizeof rs[g].msg, "Choose a GBA ROM on the Game tab first."); return; }
+        int profile_index = c->romhack_selected;
+        if (profile_index >= 0 && profile_index < c->romhack_count && profile_index < MAX_ROMHACKS)
+            rom_probe_gba_profile_file(rom, &rs[g]);
+        else
+            rom_probe(g, rom, &rs[g]);
+        if (!rs[g].ok) return;
+        if (!file_exists(exe)) {
+            rs[g].ok = 0;
+            snprintf(rs[g].msg, sizeof rs[g].msg, "GBA recomp executable missing. Browse to MarioLuigi.exe on the Game tab.");
+            return;
+        }
+        if (!file_exists(overlays)) {
+            rs[g].ok = 0;
+            snprintf(rs[g].msg, sizeof rs[g].msg, "overlays.cfg missing. Choose the matching overlay config on the Game tab.");
+            return;
+        }
+        rs[g].ok = 1;
+        snprintf(rs[g].msg, sizeof rs[g].msg, "GBA ROM, recomp executable, and overlays are ready.");
+        return;
+    }
     if (!c->rom_path[0]) { snprintf(rs[g].msg, sizeof rs[g].msg, "No ROM chosen yet."); return; }
     if (!file_exists(c->rom_path)) { snprintf(rs[g].msg, sizeof rs[g].msg, "That file is gone. Choose it again."); return; }
     rom_probe(g, c->rom_path, &rs[g]);
@@ -345,12 +405,9 @@ int launcher_prepare(int g, char *err, size_t n)
     GameCfg *c = &settings.g[g];
     RomStatus st;
     if (g == GAME_GBA_SAGA) {
-        if (c->romhack_selected >= 0) {
-            snprintf(err, n, "The experimental GBA profile currently requires an unpatched ROM.");
-            return 1;
-        }
-        if (!c->rom_path[0] || rom_probe(g, c->rom_path, &st)) {
-            snprintf(err, n, "%s", c->rom_path[0] ? st.msg : "Choose your GBA ROM on this game's tab first.");
+        rom_check(g);
+        if (!rs[g].ok) {
+            snprintf(err, n, "%s", rs[g].msg[0] ? rs[g].msg : "Choose a valid GBA profile before playing.");
             return 1;
         }
         return 0;
@@ -575,6 +632,7 @@ int launcher_preview_pixels(int game, const uint32_t **pixels, int *w, int *h)
 static void set_rom(int g, const char *path)
 {
     if (g < 0 || g >= N_GAMES || !path) return;
+    if (g == GAME_GBA_SAGA) settings.g[g].romhack_selected = -1;
     snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", path);
     rom_check(g);
     if (rs[g].ok) make_preview(g);
@@ -961,7 +1019,45 @@ static void sub_external_game(int g, float x, float y)
         }
     }
     status_line(x + 18, y + 108, 772, rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2),
-                rs[g].ok ? "ROM detected and ready to launch." : (c->rom_path[0] ? rs[g].msg : "Choose a ROM to enable Play."));
+                rs[g].ok ? (g == GAME_GBA_SAGA ? rs[g].msg : "ROM detected and ready to launch.")
+                         : (c->rom_path[0] ? rs[g].msg : "Choose a ROM to enable Play."));
+
+    if (g == GAME_GBA_SAGA) {
+        char default_exe[1200], default_overlay[1200];
+#ifdef _WIN32
+        snprintf(default_exe, sizeof default_exe, "%sgba-recomp\\MarioLuigi.exe", settings_dir());
+        snprintf(default_overlay, sizeof default_overlay, "%sgba-recomp\\overlays.cfg", settings_dir());
+#else
+        snprintf(default_exe, sizeof default_exe, "%sgba-recomp/MarioLuigi.exe", settings_dir());
+        snprintf(default_overlay, sizeof default_overlay, "%sgba-recomp/overlays.cfg", settings_dir());
+#endif
+        ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "GBA RECOMPILATION");
+        ui_text_fit_tail(F_REG, 10, x + 18, y + 173, 660, C_TEXT,
+                         c->gba_recomp_exe[0] ? c->gba_recomp_exe : default_exe);
+        if (ui_button(x + 690, y + 166, 100, 32, "Browse EXE…", B_NORMAL, 1)) {
+            char path[1100];
+            if (dlg_pick(DLG_EXECUTABLE, "Choose the GBA recompilation executable", path, sizeof path)) {
+                snprintf(c->gba_recomp_exe, sizeof c->gba_recomp_exe, "%s", path);
+                rom_check(g); settings_save();
+            }
+        }
+        ui_text(F_BOLD, 12, x + 18, y + 216, C_MUTED, "OVERLAY CONFIGURATION");
+        ui_text_fit_tail(F_REG, 10, x + 18, y + 239, 660, c->gba_overlays_path[0] ? c->gba_overlays_path : default_overlay);
+        if (ui_button(x + 690, y + 232, 100, 32, "Browse CFG…", B_NORMAL, 1)) {
+            char path[1100];
+            if (dlg_pick(DLG_OVERLAY_CONFIG, "Choose the overlays.cfg matching this executable", path, sizeof path)) {
+                snprintf(c->gba_overlays_path, sizeof c->gba_overlays_path, "%s", path);
+                rom_check(g); settings_save();
+            }
+        }
+        ui_text_wrap(F_REG, 11, x + 18, y + 290, 772, C_DIM,
+                     "The GBA window uses original RGB output, PipeClean key/controller bindings, window scaling, and supported DualSense light/rumble settings. Game Boy palettes and LCD filters are not applied.", 3);
+        ui_text_wrap(F_REG, 11, x + 18, y + 356, 772, C_DIM,
+                     "For a GBA ROM hack, add its ROM, matching recompiler executable, and matching overlays.cfg together on the ROM Hacks tab.", 3);
+        ui_text_wrap(F_REG, 10, x + 18, y + 422, 772, C_WARN,
+                     "Experimental: save states, online play, and in-game DualSense speaker routing are not integrated yet.", 2);
+        return;
+    }
 
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
@@ -991,12 +1087,15 @@ static void romhack_select_profile(int g, int index)
     if (g < 0 || g >= N_GAMES) return;
     GameCfg *c = &settings.g[g];
     if (index < -1 || index >= c->romhack_count || index >= MAX_ROMHACKS) return;
-    if (g == GAME_GBA_SAGA && index >= 0) {
-        launcher_toast("The experimental GBA profile currently requires an unpatched ROM.");
-        return;
-    }
     c->romhack_selected = index;
     settings_save();
+
+    if (g == GAME_GBA_SAGA) {
+        rom_check(g);
+        if (!rs[g].ok) launcher_toast(rs[g].msg);
+        else launcher_toast(index < 0 ? "Original GBA profile selected." : "Compiled GBA profile selected.");
+        return;
+    }
 
     if (index < 0) {
         hack_ok[g] = 0;
@@ -1169,6 +1268,134 @@ static void sub_romhacks(int g, float x, float y)
     }
 }
 
+static void gba_profile_add(int g)
+{
+    GameCfg *c = &settings.g[g];
+    if (c->romhack_count >= MAX_ROMHACKS) { launcher_toast("This GBA profile already has 16 compiled versions."); return; }
+    char rom[1100] = "", exe[1100] = "", overlays[1100] = "";
+    if (!dlg_pick(DLG_ROM, "Choose the GBA ROM built into this profile", rom, sizeof rom)) return;
+    RomStatus st;
+    if (rom_probe_gba_profile_file(rom, &st) != 0) { launcher_toast(st.msg); return; }
+    if (!dlg_pick(DLG_EXECUTABLE, "Choose the matching ROM-specific recompiler EXE", exe, sizeof exe)) return;
+    if (!dlg_pick(DLG_OVERLAY_CONFIG, "Choose the matching overlays.cfg", overlays, sizeof overlays)) return;
+    for (int i = 0; i < c->romhack_count && i < MAX_ROMHACKS; i++) {
+        if (c->romhacks[i].path[0] && !strcmp(c->romhacks[i].path, rom)) {
+            c->romhack_selected = i; rom_check(g); settings_save();
+            launcher_toast("That GBA ROM is already registered as a compiled profile.");
+            return;
+        }
+    }
+    int index = c->romhack_count++;
+    RomHackEntry *entry = &c->romhacks[index];
+    memset(entry, 0, sizeof *entry);
+    snprintf(entry->path, sizeof entry->path, "%s", rom);
+    snprintf(entry->recomp_path, sizeof entry->recomp_path, "%s", exe);
+    snprintf(entry->overlay_path, sizeof entry->overlay_path, "%s", overlays);
+    romhack_title_from_path(rom, entry->title, sizeof entry->title);
+    c->romhack_selected = index; sub[g] = SUB_ROMHACKS;
+    clear_romhack_thumbs_game(g);
+    rom_check(g); settings_save();
+    launcher_toast("Compiled GBA profile added with its ROM, executable, and overlays.");
+}
+
+static void sub_gba_rom_profiles(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    const float lw = 356.0f, gap = 14.0f, rw = 808.0f - lw - gap;
+    float rx = x + lw + gap;
+    card(x, y, lw, 476, "GBA PROFILE LIBRARY");
+    ui_text(F_REG, 11, x + 18, y + 34, C_DIM, "Each version needs its matching static recompilation.");
+    if (ui_button(x + lw - 150, y + 10, 132, 30, "Add compiled GBA +", B_PRIMARY,
+                  c->romhack_count < MAX_ROMHACKS)) gba_profile_add(g);
+
+    const float list_x = x + 10, list_y = y + 58, list_w = lw - 20, list_h = 350.0f;
+    int count = c->romhack_count;
+    if (count < 0) count = 0;
+    if (count > MAX_ROMHACKS) count = MAX_ROMHACKS;
+    float row_h = 68.0f, row_step = row_h + 7.0f;
+    float content_h = (count + 1) * row_step;
+    float max_scroll = content_h > list_h ? content_h - list_h : 0.0f;
+    if (ui_hover(list_x, list_y, list_w, list_h) && ui_mouse.wheel != 0)
+        romhack_scroll[g] -= ui_mouse.wheel * 52.0f;
+    if (romhack_scroll[g] < 0) romhack_scroll[g] = 0;
+    if (romhack_scroll[g] > max_scroll) romhack_scroll[g] = max_scroll;
+    ui_clip(list_x, list_y, list_w, list_h);
+    for (int row = 0; row <= count; row++) {
+        int index = row - 1;
+        if (index >= 0 && !c->romhacks[index].path[0]) continue;
+        float ry = list_y + row * row_step - romhack_scroll[g];
+        if (ry + row_h < list_y || ry > list_y + list_h) continue;
+        int selected = c->romhack_selected == index;
+        int over = 0;
+        int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
+        ui_rrect(list_x + 2, ry, list_w - 4, row_h, 9,
+                 selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u) : (over ? C_BTN_H : C_PANEL2));
+        if (selected) ui_stroke(list_x + 2, ry, list_w - 4, row_h, 9, 1.5f, HEX(ui_accent));
+        draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
+        const char *title = index < 0 ? "Original GBA profile" :
+            (c->romhacks[index].title[0] ? c->romhacks[index].title : "Compiled GBA profile");
+        ui_text_fit_tail(F_BOLD, 12, list_x + 90, ry + 11, list_w - 104, C_TEXT, title);
+        ui_text_fit_tail(F_REG, 10, list_x + 90, ry + 34, list_w - 104, C_DIM,
+                         index < 0 ? path_base(c->rom_path) : path_base(c->romhacks[index].path));
+        if (clicked) romhack_select_profile(g, index);
+    }
+    ui_unclip();
+    if (content_h > list_h) {
+        float track_x = x + lw - 7, thumb_h = list_h * list_h / content_h;
+        if (thumb_h < 26) thumb_h = 26;
+        float thumb_y = list_y + (list_h - thumb_h) * romhack_scroll[g] / max_scroll;
+        ui_rrect(track_x, list_y, 3, list_h, 2, C_LINE);
+        ui_rrect(track_x - 1, thumb_y, 5, thumb_h, 3, HEX(ui_accent));
+    }
+    ui_text_fit(F_REG, 10, x + 14, y + 438, lw - 28, C_DIM, "Add a ROM, executable, and matching overlays.cfg.");
+
+    card(rx, y, rw, 476, "PROFILE DETAILS");
+    int index = c->romhack_selected;
+    if (index < 0 || index >= count || !c->romhacks[index].path[0]) {
+        ui_text_fit_tail(F_BOLD, 17, rx + 18, y + 50, rw - 36, C_TEXT, games[g].name);
+        ui_text(F_REG, 12, rx + 18, y + 79, C_OK, "Original profile");
+        label(rx + 18, y + 112, "ROM");
+        ui_text_wrap(F_REG, 11, rx + 18, y + 134, rw - 36, C_DIM, c->rom_path[0] ? c->rom_path : "Choose the main GBA ROM on the Game tab.", 3);
+        label(rx + 18, y + 202, "Executable");
+        ui_text_wrap(F_REG, 10, rx + 18, y + 224, rw - 36, C_DIM,
+                     c->gba_recomp_exe[0] ? c->gba_recomp_exe : "Default: gba-recomp\\MarioLuigi.exe", 3);
+        label(rx + 18, y + 292, "Overlays");
+        ui_text_wrap(F_REG, 10, rx + 18, y + 314, rw - 36, C_DIM,
+                     c->gba_overlays_path[0] ? c->gba_overlays_path : "Default: gba-recomp\\overlays.cfg", 3);
+    } else {
+        RomHackEntry *entry = &c->romhacks[index];
+        int editing = romhack_title_editing_game == g && romhack_title_editing_index == index;
+        ui_text_fit_tail(F_BOLD, 16, rx + 18, y + 48, rw - 36, C_TEXT,
+                         entry->title[0] ? entry->title : "Compiled GBA profile");
+        status_line(rx + 18, y + 76, rw - 36, rs[g].ok ? 1 : 3,
+                    rs[g].ok ? "ROM, executable, and overlays verified." : rs[g].msg);
+        label(rx + 18, y + 128, "ROM");
+        ui_text_wrap(F_REG, 10, rx + 18, y + 150, rw - 36, C_DIM, entry->path, 2);
+        label(rx + 18, y + 196, "Executable");
+        ui_text_wrap(F_REG, 10, rx + 18, y + 218, rw - 36, C_DIM, entry->recomp_path, 2);
+        label(rx + 18, y + 260, "Overlay config");
+        ui_text_wrap(F_REG, 10, rx + 18, y + 282, rw - 36, C_DIM, entry->overlay_path, 2);
+        float by = y + 354;
+        if (ui_button(rx + 18, by, 92, 32, editing ? "Editing…" : "Rename", B_NORMAL, !editing)) {
+            romhack_title_editing_game = g; romhack_title_editing_index = index;
+            snprintf(romhack_title_before, sizeof romhack_title_before, "%s", entry->title);
+            SDL_StartTextInput();
+            launcher_toast("Type the title; press Enter to save or Esc to cancel.");
+        }
+        if (ui_button(rx + 118, by, 130, 32, "Choose thumbnail", B_NORMAL, !editing)) {
+            char path[1100];
+            if (dlg_pick(DLG_IMAGE, "Choose this GBA profile thumbnail", path, sizeof path)) {
+                snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", path);
+                clear_romhack_thumbs_game(g); settings_save();
+            }
+        }
+        if (ui_button(rx + 256, by, 84, 32, "Remove", B_DANGER, !editing)) {
+            romhack_remove(g, index); rom_check(g); settings_save();
+            launcher_toast("Compiled GBA profile removed.");
+        }
+    }
+}
+
 /* ------------------------------------------------------------------ game tab: Game */
 static void sub_game(int g, float x, float y)
 {
@@ -1276,12 +1503,55 @@ static void sub_display(int g, float x, float y)
     /* Dual-screen and Auto Pipe placement moved to Launcher Display settings. */
 }
 
+static void sub_gba_display(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    static const char *gba_aspect_names[3] = {"Original (3:2)", "4:3", "16:9"};
+    card(x, y, 808, 476, "GBA DISPLAY");
+    ui_text_wrap(F_REG, 12, x + 18, y + 38, 772, C_DIM,
+                 "These settings apply to the standalone GBA window. The GBA already renders full color; Game Boy Color palettes and PipeClean LCD/CRT filter presets are not used.", 3);
+    label(x + 18, y + 110, "Window shape");
+    ui_seg(x + 18, y + 132, 500, 36, gba_aspect_names, 3, &c->aspect);
+    label(x + 18, y + 190, "Scaling");
+    ui_seg(x + 18, y + 212, 500, 36, scale_names, N_SCALE, &c->scaling);
+    ui_text_wrap(F_REG, 11, x + 18, y + 252, 500, C_DIM,
+                 "Pixel-perfect uses nearest-neighbour scaling. Smooth blends pixels. Stretch fills the window; Pixel stretch fills it without smoothing.", 3);
+    label(x + 18, y + 334, "Starting window size");
+    ui_seg(x + 18, y + 356, 500, 36, size_names, N_SIZE, &c->size);
+    ui_text_wrap(F_REG, 11, x + 548, y + 72, 242, C_DIM,
+                 "F11 toggles fullscreen while the GBA game is running. Original keeps the 240×160 3:2 shape; 4:3 and 16:9 letterbox or stretch according to the scaling mode.", 5);
+    if (ui_button(x + 548, y + 220, 242, 36, "Reset GBA display", B_NORMAL, 1)) {
+        c->aspect = ASPECT_ORIGINAL; c->scaling = SCALE_PIXEL; c->size = SIZE_MEDIUM;
+        settings_save();
+        launcher_toast("GBA display settings reset.");
+    }
+}
+
 /* ------------------------------------------------------------------ game tab: Controls */
+static int *game_key_binding(GameCfg *c, int g, int btn, int slot)
+{
+    if (!c) return NULL;
+    if (g == GAME_GBA_SAGA && btn == N_BTN) return &c->gba_l_key;
+    if (g == GAME_GBA_SAGA && btn == N_BTN + 1) return &c->gba_r_key;
+    if (btn < 0 || btn >= N_BTN || slot < 0 || slot >= MAX_MP_PLAYERS) return NULL;
+    return &c->key[btn][slot];
+}
+static int *game_pad_binding(GameCfg *c, int g, int btn, int slot)
+{
+    if (!c) return NULL;
+    if (g == GAME_GBA_SAGA && btn == N_BTN) return &c->gba_l_pad;
+    if (g == GAME_GBA_SAGA && btn == N_BTN + 1) return &c->gba_r_pad;
+    if (btn < 0 || btn >= N_BTN || slot < 0 || slot >= MAX_MP_PLAYERS) return NULL;
+    return &c->pad[btn][slot];
+}
 static void bind_cell(int g, float x, float y, float w, int kind, int btn, int slot)
 {
     GameCfg *c = &settings.g[g];
+    int *key_value = game_key_binding(c, g, btn, slot);
+    int *pad_value = game_pad_binding(c, g, btn, slot);
     int pad_device = slot >= 0 && slot < MAX_MP_PLAYERS ? c->pad_device[slot] : -1;
-    int available = kind != 2 || (pad_device >= 0 && pad_device < pad_count());
+    int available = (kind != 2 || (pad_device >= 0 && pad_device < pad_count())) &&
+                    (kind == 1 ? key_value != NULL : pad_value != NULL);
     int over = 0;
     int clicked = available ? clickable(x, y, w, 28, &over) : 0;
     int active = cap_kind == kind && cap_btn == btn && cap_slot == slot;
@@ -1294,8 +1564,8 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
         ui_text_c(F_REG, 13, x + w / 2, y + 5, C_DIM, b);
     } else if (active) ui_text_c(F_BOLD, 12, x + w / 2, y + 5, HEX(0xFFFFFF), kind == 1 ? "press a key…" : "press a button…");
     else {
-        if (kind == 1) key_code_name(c->key[btn][slot], b, sizeof b); else pad_code_name_device(pad_device, c->pad[btn][slot], b, sizeof b);
-        int none = kind == 1 ? !c->key[btn][slot] : c->pad[btn][slot] < 0;
+        if (kind == 1) key_code_name(*key_value, b, sizeof b); else pad_code_name_device(pad_device, *pad_value, b, sizeof b);
+        int none = kind == 1 ? !*key_value : *pad_value < 0;
         ui_text_c(F_REG, 13, x + w / 2, y + 5, none ? C_DIM : C_TEXT, b);
     }
     if (clicked) { cap_kind = kind; cap_btn = btn; cap_slot = slot; }
@@ -1702,6 +1972,53 @@ static void sub_controls(int g, float x, float y)
     controller_dropdown(g, 1, x + 414, y + 34, 374);
 }
 
+static void sub_gba_controllers(int g, float x, float y)
+{
+    card(x, y, 808, 476, "GBA CONTROLLER");
+    ui_text_wrap(F_REG, 12, x + 18, y + 40, 772, C_DIM,
+                 "Choose which connected controller should drive the external GBA window. Your selection is saved for this game and passed to the recompiler at launch.", 3);
+    controller_dropdown(g, 0, x + 18, y + 116, 470);
+    char st[160]; pad_status(st, sizeof st);
+    status_line(x + 18, y + 160, 772, pad_count() ? 1 : 3, st);
+    label(x + 18, y + 222, "Analog stick dead zone");
+    ui_slider(x + 210, y + 220, 330, &settings.pad_deadzone, 5, 80);
+    char pct[24]; snprintf(pct, sizeof pct, "%d%%", settings.pad_deadzone);
+    ui_text_r(F_REG, 12, x + 568, y + 222, C_TEXT, pct);
+    ui_text_wrap(F_REG, 11, x + 18, y + 282, 772, C_DIM,
+                 "D-pad and left-stick movement work alongside custom button bindings. DualSense lightbar and rumble are configured on the DualSense tab.", 3);
+}
+
+/* ------------------------------------------------------------------ GBA gameplay bindings */
+static void sub_gba_bindings(int g, float x, float y)
+{
+    static const char *names[10] = {"A", "B", "Select", "Start", "Right", "Left", "Up", "Down", "L", "R"};
+    GameCfg *c = &settings.g[g];
+    card(x, y, 808, 476, "GBA GAMEPLAY BINDINGS");
+    ui_text(F_BOLD, 11, x + 18, y + 38, C_MUTED, "GBA BUTTON");
+    ui_text(F_BOLD, 11, x + 260, y + 38, C_MUTED, "KEYBOARD");
+    ui_text(F_BOLD, 11, x + 520, y + 38, C_MUTED, "CONTROLLER");
+    for (int b = 0; b < 10; b++) {
+        float ry = y + 58 + b * 34;
+        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 32, 7, RGBA(255,255,255,6));
+        ui_text(F_BOLD, 13, x + 18, ry + 4, C_TEXT, names[b]);
+        bind_cell(g, x + 180, ry, 220, 1, b, 0);
+        bind_cell(g, x + 440, ry, 300, 2, b, 0);
+    }
+    if (ui_button(x + 18, y + 414, 178, 34, "Reset GBA bindings", B_NORMAL, 1)) {
+        controls_defaults(c);
+        c->key[BTN_A][0] = SDLK_z;
+        c->key[BTN_B][0] = SDLK_x;
+        c->key[BTN_SELECT][0] = SDLK_BACKSPACE;
+        c->gba_l_key = SDLK_a; c->gba_l_pad = SDL_CONTROLLER_BUTTON_LEFTSHOULDER;
+        c->gba_r_key = SDLK_s; c->gba_r_pad = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER;
+        c->gba_bindings_version = 1;
+        settings_save();
+        launcher_toast("GBA gameplay bindings reset.");
+    }
+    ui_text_fit(F_REG, 10, x + 220, y + 422, 570, C_DIM,
+                "Click a slot, then press a key or a button on the selected controller. Backspace clears it.");
+}
+
 /* ------------------------------------------------------------------ dedicated local multiplayer tab */
 static void mp_name_field(GameCfg *c, int player_number, float x, float y, float w)
 {
@@ -2084,6 +2401,63 @@ static void sub_dualsense(int g, float x, float y)
 }
 
 /* ------------------------------------------------------------------ game tab: Textures */
+
+static void sub_gba_dualsense(int g, float x, float y)
+{
+    GameCfg *c = &settings.g[g];
+    char status[160];
+    int ds = 0;
+    for (int i = 0; i < pad_count(); i++) if (pad_is_dualsense(i)) ds = 1;
+    card(x, y, 392, 476, "GBA CONTROLLER FEEDBACK");
+    pad_status(status, sizeof status);
+    status_line(x + 18, y + 38, 356, ds ? 1 : (pad_count() ? 2 : 3), status);
+    ui_text_wrap(F_REG, 11, x + 18, y + 66, 356, C_DIM,
+                 ds ? "DualSense lightbar and rumble are passed to the GBA frontend. In-game speaker routing is not available in this external-window prototype."
+                    : "Connect a DualSense or compatible controller to use lightbar and rumble. Other controllers can still use rumble where supported.", 3);
+    label(x + 18, y + 132, "Lightbar");
+    ui_seg(x + 18, y + 154, 356, 32, led_names, N_LED, &c->ds_led_mode);
+    label(x + 18, y + 200, "Brightness");
+    ui_slider(x + 120, y + 198, 220, &c->ds_bright, 0, 100);
+    char pct[20]; snprintf(pct, sizeof pct, "%d%%", c->ds_bright);
+    ui_text_r(F_REG, 12, x + 374, y + 200, C_TEXT, pct);
+    if (c->ds_led_mode == LED_CUSTOM) {
+        static int hue_ready[N_GAMES]; static int hue[N_GAMES];
+        if (!hue_ready[g]) { hue_ready[g] = 1; hue[g] = 210; }
+        label(x + 18, y + 236, "Custom hue");
+        if (ui_slider(x + 120, y + 234, 220, &hue[g], 0, 359)) hue_to_rgb(hue[g], &c->ds_color);
+        ui_rrect(x + 338, y + 234, 36, 22, 6, HEX(c->ds_color));
+    }
+    label(x + 18, y + 282, "Rumble strength");
+    ui_slider(x + 150, y + 280, 190, &c->ds_rumble, 0, 100);
+    snprintf(pct, sizeof pct, "%d%%", c->ds_rumble);
+    ui_text_r(F_REG, 12, x + 374, y + 282, C_TEXT, pct);
+    float bw = 170.0f;
+    if (ui_button(x + 18, y + 330, bw, 36, "Test light", B_NORMAL, 1)) {
+        pad_set_context(g, 0);
+        pad_flash(c->ds_led_mode == LED_OFF ? 0x000000 : c->ds_color);
+    }
+    if (ui_button(x + 200, y + 330, bw, 36, "Test rumble", B_NORMAL, 1))
+        pad_rumble_selected(g, c->ds_rumble, 400);
+    if (ui_button(x + 18, y + 378, 356, 34, "Test controller speaker", B_NORMAL, 1)) {
+        if (audio_pad_open()) { apply_pad_gain(g); audio_pad_play_beep(0); }
+        else launcher_toast("Controller speaker not found. Connect the DualSense using USB.");
+    }
+    ui_text_fit(F_REG, 10, x + 18, y + 428, 356, C_DIM,
+                "The GBA frontend pulses rumble on A/B input and applies the lightbar color at startup.");
+
+    float rx = x + 404;
+    card(rx, y, 404, 476, "WHAT WORKS IN THE GBA WINDOW");
+    ui_text(F_BOLD, 13, rx + 18, y + 44, C_TEXT, "Lightbar");
+    ui_text_wrap(F_REG, 12, rx + 18, y + 68, 368, C_DIM,
+                 "Off, current/preset color, custom color and brightness are applied when the standalone game starts.", 3);
+    ui_text(F_BOLD, 13, rx + 18, y + 152, C_TEXT, "Rumble");
+    ui_text_wrap(F_REG, 12, rx + 18, y + 176, 368, C_DIM,
+                 "Compatible controllers rumble briefly when A or B is pressed. Game-specific damage/pickup event detection can be added later.", 3);
+    ui_text(F_BOLD, 13, rx + 18, y + 260, C_TEXT, "Speaker");
+    ui_text_wrap(F_REG, 12, rx + 18, y + 284, 368, C_DIM,
+                 "The test button sends a short tone from PipeClean. In-game GBA audio still uses the Windows audio device; routing it to the controller's speaker is not implemented.", 4);
+}
+
 static void sub_textures(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
@@ -5191,12 +5565,27 @@ LauncherResult launcher_frame(float dt)
         ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, games[tab].name);
         ui_text(F_REG, 13, cx, cy + 34, C_MUTED, games[tab].sub);
         int can = rs[tab].ok;
-        const char *play_label = c->romhack_selected >= 0 ? "Play Hack" : "Play";
+        const char *play_label = tab == GAME_GBA_SAGA
+            ? (c->romhack_selected >= 0 ? "Play Profile" : "Play GBA")
+            : (c->romhack_selected >= 0 ? "Play Hack" : "Play");
         if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? play_label : "Needs ROM", B_PRIMARY, can)) res.play = tab;
         if (!can) hint_area(cx + 808 - 176, cy + 2, 176, 52, "Choose your ROM on the Game tab (or drop it on this window)");
         float y = cy + 118;
         pad_set_context(tab, 0);
-        if (games[tab].external_player) {
+        if (tab == GAME_GBA_SAGA) {
+            static const char *gba_sub_names[6] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense"};
+            if (sub[tab] < 0 || sub[tab] >= 6) sub[tab] = SUB_GAME;
+            ui_seg(cx, cy + 66, 808, 38, gba_sub_names, 6, &sub[tab]);
+            switch (sub[tab]) {
+            case SUB_GAME: sub_external_game(tab, cx, y); break;
+            case SUB_ROMHACKS: sub_gba_rom_profiles(tab, cx, y); break;
+            case SUB_DISPLAY: sub_gba_display(tab, cx, y); break;
+            case SUB_CONTROLS: sub_gba_controllers(tab, cx, y); break;
+            case SUB_BINDINGS: sub_gba_bindings(tab, cx, y); break;
+            case SUB_DUALSENSE: sub_gba_dualsense(tab, cx, y); break;
+            default: sub_external_game(tab, cx, y); break;
+            }
+        } else if (games[tab].external_player) {
             const char *external_sub_names[2] = {"Game", "ROM Hacks"};
             int external_sub = sub[tab] == SUB_ROMHACKS ? 1 : 0;
             ui_seg(cx, cy + 66, 808, 38, external_sub_names, 2, &external_sub);
@@ -5600,7 +5989,8 @@ void launcher_event(const SDL_Event *e)
             SDL_Keycode k = e->key.keysym.sym;
             if (k == SDLK_ESCAPE) { cap_kind = 0; return; }
             if (cap_kind == 1) {
-                c->key[cap_btn][cap_slot] = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
+                int *binding = game_key_binding(c, cap_game, cap_btn, cap_slot);
+                if (binding) *binding = (k == SDLK_BACKSPACE || k == SDLK_DELETE) ? 0 : k;
                 cap_kind = 0;
                 settings_save();
             } else if (cap_kind == 3) {
@@ -5613,7 +6003,7 @@ void launcher_event(const SDL_Event *e)
                 settings_save();
                 launcher_toast("Multiplayer respawn key saved.");
             } else if (k == SDLK_BACKSPACE || k == SDLK_DELETE) {
-                if (cap_kind == 2) { c->pad[cap_btn][cap_slot] = -1; settings_save(); }
+                if (cap_kind == 2) { int *binding = game_pad_binding(c, cap_game, cap_btn, cap_slot); if (binding) *binding = -1; settings_save(); }
                 else if (cap_kind == 4) c->action_pad[cap_btn] = -1;
                 else if (cap_kind == 6) {
                     int *binding = mp_respawn_pad_ptr(c, cap_btn);
@@ -5626,7 +6016,8 @@ void launcher_event(const SDL_Event *e)
         } else if (cap_kind == 2) {
             int code = pad_capture(c->pad_device[cap_slot], e);
             if (code >= 0) {
-                c->pad[cap_btn][cap_slot] = code;
+                int *binding = game_pad_binding(c, cap_game, cap_btn, cap_slot);
+                if (binding) *binding = code;
                 cap_kind = 0;
                 launcher_ignore_pad_confirm = 1;
                 settings_save();

@@ -17,6 +17,9 @@ int  rom_identify(const uint8_t *img, size_t n);
 int  rom_identify_file(const char *path);       /* game index or -1 */
 /* Read `path` and check that it is `game`; does not change the running cartridge. */
 int  rom_probe(int game, const char *path, RomStatus *st);
+/* Validate a GBA ROM chosen as part of a separate, already-compiled profile.
+   Unlike the original Superstar Saga profile, its header title may be patched. */
+int  rom_probe_gba_profile_file(const char *path, RomStatus *st);
 /* Make `game` (from path) the base ROM and install it. */
 int  rom_load(int game, const char *path, RomStatus *st);
 /* Apply a romhack (IPS/BPS/UPS patch or an already-patched ROM) on top of the loaded base ROM. */
