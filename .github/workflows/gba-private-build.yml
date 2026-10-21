@@ -20,14 +20,13 @@ jobs:
   build-windows-gba:
     runs-on: windows-latest
     timeout-minutes: 240
-    env:
-      GBA_RECOMP_SOURCE_URL: ${{ secrets.GBA_RECOMP_SOURCE_URL }}
-      GBA_ROM_URL: ${{ secrets.GBA_ROM_URL }}
-      GBA_OUTPUT_KEY: ${{ secrets.GBA_OUTPUT_KEY }}
-
     steps:
       - name: Check private build secrets
         id: preflight
+        env:
+          GBA_RECOMP_SOURCE_URL: ${{ secrets.GBA_RECOMP_SOURCE_URL }}
+          GBA_ROM_URL: ${{ secrets.GBA_ROM_URL }}
+          GBA_OUTPUT_KEY: ${{ secrets.GBA_OUTPUT_KEY }}
         shell: pwsh
         run: |
           $missing = @()
@@ -48,6 +47,9 @@ jobs:
 
       - name: Download ROM and recompiler source privately
         if: steps.preflight.outputs.skip != 'true'
+        env:
+          GBA_RECOMP_SOURCE_URL: ${{ secrets.GBA_RECOMP_SOURCE_URL }}
+          GBA_ROM_URL: ${{ secrets.GBA_ROM_URL }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -146,6 +148,8 @@ jobs:
 
       - name: Encrypt deliverable and remove private inputs
         if: steps.preflight.outputs.skip != 'true'
+        env:
+          GBA_OUTPUT_KEY: ${{ secrets.GBA_OUTPUT_KEY }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
