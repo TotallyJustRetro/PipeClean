@@ -6,7 +6,7 @@ import sys
 if len(sys.argv) != 2:
     raise SystemExit("usage: patch_gba_recomp.py <gba-recomp-source-directory>")
 root = Path(sys.argv[1])
-for name in ("gba_platform.c", "gba_win.c", "gba_emit.py", "build_recomp.sh", "build_win.sh"):
+for name in ("gba_platform.c", "gba_win.c", "gba_emit.py", "gba_overlay.py", "gba_run.c", "build_recomp.sh", "build_win.sh"):
     if not (root / name).is_file():
         raise SystemExit(f"Expected {name} in {root}")
 
@@ -38,6 +38,63 @@ if ")), 512)" in s:
     s = s.replace(")), 512)", ")), 4096)", 1)
 elif ")), 4096)" not in s:
     raise SystemExit("Unrecognized loop-backedge cycle cap in gba_emit.py")
+p.write_text(s, encoding="utf-8", newline="\n")
+
+# Carry forward the cleaned source's RAM-entry mapping for functions copied into EWRAM/IWRAM.
+# Without this mapping, the runtime can locate the copied region but emitted entry aliases may
+# jump to labels at the wrong ROM address, contributing to missing/corrupted overlay code.
+p = root / "gba_overlay.py"
+s = p.read_text(encoding="utf-8")
+if "'ram_entries':" not in s:
+    old = "        'entries': [[a, isa] for (a, isa) in sorted(entries)],\n        'unmapped_ram_targets':"
+    new = "        'entries': [[a, isa] for (a, isa) in sorted(entries)],\n        'ram_entries': [[ram, rom] for (rom, isa), ram in sorted(entries.items()) if (ram >> 24) in (2, 3)],\n        'unmapped_ram_targets':"
+    if old not in s:
+        raise SystemExit("Unrecognized overlay JSON output block in gba_overlay.py")
+    s = s.replace(old, new, 1)
+p.write_text(s, encoding="utf-8", newline="\n")
+
+p = root / "gba_emit.py"
+s = p.read_text(encoding="utf-8")
+if "RAM_MAP = {}" not in s:
+    old = 'def fname(a): return f"f_{a:08X}"\n'
+    if old not in s:
+        raise SystemExit("Could not find function-name insertion point in gba_emit.py")
+    s = s.replace(old, old + "RAM_MAP = {}   # IWRAM/EWRAM entry address -> ROM address its code was copied from (overlay copies)\n", 1)
+
+if "for a, src in RAM_MAP.items()" not in s:
+    old = "    def _collect_entries(s):\n        L = s.L\n"
+    new = old + "        for a, src in RAM_MAP.items():\n            if src in L.ins:\n                o = L.owner[src]\n                s.alias[a] = o; s.extra[o].add(a); s.extra[o].add(src)\n"
+    if old not in s:
+        raise SystemExit("Could not find _collect_entries insertion point in gba_emit.py")
+    s = s.replace(old, new, 1)
+
+old_case = 'for e in extras: out.append(f"    case {hx(e)}: goto L_{e:08X};")'
+new_case = 'for e in extras: out.append(f"    case {hx(e)}: goto L_{RAM_MAP.get(e, e):08X};")'
+if new_case not in s:
+    if old_case not in s:
+        raise SystemExit("Could not find emitted alias label switch in gba_emit.py")
+    s = s.replace(old_case, new_case, 1)
+
+if "RAM_MAP[ram] = romaddr" not in s:
+    old = "        roots = [(a, isa) for a, isa in ov['entries']]\n"
+    new = old + "        for ram, romaddr in ov.get('ram_entries', []):\n            RAM_MAP[ram] = romaddr  # RAM entry (IWRAM/EWRAM) -> ROM code it was copied from\n"
+    if old not in s:
+        raise SystemExit("Could not find overlay roots in gba_emit.py")
+    s = s.replace(old, new, 1)
+
+if "EXTRA_ROOTS" not in s:
+    old = "    else: regions = []\n    L = G.discover(rom, log=lambda *a: None, extra_roots=roots, overlay_regions=regions)\n"
+    new = "    else: regions = []\n    roots += [(int(x, 0) & ~1, 'T') for x in os.environ.get('EXTRA_ROOTS', '').split(',') if x.strip()]\n    L = G.discover(rom, log=lambda *a: None, extra_roots=roots, overlay_regions=regions)\n"
+    if old not in s:
+        raise SystemExit("Could not find final discovery call in gba_emit.py")
+    s = s.replace(old, new, 1)
+p.write_text(s, encoding="utf-8", newline="\n")
+
+# Keep long scripted profiling sequences from silently truncating after 32 input intervals.
+p = root / "gba_run.c"
+s = p.read_text(encoding="utf-8")
+s = s.replace("keysched[32]", "keysched[8192]", 1)
+s = s.replace("nkeys < 32", "nkeys < 8192", 1)
 p.write_text(s, encoding="utf-8", newline="\n")
 
 # Add approximate legacy PSG synthesis (square 1/2, wave and noise) to the
@@ -233,4 +290,4 @@ elif "psg_trigger(ch);" not in s:
     raise SystemExit("Could not find sound register write insertion point in gba_platform.c")
 p.write_text(s, encoding="utf-8", newline="\n")
 
-print("Applied PipeClean fixes: shorter audio queue, capped loop timing, approximate legacy PSG synthesis.")
+print("Applied PipeClean fixes: RAM overlay entry mapping, extra roots, optimized timing/audio, approximate legacy PSG synthesis.")
