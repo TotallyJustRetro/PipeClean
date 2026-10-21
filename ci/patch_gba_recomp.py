@@ -21,7 +21,7 @@ elif "#define AUDIO_BUFS 4" in s:
     s = s.replace("#define AUDIO_BUFS 4", "#define AUDIO_BUFS 6", 1)
 elif "#define AUDIO_BUFS 6" not in s:
     raise SystemExit("Unrecognized AUDIO_BUFS definition in gba_win.c")
-p.write_text(s, encoding="utf-8", newline="\\n")
+p.write_text(s, encoding="utf-8", newline="\n")
 
 # Add WAV capture to the Windows frontend so buzzing can be separated from Windows playback.
 # The recording is taken from the exact PCM buffer passed to waveOutWrite.
