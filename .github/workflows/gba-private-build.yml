@@ -1,0 +1,186 @@
+name: Private GBA Recompiler Build (Encrypted)
+
+on:
+  push:
+    branches:
+      - feature/gba-superstar-saga-pipeclean-test
+    paths:
+      - .github/workflows/gba-private-build.yml
+      - docs/GBA_RECOMP_PRIVATE_BUILD.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gba-private-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-windows-gba:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      GBA_RECOMP_SOURCE_URL: ${{ secrets.GBA_RECOMP_SOURCE_URL }}
+      GBA_ROM_URL: ${{ secrets.GBA_ROM_URL }}
+      GBA_OUTPUT_KEY: ${{ secrets.GBA_OUTPUT_KEY }}
+
+    steps:
+      - name: Check private build secrets
+        id: preflight
+        shell: pwsh
+        run: |
+          $missing = @()
+          if ([string]::IsNullOrWhiteSpace($env:GBA_RECOMP_SOURCE_URL)) { $missing += 'GBA_RECOMP_SOURCE_URL' }
+          if ([string]::IsNullOrWhiteSpace($env:GBA_ROM_URL)) { $missing += 'GBA_ROM_URL' }
+          if ([string]::IsNullOrWhiteSpace($env:GBA_OUTPUT_KEY)) { $missing += 'GBA_OUTPUT_KEY' }
+
+          if ($missing.Count -gt 0) {
+            "skip=true" >> $env:GITHUB_OUTPUT
+            "## Waiting for private build secrets" >> $env:GITHUB_STEP_SUMMARY
+            "" >> $env:GITHUB_STEP_SUMMARY
+            "No files were downloaded. Add these repository Actions secrets, then select **Re-run all jobs** on this run:" >> $env:GITHUB_STEP_SUMMARY
+            foreach ($name in $missing) { "- `$name`" >> $env:GITHUB_STEP_SUMMARY }
+            Write-Host "::notice::Private GBA build skipped safely: required Actions secrets have not been configured."
+          } else {
+            "skip=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Download ROM and recompiler source privately
+        if: steps.preflight.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $inputDir = Join-Path $env:GITHUB_WORKSPACE 'private-input'
+          New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
+          $sourcePath = Join-Path $inputDir 'gba-recomp-source.zip'
+          $romPath = Join-Path $inputDir 'superstar-saga.gba'
+
+          try {
+            Invoke-WebRequest -Uri $env:GBA_RECOMP_SOURCE_URL -OutFile $sourcePath -TimeoutSec 180 -MaximumRedirection 8
+          } catch {
+            Write-Error 'Could not download the source archive. Check GBA_RECOMP_SOURCE_URL is a direct HTTPS download URL.'
+            exit 1
+          }
+          try {
+            Invoke-WebRequest -Uri $env:GBA_ROM_URL -OutFile $romPath -TimeoutSec 180 -MaximumRedirection 8
+          } catch {
+            Write-Error 'Could not download the ROM. Check GBA_ROM_URL is a direct HTTPS download URL.'
+            exit 1
+          }
+
+          if ((Get-Item $sourcePath).Length -lt 50000) {
+            Write-Error 'The source download is too small to be the expected gba-recomp-local.zip archive.'
+            exit 1
+          }
+          if ((Get-Item $romPath).Length -lt 4194304) {
+            Write-Error 'The ROM download is too small; the link may be returning an HTML page instead of a GBA ROM.'
+            exit 1
+          }
+          "Private downloads retrieved. ROM and source contents are not printed to the log." >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Set up MSYS2 MinGW64 toolchain
+        if: steps.preflight.outputs.skip != 'true'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_image
+            mingw-w64-x86_64-7zip
+            make
+            python
+            unzip
+            git
+
+      - name: Generate and compile the game-specific recompiler privately
+        if: steps.preflight.outputs.skip != 'true'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p private-source
+          unzip -q private-input/gba-recomp-source.zip -d private-source
+
+          if [[ -f private-source/gba-recomp/build_recomp.sh ]]; then
+            SRC="$PWD/private-source/gba-recomp"
+          else
+            SCRIPT="$(find private-source -type f -name build_recomp.sh -print -quit)"
+            [[ -n "$SCRIPT" ]] || { echo "Source archive does not contain build_recomp.sh"; exit 1; }
+            SRC="$(dirname "$SCRIPT")"
+          fi
+
+          WS="$(cygpath -u "$(pwd -W)")"
+          ROM="$WS/private-input/superstar-saga.gba"
+          [[ -s "$ROM" ]] || { echo "Downloaded ROM is missing from the private workspace"; exit 1; }
+          [[ -s "$SRC/data/events_all.txt" ]] || { echo "Source archive is missing its event seed data"; exit 1; }
+          [[ -s "$SRC/data/profile_keys.txt" ]] || { echo "Source archive is missing profile_keys.txt"; exit 1; }
+
+          cd "$SRC"
+          export SEED_EVENTS="$SRC/data/events_all.txt"
+          export PASSES=1
+          export DEFER_IRQ_WHILE=0x03000C7C
+          export PROFILE_KEYS="$(grep -v '^#' data/profile_keys.txt | tr -d '\r\n')"
+
+          ./build_recomp.sh "$ROM" "$SRC/work" 1500
+          CC_OPT=-O1 ./build_win.sh "$SRC/work"
+
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p dist
+          cp "$SRC/work/win/MarioLuigi.exe" dist/MarioLuigi.exe
+          cp "$SRC/work/overlays.cfg" dist/overlays.cfg
+          cat > dist/README-GBA-Build.txt <<'EOF'
+          PipeClean GBA static-recompiler build
+          -------------------------------------
+          Place MarioLuigi.exe and overlays.cfg together in PipeClean/gba-recomp/.
+          In PipeClean, open Superstar Saga (GBA), select your own compatible ROM, then press Play.
+          This build does not include the ROM or a BIOS image. The BIOS high-level implementation is partial.
+          The recompiler is experimental; later-game overlays may require additional profiling.
+          EOF
+
+          test -s dist/MarioLuigi.exe
+          test -s dist/overlays.cfg
+          echo "Game executable compiled. The ROM and generated intermediate code will not be included in the artifact."
+
+      - name: Encrypt deliverable and remove private inputs
+        if: steps.preflight.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sevenZip = (Get-Command 7z.exe -ErrorAction SilentlyContinue).Source
+          if (-not $sevenZip -and (Test-Path "$env:ProgramFiles\7-Zip\7z.exe")) {
+            $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
+          }
+          if (-not $sevenZip) {
+            Write-Error '7-Zip CLI is unavailable on this runner; no artifact will be uploaded.'
+            exit 1
+          }
+
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'gba-recomp-output.7z'
+          Push-Location (Join-Path $env:GITHUB_WORKSPACE 'dist')
+          try {
+            & $sevenZip a -t7z -mhe=on "-p$env:GBA_OUTPUT_KEY" $archive 'MarioLuigi.exe' 'overlays.cfg' 'README-GBA-Build.txt' | Out-Null
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $archive)) {
+              Write-Error 'Could not encrypt the GBA build; no artifact will be uploaded.'
+              exit 1
+            }
+          } finally {
+            Pop-Location
+          }
+
+          # The hosted runner is ephemeral; only the password-encrypted archive is retained as an artifact.
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:GITHUB_WORKSPACE 'private-input')
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:GITHUB_WORKSPACE 'private-source')
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:GITHUB_WORKSPACE 'dist')
+          "Encrypted deliverable created. Only gba-recomp-output.7z is eligible for artifact upload." >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload encrypted build only
+        if: steps.preflight.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-gba-recompiler-build
+          path: gba-recomp-output.7z
+          if-no-files-found: error
+          retention-days: 3
