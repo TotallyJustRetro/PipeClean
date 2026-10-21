@@ -19,6 +19,14 @@ elif "#define AUDIO_BUFS 2" not in s:
     raise SystemExit("Unrecognized AUDIO_BUFS definition in gba_win.c")
 p.write_text(s, encoding="utf-8", newline="\n")
 
+# Compile the standalone frontend, PPU, and hardware runtime at the same optimization
+# level as lifted game code; the original script hard-coded these three files to -O1.
+p = root / "build_win.sh"
+s = p.read_text(encoding="utf-8")
+for source in ("gba_platform", "gba_ppu", "gba_win"):
+    s = s.replace(f"gcc -O1 -w -c -I \"$HERE\" \"$HERE/{source}.c\"", f"gcc $CC_OPT -w -c -I \"$HERE\" \"$HERE/{source}.c\"")
+p.write_text(s, encoding="utf-8", newline="\n")
+
 # A same-function address span can be much larger than the executed loop body.
 p = root / "gba_emit.py"
 s = p.read_text(encoding="utf-8")
