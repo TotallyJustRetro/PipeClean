@@ -22,6 +22,62 @@ elif "#define AUDIO_BUFS 4" not in s:
     raise SystemExit("Unrecognized AUDIO_BUFS definition in gba_win.c")
 p.write_text(s, encoding="utf-8", newline="\n")
 
+# Add WAV capture to the Windows frontend so buzzing can be separated from Windows playback.
+# The recording is taken from the exact PCM buffer passed to waveOutWrite.
+p = root / "gba_win.c"
+s = p.read_text(encoding="utf-8")
+if "static void rec_header(DWORD data_bytes)" not in s:
+    s = s.replace(
+        " * Settings come from <rom>.cfg next to the ROM, one line per setting:\n",
+        " * Settings come from <rom>.cfg next to the ROM, one line per setting:\n"
+        " *   record <path>                 write the exact PCM submitted to waveOut (audio diagnostics)\n",
+        1
+    )
+    decl = "static BITMAPINFO bmi;\nstatic Cpu cpu;\n"
+    rec_decl = """static BITMAPINFO bmi;
+static Cpu cpu;
+static FILE *rec = 0; static DWORD rec_bytes = 0; static char rec_path[MAX_PATH] = "";
+
+static void rec_header(DWORD data_bytes) {
+    unsigned char h[44]; memset(h, 0, sizeof h);
+    memcpy(h, "RIFF", 4); DWORD riff = 36 + data_bytes; memcpy(h + 4, &riff, 4);
+    memcpy(h + 8, "WAVEfmt ", 8); DWORD fmt = 16; memcpy(h + 16, &fmt, 4);
+    WORD tag = 1, ch = 2, bits = 16, align = 4; DWORD rate = AUDIO_RATE, bps = AUDIO_RATE * 4;
+    memcpy(h + 20, &tag, 2); memcpy(h + 22, &ch, 2); memcpy(h + 24, &rate, 4); memcpy(h + 28, &bps, 4);
+    memcpy(h + 32, &align, 2); memcpy(h + 34, &bits, 2);
+    memcpy(h + 36, "data", 4); memcpy(h + 40, &data_bytes, 4);
+    fseek(rec, 0, SEEK_SET); fwrite(h, 1, 44, rec);
+}
+"""
+    if decl not in s:
+        raise SystemExit("Could not find Windows frontend globals for audio recording.")
+    s = s.replace(decl, rec_decl, 1)
+
+    audio_silence = "    else { n = AUDIO_RATE / 60; if (n > AUDIO_MAX_FRAMES) n = AUDIO_MAX_FRAMES; memset(abuf[slot], 0, (size_t)n * 4); }\n"
+    audio_record = audio_silence + "    if (rec) { fwrite(abuf[slot], 1, (size_t)n * 4, rec); rec_bytes += (DWORD)n * 4; }\n"
+    if audio_silence not in s:
+        raise SystemExit("Could not find audio buffer fill point for waveOut recording.")
+    s = s.replace(audio_silence, audio_record, 1)
+
+    cfg_old = '            if (!strcmp(key, "overlays")) snprintf(overlays, sizeof overlays, "%s", val);\n            else if (!strcmp(key, "defer_irq_while")) defer = dval;'
+    cfg_new = '            if (!strcmp(key, "overlays")) snprintf(overlays, sizeof overlays, "%s", val);\n            else if (!strcmp(key, "record")) snprintf(rec_path, sizeof rec_path, "%s", val);\n            else if (!strcmp(key, "defer_irq_while")) defer = dval;'
+    if cfg_old not in s:
+        raise SystemExit("Could not find Windows ROM-config parser for audio recording.")
+    s = s.replace(cfg_old, cfg_new, 1)
+
+    open_old = '    if (audio_open() != 0) { MessageBoxA(hwnd, "No audio device; running silent.", "Mario & Luigi", MB_ICONWARNING); hwo = 0; }'
+    open_new = '    if (rec_path[0]) { rec = fopen(rec_path, "wb"); if (rec) rec_header(0); }\n' + open_old
+    if open_old not in s:
+        raise SystemExit("Could not find audio device startup point for recording.")
+    s = s.replace(open_old, open_new, 1)
+
+    close_old = "    audio_close();\n    return 0;"
+    close_new = "    audio_close();\n    if (rec) { rec_header(rec_bytes); fclose(rec); rec = 0; }\n    return 0;"
+    if close_old not in s:
+        raise SystemExit("Could not find Windows frontend audio shutdown point for recording.")
+    s = s.replace(close_old, close_new, 1)
+p.write_text(s, encoding="utf-8", newline="\n")
+
 # Compile the standalone frontend, PPU, and hardware runtime at the same optimization
 # level as lifted game code; the original script hard-coded these three files to -O1.
 p = root / "build_win.sh"
