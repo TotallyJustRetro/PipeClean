@@ -27,12 +27,12 @@ p.write_text(s, encoding="utf-8", newline="\n")
 p = root / "gba_win.c"
 s = p.read_text(encoding="utf-8")
 if "static void rec_header(DWORD data_bytes)" not in s:
-    s = s.replace(
-        " * Settings come from <rom>.cfg next to the ROM, one line per setting:\n",
-        " * Settings come from <rom>.cfg next to the ROM, one line per setting:\n"
-        " *   record <path>                 write the exact PCM submitted to waveOut (audio diagnostics)\n",
-        1
-    )
+    config_header = " * Settings come from <rom>.cfg next to the ROM, "
+    if config_header in s and "record <path>" not in s:
+        line_end = s.find("\\n", s.find(config_header)) + 1
+        if line_end <= 0:
+            raise SystemExit("Could not find Windows frontend config help line.")
+        s = s[:line_end] + " *   record <path>                 write the exact PCM submitted to waveOut (audio diagnostics)\\n" + s[line_end:]
     decl = "static BITMAPINFO bmi;\nstatic Cpu cpu;\n"
     rec_decl = """static BITMAPINFO bmi;
 static Cpu cpu;
