@@ -1032,7 +1032,7 @@ static void sub_external_game(int g, float x, float y)
 
     if (g == GAME_GBA_SAGA) {
         ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "GBA RECOMPILATION");
-        ui_text_fit_tail(F_REG, 10, x + 18, y + 173, 660, active_exe);
+        ui_text_fit_tail(F_REG, 10, x + 18, y + 173, 660, C_TEXT, active_exe);
         if (ui_button(x + 690, y + 166, 100, 32, "Browse EXE…", B_NORMAL, 1)) {
             char path[1100];
             if (dlg_pick(DLG_EXECUTABLE, "Choose the GBA recompilation executable", path, sizeof path)) {
@@ -1041,7 +1041,7 @@ static void sub_external_game(int g, float x, float y)
             }
         }
         ui_text(F_BOLD, 12, x + 18, y + 216, C_MUTED, "OVERLAY CONFIGURATION");
-        ui_text_fit_tail(F_REG, 10, x + 18, y + 239, 660, active_overlays);
+        ui_text_fit_tail(F_REG, 10, x + 18, y + 239, 660, C_TEXT, active_overlays);
         if (ui_button(x + 690, y + 232, 100, 32, "Browse CFG…", B_NORMAL, 1)) {
             char path[1100];
             if (dlg_pick(DLG_OVERLAY_CONFIG, "Choose the overlays.cfg matching this executable", path, sizeof path)) {
