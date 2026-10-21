@@ -140,8 +140,12 @@ jobs:
           [[ -s "$SRC/data/events_all.txt" ]] || { echo "Source archive is missing its event seed data"; exit 1; }
           [[ -s "$SRC/data/profile_keys.txt" ]] || { echo "Source archive is missing profile_keys.txt"; exit 1; }
 
-          # Reapply the tested frontend/audio/timing fixes after unpacking the user's original source archive.
-          python ci/patch_gba_recomp.py "$SRC"
+          # Recover the committed patch from Git's object database, so the build does not depend
+          # on the runner's working-tree materialization of ci/patch_gba_recomp.py.
+          git ls-tree --error-unmatch HEAD ci/patch_gba_recomp.py
+          git show HEAD:ci/patch_gba_recomp.py > patch_gba_recomp.py
+          test -s patch_gba_recomp.py || { echo "Patch script could not be materialized from HEAD"; exit 1; }
+          python patch_gba_recomp.py "$SRC"
 
           cd "$SRC"
           export SEED_EVENTS="$SRC/data/events_all.txt"
