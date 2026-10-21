@@ -1001,9 +1001,17 @@ static void draw_preview(int g, float x, float y, float w, float h, int use_cfg_
 static void sub_external_game(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
+    char active_rom[1200] = "", active_exe[1200] = "", active_overlays[1200] = "";
+    const char *display_rom = c->rom_path;
+    if (g == GAME_GBA_SAGA) {
+        gba_effective_paths(g, active_rom, sizeof active_rom,
+                            active_exe, sizeof active_exe,
+                            active_overlays, sizeof active_overlays);
+        display_rom = active_rom;
+    }
     card(x, y, 808, 476, "GAME ROM");
     label(x + 18, y + 42, g == GAME_GBA_SAGA ? "Game Boy Advance ROM" : "Game Boy / Game Boy Color ROM");
-    path_box(x + 18, y + 64, 808 - 36 - 110, c->rom_path, "Drop a ROM here or browse");
+    path_box(x + 18, y + 64, 808 - 36 - 110, display_rom, "Drop a ROM here or browse");
     if (ui_button(x + 808 - 18 - 100, y + 64, 100, 36, "Browse…", B_NORMAL, 1)) {
         char p[1100];
         if (dlg_pick(DLG_ROM, "Choose this game's ROM", p, sizeof p)) {
@@ -1023,17 +1031,8 @@ static void sub_external_game(int g, float x, float y)
                          : (c->rom_path[0] ? rs[g].msg : "Choose a ROM to enable Play."));
 
     if (g == GAME_GBA_SAGA) {
-        char default_exe[1200], default_overlay[1200];
-#ifdef _WIN32
-        snprintf(default_exe, sizeof default_exe, "%sgba-recomp\\MarioLuigi.exe", settings_dir());
-        snprintf(default_overlay, sizeof default_overlay, "%sgba-recomp\\overlays.cfg", settings_dir());
-#else
-        snprintf(default_exe, sizeof default_exe, "%sgba-recomp/MarioLuigi.exe", settings_dir());
-        snprintf(default_overlay, sizeof default_overlay, "%sgba-recomp/overlays.cfg", settings_dir());
-#endif
         ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "GBA RECOMPILATION");
-        ui_text_fit_tail(F_REG, 10, x + 18, y + 173, 660, C_TEXT,
-                         c->gba_recomp_exe[0] ? c->gba_recomp_exe : default_exe);
+        ui_text_fit_tail(F_REG, 10, x + 18, y + 173, 660, active_exe);
         if (ui_button(x + 690, y + 166, 100, 32, "Browse EXE…", B_NORMAL, 1)) {
             char path[1100];
             if (dlg_pick(DLG_EXECUTABLE, "Choose the GBA recompilation executable", path, sizeof path)) {
@@ -1042,7 +1041,7 @@ static void sub_external_game(int g, float x, float y)
             }
         }
         ui_text(F_BOLD, 12, x + 18, y + 216, C_MUTED, "OVERLAY CONFIGURATION");
-        ui_text_fit_tail(F_REG, 10, x + 18, y + 239, 660, c->gba_overlays_path[0] ? c->gba_overlays_path : default_overlay);
+        ui_text_fit_tail(F_REG, 10, x + 18, y + 239, 660, active_overlays);
         if (ui_button(x + 690, y + 232, 100, 32, "Browse CFG…", B_NORMAL, 1)) {
             char path[1100];
             if (dlg_pick(DLG_OVERLAY_CONFIG, "Choose the overlays.cfg matching this executable", path, sizeof path)) {
