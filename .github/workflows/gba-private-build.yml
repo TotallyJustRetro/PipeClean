@@ -40,7 +40,7 @@ jobs:
             "## Waiting for private build secrets" >> $env:GITHUB_STEP_SUMMARY
             "" >> $env:GITHUB_STEP_SUMMARY
             "No files were downloaded. Add these repository Actions secrets, then select **Re-run all jobs** on this run:" >> $env:GITHUB_STEP_SUMMARY
-            foreach ($name in $missing) { "- `$name`" >> $env:GITHUB_STEP_SUMMARY }
+            foreach ($name in $missing) { "- $name" >> $env:GITHUB_STEP_SUMMARY }
             Write-Host "::notice::Private GBA build skipped safely: required Actions secrets have not been configured."
           } else {
             "skip=false" >> $env:GITHUB_OUTPUT
@@ -150,6 +150,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $sevenZip = (Get-Command 7z.exe -ErrorAction SilentlyContinue).Source
+          if (-not $sevenZip -and (Test-Path "C:\msys64\mingw64\bin\7z.exe")) {
+            $sevenZip = "C:\msys64\mingw64\bin\7z.exe"
+          }
           if (-not $sevenZip -and (Test-Path "$env:ProgramFiles\7-Zip\7z.exe")) {
             $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe"
           }
