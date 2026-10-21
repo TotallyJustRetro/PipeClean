@@ -6,11 +6,13 @@ The `.github/workflows/gba-private-build.yml` workflow builds the GBA static-rec
 
 Open **Settings → Secrets and variables → Actions → New repository secret** and add:
 
-- `GBA_RECOMP_SOURCE_URL`: a direct HTTPS download URL for the `gba-recomp-local.zip` source archive. The URL must let the runner download the ZIP without logging in interactively.
-- `GBA_ROM_URL`: a direct HTTPS download URL for your own compatible `Mario & Luigi: Superstar Saga (USA).gba` ROM. Do not commit the ROM or put it in a public repository/release.
+- `GBA_RECOMP_SOURCE_URL`: the Dropbox share link for `gba-recomp-local.zip` (or another direct HTTPS download URL).
+- `GBA_ROM_URL`: the Dropbox share link for your own compatible `Mario & Luigi: Superstar Saga (USA).gba` ROM (or another direct HTTPS download URL). Do not commit the ROM or put it in a public repository/release.
+
+Dropbox links ending in `dl=0` are accepted: the workflow changes Dropbox links to `dl=1` automatically so it downloads the file rather than the preview page.
 - `GBA_OUTPUT_KEY`: a unique strong passphrase used to encrypt the resulting package. Keep it private; without it the downloaded build cannot be extracted.
 
-The URL values are stored as Actions secrets and the workflow does not intentionally print them. A link that grants access to anyone who possesses the link is still a bearer link; do not reuse it elsewhere. Prefer a provider's expiring direct-download link when available. The download endpoint must be reachable by GitHub's hosted runner.
+The URL values are stored as Actions secrets and the workflow does not intentionally print them. **These particular Dropbox links have public-link access**, so anyone holding the link can download the file; putting a link in a GitHub secret protects the URL from being displayed in the repository, but does not change Dropbox's access settings. If you want to revoke access later, manage the links in Dropbox. The download endpoint must be reachable by GitHub's hosted runner.
 
 ## Run it
 
