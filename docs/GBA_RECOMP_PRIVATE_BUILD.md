@@ -6,12 +6,13 @@ The `.github/workflows/gba-private-build.yml` workflow builds the GBA static-rec
 
 Open **Settings → Secrets and variables → Actions → New repository secret** and add:
 
+- `GBA_RECOMP_SOURCE_URL`: the Dropbox share link for the source ZIP you want to build (the workflow converts Dropbox preview links to direct downloads).
 - `GBA_ROM_URL`: the Dropbox share link for your own compatible `Mario & Luigi: Superstar Saga (USA).gba` ROM (or another direct HTTPS download URL). Do not commit the ROM or put it in a public repository/release.
 
-The workflow uses the direct-download URL (`dl=1`) for the publicly shared `gba-recomp-noflicker.zip` archive. It builds the downloaded source as supplied and does not run `ci/patch_gba_recomp.py`. To switch source archives, update the pinned `GBA_RECOMP_SOURCE_URL` value in `.github/workflows/gba-private-build.yml`.
+The workflow reads `GBA_RECOMP_SOURCE_URL` from the Actions secret, downloads that archive, and builds it as supplied. It does not run `ci/patch_gba_recomp.py`, inject audio capture, or apply a custom IRQ override. Update the secret when you want to test another source archive.
 - `GBA_OUTPUT_KEY`: a unique strong passphrase used to encrypt the resulting package. Keep it private; without it the downloaded build cannot be extracted.
 
-The ROM link and output passphrase are stored as Actions secrets and the workflow does not intentionally print them. The source ZIP's Dropbox link is public and is pinned in the workflow so this exact archive is used for the clean build. Anyone with the public link can download the source ZIP.
+The source link, ROM link, and output passphrase are stored as Actions secrets and the workflow does not intentionally print them. Dropbox shared links may still be publicly accessible to anyone who has the link; storing the link as a GitHub secret does not change its Dropbox permissions.
 
 ## Run it
 
