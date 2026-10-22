@@ -5135,7 +5135,7 @@ static void tab_museum_romhacks(float x, float y, float width)
 
 static void tab_museum(float x, float y)
 {
-    static const char *game_labels[N_GAMES] = {
+    static const char *game_labels[] = {
         "Dr. Mario", "Mario Land", "Land 2", "Wario Land",
         "Wario II · GB", "Wario III · GBC", "Wario II · GBC"
     };
@@ -5156,10 +5156,11 @@ static void tab_museum(float x, float y)
     const int category_count = has_treasures ? 7 : 6;
     static const char *filter_labels[] = {"All Entries", "Collected", "Undiscovered"};
     const float width = 808.0f;
+    const int museum_game_count = (int)(sizeof game_labels / sizeof game_labels[0]);
     ui_accent = museum_hacks_view ? 0xC77B44u : games[museum_game].accent;
     const float game_gap = 4.0f, game_h = 27.0f;
-    const float game_w = (width - game_gap * N_GAMES) / (float)(N_GAMES + 1);
-    for (int g = 0; g < N_GAMES; ++g) {
+    const float game_w = (width - game_gap * museum_game_count) / (float)(museum_game_count + 1);
+    for (int g = 0; g < museum_game_count; ++g) {
         float bx = x + g * (game_w + game_gap);
         if (ui_chip(bx, y, game_w, game_h, game_labels[g],
                     !museum_hacks_view && g == museum_game)) {
@@ -5168,7 +5169,7 @@ static void tab_museum(float x, float y)
             museum_reset_confirm = 0;
         }
     }
-    const float hacks_x = x + N_GAMES * (game_w + game_gap);
+    const float hacks_x = x + museum_game_count * (game_w + game_gap);
     if (ui_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view)) {
         museum_hacks_view = 1; museum_hack_scroll = 0.0f;
         museum_reset_confirm = 0;
