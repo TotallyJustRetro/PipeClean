@@ -637,6 +637,8 @@ static void set_rom(int g, const char *path)
     rom_check(g);
     if (rs[g].ok) make_preview(g);
     else prev_ok[g] = 0;
+    /* Persist a chosen ROM immediately, not only after a Play action. */
+    settings_save();
 }
 
 static void romhack_title_from_path(const char *path, char *out, size_t n)
@@ -776,8 +778,15 @@ void launcher_init(void)
     char found[N_GAMES][512];
     memset(found, 0, sizeof found);
     rom_scan(found);
-    for (int g = 0; g < N_GAMES; g++)
-        if (!rs[g].ok && found[g][0]) { snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", found[g]); rom_check(g); }
+    int recovered_rom_paths = 0;
+    for (int g = 0; g < N_GAMES; g++) {
+        if (!rs[g].ok && found[g][0]) {
+            snprintf(settings.g[g].rom_path, sizeof settings.g[g].rom_path, "%s", found[g]);
+            rom_check(g);
+            recovered_rom_paths = 1;
+        }
+    }
+    if (recovered_rom_paths) settings_save();
     tab = settings.last_tab >= 0 && settings.last_tab < N_TABS ? settings.last_tab : 0;
     launcher_controller_cursor_active = 0;
     launcher_controller_confirm_was_down = launcher_controller_back_was_down = 0;
@@ -6073,6 +6082,8 @@ void launcher_drop(const char *path)
         snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", path);
         rom_check(id);
         if (rs[id].ok) make_preview(id);
+        /* Drag-and-drop is also a ROM selection; save its path immediately. */
+        settings_save();
         tab = id;
         launcher_toast(rs[id].ok ? "ROM added." : rs[id].msg);
         return;
