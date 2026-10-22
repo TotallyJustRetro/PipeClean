@@ -192,6 +192,7 @@ void settings_defaults(Settings *s)
 {
     memset(s, 0, sizeof *s);
     s->volume = 100;
+    s->launcher_tab_layout_version = 1;
     s->latency = LAT_NORMAL;
     s->pad_deadzone = 35;
     s->menu_music = 1; s->menu_music_vol = 55;
@@ -269,6 +270,7 @@ static int field_table(Field *t, int cap)
     static char names[N_UI_SFX][24];
     for (int i = 0; i < N_UI_SFX; i++) { snprintf(names[i], sizeof names[i], "ui_sfx_path%d", i); S(names[i], s->ui_sfx_path[i]); }
     I("last_tab", s->last_tab, 0, 20); I("show_stats", s->show_stats, 0, 1);
+    I("launcher_tab_layout_version", s->launcher_tab_layout_version, 0, 1);
     I("launcher_ui_scale", s->launcher_ui_scale, 75, 125);
     I("launcher_window_size", s->launcher_window_size, 0, 2);
     I("launcher_fullscreen", s->launcher_fullscreen, 0, 1);
@@ -424,6 +426,7 @@ void settings_load(void)
     int nf = field_table(tab, 4096);
     int saw_launcher_dual_screen = 0;
     int saw_launcher_pipe_screen_swap = 0;
+    int saw_launcher_tab_layout_version = 0;
     int saw_gba_bindings_version = 0;
     int saw_wario_fx_version[N_GAMES] = {0};
     char line[1100];
@@ -433,6 +436,7 @@ void settings_load(void)
         *eq = 0;
         if (!strcmp(line, "launcher_dual_screen")) saw_launcher_dual_screen = 1;
         if (!strcmp(line, "launcher_pipe_screen_swap")) saw_launcher_pipe_screen_swap = 1;
+        if (!strcmp(line, "launcher_tab_layout_version")) saw_launcher_tab_layout_version = 1;
         if (!strcmp(line, "mario-luigi-ss.gba_bindings_version")) saw_gba_bindings_version = 1;
         for (int g = GAME_WARIO_SML3; g <= GAME_WARIO_LAND2_GBC; g++) {
             char fx_key[80];
@@ -473,6 +477,19 @@ void settings_load(void)
         }
     }
     fclose(f);
+    int launcher_tab_layout_migrated = !saw_launcher_tab_layout_version;
+    if (launcher_tab_layout_migrated) {
+        /* Before the GBA profile was added, global tabs occupied indices 7..13.
+           Shift those old selections once to their new indices 8..14. We only
+           shift when the file also predates the GBA bindings migration, which
+           distinguishes a known old layout from a current one. */
+        if (!saw_gba_bindings_version &&
+            settings.last_tab >= GAME_GBA_SAGA &&
+            settings.last_tab <= GAME_GBA_SAGA + 6) {
+            settings.last_tab++;
+        }
+        settings.launcher_tab_layout_version = 1;
+    }
     int gba_bindings_migrated = !saw_gba_bindings_version;
     if (gba_bindings_migrated) {
         GameCfg *gba = &settings.g[GAME_GBA_SAGA];
@@ -514,7 +531,7 @@ void settings_load(void)
             wario_fx_migrated = 1;
         }
     }
-    if (wario_fx_migrated || gba_bindings_migrated) settings_save();
+    if (wario_fx_migrated || gba_bindings_migrated || launcher_tab_layout_migrated) settings_save();
     if (!saw_launcher_dual_screen) {
         /* Migrate the old per-game switch so existing Android users keep their
          * preference after the option moves into Launcher Display settings. */
