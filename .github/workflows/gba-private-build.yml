@@ -147,8 +147,11 @@ jobs:
           export SEED_EVENTS="$SRC/data/events_all.txt"
           export PASSES=1
           export PROFILE_KEYS="$(grep -v '^#' data/profile_keys.txt | tr -d '\r\n')"
+          export DEFER_IRQ_WHILE=0x03000C7C
 
-          CC_OPT=-O1 ./build_recomp.sh "$ROM" "$SRC/work" 1500
+          # The profile key schedule starts at frame 5000; 1500 frames never reaches it.
+          # Run long enough to exercise the bundled title/start-game sequence and opening cutscene.
+          CC_OPT=-O1 ./build_recomp.sh "$ROM" "$SRC/work" 15000
           CC_OPT=-O2 ./build_win.sh "$SRC/work"
 
           cd "$GITHUB_WORKSPACE"
