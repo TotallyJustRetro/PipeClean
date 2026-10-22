@@ -1,4 +1,4 @@
-# Clean-source build: each run downloads the source archive and ROM from Actions secrets.
+# Clean-source build: use the supplied noflicker source archive unchanged; download the ROM privately.
 name: Private GBA Recompiler Build (Encrypted)
 
 on:
@@ -25,13 +25,11 @@ jobs:
       - name: Check private build secrets
         id: preflight
         env:
-          GBA_RECOMP_SOURCE_URL: ${{ secrets.GBA_RECOMP_SOURCE_URL }}
           GBA_ROM_URL: ${{ secrets.GBA_ROM_URL }}
           GBA_OUTPUT_KEY: ${{ secrets.GBA_OUTPUT_KEY }}
         shell: pwsh
         run: |
           $missing = @()
-          if ([string]::IsNullOrWhiteSpace($env:GBA_RECOMP_SOURCE_URL)) { $missing += 'GBA_RECOMP_SOURCE_URL' }
           if ([string]::IsNullOrWhiteSpace($env:GBA_ROM_URL)) { $missing += 'GBA_ROM_URL' }
           if ([string]::IsNullOrWhiteSpace($env:GBA_OUTPUT_KEY)) { $missing += 'GBA_OUTPUT_KEY' }
 
@@ -53,7 +51,7 @@ jobs:
       - name: Download ROM and recompiler source privately
         if: steps.preflight.outputs.skip != 'true'
         env:
-          GBA_RECOMP_SOURCE_URL: ${{ secrets.GBA_RECOMP_SOURCE_URL }}
+          GBA_RECOMP_SOURCE_URL: 'https://www.dropbox.com/scl/fi/ou01t0s0qdtoqwuqrfcqu/gba-recomp-noflicker.zip?rlkey=zaxw23othpalvn2vsid9uge4w&dl=1'
           GBA_ROM_URL: ${{ secrets.GBA_ROM_URL }}
         shell: pwsh
         run: |
@@ -85,7 +83,7 @@ jobs:
           try {
             Invoke-WebRequest -Uri $sourceUrl -OutFile $sourcePath -TimeoutSec 180 -MaximumRedirection 8
           } catch {
-            Write-Error 'Could not download the source archive. Check GBA_RECOMP_SOURCE_URL points to a downloadable file.'
+            Write-Error 'Could not download the pinned noflicker source archive from its direct-download link.'
             exit 1
           }
           try {
@@ -96,7 +94,7 @@ jobs:
           }
 
           if ((Get-Item $sourcePath).Length -lt 50000) {
-            Write-Error 'The source download is too small to be the expected gba-recomp-local.zip archive.'
+            Write-Error 'The source download is too small to be the expected GBA recompiler source archive.'
             exit 1
           }
           if ((Get-Item $romPath).Length -lt 4194304) {
