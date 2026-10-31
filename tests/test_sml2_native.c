@@ -321,6 +321,7 @@ static void test_sml2_rom_native_step(void)
     Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
     unsigned x;
 
+    config.player_height = 28; /* match the ROM floor-probe anchor */
     memset(cells, 0x60, sizeof(cells)); /* passable/empty map cells */
     for (x = 0; x < 256; ++x)
         cells[8 * 256 + x] = 0x01; /* ROM-solid floor row */
@@ -330,12 +331,12 @@ static void test_sml2_rom_native_step(void)
     map.block_ids = cells;
 
     assert(sml2_native_init(&world, &config) == 0);
-    assert(sml2_native_spawn_player(&world, 0, 40, 112, 5) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 40, 100, 5) == 0);
     assert(sml2_native_rom_step(&world, inputs, &map) == 0);
     assert(world.tick == 1);
     assert(world.players[0].grounded);
     assert(world.players[0].vy == 0);
-    assert(world.players[0].y == sml2_native_fp_from_int(112));
+    assert(world.players[0].y == sml2_native_fp_from_int(100));
 
     /* A non-SML2 map profile is rejected before simulation advances. */
     map.width_blocks = 32;
