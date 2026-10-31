@@ -108,6 +108,7 @@ int sml2_native_capture_live_sml2(
     unsigned min_samples, unsigned min_match_percent)
 {
     unsigned camera_x, camera_y;
+    Sml2NativeStage stage_check;
     if (!capture || !read_memory || !ppu_vram ||
         min_samples == 0 || min_match_percent == 0 ||
         min_match_percent > 100 ||
@@ -116,11 +117,12 @@ int sml2_native_capture_live_sml2(
         (!collision_flags && collision_flags_count != 0))
         return SML2_NATIVE_CAPTURE_INVALID;
 
+    capture->valid = 0;
     if (!capture_scene_valid(read_memory, memory_userdata, lcdc, wx, wy))
         return SML2_NATIVE_CAPTURE_WRONG_SCENE;
 
     if (sml2_native_stage_capture_sml2(
-            &capture->stage, read_memory, memory_userdata,
+            &stage_check, read_memory, memory_userdata,
             collision_flags, collision_flags_count,
             capture->cells, sizeof(capture->cells),
             capture->block_definitions, sizeof(capture->block_definitions),
@@ -132,16 +134,34 @@ int sml2_native_capture_live_sml2(
     capture->scx = scx;
     capture->scy = scy;
     capture->bgp = bgp;
-    capture->graphics.vram = capture->vram;
-    capture->graphics.lcdc = lcdc;
-
     camera_x = read_word(read_memory, memory_userdata, SML2_CAMERA_X);
     camera_y = read_word(read_memory, memory_userdata, SML2_CAMERA_Y);
     if (!validate_live_view(capture, ppu_vram, min_samples,
                             min_match_percent, camera_x, camera_y))
         return SML2_NATIVE_CAPTURE_VIEW_MISMATCH;
 
+    capture->valid = 1;
     return SML2_NATIVE_CAPTURE_OK;
+}
+
+int sml2_native_capture_get_stage(const Sml2NativeSml2Capture *capture,
+                                  Sml2NativeStage *stage)
+{
+    if (!capture || !stage || !capture->valid) return -1;
+    return sml2_native_stage_init(stage,
+        SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS,
+        SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS,
+        capture->cells, capture->tiles, SML2_NATIVE_SML2_BLOCK_COUNT,
+        NULL, 0, NULL, 0, 1);
+}
+
+int sml2_native_capture_get_graphics(const Sml2NativeSml2Capture *capture,
+                                     Sml2NativeGbGraphics *graphics)
+{
+    if (!capture || !graphics || !capture->valid) return -1;
+    graphics->vram = capture->vram;
+    graphics->lcdc = capture->lcdc;
+    return 0;
 }
 
 int sml2_native_apply_dmg_palette(uint8_t *pixels, size_t width, size_t height,
