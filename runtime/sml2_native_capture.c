@@ -153,12 +153,17 @@ int sml2_native_apply_dmg_palette(uint8_t *pixels, size_t width, size_t height,
         return -1;
     required = (height - 1u) * pitch + width;
     if (capacity < required) return -1;
+    /* Validate the complete input first so malformed pixels never leave a
+       half-converted framebuffer behind. */
+    for (y = 0; y < height; ++y) {
+        const uint8_t *row = pixels + y * pitch;
+        for (x = 0; x < width; ++x)
+            if (row[x] > 3u) return -1;
+    }
     for (y = 0; y < height; ++y) {
         uint8_t *row = pixels + y * pitch;
-        for (x = 0; x < width; ++x) {
-            if (row[x] > 3u) return -1;
+        for (x = 0; x < width; ++x)
             row[x] = (uint8_t)((bgp >> (row[x] * 2u)) & 3u);
-        }
     }
     return 0;
 }
