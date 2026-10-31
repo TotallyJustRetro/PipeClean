@@ -46,6 +46,7 @@ static Sml2NativeConfig make_config(void)
 static void run_script(Sml2NativeWorld *world)
 {
     Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS];
+    int32_t ground_y = world->players[0].y;
     unsigned frame;
     memset(inputs, 0, sizeof(inputs));
 
@@ -59,6 +60,7 @@ static void run_script(Sml2NativeWorld *world)
     inputs[0].buttons = SML2_NATIVE_BUTTON_RIGHT | SML2_NATIVE_BUTTON_JUMP;
     inputs[1].buttons = SML2_NATIVE_BUTTON_LEFT;
     assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
+    assert(world->players[0].y < ground_y);
     for (frame = 0; frame < 14; ++frame)
         assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
 
@@ -69,6 +71,11 @@ static void run_script(Sml2NativeWorld *world)
     memset(inputs, 0, sizeof(inputs));
     for (frame = 0; frame < 3; ++frame)
         assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
+
+    assert(world->players[0].grounded);
+    assert(world->players[0].y == ground_y);
+    assert(world->players[0].x <= sml2_native_fp_from_int(288));
+    assert(world->players[1].x >= 0);
 }
 
 int main(void)
