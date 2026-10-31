@@ -104,6 +104,24 @@ still the seam for a fully ROM-backed native asset decoder; automatic SML2
 graphics extraction and the runtime/launcher presentation bridge still need
 to be connected.
 
+`runtime/sml2_native_capture.h/.c` adds a read-only live-scene capture
+bridge for ordinary SML2 gameplay. It copies the decompressed `$B000-$DFFF`
+block map, `$A600-$A7FF` block graphics table, and bank-0 VRAM into caller-owned
+storage. Before accepting the snapshot, it checks the verified gameplay
+LCDC/window/mode signature and compares the decoded world map against the
+current 160×144 PPU tilemap (at least 100 samples and a configurable match
+percentage; the intended threshold is 95%). This catches stale RAM, the
+Homeworld's different 8×8 map, bonus rooms, and unrelated PPU scenes instead
+of treating them as valid stage data. The capture also records the aligned
+world origin and BGP register and exposes a helper to apply the active DMG
+background palette after rendering.
+
+This is a compatibility/reference capture seam, not the native runtime bridge:
+it still reads the live emulator's memory and VRAM. The native game loop,
+player/actor rendering, authentic collision table, and standalone asset
+extraction remain unconnected. Collision flags are explicitly caller-supplied;
+a missing table produces a visual-only, non-solid snapshot.
+
 ## Native actor lifecycle
 
 `runtime/sml2_native_actor.h/.c` adds a deterministic actor registry for
