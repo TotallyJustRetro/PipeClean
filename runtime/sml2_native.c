@@ -32,8 +32,61 @@ int32_t sml2_native_fp_to_int(int32_t value)
     return (int32_t)((int64_t)value / FP_ONE);
 }
 
+static int zoom_valid(uint8_t zoom)
+{
+    return zoom == SML2_NATIVE_ZOOM_100 ||
+           zoom == SML2_NATIVE_ZOOM_125 ||
+           zoom == SML2_NATIVE_ZOOM_150 ||
+           zoom == SML2_NATIVE_ZOOM_200;
+}
+
+int sml2_native_view_size(uint8_t mode, uint8_t zoom_percent,
+                          uint16_t window_width, uint16_t window_height,
+                          int32_t *view_width, int32_t *view_height)
+{
+    int64_t width, height, native_width;
+    if (!view_width || !view_height || !zoom_valid(zoom_percent) ||
+        mode > SML2_NATIVE_WIDESCREEN_WINDOW)
+        return -1;
+
+    height = (144LL * zoom_percent) / 100;
+    native_width = (height * 10) / 9;
+    width = native_width;
+
+    switch (mode) {
+    case SML2_NATIVE_WIDESCREEN_OFF:
+        break;
+    case SML2_NATIVE_WIDESCREEN_16_9:
+        width = (height * 16) / 9;
+        break;
+    case SML2_NATIVE_WIDESCREEN_21_9:
+        width = (height * 21) / 9;
+        break;
+    case SML2_NATIVE_WIDESCREEN_WINDOW:
+        if (window_width != 0 && window_height != 0) {
+            if ((int64_t)window_width * height >=
+                (int64_t)window_height * native_width) {
+                width = ((int64_t)window_width * height) / window_height;
+            } else {
+                width = native_width;
+                height = ((int64_t)native_width * window_height) / window_width;
+            }
+        }
+        break;
+    default:
+        return -1;
+    }
+
+    if (width < 1 || height < 1 || width > 32767 || height > 32767)
+        return -1;
+    *view_width = (int32_t)width;
+    *view_height = (int32_t)height;
+    return 0;
+}
+
 static int config_valid(const Sml2NativeConfig *c)
 {
+    int32_t view_width, view_height;
     return c &&
            c->level_width > 0 && c->level_width <= 32767 &&
            c->level_height > 0 && c->level_height <= 32767 &&
@@ -46,10 +99,36 @@ static int config_valid(const Sml2NativeConfig *c)
            c->player_width > 0 && c->player_width <= 32767 &&
            c->player_height > 0 && c->player_height <= 32767 &&
            c->camera_padding >= 0 && c->camera_padding <= 32767 &&
-           c->base_view_width > 0 && c->base_view_width <= 32767 &&
-           c->max_view_width >= c->base_view_width &&
-           c->max_view_width <= 32767 &&
-           c->view_height > 0 && c->view_height <= 32767;
+           zoom_valid(c->camera_zoom_percent) &&
+           zoom_valid(c->max_camera_zoom_percent) &&
+           c->max_camera_zoom_percent >= c->camera_zoom_percent &&
+           c->auto_zoom <= 1 &&
+           sml2_native_view_size(c->widescreen_mode, c->camera_zoom_percent,
+                                 c->window_width, c->window_height,
+                                 &view_width, &view_height) == 0 &&
+           sml2_native_view_size(c->widescreen_mode, c->max_camera_zoom_percent,
+                                 c->window_width, c->window_height,
+                                 &view_width, &view_height) == 0;
+}
+
+int sml2_native_set_view(Sml2NativeWorld *world, uint8_t widescreen_mode,
+                         uint8_t zoom_percent, uint16_t window_width,
+                         uint16_t window_height, int auto_zoom)
+{
+    int32_t view_width, view_height;
+    if (!world || widescreen_mode > SML2_NATIVE_WIDESCREEN_WINDOW ||
+        !zoom_valid(zoom_percent) || (auto_zoom != 0 && auto_zoom != 1))
+        return -1;
+    if (sml2_native_view_size(widescreen_mode, zoom_percent,
+                              window_width, window_height,
+                              &view_width, &view_height) != 0)
+        return -1;
+    world->config.widescreen_mode = widescreen_mode;
+    world->config.camera_zoom_percent = zoom_percent;
+    world->config.window_width = window_width;
+    world->config.window_height = window_height;
+    world->config.auto_zoom = (uint8_t)auto_zoom;
+    return 0;
 }
 
 int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config)
@@ -57,7 +136,13 @@ int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config)
     if (!world || !config_valid(config)) return -1;
     memset(world, 0, sizeof(*world));
     world->config = *config;
-    world->camera_view_width = config->base_view_width;
+    if (sml2_native_view_size(config->widescreen_mode,
+                              config->camera_zoom_percent,
+                              config->window_width, config->window_height,
+                              &world->camera_view_width,
+                              &world->camera_view_height) != 0)
+        return -1;
+    world->camera_zoom_percent = config->camera_zoom_percent;
     return 0;
 }
 
@@ -203,12 +288,37 @@ static void update_player(Sml2NativeWorld *world, Sml2NativePlayer *p,
         p->invulnerability_ticks--;
 }
 
+static int32_t camera_origin_axis(int32_t center_fp,
+                                   int32_t view_pixels,
+                                   int32_t world_pixels,
+                                   int vertical_bias_pixels)
+{
+    int64_t view_fp = (int64_t)view_pixels * FP_ONE;
+    int64_t world_fp = (int64_t)world_pixels * FP_ONE;
+    int64_t origin = (int64_t)center_fp - view_fp / 2 -
+                     (int64_t)vertical_bias_pixels * FP_ONE;
+
+    if (world_fp >= view_fp) {
+        int64_t maximum = world_fp - view_fp;
+        if (origin < 0) origin = 0;
+        if (origin > maximum) origin = maximum;
+    } else {
+        /* A view larger than a level/room is centred on that region, rather
+           than being pinned to one edge or exposing wraparound coordinates. */
+        origin = (world_fp - view_fp) / 2;
+    }
+    return clamp_i64(origin);
+}
+
 static void update_camera(Sml2NativeWorld *world)
 {
     int32_t min_x = INT32_MAX, min_y = INT32_MAX;
     int32_t max_x = INT32_MIN, max_y = INT32_MIN;
     int found = 0;
-    int32_t view_width, view_height, center_x, center_y;
+    int32_t view_width = 160, view_height = 144;
+    int32_t center_x = 0, center_y = 0;
+    uint8_t selected_zoom = world->config.camera_zoom_percent;
+    unsigned active_count = 0;
     unsigned i;
 
     for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
@@ -222,38 +332,81 @@ static void update_camera(Sml2NativeWorld *world)
         if (right > max_x) max_x = right;
         if (bottom > max_y) max_y = bottom;
         found = 1;
+        active_count++;
     }
 
     if (!found) {
+        (void)sml2_native_view_size(world->config.widescreen_mode,
+                                    world->config.camera_zoom_percent,
+                                    world->config.window_width,
+                                    world->config.window_height,
+                                    &world->camera_view_width,
+                                    &world->camera_view_height);
+        world->camera_zoom_percent = world->config.camera_zoom_percent;
         world->camera_x = 0;
         world->camera_y = 0;
-        world->camera_view_width = world->config.base_view_width;
         return;
     }
 
-    view_width = clamp_i64(((int64_t)max_x - min_x) / FP_ONE +
-                           2LL * world->config.camera_padding);
-    view_width = clamp_i32(view_width, world->config.base_view_width,
-                           world->config.max_view_width);
-    view_height = world->config.view_height;
     center_x = clamp_i64(((int64_t)min_x + max_x) / 2);
     center_y = clamp_i64(((int64_t)min_y + max_y) / 2);
 
-    world->camera_view_width = view_width;
-    world->camera_x = clamp_i64((int64_t)center_x -
-                                sml2_native_fp_from_int(view_width / 2));
-    world->camera_y = clamp_i64((int64_t)center_y -
-                                sml2_native_fp_from_int(view_height / 2));
+    /* Auto zoom selects the least zoomed-out preset that frames every active
+       player plus the configured breathing room. The display aspect ratio is
+       preserved at every step; zoom is never implemented by stretching. */
+    if (world->config.auto_zoom && active_count > 1) {
+        int32_t required_width = clamp_i64(
+            ((int64_t)max_x - min_x) / FP_ONE +
+            2LL * world->config.camera_padding);
+        int32_t required_height = clamp_i64(
+            ((int64_t)max_y - min_y) / FP_ONE +
+            2LL * world->config.camera_padding);
+        static const uint8_t zoom_steps[] = {
+            SML2_NATIVE_ZOOM_100, SML2_NATIVE_ZOOM_125,
+            SML2_NATIVE_ZOOM_150, SML2_NATIVE_ZOOM_200
+        };
+        unsigned z;
+        for (z = 0; z < sizeof(zoom_steps) / sizeof(zoom_steps[0]); ++z) {
+            int32_t candidate_width, candidate_height;
+            uint8_t zoom = zoom_steps[z];
+            if (zoom < world->config.camera_zoom_percent ||
+                zoom > world->config.max_camera_zoom_percent)
+                continue;
+            if (sml2_native_view_size(world->config.widescreen_mode, zoom,
+                                      world->config.window_width,
+                                      world->config.window_height,
+                                      &candidate_width, &candidate_height) != 0)
+                continue;
+            selected_zoom = zoom;
+            view_width = candidate_width;
+            view_height = candidate_height;
+            if (candidate_width >= required_width &&
+                candidate_height >= required_height)
+                break;
+        }
+    }
 
+    if (sml2_native_view_size(world->config.widescreen_mode, selected_zoom,
+                              world->config.window_width,
+                              world->config.window_height,
+                              &view_width, &view_height) != 0)
+        return;
+
+    world->camera_view_width = view_width;
+    world->camera_view_height = view_height;
+    world->camera_zoom_percent = selected_zoom;
+
+    /* Match the reference view's level framing: when zoomed out, reveal
+       three quarters of the added vertical space above the native playfield
+       and one quarter below. This is a presentation bias, not physics. */
     {
-        int32_t max_camera_x = sml2_native_fp_from_int(
-            world->config.level_width > view_width
-            ? world->config.level_width - view_width : 0);
-        int32_t max_camera_y = sml2_native_fp_from_int(
-            world->config.level_height > view_height
-            ? world->config.level_height - view_height : 0);
-        world->camera_x = clamp_i32(world->camera_x, 0, max_camera_x);
-        world->camera_y = clamp_i32(world->camera_y, 0, max_camera_y);
+        int32_t level_bias = view_height > 144
+                           ? (view_height - 144) / 4 : 0;
+        world->camera_x = camera_origin_axis(center_x, view_width,
+                                             world->config.level_width, 0);
+        world->camera_y = camera_origin_axis(center_y, view_height,
+                                             world->config.level_height,
+                                             level_bias);
     }
 }
 
