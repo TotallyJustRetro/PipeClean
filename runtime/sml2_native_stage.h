@@ -107,6 +107,18 @@ int sml2_native_stage_visit_objects(const Sml2NativeStage *stage,
 #define SML2_NATIVE_SML2_MAP_BYTES (256u * 48u)
 #define SML2_NATIVE_SML2_BLOCKDEF_BYTES (128u * 4u)
 
+typedef uint8_t (*Sml2NativeMemoryRead)(void *userdata, uint16_t address);
+
+/* Capture the currently decompressed SML2 gameplay stage through a read-only
+ * memory callback. This snapshots $B000-$DFFF and $A600-$A7FF into caller-owned
+ * buffers, then initializes the native stage from that stable snapshot. */
+int sml2_native_stage_capture_sml2(
+    Sml2NativeStage *stage, Sml2NativeMemoryRead read_memory, void *userdata,
+    const uint8_t *collision_flags, size_t collision_flags_count,
+    uint8_t *cells_out, size_t cells_capacity,
+    uint8_t *block_definitions_out, size_t block_definitions_capacity,
+    Sml2NativeStageTile tiles_out[SML2_NATIVE_SML2_BLOCK_COUNT]);
+
 int sml2_native_stage_decode_sml2(
     Sml2NativeStage *stage,
     const uint8_t *level_map, size_t level_map_size,
