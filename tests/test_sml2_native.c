@@ -136,6 +136,32 @@ int main(void)
     assert(first.camera_view_height == 180);
     assert(first.camera_zoom_percent == SML2_NATIVE_ZOOM_125);
 
+    /* The 16:9 camera's extra world area is available to both drawing and
+       actor activation; it is not merely a stretched 160-pixel image. */
+    {
+        Sml2NativeRect visible_extra, beyond_view, invalid_rect;
+        int32_t screen_x, screen_y;
+        visible_extra.left = sml2_native_fp_from_int(250);
+        visible_extra.top = sml2_native_fp_from_int(80);
+        visible_extra.right = sml2_native_fp_from_int(270);
+        visible_extra.bottom = sml2_native_fp_from_int(104);
+        beyond_view.left = sml2_native_fp_from_int(330);
+        beyond_view.top = visible_extra.top;
+        beyond_view.right = sml2_native_fp_from_int(350);
+        beyond_view.bottom = visible_extra.bottom;
+        invalid_rect = visible_extra;
+        invalid_rect.right = invalid_rect.left;
+
+        assert(sml2_native_view_contains_rect(&first, &visible_extra));
+        assert(!sml2_native_view_contains_rect(&first, &beyond_view));
+        assert(!sml2_native_view_contains_rect(&first, &invalid_rect));
+        assert(sml2_native_world_to_view(&first, visible_extra.left,
+                                          visible_extra.top,
+                                          &screen_x, &screen_y) == 0);
+        assert(screen_x == visible_extra.left - first.camera_x);
+        assert(screen_y == visible_extra.top - first.camera_y);
+    }
+
     run_script(&first);
     run_script(&second);
     assert(first.tick == second.tick);
