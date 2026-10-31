@@ -160,6 +160,10 @@ add_executable(test_sml2_native_actor tests/test_sml2_native_actor.c runtime/sml
 target_include_directories(test_sml2_native_actor PRIVATE runtime)
 add_test(NAME sml2_native_actor COMMAND test_sml2_native_actor)
 
+add_executable(test_sml2_native_render tests/test_sml2_native_render.c runtime/sml2_native.c runtime/sml2_native_stage.c runtime/sml2_native_render.c)
+target_include_directories(test_sml2_native_render PRIVATE runtime)
+add_test(NAME sml2_native_render COMMAND test_sml2_native_render)
+
 add_executable(test_sml2_museum_state tests/test_sml2_museum_state.c)
 target_include_directories(test_sml2_museum_state PRIVATE runtime)
 add_test(NAME sml2_museum_state COMMAND test_sml2_museum_state)
@@ -202,7 +206,7 @@ target_include_directories(test_recomp_guard PRIVATE runtime ${GEN})
 add_dependencies(test_recomp_guard ${PIPECLEAN_RUNTIME_TARGET})
 # CI builds this aggregate test target before running CTest; ensure the new
 # native SML2 stage/actor executables exist when the full test suite is invoked.
-add_dependencies(test_recomp_guard test_sml2_native_stage test_sml2_native_actor)
+add_dependencies(test_recomp_guard test_sml2_native_stage test_sml2_native_actor test_sml2_native_render)
 get_filename_component(ROM_TEST_PATH "${ROM}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
 add_test(NAME recomp_guard COMMAND test_recomp_guard "${ROM_TEST_PATH}")
 
