@@ -312,6 +312,37 @@ static void test_sml2_rom_world_wrap_and_echo(void)
            SML2_NATIVE_COLLISION_NONE);
 }
 
+static void test_sml2_rom_native_step(void)
+{
+    uint8_t cells[256 * 48];
+    Sml2NativeTileMap map;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeWorld world;
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+    unsigned x;
+
+    memset(cells, 0x60, sizeof(cells)); /* passable/empty map cells */
+    for (x = 0; x < 256; ++x)
+        cells[8 * 256 + x] = 0x01; /* ROM-solid floor row */
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = cells;
+
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 40, 112, 5) == 0);
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.tick == 1);
+    assert(world.players[0].grounded);
+    assert(world.players[0].vy == 0);
+    assert(world.players[0].y == sml2_native_fp_from_int(112));
+
+    /* A non-SML2 map profile is rejected before simulation advances. */
+    map.width_blocks = 32;
+    assert(sml2_native_rom_step(&world, inputs, &map) == -1);
+    assert(world.tick == 1);
+}
+
 int main(void)
 {
     Sml2NativeConfig config = make_config();
@@ -326,6 +357,7 @@ int main(void)
     test_sml2_rom_player_probes();
     test_sml2_rom_environment_probes();
     test_sml2_rom_coin_cell_mutation();
+    test_sml2_rom_native_step();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
     assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
