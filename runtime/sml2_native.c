@@ -567,8 +567,8 @@ int sml2_native_view_block_bounds(const Sml2NativeWorld *world,
 
     /* Camera bounds are half-open. Floor the origin and ceil the far edge
        so partially visible edge tiles are never omitted. */
-    left = floor_div_i64(pixels.left, 16LL * FP_ONE);
-    top = floor_div_i64(pixels.top, 16LL * FP_ONE);
+    left = pixels.left / (16LL * FP_ONE);
+    top = pixels.top / (16LL * FP_ONE);
     right = (pixels.right + 16LL * FP_ONE - 1) / (16LL * FP_ONE);
     bottom = (pixels.bottom + 16LL * FP_ONE - 1) / (16LL * FP_ONE);
 
