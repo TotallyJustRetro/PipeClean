@@ -167,6 +167,12 @@ int sml2_native_set_camera_region(Sml2NativeWorld *world,
 int sml2_native_world_to_view(const Sml2NativeWorld *world,
                               int32_t world_x, int32_t world_y,
                               int32_t *view_x, int32_t *view_y);
+/* Return the camera's world-space view rectangle, expanded by an optional
+ * pixel margin. Use margin=0 for rendering/culling and a positive margin for
+ * pre-activating actors near newly visible edges. Returns -1 on invalid input. */
+int sml2_native_view_bounds(const Sml2NativeWorld *world, int32_t margin_pixels,
+                            Sml2NativeRect *world_bounds);
+
 int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
                                    const Sml2NativeRect *world_rect);
 
