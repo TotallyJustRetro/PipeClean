@@ -88,7 +88,7 @@ static void run_script(Sml2NativeWorld *world)
 int main(void)
 {
     Sml2NativeConfig config = make_config();
-    Sml2NativeWorld first, second;
+    Sml2NativeWorld first, second, room_world;
     Sml2NativeInput no_input[SML2_NATIVE_MAX_PLAYERS] = {{0}};
 
     assert(sml2_native_fp_from_int(-12) == -786432);
@@ -201,8 +201,8 @@ int main(void)
     assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
     assert(first.camera_view_width == 672);
     assert(first.camera_view_height == 288);
-    assert(first.camera_x == sml2_native_fp_from_int(-272));
-    assert(first.camera_y == sml2_native_fp_from_int(-94));
+    assert(first.camera_x == 0);
+    assert(first.camera_y == 0);
 
     /* Both players remain independent and inside the level's camera bounds. */
     assert(first.players[0].active && first.players[1].active);
@@ -214,5 +214,23 @@ int main(void)
     assert(sml2_native_init(&first, NULL) == -1);
     assert(sml2_native_spawn_player(&second, SML2_NATIVE_MAX_PLAYERS,
                                     0, 0, 3) == -1);
+
+    /* A camera lock room constrains an enlarged view without changing the
+       underlying level geometry. A view wider than the room is centred on it. */
+    config = make_config();
+    assert(sml2_native_init(&room_world, &config) == 0);
+    assert(sml2_native_spawn_player(&room_world, 0, 220, 104, 5) == 0);
+    assert(sml2_native_step(&room_world, no_input, test_collision, NULL) == 0);
+    {
+        Sml2NativeCameraRegion room = {128, 0, 384, 256};
+        assert(sml2_native_set_camera_region(&room_world, &room) == 0);
+        assert(sml2_native_step(&room_world, no_input, test_collision, NULL) == 0);
+        assert(room_world.camera_x == sml2_native_fp_from_int(96));
+        room.right = 513;
+        assert(sml2_native_set_camera_region(&room_world, &room) == -1);
+        assert(sml2_native_set_camera_region(&room_world, NULL) == 0);
+        assert(room_world.camera_region.left == 0);
+        assert(room_world.camera_region.right == config.level_width);
+    }
     return 0;
 }
