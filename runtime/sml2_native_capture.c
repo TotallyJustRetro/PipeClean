@@ -104,7 +104,7 @@ int sml2_native_capture_live_sml2(
     const uint8_t ppu_vram[0x2000],
     uint8_t lcdc, uint8_t scx, uint8_t scy,
     uint8_t wx, uint8_t wy, uint8_t bgp,
-    const uint8_t *collision_flags, size_t collision_flags_count,
+    const uint16_t *collision_flags, size_t collision_flags_count,
     unsigned min_samples, unsigned min_match_percent)
 {
     unsigned camera_x, camera_y;
