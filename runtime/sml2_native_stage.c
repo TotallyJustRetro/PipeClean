@@ -100,6 +100,9 @@ int sml2_native_stage_init(Sml2NativeStage *stage,
 
     for (i = 0; i < object_count; ++i) {
         const Sml2NativeStageObject *o = &objects[i];
+        uint16_t j;
+        for (j = 0; j < i; ++j)
+            if (objects[j].id == o->id) return -1;
         if (!o->width || !o->height || o->x < 0 || o->y < 0 ||
             (int64_t)o->x + o->width > (int64_t)width_blocks * 16 ||
             (int64_t)o->y + o->height > (int64_t)height_blocks * 16)
