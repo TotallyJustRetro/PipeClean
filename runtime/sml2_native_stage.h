@@ -11,10 +11,30 @@ extern "C" {
 #define SML2_NATIVE_STAGE_MAX_ROOMS 64
 
 enum {
-    SML2_NATIVE_STAGE_TILE_SOLID = 1u << 0,
-    SML2_NATIVE_STAGE_TILE_HAZARD = 1u << 1,
-    SML2_NATIVE_STAGE_TILE_ONE_WAY = 1u << 2,
-    SML2_NATIVE_STAGE_TILE_BREAKABLE = 1u << 3
+    SML2_NATIVE_STAGE_TILE_SOLID = SML2_NATIVE_COLLISION_SOLID,
+    SML2_NATIVE_STAGE_TILE_STANDABLE = SML2_NATIVE_COLLISION_STANDABLE,
+    SML2_NATIVE_STAGE_TILE_HAZARD = SML2_NATIVE_COLLISION_HAZARD,
+    SML2_NATIVE_STAGE_TILE_COIN = SML2_NATIVE_COLLISION_COIN,
+    SML2_NATIVE_STAGE_TILE_EXIT = SML2_NATIVE_COLLISION_EXIT,
+    SML2_NATIVE_STAGE_TILE_WATER = SML2_NATIVE_COLLISION_WATER,
+    SML2_NATIVE_STAGE_TILE_MOON = SML2_NATIVE_COLLISION_MOON,
+    SML2_NATIVE_STAGE_TILE_HIDDEN = SML2_NATIVE_COLLISION_HIDDEN,
+    SML2_NATIVE_STAGE_TILE_BREAKABLE = SML2_NATIVE_COLLISION_BREAKABLE,
+    SML2_NATIVE_STAGE_TILE_PIPE = SML2_NATIVE_COLLISION_PIPE,
+    SML2_NATIVE_STAGE_TILE_BOUNCE = SML2_NATIVE_COLLISION_BOUNCE,
+    SML2_NATIVE_STAGE_TILE_ONE_WAY = SML2_NATIVE_COLLISION_ONE_WAY
+};
+
+enum {
+    SML2_NATIVE_MATERIAL_SOLID = 1,
+    SML2_NATIVE_MATERIAL_SLOPE,
+    SML2_NATIVE_MATERIAL_COIN,
+    SML2_NATIVE_MATERIAL_EXIT,
+    SML2_NATIVE_MATERIAL_WATER,
+    SML2_NATIVE_MATERIAL_HAZARD,
+    SML2_NATIVE_MATERIAL_MOON,
+    SML2_NATIVE_MATERIAL_DECOR,
+    SML2_NATIVE_MATERIAL_HIDDEN_BLOCK
 };
 
 enum {
@@ -29,7 +49,7 @@ enum {
  * renderer-owned indices; this module never assumes a particular SDL/PPU. */
 typedef struct {
     uint16_t graphics[4]; /* top-left, top-right, bottom-left, bottom-right */
-    uint8_t collision_flags;
+    uint16_t collision_flags;
     uint8_t material;
 } Sml2NativeStageTile;
 
@@ -117,10 +137,16 @@ typedef uint8_t (*Sml2NativeMemoryRead)(void *userdata, uint16_t address);
  * buffers, then initializes the native stage from that stable snapshot. */
 int sml2_native_stage_capture_sml2(
     Sml2NativeStage *stage, Sml2NativeMemoryRead read_memory, void *userdata,
-    const uint8_t *collision_flags, size_t collision_flags_count,
+    const uint16_t *collision_flags, size_t collision_flags_count,
     uint8_t *cells_out, size_t cells_capacity,
     uint8_t *block_definitions_out, size_t block_definitions_capacity,
     Sml2NativeStageTile tiles_out[SML2_NATIVE_SML2_BLOCK_COUNT]);
+
+/* SML2's global metatile-ID ranges classify terrain independent of level.
+ * These helpers include special IDs for pipes, breakables, bounce blocks,
+ * and the hidden block; slope geometry still requires its dedicated profile. */
+uint8_t sml2_native_sml2_material(uint8_t metatile_id);
+uint16_t sml2_native_sml2_collision_flags(uint8_t metatile_id);
 
 int sml2_native_stage_decode_sml2(
     Sml2NativeStage *stage,
