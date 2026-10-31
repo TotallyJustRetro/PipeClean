@@ -8,6 +8,48 @@ static int rect_valid(const Sml2NativeRect *r)
     return r && r->right > r->left && r->bottom > r->top;
 }
 
+
+int sml2_native_stage_decode_sml2(
+    Sml2NativeStage *stage,
+    const uint8_t *level_map, size_t level_map_size,
+    const uint8_t *block_definitions, size_t block_definitions_size,
+    const uint8_t *collision_flags, size_t collision_flags_count,
+    uint8_t *cells_out, size_t cells_capacity,
+    Sml2NativeStageTile tiles_out[SML2_NATIVE_SML2_BLOCK_COUNT])
+{
+    unsigned i;
+    if (!stage || !level_map || !block_definitions || !cells_out ||
+        !tiles_out || level_map_size < SML2_NATIVE_SML2_MAP_BYTES ||
+        block_definitions_size < SML2_NATIVE_SML2_BLOCKDEF_BYTES ||
+        cells_capacity < SML2_NATIVE_SML2_MAP_BYTES ||
+        (collision_flags && collision_flags_count < SML2_NATIVE_SML2_BLOCK_COUNT) ||
+        (!collision_flags && collision_flags_count != 0))
+        return -1;
+
+    /* Reject map flag bits instead of silently treating them as a block ID.
+       SML2's ordinary gameplay map currently exposes 7-bit metatile indices. */
+    for (i = 0; i < SML2_NATIVE_SML2_MAP_BYTES; ++i)
+        if (level_map[i] >= SML2_NATIVE_SML2_BLOCK_COUNT) return -1;
+
+    memcpy(cells_out, level_map, SML2_NATIVE_SML2_MAP_BYTES);
+    memset(tiles_out, 0,
+           sizeof(Sml2NativeStageTile) * SML2_NATIVE_SML2_BLOCK_COUNT);
+    for (i = 0; i < SML2_NATIVE_SML2_BLOCK_COUNT; ++i) {
+        unsigned part;
+        for (part = 0; part < 4; ++part)
+            tiles_out[i].graphics[part] =
+                block_definitions[i * 4u + part];
+        if (collision_flags)
+            tiles_out[i].collision_flags = collision_flags[i];
+    }
+
+    return sml2_native_stage_init(stage,
+        SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS,
+        SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS,
+        cells_out, tiles_out, SML2_NATIVE_SML2_BLOCK_COUNT,
+        NULL, 0, NULL, 0, 1);
+}
+
 int sml2_native_stage_init(Sml2NativeStage *stage,
                           uint16_t width_blocks, uint16_t height_blocks,
                           const uint8_t *cells,
