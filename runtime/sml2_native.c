@@ -518,28 +518,56 @@ int sml2_native_world_to_view(const Sml2NativeWorld *world,
     return 0;
 }
 
+int sml2_native_view_bounds(const Sml2NativeWorld *world,
+                            int32_t margin_pixels,
+                            Sml2NativeRect *world_bounds)
+{
+    int64_t margin_fp;
+    int64_t left, top, right, bottom;
+    if (!world || !world_bounds || margin_pixels < 0 ||
+        world->camera_view_width <= 0 || world->camera_view_height <= 0)
+        return -1;
+
+    margin_fp = (int64_t)margin_pixels * FP_ONE;
+    left = (int64_t)world->camera_x - margin_fp;
+    top = (int64_t)world->camera_y - margin_fp;
+    right = (int64_t)world->camera_x +
+            (int64_t)world->camera_view_width * FP_ONE + margin_fp;
+    bottom = (int64_t)world->camera_y +
+             (int64_t)world->camera_view_height * FP_ONE + margin_fp;
+
+    /* Keep the query within the physical level. The view itself may extend
+       beyond a small room, but never asks the stage renderer for invalid
+       world coordinates. */
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > (int64_t)world->config.level_width * FP_ONE)
+        right = (int64_t)world->config.level_width * FP_ONE;
+    if (bottom > (int64_t)world->config.level_height * FP_ONE)
+        bottom = (int64_t)world->config.level_height * FP_ONE;
+
+    world_bounds->left = clamp_i64(left);
+    world_bounds->top = clamp_i64(top);
+    world_bounds->right = clamp_i64(right);
+    world_bounds->bottom = clamp_i64(bottom);
+    return 0;
+}
+
 int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
                                    const Sml2NativeRect *world_rect)
 {
-    int64_t view_left, view_top, view_right, view_bottom;
-    if (!world || !world_rect ||
-        world->camera_view_width <= 0 || world->camera_view_height <= 0 ||
+    Sml2NativeRect bounds;
+    if (!world_rect ||
         world_rect->left >= world_rect->right ||
-        world_rect->top >= world_rect->bottom)
+        world_rect->top >= world_rect->bottom ||
+        sml2_native_view_bounds(world, 0, &bounds) != 0)
         return 0;
 
-    view_left = world->camera_x;
-    view_top = world->camera_y;
-    view_right = view_left +
-                 (int64_t)world->camera_view_width * FP_ONE;
-    view_bottom = view_top +
-                  (int64_t)world->camera_view_height * FP_ONE;
-
     /* Half-open rectangles: touching an edge alone is not visible. */
-    return (int64_t)world_rect->right > view_left &&
-           (int64_t)world_rect->left < view_right &&
-           (int64_t)world_rect->bottom > view_top &&
-           (int64_t)world_rect->top < view_bottom;
+    return (int64_t)world_rect->right > bounds.left &&
+           (int64_t)world_rect->left < bounds.right &&
+           (int64_t)world_rect->bottom > bounds.top &&
+           (int64_t)world_rect->top < bounds.bottom;
 }
 
 int sml2_native_step(Sml2NativeWorld *world,
