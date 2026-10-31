@@ -38,7 +38,18 @@ provides:
 - a shared world-space camera origin that clamps to level edges and centres
   views larger than the level, with extra vertical reveal biased above the
   native playfield;
-- player input edge detection for jump and per-player invulnerability timers.
+- player input edge detection for jump and per-player invulnerability timers;
+- a ROM-world collision profile that reproduces SML2's 12-bit pixel-coordinate
+  wrap, 16×16-cell addressing, and WRAM echo for rows $30-$4D mapping to
+  rows $10-$2D. Rows beyond the known map/echo window follow the map's explicit
+  out-of-bounds policy.
+
+The ROM-world adapter is based on the reference project's documented
+addressing model: the original game masks each camera-coordinate high byte to
+four bits, producing a 16×16-screen address space while the ordinary stage
+layout occupies 16×3 screens. It also reproduces the documented WRAM echo
+window at rows $30-$4D. This is a coordinate/map lookup profile only; it does
+not yet implement all of the original player's individual probe instructions.
 
 Movement values are deliberately configurable and provisional. They are not
 claimed to reproduce the original game's physics yet. The stage decoder now
