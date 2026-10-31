@@ -58,8 +58,10 @@ The native camera uses a logical world-pixel view rather than stretching a
 Zoom presets are 100%, 125%, 150%, and 200%. For reference, 16:9 at 150% is
 384×216, and 21:9 at 200% is 672×288. Co-op auto-zoom can select a wider
 preset when players separate, while preserving the selected display aspect.
-The camera clamps against level edges; when a view is larger than a small
-level, it centres on the level rather than exposing invalid wrapping space.
+The camera clamps against the active room and level edges. When a view is
+larger than a room, it centres on that room while remaining inside the overall
+level; when larger than the entire level, it starts at the level origin rather
+than creating negative world coordinates.
 
 The simulation exposes world-to-view conversion and rectangle visibility
 helpers so the upcoming world renderer and actor-activation system use the
