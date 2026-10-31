@@ -414,6 +414,33 @@ int sml2_native_rom_ceiling_probe(const Sml2NativeTileMap *map,
     return 0;
 }
 
+int sml2_native_rom_collect_coin(uint8_t *layout_cells, size_t cell_count,
+                                 uint16_t sample_x, uint16_t sample_y,
+                                 uint8_t sampled_tile,
+                                 uint8_t *replacement_tile)
+{
+    uint16_t block_x, block_y;
+    size_t index;
+    uint8_t replacement;
+    if (!layout_cells || !replacement_tile ||
+        cell_count < (size_t)256u * 48u)
+        return -1;
+    if ((sampled_tile & 0xFEu) != 0x48u) return 0;
+
+    if (sml2_native_rom_world_cell(
+            (uint16_t)(sample_x - 8u),
+            (uint16_t)(sample_y - 16u),
+            &block_x, &block_y) != 0)
+        return 0;
+    index = (size_t)block_y * 256u + block_x;
+    if (layout_cells[index] != sampled_tile) return 0;
+
+    replacement = sampled_tile == 0x48u ? 0x60u : 0x7Fu;
+    layout_cells[index] = replacement;
+    *replacement_tile = replacement;
+    return 1;
+}
+
 int sml2_native_rom_environment_probe(const Sml2NativeTileMap *map,
                                       uint16_t player_x, uint16_t player_y,
                                       uint8_t powerup, uint8_t ducking,
