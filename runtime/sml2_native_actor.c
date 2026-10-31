@@ -55,8 +55,15 @@ static int materialize_object(void *userdata,
     actor->width = object->width;
     actor->height = object->height;
     actor->health = 1;
-    actor->flags = (object->flags & SML2_NATIVE_STAGE_OBJECT_UNIQUE)
-        ? SML2_NATIVE_ACTOR_UNIQUE : 0;
+    actor->flags = 0;
+    if (object->flags & SML2_NATIVE_STAGE_OBJECT_UNIQUE)
+        actor->flags |= SML2_NATIVE_ACTOR_UNIQUE;
+    if (object->flags & SML2_NATIVE_STAGE_OBJECT_PERSISTENT)
+        actor->flags |= SML2_NATIVE_ACTOR_PERSISTENT;
+    if (object->flags & SML2_NATIVE_STAGE_OBJECT_BOSS)
+        actor->flags |= SML2_NATIVE_ACTOR_BOSS;
+    if (object->flags & SML2_NATIVE_STAGE_OBJECT_PROJECTILE)
+        actor->flags |= SML2_NATIVE_ACTOR_PROJECTILE;
     actor->state = SML2_NATIVE_ACTOR_AWAKE;
     return 0;
 }
