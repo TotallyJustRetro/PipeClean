@@ -324,6 +324,82 @@ static int64_t floor_div_i64(int64_t value, int64_t divisor)
     return quotient;
 }
 
+int sml2_native_rom_world_cell(uint16_t world_x, uint16_t world_y,
+                               uint16_t *block_x, uint16_t *block_y)
+{
+    uint16_t x, y;
+    if (!block_x || !block_y) return -1;
+
+    /* The original code keeps only the low nibble of each high byte. */
+    x = (uint16_t)((world_x & 0x0FFFu) >> 4);
+    y = (uint16_t)((world_y & 0x0FFFu) >> 4);
+
+    /* $B000 + row*$100 enters the WRAM echo for rows $30-$4D.
+       The echo aliases $C000-$DDFF, i.e. rows $10-$2D. */
+    if (y >= 0x30u && y < 0x4Eu)
+        y = (uint16_t)(y - 0x20u);
+
+    *block_x = x;
+    *block_y = y;
+    return y < 48u ? 0 : 1;
+}
+
+static uint32_t native_map_cell_flags(const Sml2NativeTileMap *map,
+                                      int64_t x, int64_t y,
+                                      int solid_outside)
+{
+    size_t index;
+    if (x < 0 || y < 0 ||
+        x >= map->width_blocks || y >= map->height_blocks)
+        return solid_outside ? SML2_NATIVE_COLLISION_SOLID
+                             : SML2_NATIVE_COLLISION_NONE;
+    index = (size_t)y * map->width_blocks + (size_t)x;
+    return map->block_flags[map->block_ids[index]];
+}
+
+uint32_t sml2_native_rom_level_collision(void *userdata,
+                                         const Sml2NativeRect *world_rect)
+{
+    const Sml2NativeTileMap *map = (const Sml2NativeTileMap *)userdata;
+    const int64_t block_fp = 16LL * FP_ONE;
+    int64_t first_x, last_x, first_y, last_y, x, y;
+    uint32_t result = SML2_NATIVE_COLLISION_NONE;
+
+    if (!map || !world_rect || !map->block_ids ||
+        map->width_blocks != 256u || map->height_blocks != 48u ||
+        world_rect->left >= world_rect->right ||
+        world_rect->top >= world_rect->bottom)
+        return SML2_NATIVE_COLLISION_SOLID;
+
+    first_x = floor_div_i64(world_rect->left, block_fp);
+    last_x = floor_div_i64((int64_t)world_rect->right - 1, block_fp);
+    first_y = floor_div_i64(world_rect->top, block_fp);
+    last_y = floor_div_i64((int64_t)world_rect->bottom - 1, block_fp);
+
+    if (last_x - first_x > 256 || last_y - first_y > 256 ||
+        (last_x - first_x + 1) * (last_y - first_y + 1) > 4096)
+        return SML2_NATIVE_COLLISION_SOLID;
+
+    for (y = first_y; y <= last_y; ++y) {
+        /* Wrapping cell coordinates is equivalent to masking the 16-bit
+           pixel high byte with $0F before selecting a 16-pixel cell. */
+        uint16_t row = (uint16_t)((uint64_t)y & 0xFFu);
+        if (row >= 0x30u && row < 0x4Eu)
+            row = (uint16_t)(row - 0x20u);
+        for (x = first_x; x <= last_x; ++x) {
+            uint16_t column = (uint16_t)((uint64_t)x & 0xFFu);
+            if (row >= map->height_blocks) {
+                if (map->solid_out_of_bounds)
+                    result |= SML2_NATIVE_COLLISION_SOLID;
+                continue;
+            }
+            result |= native_map_cell_flags(map, column, row,
+                                             map->solid_out_of_bounds);
+        }
+    }
+    return result;
+}
+
 uint32_t sml2_native_level_collision(void *userdata,
                                      const Sml2NativeRect *world_rect)
 {
