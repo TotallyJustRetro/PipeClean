@@ -69,12 +69,22 @@ larger than a room, it centres on that room while remaining inside the overall
 level; when larger than the entire level, it starts at the level origin rather
 than creating negative world coordinates.
 
-The simulation exposes world-to-view conversion and rectangle visibility
-helpers so the upcoming world renderer and actor-activation system use the
-same camera origin and dimensions. This lets off-native-screen enemies and
-terrain be considered consistently. Actual stage drawing, enemy spawning,
-and object behavior still need to be ported and connected to these helpers. The original emulator's current widened-PPU path remains
-separate until the native renderer has full stage coverage.
+The simulation exposes world-to-view conversion, camera world-bounds, and
+rectangle visibility helpers so the upcoming world renderer and actor-activation
+system use the same camera origin and dimensions. A caller can request the
+visible rectangle with a zero margin for rendering/culling, or expand it by a
+pixel margin to activate enemies just before they enter the newly visible
+edges. Bounds are clamped to the physical level, so edge activation cannot ask
+the stage system for negative or beyond-level coordinates.
+
+This follows the public behavior of the reference project at the design level:
+expand the logical world view, reconstruct the newly exposed surroundings from
+level data, and let object activation account for the expanded edge. PipeClean's
+C implementation is independently authored. Actual native stage drawing,
+level-data extraction, enemy spawning, and object behavior still need to be
+ported and connected to these helpers. The original emulator's current
+widened-PPU path remains separate until the native renderer has full stage
+coverage.
 
 ## Integration plan
 
