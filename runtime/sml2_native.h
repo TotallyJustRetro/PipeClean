@@ -221,6 +221,28 @@ int sml2_native_rom_world_cell(uint16_t world_x, uint16_t world_y,
 uint32_t sml2_native_rom_level_collision(void *userdata,
                                          const Sml2NativeRect *world_rect);
 
+/* Exact SML2 $1EFA tile probe. The sample point is adjusted by
+ * wrapping_sub(8) on X and wrapping_sub(16) on Y before the ROM's 16x16
+ * cell lookup. Samples outside the map/WRAM echo return tile ID zero.
+ * Returns -1 only for invalid arguments/profile. */
+int sml2_native_rom_probe_tile(const Sml2NativeTileMap *map,
+                               uint16_t sample_x, uint16_t sample_y,
+                               uint8_t *tile_id);
+
+/* Source-derived player probe helpers. Return 1 for a hit, 0 for no hit,
+ * and -1 for invalid arguments. These report tile IDs; gameplay side effects
+ * (coin collection, damage, bump slots, movement response) remain separate. */
+int sml2_native_rom_floor_probe(const Sml2NativeTileMap *map,
+                                uint16_t player_x, uint16_t player_y,
+                                uint8_t *tile_id);
+int sml2_native_rom_ceiling_probe(const Sml2NativeTileMap *map,
+                                  uint16_t player_x, uint16_t player_y,
+                                  uint8_t powerup, uint8_t *tile_id);
+int sml2_native_rom_wall_probe(const Sml2NativeTileMap *map,
+                               uint16_t player_x, uint16_t player_y,
+                               uint8_t probe_side, uint8_t powerup,
+                               uint8_t ducking, uint8_t *tile_id);
+
 /* Initialize with explicit movement/camera tuning. No ROM or game assets are
  * read by this layer. Returns 0 on success and -1 for invalid arguments. */
 int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config);
