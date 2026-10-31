@@ -209,6 +209,19 @@ int main(void)
         assert(sml2_native_view_contains_rect(&first, &visible_extra));
         assert(!sml2_native_view_contains_rect(&first, &beyond_view));
         assert(!sml2_native_view_contains_rect(&first, &invalid_rect));
+        {
+            Sml2NativeRect render_bounds, activation_bounds;
+            assert(sml2_native_view_bounds(&first, 0, &render_bounds) == 0);
+            assert(sml2_native_view_bounds(&first, 32, &activation_bounds) == 0);
+            assert(render_bounds.left == first.camera_x);
+            assert(render_bounds.right == first.camera_x +
+                   sml2_native_fp_from_int(first.camera_view_width));
+            /* An actor just beyond the visible edge is eligible for early
+               activation; one farther away remains dormant. */
+            assert((int64_t)beyond_view.left < activation_bounds.right);
+            assert((int64_t)beyond_view.right > activation_bounds.left);
+            assert(sml2_native_view_bounds(&first, -1, &activation_bounds) == -1);
+        }
         assert(sml2_native_world_to_view(&first, visible_extra.left,
                                           visible_extra.top,
                                           &screen_x, &screen_y) == 0);
