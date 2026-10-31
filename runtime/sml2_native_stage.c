@@ -9,6 +9,33 @@ static int rect_valid(const Sml2NativeRect *r)
 }
 
 
+
+int sml2_native_stage_capture_sml2(
+    Sml2NativeStage *stage, Sml2NativeMemoryRead read_memory, void *userdata,
+    const uint8_t *collision_flags, size_t collision_flags_count,
+    uint8_t *cells_out, size_t cells_capacity,
+    uint8_t *block_definitions_out, size_t block_definitions_capacity,
+    Sml2NativeStageTile tiles_out[SML2_NATIVE_SML2_BLOCK_COUNT])
+{
+    unsigned i;
+    if (!stage || !read_memory || !cells_out || !block_definitions_out ||
+        !tiles_out || cells_capacity < SML2_NATIVE_SML2_MAP_BYTES ||
+        block_definitions_capacity < SML2_NATIVE_SML2_BLOCKDEF_BYTES)
+        return -1;
+
+    for (i = 0; i < SML2_NATIVE_SML2_MAP_BYTES; ++i)
+        cells_out[i] = read_memory(userdata, (uint16_t)(0xB000u + i));
+    for (i = 0; i < SML2_NATIVE_SML2_BLOCKDEF_BYTES; ++i)
+        block_definitions_out[i] =
+            read_memory(userdata, (uint16_t)(0xA600u + i));
+
+    return sml2_native_stage_decode_sml2(stage,
+        cells_out, SML2_NATIVE_SML2_MAP_BYTES,
+        block_definitions_out, SML2_NATIVE_SML2_BLOCKDEF_BYTES,
+        collision_flags, collision_flags_count,
+        cells_out, cells_capacity, tiles_out);
+}
+
 int sml2_native_stage_decode_sml2(
     Sml2NativeStage *stage,
     const uint8_t *level_map, size_t level_map_size,
