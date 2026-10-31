@@ -47,6 +47,7 @@ int main(void)
     assert(sml2_native_capture_get_stage(&capture, &stage) == 0);
     assert(stage.width_blocks == 256);
     assert(stage.height_blocks == 48);
+    assert(stage.collision_map.block_flags[0] & SML2_NATIVE_COLLISION_SOLID);
     assert(capture.stage.cells[0] == 0);
     assert(capture.tiles[0].graphics[0] == 0);
     assert(sml2_native_capture_get_graphics(&capture, &graphics) == 0);
@@ -100,6 +101,6 @@ int main(void)
     assert(sml2_native_capture_live_sml2(
         &capture, read_memory, NULL, vram,
         0xE3, 0, 0, 7, 0x88, 0xE4,
-        (const uint8_t *)memory, 1, 100, 95) == SML2_NATIVE_CAPTURE_INVALID);
+        (const uint16_t *)memory, 1, 100, 95) == SML2_NATIVE_CAPTURE_INVALID);
     return 0;
 }
