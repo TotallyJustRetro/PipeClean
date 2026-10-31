@@ -50,6 +50,29 @@ The current collision interface only supplies solid geometry; enemies,
 breakable blocks, moving platforms, slopes, hazards, bosses, stage data,
 animation, and audio events are not implemented in this first slice.
 
+## Native stage-data contract
+
+`runtime/sml2_native_stage.h/.c` now defines a renderer- and ROM-independent
+stage container for extracted content. A stage supplies a 16×16 metatile grid,
+a table mapping each metatile to four 8×8 graphics IDs and collision material,
+object spawn rectangles, and optional camera-lock rooms. The arrays remain
+caller-owned; initialization validates all references and prepares the native
+collision-map adapter without copying or taking ownership of game assets.
+
+The stage API provides:
+- collision-map flags derived from the metatile material table;
+- deterministic row-major visitation of only the requested visible block range,
+  returning world coordinates and all four graphics IDs to a renderer callback;
+- rectangle-based activation queries for enabled object spawn records, including
+  objects just outside the visible view when the caller supplies a wake margin;
+- room-ID lookup for camera-lock bounds.
+
+This is the first concrete bridge from the camera's visible-block query into
+actual stage content. It is deliberately a data contract and visitor interface,
+not a claim that commercial SML2 stage data has already been extracted or that
+the renderer/enemy behavior is complete. The next work is a private, legally
+sourced extractor and authentic SML2 metatile/collision/object decoding.
+
 ## Widescreen and zoom model
 
 The native camera uses a logical world-pixel view rather than stretching a
