@@ -216,6 +216,12 @@ int main(void)
             assert(render_bounds.left == first.camera_x);
             assert(render_bounds.right == first.camera_x +
                    sml2_native_fp_from_int(first.camera_view_width));
+            assert(activation_bounds.left >= 0);
+            assert(activation_bounds.top >= 0);
+            assert(activation_bounds.right <=
+                   sml2_native_fp_from_int(first.config.level_width));
+            assert(activation_bounds.bottom <=
+                   sml2_native_fp_from_int(first.config.level_height));
             /* An actor just beyond the visible edge is eligible for early
                activation; one farther away remains dormant. */
             assert((int64_t)beyond_view.left < activation_bounds.right);
