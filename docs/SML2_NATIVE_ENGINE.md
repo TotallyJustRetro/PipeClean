@@ -69,9 +69,11 @@ larger than a room, it centres on that room while remaining inside the overall
 level; when larger than the entire level, it starts at the level origin rather
 than creating negative world coordinates.
 
-The simulation exposes world-to-view conversion, camera world-bounds, and
-rectangle visibility helpers so the upcoming world renderer and actor-activation
-system use the same camera origin and dimensions. A caller can request the
+The simulation exposes world-to-view conversion, camera world-bounds, rectangle
+visibility, and a half-open stage-block range helper. The block-range helper
+converts the camera rectangle into the exact 16×16 cells a native stage renderer
+should draw, with optional extra cells for prefetch and actor wake-up. Both use
+the same camera origin and dimensions. A caller can request the
 visible rectangle with a zero margin for rendering/culling, or expand it by a
 pixel margin to activate enemies just before they enter the newly visible
 edges. Bounds are clamped to the physical level, so edge activation cannot ask
@@ -80,9 +82,9 @@ the stage system for negative or beyond-level coordinates.
 This follows the public behavior of the reference project at the design level:
 expand the logical world view, reconstruct the newly exposed surroundings from
 level data, and let object activation account for the expanded edge. PipeClean's
-C implementation is independently authored. Actual native stage drawing,
-level-data extraction, enemy spawning, and object behavior still need to be
-ported and connected to these helpers.
+C implementation is independently authored. Actual native stage drawing, level-data extraction, enemy spawning, and object
+behavior still need to be ported and connected to these helpers. The new block
+range is a renderer contract, not a renderer or stage-data extractor by itself.
 
 The existing emulator-side SML2 widescreen path remains untouched. It rebuilds
 level margins from the live decompressed map, validates sampled tiles against
