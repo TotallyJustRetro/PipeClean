@@ -31,7 +31,7 @@ int sml2_native_stage_decode_sml2(
     for (i = 0; i < SML2_NATIVE_SML2_MAP_BYTES; ++i)
         if (level_map[i] >= SML2_NATIVE_SML2_BLOCK_COUNT) return -1;
 
-    memcpy(cells_out, level_map, SML2_NATIVE_SML2_MAP_BYTES);
+    memmove(cells_out, level_map, SML2_NATIVE_SML2_MAP_BYTES);
     memset(tiles_out, 0,
            sizeof(Sml2NativeStageTile) * SML2_NATIVE_SML2_BLOCK_COUNT);
     for (i = 0; i < SML2_NATIVE_SML2_BLOCK_COUNT; ++i) {
