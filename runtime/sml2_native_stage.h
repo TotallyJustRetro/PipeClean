@@ -19,7 +19,10 @@ enum {
 
 enum {
     SML2_NATIVE_STAGE_OBJECT_ENABLED = 1u << 0,
-    SML2_NATIVE_STAGE_OBJECT_UNIQUE = 1u << 1
+    SML2_NATIVE_STAGE_OBJECT_UNIQUE = 1u << 1,
+    SML2_NATIVE_STAGE_OBJECT_PERSISTENT = 1u << 2,
+    SML2_NATIVE_STAGE_OBJECT_BOSS = 1u << 3,
+    SML2_NATIVE_STAGE_OBJECT_PROJECTILE = 1u << 4
 };
 
 /* One 16x16 metatile rendered as four 8x8 graphics cells. Graphics IDs are
