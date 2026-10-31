@@ -2,6 +2,33 @@
 
 #include <string.h>
 
+int sml2_native_read_gb_tile_pixels(
+    void *userdata, uint8_t graphics_id, uint8_t pixels_out[64])
+{
+    const Sml2NativeGbGraphics *graphics =
+        (const Sml2NativeGbGraphics *)userdata;
+    int address;
+    unsigned y, x;
+
+    if (!graphics || !graphics->vram || !pixels_out) return -1;
+    address = (graphics->lcdc & 0x10)
+        ? (int)graphics_id * 16
+        : 0x1000 + (int)(int8_t)graphics_id * 16;
+    if (address < 0 || address + 16 > 0x2000) return -1;
+
+    for (y = 0; y < 8; ++y) {
+        uint8_t low = graphics->vram[address + (int)y * 2];
+        uint8_t high = graphics->vram[address + (int)y * 2 + 1];
+        for (x = 0; x < 8; ++x) {
+            unsigned bit = 7u - x;
+            pixels_out[y * 8u + x] =
+                (uint8_t)((((high >> bit) & 1u) << 1) |
+                          ((low >> bit) & 1u));
+        }
+    }
+    return 0;
+}
+
 int sml2_native_render_stage(
     const Sml2NativeStage *stage, const Sml2NativeWorld *world,
     Sml2NativeReadTilePixels read_tile, void *userdata,
