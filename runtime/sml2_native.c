@@ -553,6 +553,41 @@ int sml2_native_view_bounds(const Sml2NativeWorld *world,
     return 0;
 }
 
+int sml2_native_view_block_bounds(const Sml2NativeWorld *world,
+                                  const Sml2NativeTileMap *map,
+                                  int32_t margin_pixels,
+                                  Sml2NativeBlockBounds *block_bounds)
+{
+    Sml2NativeRect pixels;
+    int64_t left, top, right, bottom;
+    if (!map || !block_bounds || map->width_blocks == 0 ||
+        map->height_blocks == 0 ||
+        sml2_native_view_bounds(world, margin_pixels, &pixels) != 0)
+        return -1;
+
+    /* Camera bounds are half-open. Floor the origin and ceil the far edge
+       so partially visible edge tiles are never omitted. */
+    left = floor_div_i64(pixels.left, 16LL * FP_ONE);
+    top = floor_div_i64(pixels.top, 16LL * FP_ONE);
+    right = (pixels.right + 16LL * FP_ONE - 1) / (16LL * FP_ONE);
+    bottom = (pixels.bottom + 16LL * FP_ONE - 1) / (16LL * FP_ONE);
+
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+    if (right > map->width_blocks) right = map->width_blocks;
+    if (bottom > map->height_blocks) bottom = map->height_blocks;
+    if (left > map->width_blocks) left = map->width_blocks;
+    if (top > map->height_blocks) top = map->height_blocks;
+    if (right < left) right = left;
+    if (bottom < top) bottom = top;
+
+    block_bounds->left = (uint16_t)left;
+    block_bounds->top = (uint16_t)top;
+    block_bounds->right = (uint16_t)right;
+    block_bounds->bottom = (uint16_t)bottom;
+    return 0;
+}
+
 int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
                                    const Sml2NativeRect *world_rect)
 {
