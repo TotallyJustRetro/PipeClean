@@ -92,7 +92,7 @@ profile; it must not be misread as an ordinary gameplay room.
 `runtime/sml2_native_actor.h/.c` adds a deterministic actor registry for
 stage-spawned entities. It materializes spawn records only when their world
 rectangles enter the supplied activation bounds, retains stable actor IDs,
-sleeps non-persistent actors outside the activation region, and updates awake
+sleeps non-persistent actors outside the activation region, retains persistent actors, and updates awake
 actors in stable slot order on a fixed simulation tick. It also supports health
 damage and a persistent defeated state for unique actors.
 
