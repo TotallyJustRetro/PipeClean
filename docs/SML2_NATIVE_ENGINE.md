@@ -87,6 +87,22 @@ claim that stage snapshots are currently being captured automatically from
 the game. Homeworld uses a separate 64×64 8×8 tile map and needs its own stage
 profile; it must not be misread as an ordinary gameplay room.
 
+## Native actor lifecycle
+
+`runtime/sml2_native_actor.h/.c` adds a deterministic actor registry for
+stage-spawned entities. It materializes spawn records only when their world
+rectangles enter the supplied activation bounds, retains stable actor IDs,
+sleeps non-persistent actors outside the activation region, and updates awake
+actors in stable slot order on a fixed simulation tick. It also supports health
+damage and a persistent defeated state for unique actors.
+
+The registry is deliberately behavior-agnostic: a game-specific update callback
+owns each enemy's movement, attacks, animation state, and special rules. This
+keeps the shared world scheduler ready for real SML2 enemy implementations
+without inventing behavior before each enemy's original rules are understood.
+The current stage spawn records are a generic schema; authentic SML2 spawn-list
+decoding and per-enemy callbacks are still required.
+
 ## Widescreen and zoom model
 
 The native camera uses a logical world-pixel view rather than stretching a
