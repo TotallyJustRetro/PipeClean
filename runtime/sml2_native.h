@@ -58,6 +58,14 @@ typedef struct {
     int32_t bottom;
 } Sml2NativeRect;
 
+/* Camera lock rectangle in world pixels; right/bottom are exclusive. */
+typedef struct {
+    int32_t left;
+    int32_t top;
+    int32_t right;
+    int32_t bottom;
+} Sml2NativeCameraRegion;
+
 typedef struct {
     uint8_t buttons;
 } Sml2NativeInput;
@@ -101,6 +109,7 @@ typedef struct {
 typedef struct {
     Sml2NativeConfig config;
     Sml2NativePlayer players[SML2_NATIVE_MAX_PLAYERS];
+    Sml2NativeCameraRegion camera_region;
     uint64_t tick;
     int32_t camera_x;
     int32_t camera_y;
@@ -132,6 +141,11 @@ int sml2_native_view_size(uint8_t widescreen_mode, uint8_t zoom_percent,
 int sml2_native_set_view(Sml2NativeWorld *world, uint8_t widescreen_mode,
                          uint8_t zoom_percent, uint16_t window_width,
                          uint16_t window_height, int auto_zoom);
+
+/* Set the current camera-lock room. Bounds must lie inside the level.
+ * Passing NULL restores the full-level camera region. */
+int sml2_native_set_camera_region(Sml2NativeWorld *world,
+                                  const Sml2NativeCameraRegion *region);
 
 /* Shared camera helpers. World coordinates and returned view coordinates are
  * signed 16.16 fixed-point pixels. Rect visibility uses the full logical view,
