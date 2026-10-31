@@ -221,6 +221,21 @@ int sml2_native_rom_world_cell(uint16_t world_x, uint16_t world_y,
 uint32_t sml2_native_rom_level_collision(void *userdata,
                                          const Sml2NativeRect *world_rect);
 
+enum {
+    SML2_NATIVE_ROM_ENV_HAZARD = 1u << 0,
+    SML2_NATIVE_ROM_ENV_WATER  = 1u << 1,
+    SML2_NATIVE_ROM_ENV_EXIT   = 1u << 2,
+    SML2_NATIVE_ROM_ENV_MOON   = 1u << 3
+};
+
+/* Ordered $1BFF environment probe: hazard takes precedence, then water,
+ * exit bell, and moon zone. Returns 0 on success, -1 on invalid input. */
+int sml2_native_rom_environment_probe(const Sml2NativeTileMap *map,
+                                      uint16_t player_x, uint16_t player_y,
+                                      uint8_t powerup, uint8_t ducking,
+                                      uint8_t *environment_flags,
+                                      uint8_t *sampled_tile);
+
 /* Exact SML2 $1EFA tile probe. The sample point is adjusted by
  * wrapping_sub(8) on X and wrapping_sub(16) on Y before the ROM's 16x16
  * cell lookup. Samples outside the map/WRAM echo return tile ID zero.
