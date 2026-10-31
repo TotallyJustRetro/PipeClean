@@ -29,15 +29,43 @@ provides:
   terminal velocity;
 - deterministic axis-separated collision queries against a caller-supplied
   world collision map;
-- a shared camera that expands its horizontal view to frame active players and
-  clamps to the configured level bounds;
+- a camera with Off, 16:9, 21:9, and live window-aspect view modes;
+- 100%, 125%, 150%, and 200% zoom presets, including the tall-window behavior
+  that preserves the native horizontal field while revealing more vertically;
+- optional deterministic co-op auto-zoom that picks the smallest zoom-out
+  preset needed to frame every active player;
+- a shared world-space camera origin that clamps to level edges and centres
+  views larger than the level, with extra vertical reveal biased above the
+  native playfield;
 - player input edge detection for jump and per-player invulnerability timers.
 
 Movement values are deliberately configurable and provisional. They are not
-claimed to reproduce the original game's physics yet. The current collision
-interface only supplies solid geometry; enemies, breakable blocks, moving
-platforms, slopes, hazards, bosses, stage data, animation, and audio events are
-not implemented in this first slice.
+claimed to reproduce the original game's physics yet. The current collision interface only supplies solid geometry; enemies,
+breakable blocks, moving platforms, slopes, hazards, bosses, stage data,
+animation, and audio events are not implemented in this first slice.
+
+## Widescreen and zoom model
+
+The native camera uses a logical world-pixel view rather than stretching a
+160×144 image. Its aspect modes are:
+
+- Off: 10:9 (160×144 at 100% zoom).
+- 16:9: 256×144 at 100% zoom.
+- 21:9: 336×144 at 100% zoom.
+- Window: follows the actual window ratio. Very tall windows keep at least the
+  native horizontal field and reveal additional vertical space.
+
+Zoom presets are 100%, 125%, 150%, and 200%. For reference, 16:9 at 150% is
+384×216, and 21:9 at 200% is 672×288. Co-op auto-zoom can select a wider
+preset when players separate, while preserving the selected display aspect.
+The camera clamps against level edges; when a view is larger than a small
+level, it centres on the level rather than exposing invalid wrapping space.
+
+This is a camera/rendering contract for the future native renderer. It does
+not yet make additional terrain, enemies, or scenery drawable: the upcoming
+world renderer and actor-activation system must consume the same view origin
+and dimensions. The original emulator's current widened-PPU path remains
+separate until the native renderer has full stage coverage.
 
 ## Integration plan
 
