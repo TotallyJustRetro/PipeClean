@@ -25,12 +25,11 @@ enum {
  * collision behavior. Passing NULL creates a visual-only snapshot whose
  * collision map is intentionally non-solid. */
 typedef struct {
-    Sml2NativeStage stage;
     uint8_t cells[SML2_NATIVE_SML2_MAP_BYTES];
     uint8_t block_definitions[SML2_NATIVE_SML2_BLOCKDEF_BYTES];
     Sml2NativeStageTile tiles[SML2_NATIVE_SML2_BLOCK_COUNT];
     uint8_t vram[0x2000];
-    Sml2NativeGbGraphics graphics;
+    uint8_t valid;
     int32_t world_origin_x;
     int32_t world_origin_y;
     uint8_t lcdc;
@@ -50,6 +49,14 @@ typedef struct {
  * min_match_percent. The game's HUD/window configuration and bonus-room
  * state are checked before reading stage data. Camera coordinates are read
  * from the game's verified $FFCA/$FFC8 camera words. */
+/* Rebind the internal caller-owned arrays after a successful capture. These
+ * helpers avoid storing self-referential pointers inside the capture object,
+ * so the snapshot may safely be copied or moved by its owner. */
+int sml2_native_capture_get_stage(const Sml2NativeSml2Capture *capture,
+                                  Sml2NativeStage *stage);
+int sml2_native_capture_get_graphics(const Sml2NativeSml2Capture *capture,
+                                     Sml2NativeGbGraphics *graphics);
+
 int sml2_native_capture_live_sml2(
     Sml2NativeSml2Capture *capture,
     Sml2NativeMemoryRead read_memory, void *memory_userdata,
