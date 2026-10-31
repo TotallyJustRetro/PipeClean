@@ -98,9 +98,11 @@ not scale or stretch the original 160x144 emulator image. Out-of-stage pixels
 use an explicit palette index. The renderer is SDL-independent so the same
 stage output can feed desktop, Android, screenshots, or a future GPU backend.
 
-The graphics callback is currently a seam for the native asset decoder. It is
-tested with synthetic tiles; the actual SML2 ROM graphics extraction and
-runtime/launcher presentation bridge still need to be connected.
+A Game Boy VRAM adapter is included for validating the original 2-bit tile
+bitplanes and LCDC signed/unsigned tile addressing. The graphics callback is
+still the seam for a fully ROM-backed native asset decoder; automatic SML2
+graphics extraction and the runtime/launcher presentation bridge still need
+to be connected.
 
 ## Native actor lifecycle
 
