@@ -85,6 +85,59 @@ static void run_script(Sml2NativeWorld *world)
     assert(world->players[1].x >= 0);
 }
 
+
+static void test_native_tilemap_collision(void)
+{
+    uint8_t blocks[32 * 16] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeRect rect;
+    unsigned x;
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 32;
+    map.height_blocks = 16;
+    map.block_ids = blocks;
+    map.block_flags[1] = SML2_NATIVE_BLOCK_SOLID;
+    map.solid_out_of_bounds = 1;
+
+    /* Build a floor at y=128 and one freestanding wall block. */
+    for (x = 0; x < 32; ++x) blocks[8 * 32 + x] = 1;
+    blocks[4 * 32 + 10] = 1;
+
+    rect.left = sml2_native_fp_from_int(20);
+    rect.top = sml2_native_fp_from_int(112);
+    rect.right = sml2_native_fp_from_int(32);
+    rect.bottom = sml2_native_fp_from_int(128);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE); /* touching the floor is not overlap */
+
+    rect.bottom++;
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID);
+
+    rect.left = sml2_native_fp_from_int(160);
+    rect.top = sml2_native_fp_from_int(64);
+    rect.right = sml2_native_fp_from_int(172);
+    rect.bottom = sml2_native_fp_from_int(80);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID); /* wall block */
+
+    rect.left = sml2_native_fp_from_int(144);
+    rect.right = sml2_native_fp_from_int(160);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE); /* right edge is exclusive */
+
+    rect.left = sml2_native_fp_from_int(-1);
+    rect.right = sml2_native_fp_from_int(8);
+    rect.top = sml2_native_fp_from_int(16);
+    rect.bottom = sml2_native_fp_from_int(24);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID); /* explicit outside-level policy */
+
+    map.solid_out_of_bounds = 0;
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE);
+}
+
 int main(void)
 {
     Sml2NativeConfig config = make_config();
@@ -94,6 +147,7 @@ int main(void)
     assert(sml2_native_fp_from_int(-12) == -786432);
     int32_t view_width, view_height;
     assert(sml2_native_fp_to_int(-786432) == -12);
+    test_native_tilemap_collision();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
     assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
