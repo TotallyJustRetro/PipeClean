@@ -11,6 +11,8 @@ static uint32_t test_collision(void *userdata, const Sml2NativeRect *r)
     const int32_t wall_right = sml2_native_fp_from_int(316);
     (void)userdata;
 
+    if (r->left < 0 || r->right > sml2_native_fp_from_int(512))
+        return SML2_NATIVE_COLLISION_SOLID;
     if (r->bottom > floor_y && r->top < floor_y)
         return SML2_NATIVE_COLLISION_SOLID;
     if (r->right > wall_left && r->left < wall_right &&
@@ -87,6 +89,7 @@ int main(void)
 
     /* The shared camera expands to keep both independently moving players in view. */
     assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(sml2_native_step(&second, no_input, test_collision, NULL) == 0);
     assert(first.players[0].grounded);
     assert(first.players[1].grounded);
     assert(first.camera_view_width > config.base_view_width);
