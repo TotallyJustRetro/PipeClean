@@ -104,9 +104,10 @@ fractional-Y gate and two sample points, the small/powered ceiling offsets,
 and the left/right wall sample heights. The ordered environment probe also
 reproduces hazard precedence (powered-player y+22 with y+28 fallback), then
 water, exit-bell, and moon-zone classification from the final y+28 sample.
-These helpers return tile IDs/flags only: coin collection, collision response,
-damage, and block-bump side effects are not yet coupled to the native player
-update. It accepts caller-supplied memory snapshots
+The `$1D75` coin-touch mutation is also implemented: a verified `$48` cell
+becomes `$60`, and `$49` becomes `$7F`, with stale/repeated samples rejected.
+The helpers still do not credit the BCD coin counter or couple damage,
+collision response, and block-bump side effects to the native player update. It accepts caller-supplied memory snapshots
 and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
 uses SML2's global metatile-ID ranges and special-ID flags.
 
