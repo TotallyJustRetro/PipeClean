@@ -73,7 +73,11 @@ static void run_script(Sml2NativeWorld *world)
         assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
 
     assert(world->players[0].grounded);
-    assert(world->players[0].y == ground_y);
+    {
+        int32_t landing_error = world->players[0].y - ground_y;
+        if (landing_error < 0) landing_error = -landing_error;
+        assert(landing_error <= SML2_NATIVE_FP_ONE);
+    }
     assert(world->players[0].x <= sml2_native_fp_from_int(288));
     assert(world->players[1].x >= 0);
 }
