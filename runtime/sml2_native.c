@@ -412,6 +412,42 @@ static void update_camera(Sml2NativeWorld *world)
     }
 }
 
+int sml2_native_world_to_view(const Sml2NativeWorld *world,
+                              int32_t world_x, int32_t world_y,
+                              int32_t *view_x, int32_t *view_y)
+{
+    if (!world || !view_x || !view_y ||
+        world->camera_view_width <= 0 || world->camera_view_height <= 0)
+        return -1;
+    *view_x = clamp_i64((int64_t)world_x - world->camera_x);
+    *view_y = clamp_i64((int64_t)world_y - world->camera_y);
+    return 0;
+}
+
+int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
+                                   const Sml2NativeRect *world_rect)
+{
+    int64_t view_left, view_top, view_right, view_bottom;
+    if (!world || !world_rect ||
+        world->camera_view_width <= 0 || world->camera_view_height <= 0 ||
+        world_rect->left >= world_rect->right ||
+        world_rect->top >= world_rect->bottom)
+        return 0;
+
+    view_left = world->camera_x;
+    view_top = world->camera_y;
+    view_right = view_left +
+                 (int64_t)world->camera_view_width * FP_ONE;
+    view_bottom = view_top +
+                  (int64_t)world->camera_view_height * FP_ONE;
+
+    /* Half-open rectangles: touching an edge alone is not visible. */
+    return (int64_t)world_rect->right > view_left &&
+           (int64_t)world_rect->left < view_right &&
+           (int64_t)world_rect->bottom > view_top &&
+           (int64_t)world_rect->top < view_bottom;
+}
+
 int sml2_native_step(Sml2NativeWorld *world,
                      const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
                      Sml2NativeCollisionQuery collision_query,
