@@ -33,12 +33,24 @@ enum {
 };
 
 enum {
-    SML2_NATIVE_COLLISION_NONE  = 0,
-    SML2_NATIVE_COLLISION_SOLID = 1u << 0
+    SML2_NATIVE_COLLISION_NONE       = 0,
+    SML2_NATIVE_COLLISION_SOLID      = 1u << 0,
+    SML2_NATIVE_COLLISION_STANDABLE  = 1u << 1,
+    SML2_NATIVE_COLLISION_HAZARD     = 1u << 2,
+    SML2_NATIVE_COLLISION_COIN       = 1u << 3,
+    SML2_NATIVE_COLLISION_EXIT       = 1u << 4,
+    SML2_NATIVE_COLLISION_WATER      = 1u << 5,
+    SML2_NATIVE_COLLISION_MOON       = 1u << 6,
+    SML2_NATIVE_COLLISION_HIDDEN     = 1u << 7,
+    SML2_NATIVE_COLLISION_BREAKABLE  = 1u << 8,
+    SML2_NATIVE_COLLISION_PIPE       = 1u << 9,
+    SML2_NATIVE_COLLISION_BOUNCE     = 1u << 10,
+    SML2_NATIVE_COLLISION_ONE_WAY    = 1u << 11
 };
 
+/* Block-map flags use the same bit values as the collision result mask. */
 enum {
-    SML2_NATIVE_BLOCK_SOLID = 1u << 0
+    SML2_NATIVE_BLOCK_SOLID = SML2_NATIVE_COLLISION_SOLID
 };
 
 enum {
@@ -76,7 +88,7 @@ typedef struct {
     uint16_t width_blocks;
     uint16_t height_blocks;
     const uint8_t *block_ids;
-    uint8_t block_flags[256];
+    uint16_t block_flags[256];
     uint8_t solid_out_of_bounds;
 } Sml2NativeTileMap;
 
