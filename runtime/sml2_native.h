@@ -37,6 +37,20 @@ enum {
     SML2_NATIVE_COLLISION_SOLID = 1u << 0
 };
 
+enum {
+    SML2_NATIVE_WIDESCREEN_OFF = 0,
+    SML2_NATIVE_WIDESCREEN_16_9 = 1,
+    SML2_NATIVE_WIDESCREEN_21_9 = 2,
+    SML2_NATIVE_WIDESCREEN_WINDOW = 3
+};
+
+enum {
+    SML2_NATIVE_ZOOM_100 = 100,
+    SML2_NATIVE_ZOOM_125 = 125,
+    SML2_NATIVE_ZOOM_150 = 150,
+    SML2_NATIVE_ZOOM_200 = 200
+};
+
 typedef struct {
     int32_t left;
     int32_t top;
@@ -76,9 +90,12 @@ typedef struct {
     int32_t player_width;
     int32_t player_height;
     int32_t camera_padding;
-    int32_t base_view_width;
-    int32_t max_view_width;
-    int32_t view_height;
+    uint16_t window_width;
+    uint16_t window_height;
+    uint8_t widescreen_mode;
+    uint8_t camera_zoom_percent;
+    uint8_t max_camera_zoom_percent;
+    uint8_t auto_zoom;
 } Sml2NativeConfig;
 
 typedef struct {
@@ -88,6 +105,8 @@ typedef struct {
     int32_t camera_x;
     int32_t camera_y;
     int32_t camera_view_width;
+    int32_t camera_view_height;
+    uint8_t camera_zoom_percent;
     uint8_t player_count;
 } Sml2NativeWorld;
 
@@ -100,6 +119,19 @@ typedef uint32_t (*Sml2NativeCollisionQuery)(
 /* Helpers for constructing fixed-point values without floating point. */
 int32_t sml2_native_fp_from_int(int32_t pixels);
 int32_t sml2_native_fp_to_int(int32_t value);
+
+/* Calculate the logical world-pixel view dimensions for a display mode and
+ * zoom preset. The window dimensions are used only in WINDOW mode. Returns
+ * 0 on success and -1 for an invalid mode or zoom value. */
+int sml2_native_view_size(uint8_t widescreen_mode, uint8_t zoom_percent,
+                          uint16_t window_width, uint16_t window_height,
+                          int32_t *view_width, int32_t *view_height);
+
+/* Change view settings at runtime (for live display/window setting changes).
+ * The camera is recomputed on the next simulation tick. */
+int sml2_native_set_view(Sml2NativeWorld *world, uint8_t widescreen_mode,
+                         uint8_t zoom_percent, uint16_t window_width,
+                         uint16_t window_height, int auto_zoom);
 
 /* Initialize with explicit movement/camera tuning. No ROM or game assets are
  * read by this layer. Returns 0 on success and -1 for invalid arguments. */
