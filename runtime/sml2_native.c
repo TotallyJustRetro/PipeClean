@@ -343,6 +343,12 @@ uint32_t sml2_native_level_collision(void *userdata,
     first_y = floor_div_i64(world_rect->top, block_fp);
     last_y = floor_div_i64((int64_t)world_rect->bottom - 1, block_fp);
 
+    /* Bound worst-case work for malformed/extreme rectangles. Normal player
+       bounds touch only a handful of cells; enormous queries fail closed. */
+    if (last_x - first_x > 256 || last_y - first_y > 256 ||
+        (last_x - first_x + 1) * (last_y - first_y + 1) > 4096)
+        return SML2_NATIVE_COLLISION_SOLID;
+
     for (y = first_y; y <= last_y; ++y) {
         for (x = first_x; x <= last_x; ++x) {
             uint8_t block_id;
