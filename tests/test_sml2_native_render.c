@@ -45,7 +45,24 @@ int main(void)
     uint8_t cells[20 * 12] = {0};
     uint8_t pixels[256 * 144];
     unsigned calls = 0;
+    uint8_t vram[0x2000] = {0};
+    uint8_t decoded[64];
+    Sml2NativeGbGraphics gb;
     unsigned i;
+
+    /* Decode both Game Boy tile-addressing modes from actual bitplanes. */
+    gb.vram = vram;
+    gb.lcdc = 0x10;
+    vram[8 * 16] = 0x80;
+    vram[8 * 16 + 1] = 0x40;
+    assert(sml2_native_read_gb_tile_pixels(&gb, 8, decoded) == 0);
+    assert(decoded[0] == 1 && decoded[1] == 2 && decoded[2] == 0);
+    gb.lcdc = 0x00;
+    vram[0x800] = 0x01;
+    vram[0x801] = 0x80;
+    assert(sml2_native_read_gb_tile_pixels(&gb, 0x80, decoded) == 0);
+    assert(decoded[8] == 2 && decoded[15] == 1);
+    assert(sml2_native_read_gb_tile_pixels(NULL, 0, decoded) == -1);
 
     memset(&tiles, 0, sizeof(tiles));
     tiles[0].graphics[0] = 1;
