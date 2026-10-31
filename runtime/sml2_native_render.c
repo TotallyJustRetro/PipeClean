@@ -24,7 +24,7 @@ int sml2_native_render_stage(
 
     width = world->camera_view_width;
     height = world->camera_view_height;
-    if (pitch < (size_t)width || (size_t)height > 0 &&
+    if (width > 32767 || height > 32767 || pitch < (size_t)width ||
         pitch > (size_t)-1 / (size_t)height)
         return -1;
     required = (size_t)(height - 1) * pitch + (size_t)width;
@@ -34,16 +34,20 @@ int sml2_native_render_stage(
     stage_height = (int32_t)stage->height_blocks * 16;
     for (y = 0; y < height; ++y) {
         uint8_t *row = pixels + (size_t)y * pitch;
-        int32_t world_y = world->camera_y + y;
+        int64_t world_y64 = (int64_t)world->camera_y + y;
+        int32_t world_y;
         memset(row, clear_color, (size_t)width);
 
-        if (world_y < 0 || world_y >= stage_height) continue;
+        if (world_y64 < 0 || world_y64 >= stage_height) continue;
+        world_y = (int32_t)world_y64;
         for (x = 0; x < width; ++x) {
-            int32_t world_x = world->camera_x + x;
+            int64_t world_x64 = (int64_t)world->camera_x + x;
+            int32_t world_x;
             uint32_t cell_index;
             uint8_t block_id, quadrant, graphics_id;
             unsigned tile_x, tile_y;
-            if (world_x < 0 || world_x >= stage_width) continue;
+            if (world_x64 < 0 || world_x64 >= stage_width) continue;
+            world_x = (int32_t)world_x64;
 
             cell_index = (uint32_t)(world_y >> 4) * stage->width_blocks +
                          (uint32_t)(world_x >> 4);
