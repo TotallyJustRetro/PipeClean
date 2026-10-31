@@ -155,6 +155,9 @@ static void test_sml2_rom_player_probes(void)
     assert(tile == 0x7E);
     assert(sml2_native_rom_probe_tile(&map, 8, 0, &tile) == 0);
     assert(tile == 0); /* outside the map/echo window reads zero */
+    blocks[16 * 256] = 0x36;
+    assert(sml2_native_rom_probe_tile(&map, 8, 0x310, &tile) == 0);
+    assert(tile == 0x36); /* row $30 aliases WRAM echo row $10 */
 
     /* $1E3B: gated floor probe, x+12 first, x+20 only if needed. */
     blocks[2 * 256 + 0] = 0x48; /* coin is not a standable floor tile */
