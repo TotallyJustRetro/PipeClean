@@ -58,8 +58,8 @@ int main(void)
     assert(sml2_native_read_gb_tile_pixels(&gb, 8, decoded) == 0);
     assert(decoded[0] == 1 && decoded[1] == 2 && decoded[2] == 0);
     gb.lcdc = 0x00;
-    vram[0x800] = 0x01;
-    vram[0x801] = 0x80;
+    vram[0x802] = 0x01;
+    vram[0x803] = 0x80;
     assert(sml2_native_read_gb_tile_pixels(&gb, 0x80, decoded) == 0);
     assert(decoded[8] == 2 && decoded[15] == 1);
     assert(sml2_native_read_gb_tile_pixels(NULL, 0, decoded) == -1);
