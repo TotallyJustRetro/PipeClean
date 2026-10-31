@@ -101,9 +101,12 @@ The common `$1EFA` sample reads
 `$B000 + ((y-16)>>4)*$100 + ((x-8)>>4)`, including 16-bit coordinate
 wrap and the WRAM echo. The first probe helpers reproduce the floor probe's
 fractional-Y gate and two sample points, the small/powered ceiling offsets,
-and the left/right wall sample heights. They return tile IDs only: coin
-collection, collision response, damage, and block-bump side effects are not
-yet coupled to the native player update. It accepts caller-supplied memory snapshots
+and the left/right wall sample heights. The ordered environment probe also
+reproduces hazard precedence (powered-player y+22 with y+28 fallback), then
+water, exit-bell, and moon-zone classification from the final y+28 sample.
+These helpers return tile IDs/flags only: coin collection, collision response,
+damage, and block-bump side effects are not yet coupled to the native player
+update. It accepts caller-supplied memory snapshots
 and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
 uses SML2's global metatile-ID ranges and special-ID flags.
 
