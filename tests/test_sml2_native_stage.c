@@ -93,7 +93,7 @@ static void test_sml2_layout_decode(void)
     map[7] = 3;
     flags[3] = SML2_NATIVE_STAGE_TILE_SOLID;
     assert(sml2_native_stage_decode_sml2(&stage, map,
-        SML2_NATIVE_SML2_MAP_BYTES, defs, sizeof defs, flags, sizeof flags,
+        SML2_NATIVE_SML2_MAP_BYTES, defs, sizeof defs, flags, SML2_NATIVE_SML2_BLOCK_COUNT,
         map, SML2_NATIVE_SML2_MAP_BYTES, tiles) == 0);
     assert(stage.width_blocks == 256 && stage.height_blocks == 48);
     assert(tiles[3].graphics[0] == 12 && tiles[3].graphics[3] == 15);
