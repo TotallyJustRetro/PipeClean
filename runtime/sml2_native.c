@@ -35,20 +35,21 @@ int32_t sml2_native_fp_to_int(int32_t value)
 static int config_valid(const Sml2NativeConfig *c)
 {
     return c &&
-           c->level_width > 0 &&
-           c->level_height > 0 &&
+           c->level_width > 0 && c->level_width <= 32767 &&
+           c->level_height > 0 && c->level_height <= 32767 &&
            c->gravity >= 0 &&
            c->horizontal_acceleration > 0 &&
            c->horizontal_friction >= 0 &&
            c->max_run_speed > 0 &&
            c->jump_velocity < 0 &&
            c->terminal_velocity > 0 &&
-           c->player_width > 0 &&
-           c->player_height > 0 &&
-           c->camera_padding >= 0 &&
-           c->base_view_width > 0 &&
+           c->player_width > 0 && c->player_width <= 32767 &&
+           c->player_height > 0 && c->player_height <= 32767 &&
+           c->camera_padding >= 0 && c->camera_padding <= 32767 &&
+           c->base_view_width > 0 && c->base_view_width <= 32767 &&
            c->max_view_width >= c->base_view_width &&
-           c->view_height > 0;
+           c->max_view_width <= 32767 &&
+           c->view_height > 0 && c->view_height <= 32767;
 }
 
 int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config)
@@ -239,8 +240,10 @@ static void update_camera(Sml2NativeWorld *world)
     center_y = clamp_i64(((int64_t)min_y + max_y) / 2);
 
     world->camera_view_width = view_width;
-    world->camera_x = center_x - sml2_native_fp_from_int(view_width / 2);
-    world->camera_y = center_y - sml2_native_fp_from_int(view_height / 2);
+    world->camera_x = clamp_i64((int64_t)center_x -
+                                sml2_native_fp_from_int(view_width / 2));
+    world->camera_y = clamp_i64((int64_t)center_y -
+                                sml2_native_fp_from_int(view_height / 2));
 
     {
         int32_t max_camera_x = sml2_native_fp_from_int(
