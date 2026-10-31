@@ -82,9 +82,14 @@ expand the logical world view, reconstruct the newly exposed surroundings from
 level data, and let object activation account for the expanded edge. PipeClean's
 C implementation is independently authored. Actual native stage drawing,
 level-data extraction, enemy spawning, and object behavior still need to be
-ported and connected to these helpers. The original emulator's current
-widened-PPU path remains separate until the native renderer has full stage
-coverage.
+ported and connected to these helpers.
+
+The existing emulator-side SML2 widescreen path remains untouched. It rebuilds
+level margins from the live decompressed map, validates sampled tiles against
+the PPU tilemap, captures world-space actor sprites for the margins, and widens
+actor/spawn windows gradually so the game's spawn-list scan does not skip
+entries. The native path will instead consume extracted stage data and these
+camera bounds; it will not depend on emulator ROM-read hooks or PPU memory taps.
 
 ## Integration plan
 
