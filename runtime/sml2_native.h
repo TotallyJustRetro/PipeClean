@@ -12,6 +12,7 @@
  * yet. Movement tuning remains provisional until measured against the game.
  */
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -220,6 +221,15 @@ int sml2_native_rom_world_cell(uint16_t world_x, uint16_t world_y,
  * echo behavior. Requires the 256x48 SML2 gameplay map profile. */
 uint32_t sml2_native_rom_level_collision(void *userdata,
                                          const Sml2NativeRect *world_rect);
+
+/* Apply the ROM's $1DA5 coin-cell rewrite to a caller-owned mutable
+ * 256x48 layout snapshot. $48 becomes $60; $49 becomes $7F. The write is
+ * accepted only when the sampled cell still contains the expected tile.
+ * Returns 1 when collected, 0 for a non-coin/stale sample, -1 if invalid. */
+int sml2_native_rom_collect_coin(uint8_t *layout_cells, size_t cell_count,
+                                 uint16_t sample_x, uint16_t sample_y,
+                                 uint8_t sampled_tile,
+                                 uint8_t *replacement_tile);
 
 enum {
     SML2_NATIVE_ROM_ENV_HAZARD = 1u << 0,
