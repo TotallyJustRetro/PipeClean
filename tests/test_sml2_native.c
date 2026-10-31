@@ -219,6 +219,8 @@ int main(void)
        underlying level geometry. A view wider than the room is centred on it. */
     config = make_config();
     assert(sml2_native_init(&room_world, &config) == 0);
+    assert(sml2_native_set_view(&room_world, SML2_NATIVE_WIDESCREEN_16_9,
+                                SML2_NATIVE_ZOOM_125, 1920, 1080, 0) == 0);
     assert(sml2_native_spawn_player(&room_world, 0, 220, 104, 5) == 0);
     assert(sml2_native_step(&room_world, no_input, test_collision, NULL) == 0);
     {
