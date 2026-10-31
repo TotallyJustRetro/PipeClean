@@ -37,9 +37,12 @@ static Sml2NativeConfig make_config(void)
     c.player_width = 12;
     c.player_height = 16;
     c.camera_padding = 24;
-    c.base_view_width = 160;
-    c.max_view_width = 320;
-    c.view_height = 144;
+    c.window_width = 1920;
+    c.window_height = 1080;
+    c.widescreen_mode = SML2_NATIVE_WIDESCREEN_16_9;
+    c.camera_zoom_percent = SML2_NATIVE_ZOOM_100;
+    c.max_camera_zoom_percent = SML2_NATIVE_ZOOM_200;
+    c.auto_zoom = 1;
     return c;
 }
 
@@ -89,7 +92,33 @@ int main(void)
     Sml2NativeInput no_input[SML2_NATIVE_MAX_PLAYERS] = {{0}};
 
     assert(sml2_native_fp_from_int(-12) == -786432);
+    int32_t view_width, view_height;
     assert(sml2_native_fp_to_int(-786432) == -12);
+
+    /* Match the original project's supported aspect ratios and zoom presets. */
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 160 && view_height == 144);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_16_9, 100, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 256 && view_height == 144);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_16_9, 150, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 384 && view_height == 216);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_21_9, 200, 2520, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 672 && view_height == 288);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_WINDOW, 100, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 256 && view_height == 144);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_WINDOW, 100, 480, 960,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 160 && view_height == 320);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_WINDOW, 200, 480, 960,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 320 && view_height == 640);
+    assert(sml2_native_view_size(99, 100, 1920, 1080,
+                                 &view_width, &view_height) == -1);
 
     assert(sml2_native_init(&first, &config) == 0);
     assert(sml2_native_init(&second, &config) == 0);
@@ -103,8 +132,9 @@ int main(void)
     assert(sml2_native_step(&second, no_input, test_collision, NULL) == 0);
     assert(first.players[0].grounded);
     assert(first.players[1].grounded);
-    assert(first.camera_view_width > config.base_view_width);
-    assert(first.camera_view_width <= config.max_view_width);
+    assert(first.camera_view_width == 320);
+    assert(first.camera_view_height == 180);
+    assert(first.camera_zoom_percent == SML2_NATIVE_ZOOM_125);
 
     run_script(&first);
     run_script(&second);
@@ -118,13 +148,41 @@ int main(void)
     assert(first.camera_x == second.camera_x);
     assert(first.camera_y == second.camera_y);
     assert(first.camera_view_width == second.camera_view_width);
+    assert(first.camera_view_height == second.camera_view_height);
+    assert(first.camera_zoom_percent == second.camera_zoom_percent);
+
+    /* Switching the view mode live recomputes the camera's logical surface. */
+    assert(sml2_native_set_view(&first, SML2_NATIVE_WIDESCREEN_21_9,
+                                SML2_NATIVE_ZOOM_100, 2520, 1080, 0) == 0);
+    assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(first.camera_view_width == 336);
+    assert(first.camera_view_height == 144);
+    assert(first.camera_zoom_percent == SML2_NATIVE_ZOOM_100);
+
+    /* Tall window mode preserves the native horizontal field and grows vertically. */
+    assert(sml2_native_set_view(&first, SML2_NATIVE_WIDESCREEN_WINDOW,
+                                SML2_NATIVE_ZOOM_100, 480, 960, 0) == 0);
+    assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(first.camera_view_width == 160);
+    assert(first.camera_view_height == 320);
+
+    /* A view larger than a small level centres around the level instead of
+       clipping to its top-left edge or overflowing world coordinates. */
+    first.config.level_width = 128;
+    first.config.level_height = 100;
+    assert(sml2_native_set_view(&first, SML2_NATIVE_WIDESCREEN_21_9,
+                                SML2_NATIVE_ZOOM_200, 2520, 1080, 0) == 0);
+    assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(first.camera_view_width == 672);
+    assert(first.camera_view_height == 288);
+    assert(first.camera_x == sml2_native_fp_from_int(-272));
+    assert(first.camera_y == sml2_native_fp_from_int(-94));
 
     /* Both players remain independent and inside the level's camera bounds. */
     assert(first.players[0].active && first.players[1].active);
     assert(first.players[0].x != first.players[1].x);
-    assert(first.camera_x >= 0);
-    assert(first.camera_x <= sml2_native_fp_from_int(
-        config.level_width - first.camera_view_width));
+    assert(first.camera_x <= sml2_native_fp_from_int(config.level_width));
+    assert(first.camera_y <= sml2_native_fp_from_int(config.level_height));
 
     /* Invalid construction and player indices fail safely. */
     assert(sml2_native_init(&first, NULL) == -1);
