@@ -87,6 +87,21 @@ claim that stage snapshots are currently being captured automatically from
 the game. Homeworld uses a separate 64×64 8×8 tile map and needs its own stage
 profile; it must not be misread as an ordinary gameplay room.
 
+## Native stage renderer
+
+`runtime/sml2_native_render.h/.c` renders the native 16x16 metatile stage into
+a caller-owned one-byte-per-pixel framebuffer. Each metatile's four 8x8
+graphics IDs are decoded through a caller callback and cached once per frame.
+The renderer uses the logical camera width and height directly (for example,
+256x144 at 16:9) and samples world coordinates from the camera origin; it does
+not scale or stretch the original 160x144 emulator image. Out-of-stage pixels
+use an explicit palette index. The renderer is SDL-independent so the same
+stage output can feed desktop, Android, screenshots, or a future GPU backend.
+
+The graphics callback is currently a seam for the native asset decoder. It is
+tested with synthetic tiles; the actual SML2 ROM graphics extraction and
+runtime/launcher presentation bridge still need to be connected.
+
 ## Native actor lifecycle
 
 `runtime/sml2_native_actor.h/.c` adds a deterministic actor registry for
