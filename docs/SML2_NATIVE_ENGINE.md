@@ -28,7 +28,8 @@ provides:
 - configurable horizontal acceleration/friction, jump impulse, gravity, and
   terminal velocity;
 - deterministic axis-separated collision queries against a caller-supplied
-  world collision map;
+  world collision map, plus a native 16×16 block-map adapter with per-block
+  solid flags and explicit out-of-bounds behavior;
 - a camera with Off, 16:9, 21:9, and live window-aspect view modes;
 - 100%, 125%, 150%, and 200% zoom presets, including the tall-window behavior
   that preserves the native horizontal field while revealing more vertically;
@@ -40,7 +41,12 @@ provides:
 - player input edge detection for jump and per-player invulnerability timers.
 
 Movement values are deliberately configurable and provisional. They are not
-claimed to reproduce the original game's physics yet. The current collision interface only supplies solid geometry; enemies,
+claimed to reproduce the original game's physics yet. The initial native tile-map adapter treats 16×16 block IDs as collision
+materials and supports solid/out-of-bounds flags. It is a foundation, not the
+full SML2 collision table: slopes, one-way platforms, breakable blocks, moving
+surfaces, and special hazards still need their original rules ported.
+
+The current collision interface only supplies solid geometry; enemies,
 breakable blocks, moving platforms, slopes, hazards, bosses, stage data,
 animation, and audio events are not implemented in this first slice.
 
