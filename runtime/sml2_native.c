@@ -331,6 +331,7 @@ uint32_t sml2_native_level_collision(void *userdata,
     const int64_t block_fp = 16LL * FP_ONE;
     int64_t first_x, last_x, first_y, last_y;
     int64_t x, y;
+    uint32_t result = SML2_NATIVE_COLLISION_NONE;
 
     if (!map || !world_rect || !map->block_ids ||
         map->width_blocks == 0 || map->height_blocks == 0 ||
@@ -356,16 +357,15 @@ uint32_t sml2_native_level_collision(void *userdata,
             if (x < 0 || y < 0 ||
                 x >= map->width_blocks || y >= map->height_blocks) {
                 if (map->solid_out_of_bounds)
-                    return SML2_NATIVE_COLLISION_SOLID;
+                    result |= SML2_NATIVE_COLLISION_SOLID;
                 continue;
             }
             index = (size_t)y * map->width_blocks + (size_t)x;
             block_id = map->block_ids[index];
-            if (map->block_flags[block_id] & SML2_NATIVE_BLOCK_SOLID)
-                return SML2_NATIVE_COLLISION_SOLID;
+            result |= map->block_flags[block_id];
         }
     }
-    return SML2_NATIVE_COLLISION_NONE;
+    return result;
 }
 
 static int32_t camera_origin_axis(int32_t center_fp,
