@@ -117,7 +117,9 @@ int sml2_native_set_view(Sml2NativeWorld *world, uint8_t widescreen_mode,
 {
     int32_t view_width, view_height;
     if (!world || widescreen_mode > SML2_NATIVE_WIDESCREEN_WINDOW ||
-        !zoom_valid(zoom_percent) || (auto_zoom != 0 && auto_zoom != 1))
+        !zoom_valid(zoom_percent) ||
+        zoom_percent > world->config.max_camera_zoom_percent ||
+        (auto_zoom != 0 && auto_zoom != 1))
         return -1;
     if (sml2_native_view_size(widescreen_mode, zoom_percent,
                               window_width, window_height,
