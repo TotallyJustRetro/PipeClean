@@ -138,6 +138,63 @@ static void test_native_tilemap_collision(void)
            SML2_NATIVE_COLLISION_NONE);
 }
 
+static void test_sml2_rom_world_wrap_and_echo(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeRect rect;
+    uint16_t block_x, block_y;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+    map.block_flags[1] = SML2_NATIVE_COLLISION_HAZARD;
+    map.block_flags[2] = SML2_NATIVE_COLLISION_SOLID;
+    map.solid_out_of_bounds = 1;
+
+    assert(sml2_native_rom_world_cell(0x1234u, 0x0300u,
+                                     &block_x, &block_y) == 0);
+    assert(block_x == 0x23u);
+    assert(block_y == 0x10u);
+    assert(sml2_native_rom_world_cell(0x1000u, 0x04D0u,
+                                     &block_x, &block_y) == 0);
+    assert(block_x == 0u);
+    assert(block_y == 0x2Du);
+    assert(sml2_native_rom_world_cell(0xFFFFu, 0x04E0u,
+                                     &block_x, &block_y) == 1);
+    assert(block_x == 0xFFu);
+    assert(block_y == 0x4Eu);
+    assert(sml2_native_rom_world_cell(0, 0, NULL, &block_y) == -1);
+
+    /* A ROM coordinate at $1000 wraps back to column zero. */
+    blocks[16 * 256] = 1;
+    rect.left = sml2_native_fp_from_int(4096);
+    rect.right = sml2_native_fp_from_int(4112);
+    rect.top = sml2_native_fp_from_int(0x300);
+    rect.bottom = sml2_native_fp_from_int(0x310);
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_HAZARD);
+
+    /* Rows $30-$4D read the $10-$2D WRAM echo. */
+    blocks[0x2D * 256 + 255] = 2;
+    rect.left = sml2_native_fp_from_int(-16);
+    rect.right = sml2_native_fp_from_int(0);
+    rect.top = sml2_native_fp_from_int(0x4D0);
+    rect.bottom = sml2_native_fp_from_int(0x4E0);
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID);
+
+    /* The first row beyond the echo uses the explicit out-of-bounds policy. */
+    rect.top = sml2_native_fp_from_int(0x4E0);
+    rect.bottom = sml2_native_fp_from_int(0x4F0);
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID);
+    map.solid_out_of_bounds = 0;
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE);
+}
+
 int main(void)
 {
     Sml2NativeConfig config = make_config();
@@ -148,6 +205,7 @@ int main(void)
     int32_t view_width, view_height;
     assert(sml2_native_fp_to_int(-786432) == -12);
     test_native_tilemap_collision();
+    test_sml2_rom_world_wrap_and_echo();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
     assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
