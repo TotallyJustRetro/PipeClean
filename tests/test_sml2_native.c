@@ -138,6 +138,49 @@ static void test_native_tilemap_collision(void)
            SML2_NATIVE_COLLISION_NONE);
 }
 
+static void test_sml2_rom_player_probes(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    uint8_t tile = 0xFF;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+
+    /* $1EFA subtracts (8,16) before selecting a 16x16 map cell. */
+    blocks[1 * 256 + 0] = 0x7E;
+    assert(sml2_native_rom_probe_tile(&map, 8, 32, &tile) == 0);
+    assert(tile == 0x7E);
+    assert(sml2_native_rom_probe_tile(&map, 8, 0, &tile) == 0);
+    assert(tile == 0); /* outside the map/echo window reads zero */
+
+    /* $1E3B: gated floor probe, x+12 first, x+20 only if needed. */
+    blocks[2 * 256 + 0] = 0x48; /* coin is not a standable floor tile */
+    blocks[2 * 256 + 1] = 0x37; /* second sample is standable */
+    assert(sml2_native_rom_floor_probe(&map, 4, 4, &tile) == 1);
+    assert(tile == 0x37);
+    assert(sml2_native_rom_floor_probe(&map, 4, 10, &tile) == 0);
+
+    /* $1DFE ceiling probe uses y+28 small / y+18 powered. */
+    blocks[1 * 256 + 0] = 0x7E;
+    assert(sml2_native_rom_ceiling_probe(&map, 4, 4, 0, &tile) == 1);
+    assert(tile == 0x7E);
+    blocks[1 * 256 + 0] = 0x48;
+    assert(sml2_native_rom_ceiling_probe(&map, 4, 4, 0, &tile) == 0);
+
+    /* $1E7C/$1E8D wall probes: powered Mario first checks y+20. */
+    blocks[0 * 256 + 0] = 0x37;
+    assert(sml2_native_rom_wall_probe(&map, 4, 4, 0, 1, 0, &tile) == 1);
+    assert(tile == 0x37);
+    blocks[0 * 256 + 0] = 0x48;
+    blocks[1 * 256 + 0] = 0x36;
+    assert(sml2_native_rom_wall_probe(&map, 4, 4, 0, 0, 0, &tile) == 1);
+    assert(tile == 0x36);
+    assert(sml2_native_rom_wall_probe(&map, 4, 4, 2, 0, 0, &tile) == -1);
+}
+
 static void test_sml2_rom_world_wrap_and_echo(void)
 {
     uint8_t blocks[256 * 48] = {0};
@@ -206,6 +249,7 @@ int main(void)
     assert(sml2_native_fp_to_int(-786432) == -12);
     test_native_tilemap_collision();
     test_sml2_rom_world_wrap_and_echo();
+    test_sml2_rom_player_probes();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
     assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
