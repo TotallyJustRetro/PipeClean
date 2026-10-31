@@ -138,6 +138,10 @@ int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config)
     if (!world || !config_valid(config)) return -1;
     memset(world, 0, sizeof(*world));
     world->config = *config;
+    world->camera_region.left = 0;
+    world->camera_region.top = 0;
+    world->camera_region.right = config->level_width;
+    world->camera_region.bottom = config->level_height;
     if (sml2_native_view_size(config->widescreen_mode,
                               config->camera_zoom_percent,
                               config->window_width, config->window_height,
@@ -145,6 +149,28 @@ int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config)
                               &world->camera_view_height) != 0)
         return -1;
     world->camera_zoom_percent = config->camera_zoom_percent;
+    return 0;
+}
+
+int sml2_native_set_camera_region(Sml2NativeWorld *world,
+                                  const Sml2NativeCameraRegion *region)
+{
+    Sml2NativeCameraRegion next;
+    if (!world) return -1;
+    if (!region) {
+        next.left = 0;
+        next.top = 0;
+        next.right = world->config.level_width;
+        next.bottom = world->config.level_height;
+    } else {
+        next = *region;
+    }
+    if (next.left < 0 || next.top < 0 ||
+        next.right <= next.left || next.bottom <= next.top ||
+        next.right > world->config.level_width ||
+        next.bottom > world->config.level_height)
+        return -1;
+    world->camera_region = next;
     return 0;
 }
 
@@ -293,21 +319,33 @@ static void update_player(Sml2NativeWorld *world, Sml2NativePlayer *p,
 static int32_t camera_origin_axis(int32_t center_fp,
                                    int32_t view_pixels,
                                    int32_t world_pixels,
+                                   int32_t region_start,
+                                   int32_t region_end,
                                    int vertical_bias_pixels)
 {
     int64_t view_fp = (int64_t)view_pixels * FP_ONE;
     int64_t world_fp = (int64_t)world_pixels * FP_ONE;
+    int64_t lo_fp = (int64_t)region_start * FP_ONE;
+    int64_t hi_fp = (int64_t)region_end * FP_ONE;
     int64_t origin = (int64_t)center_fp - view_fp / 2 -
                      (int64_t)vertical_bias_pixels * FP_ONE;
 
-    if (world_fp >= view_fp) {
-        int64_t maximum = world_fp - view_fp;
-        if (origin < 0) origin = 0;
+    if (lo_fp < 0) lo_fp = 0;
+    if (hi_fp > world_fp) hi_fp = world_fp;
+    if (hi_fp < lo_fp) hi_fp = lo_fp;
+
+    if (hi_fp - lo_fp >= view_fp) {
+        int64_t maximum = hi_fp - view_fp;
+        if (origin < lo_fp) origin = lo_fp;
         if (origin > maximum) origin = maximum;
     } else {
-        /* A view larger than a level/room is centred on that region, rather
-           than being pinned to one edge or exposing wraparound coordinates. */
-        origin = (world_fp - view_fp) / 2;
+        /* A view wider than its room is centred on that room, then clamped
+           to the physical level. A view wider than the entire level starts
+           at zero so it never generates negative world coordinates. */
+        int64_t maximum = world_fp > view_fp ? world_fp - view_fp : 0;
+        origin = (lo_fp + hi_fp - view_fp) / 2;
+        if (origin < 0) origin = 0;
+        if (origin > maximum) origin = maximum;
     }
     return clamp_i64(origin);
 }
@@ -405,9 +443,13 @@ static void update_camera(Sml2NativeWorld *world)
         int32_t level_bias = view_height > 144
                            ? (view_height - 144) / 4 : 0;
         world->camera_x = camera_origin_axis(center_x, view_width,
-                                             world->config.level_width, 0);
+                                             world->config.level_width,
+                                             world->camera_region.left,
+                                             world->camera_region.right, 0);
         world->camera_y = camera_origin_axis(center_y, view_height,
                                              world->config.level_height,
+                                             world->camera_region.top,
+                                             world->camera_region.bottom,
                                              level_bias);
     }
 }
