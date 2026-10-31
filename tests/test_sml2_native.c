@@ -228,6 +228,29 @@ int main(void)
             assert((int64_t)beyond_view.right > activation_bounds.left);
             assert(sml2_native_view_bounds(&first, -1, &activation_bounds) == -1);
         }
+        {
+            uint8_t empty_blocks[32 * 16] = {0};
+            Sml2NativeTileMap stage;
+            Sml2NativeBlockBounds draw_blocks, wake_blocks;
+            memset(&stage, 0, sizeof(stage));
+            stage.width_blocks = 32;
+            stage.height_blocks = 16;
+            stage.block_ids = empty_blocks;
+            assert(sml2_native_view_block_bounds(&first, &stage, 0,
+                                                 &draw_blocks) == 0);
+            assert(sml2_native_view_block_bounds(&first, &stage, 32,
+                                                 &wake_blocks) == 0);
+            assert(draw_blocks.left < draw_blocks.right);
+            assert(draw_blocks.top < draw_blocks.bottom);
+            assert(wake_blocks.left <= draw_blocks.left);
+            assert(wake_blocks.top <= draw_blocks.top);
+            assert(wake_blocks.right >= draw_blocks.right);
+            assert(wake_blocks.bottom >= draw_blocks.bottom);
+            assert(wake_blocks.right <= stage.width_blocks);
+            assert(wake_blocks.bottom <= stage.height_blocks);
+            assert(sml2_native_view_block_bounds(&first, &stage, -1,
+                                                 &wake_blocks) == -1);
+        }
         assert(sml2_native_world_to_view(&first, visible_extra.left,
                                           visible_extra.top,
                                           &screen_x, &screen_y) == 0);
