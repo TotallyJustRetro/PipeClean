@@ -208,6 +208,19 @@ int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
 uint32_t sml2_native_level_collision(void *userdata,
                                      const Sml2NativeRect *world_rect);
 
+/* Original SML2 ROM world addressing. Coordinates are 16-bit pixel
+ * positions; the game masks each high byte to 4 bits (12-bit wrap). The
+ * returned cell coordinates are 16x16 metatile indices. Rows $30-$4D read
+ * the WRAM echo at rows $10-$2D. Returns 0 for a mapped stage cell, 1 when
+ * the row is beyond the known map/echo window, and -1 for invalid pointers. */
+int sml2_native_rom_world_cell(uint16_t world_x, uint16_t world_y,
+                               uint16_t *block_x, uint16_t *block_y);
+
+/* Collision query using the original ROM's 12-bit coordinate wrap and WRAM
+ * echo behavior. Requires the 256x48 SML2 gameplay map profile. */
+uint32_t sml2_native_rom_level_collision(void *userdata,
+                                         const Sml2NativeRect *world_rect);
+
 /* Initialize with explicit movement/camera tuning. No ROM or game assets are
  * read by this layer. Returns 0 on success and -1 for invalid arguments. */
 int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config);
