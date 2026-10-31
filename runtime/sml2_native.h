@@ -80,6 +80,14 @@ typedef struct {
     uint8_t solid_out_of_bounds;
 } Sml2NativeTileMap;
 
+/* Half-open tile coordinates for a visible/prefetch stage rectangle. */
+typedef struct {
+    uint16_t left;
+    uint16_t top;
+    uint16_t right;
+    uint16_t bottom;
+} Sml2NativeBlockBounds;
+
 typedef struct {
     uint8_t buttons;
 } Sml2NativeInput;
@@ -172,6 +180,13 @@ int sml2_native_world_to_view(const Sml2NativeWorld *world,
  * pre-activating actors near newly visible edges. Returns -1 on invalid input. */
 int sml2_native_view_bounds(const Sml2NativeWorld *world, int32_t margin_pixels,
                             Sml2NativeRect *world_bounds);
+/* Convert the camera view (plus an optional pixel margin) into a clamped
+ * half-open range of 16x16 stage blocks suitable for tile rendering/prefetch.
+ * Returns -1 for invalid inputs. */
+int sml2_native_view_block_bounds(const Sml2NativeWorld *world,
+                                  const Sml2NativeTileMap *map,
+                                  int32_t margin_pixels,
+                                  Sml2NativeBlockBounds *block_bounds);
 
 int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
                                    const Sml2NativeRect *world_rect);
