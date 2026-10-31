@@ -152,6 +152,10 @@ add_executable(test_sml2_native tests/test_sml2_native.c runtime/sml2_native.c)
 target_include_directories(test_sml2_native PRIVATE runtime)
 add_test(NAME sml2_native_core COMMAND test_sml2_native)
 
+add_executable(test_sml2_native_stage tests/test_sml2_native_stage.c runtime/sml2_native.c runtime/sml2_native_stage.c)
+target_include_directories(test_sml2_native_stage PRIVATE runtime)
+add_test(NAME sml2_native_stage COMMAND test_sml2_native_stage)
+
 add_executable(test_sml2_museum_state tests/test_sml2_museum_state.c)
 target_include_directories(test_sml2_museum_state PRIVATE runtime)
 add_test(NAME sml2_museum_state COMMAND test_sml2_museum_state)
