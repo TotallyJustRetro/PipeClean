@@ -94,7 +94,16 @@ sourced extractor and authentic SML2 metatile/collision/object decoding.
 The stage module also includes a decoder for the ordinary SML2 gameplay map
 layout observed by PipeClean's existing compatibility path: 256 columns × 48
 rows of 16×16 block IDs (4096×768 world pixels), plus 128 metatile definitions
-with four 8×8 graphics IDs each. It accepts caller-supplied memory snapshots
+with four 8×8 graphics IDs each.
+
+The native runtime now also exposes source-derived player probe helpers.
+The common `$1EFA` sample reads
+`$B000 + ((y-16)>>4)*$100 + ((x-8)>>4)`, including 16-bit coordinate
+wrap and the WRAM echo. The first probe helpers reproduce the floor probe's
+fractional-Y gate and two sample points, the small/powered ceiling offsets,
+and the left/right wall sample heights. They return tile IDs only: coin
+collection, collision response, damage, and block-bump side effects are not
+yet coupled to the native player update. It accepts caller-supplied memory snapshots
 and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
 uses SML2's global metatile-ID ranges and special-ID flags.
 
