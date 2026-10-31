@@ -38,6 +38,16 @@ static int record_object(void *userdata, const Sml2NativeStageObject *object)
     return 0;
 }
 
+static uint8_t fake_sml2_memory(void *userdata, uint16_t address)
+{
+    const uint8_t *map = (const uint8_t *)userdata;
+    if (address >= 0xB000u && address < 0xB000u + SML2_NATIVE_SML2_MAP_BYTES)
+        return map[address - 0xB000u];
+    if (address >= 0xA600u && address < 0xA600u + SML2_NATIVE_SML2_BLOCKDEF_BYTES)
+        return (uint8_t)(address - 0xA600u);
+    return 0;
+}
+
 static void test_sml2_layout_decode(void)
 {
     uint8_t *map = (uint8_t *)calloc(SML2_NATIVE_SML2_MAP_BYTES, 1);
@@ -56,6 +66,19 @@ static void test_sml2_layout_decode(void)
     assert(stage.width_blocks == 256 && stage.height_blocks == 48);
     assert(tiles[3].graphics[0] == 12 && tiles[3].graphics[3] == 15);
     assert(stage.collision_map.block_flags[3] == SML2_NATIVE_BLOCK_SOLID);
+    map[8] = 0;
+    {
+        uint8_t *captured_cells = (uint8_t *)calloc(SML2_NATIVE_SML2_MAP_BYTES, 1);
+        uint8_t captured_defs[SML2_NATIVE_SML2_BLOCKDEF_BYTES];
+        Sml2NativeStageTile captured_tiles[SML2_NATIVE_SML2_BLOCK_COUNT];
+        assert(captured_cells);
+        assert(sml2_native_stage_capture_sml2(&stage, fake_sml2_memory, map,
+            flags, sizeof flags, captured_cells, SML2_NATIVE_SML2_MAP_BYTES,
+            captured_defs, sizeof captured_defs, captured_tiles) == 0);
+        assert(captured_tiles[3].graphics[0] == 12);
+        assert(captured_tiles[3].graphics[3] == 15);
+        free(captured_cells);
+    }
     map[8] = 0x80;
     assert(sml2_native_stage_decode_sml2(&stage, map,
         SML2_NATIVE_SML2_MAP_BYTES, defs, sizeof defs, flags, sizeof flags,
