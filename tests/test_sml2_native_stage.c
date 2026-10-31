@@ -48,11 +48,43 @@ static uint8_t fake_sml2_memory(void *userdata, uint16_t address)
     return 0;
 }
 
+static void test_sml2_collision_ranges(void)
+{
+    uint16_t flags;
+    assert(sml2_native_sml2_material(0x00) == SML2_NATIVE_MATERIAL_SOLID);
+    assert(sml2_native_sml2_collision_flags(0x00) &
+           SML2_NATIVE_STAGE_TILE_SOLID);
+    assert(sml2_native_sml2_collision_flags(0x37) &
+           SML2_NATIVE_STAGE_TILE_STANDABLE);
+    flags = sml2_native_sml2_collision_flags(0x38);
+    assert(!(flags & SML2_NATIVE_STAGE_TILE_SOLID));
+    assert(flags & SML2_NATIVE_STAGE_TILE_STANDABLE);
+    assert(flags & SML2_NATIVE_STAGE_TILE_ONE_WAY);
+    assert(sml2_native_sml2_collision_flags(0x48) &
+           SML2_NATIVE_STAGE_TILE_COIN);
+    assert(sml2_native_sml2_collision_flags(0x4A) &
+           SML2_NATIVE_STAGE_TILE_EXIT);
+    assert(sml2_native_sml2_collision_flags(0x4C) &
+           SML2_NATIVE_STAGE_TILE_WATER);
+    assert(sml2_native_sml2_collision_flags(0x50) &
+           SML2_NATIVE_STAGE_TILE_HAZARD);
+    assert(sml2_native_sml2_collision_flags(0x52) &
+           SML2_NATIVE_STAGE_TILE_MOON);
+    assert(sml2_native_sml2_collision_flags(0x04) &
+           SML2_NATIVE_STAGE_TILE_BOUNCE);
+    assert(sml2_native_sml2_collision_flags(0x05) &
+           SML2_NATIVE_STAGE_TILE_PIPE);
+    assert(sml2_native_sml2_collision_flags(0x06) &
+           SML2_NATIVE_STAGE_TILE_BREAKABLE);
+    assert(sml2_native_sml2_collision_flags(0x7E) &
+           SML2_NATIVE_STAGE_TILE_HIDDEN);
+}
+
 static void test_sml2_layout_decode(void)
 {
     uint8_t *map = (uint8_t *)calloc(SML2_NATIVE_SML2_MAP_BYTES, 1);
     uint8_t defs[SML2_NATIVE_SML2_BLOCKDEF_BYTES];
-    uint8_t flags[SML2_NATIVE_SML2_BLOCK_COUNT] = {0};
+    uint16_t flags[SML2_NATIVE_SML2_BLOCK_COUNT] = {0};
     Sml2NativeStageTile *tiles = (Sml2NativeStageTile *)calloc(
         SML2_NATIVE_SML2_BLOCK_COUNT, sizeof(*tiles));
     Sml2NativeStage stage;
@@ -89,6 +121,7 @@ static void test_sml2_layout_decode(void)
 
 int main(void)
 {
+    test_sml2_collision_ranges();
     test_sml2_layout_decode();
     uint8_t cells[8 * 4] = {0};
     Sml2NativeStageTile tiles[2];
