@@ -21,9 +21,10 @@ enum {
  * block definitions, and VRAM are copied into owned storage so later emulator
  * ticks cannot mutate a capture while the native renderer is consuming it.
  *
- * collision_flags is supplied by the caller: graphics IDs do not describe
- * collision behavior. Passing NULL creates a visual-only snapshot whose
- * collision map is intentionally non-solid. */
+ * collision_flags may optionally override the built-in SML2 metatile-ID
+ * classifications. Passing NULL uses the verified global ID ranges for
+ * solid ground, one-way slopes/platforms, coins, exits, water, hazards and
+ * low-gravity tiles. Exact slope geometry and interactions remain separate. */
 typedef struct {
     uint8_t cells[SML2_NATIVE_SML2_MAP_BYTES];
     uint8_t block_definitions[SML2_NATIVE_SML2_BLOCKDEF_BYTES];
@@ -63,7 +64,7 @@ int sml2_native_capture_live_sml2(
     const uint8_t ppu_vram[0x2000],
     uint8_t lcdc, uint8_t scx, uint8_t scy,
     uint8_t wx, uint8_t wy, uint8_t bgp,
-    const uint8_t *collision_flags, size_t collision_flags_count,
+    const uint16_t *collision_flags, size_t collision_flags_count,
     unsigned min_samples, unsigned min_match_percent);
 
 /* Convert raw 2-bit Game Boy tile color indices to the active DMG BGP shade
