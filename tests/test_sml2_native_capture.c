@@ -48,7 +48,7 @@ int main(void)
     assert(stage.width_blocks == 256);
     assert(stage.height_blocks == 48);
     assert(stage.collision_map.block_flags[0] & SML2_NATIVE_COLLISION_SOLID);
-    assert(capture.stage.cells[0] == 0);
+    assert(stage.cells[0] == 0);
     assert(capture.tiles[0].graphics[0] == 0);
     assert(sml2_native_capture_get_graphics(&capture, &graphics) == 0);
     assert(graphics.vram == capture.vram);
