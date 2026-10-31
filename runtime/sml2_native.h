@@ -277,6 +277,14 @@ int sml2_native_spawn_player(Sml2NativeWorld *world, unsigned player_index,
                              int32_t x_pixels, int32_t y_pixels,
                              uint8_t lives);
 
+/* Advance the native world using the original SML2 256x48 ROM tile map.
+ * Solid-tile queries use the ROM's tile-ID collision class; the post-step
+ * floor, ceiling, and directional wall probes refine the player response.
+ * The map is read-only. Returns -1 for an invalid SML2 map profile. */
+int sml2_native_rom_step(Sml2NativeWorld *world,
+                         const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
+                         const Sml2NativeTileMap *map);
+
 /* Advance one fixed simulation tick for all active players simultaneously.
  * Inputs are indexed by player number; a NULL input array means no buttons.
  * The collision callback may be NULL for an unobstructed test world. */

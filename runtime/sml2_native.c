@@ -862,6 +862,95 @@ int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
            (int64_t)world_rect->top < bounds.bottom;
 }
 
+static int rom_collision_sample(const Sml2NativeTileMap *map,
+                                  int32_t pixel_x, int32_t pixel_y)
+{
+    uint8_t tile = 0;
+    if (sml2_native_rom_probe_tile(map,
+            (uint16_t)(pixel_x + 8),
+            (uint16_t)(pixel_y + 16), &tile) != 0)
+        return 1;
+    return tile < 0x38u || tile == 0x7Eu;
+}
+
+static uint32_t rom_player_collision(void *userdata,
+                                     const Sml2NativeRect *rect)
+{
+    const Sml2NativeTileMap *map = (const Sml2NativeTileMap *)userdata;
+    int32_t left, top, right, bottom;
+    if (!map || !rect || rect->left >= rect->right ||
+        rect->top >= rect->bottom)
+        return SML2_NATIVE_COLLISION_SOLID;
+
+    left = sml2_native_fp_to_int(rect->left);
+    top = sml2_native_fp_to_int(rect->top);
+    right = sml2_native_fp_to_int(rect->right - 1);
+    bottom = sml2_native_fp_to_int(rect->bottom - 1);
+    if (rom_collision_sample(map, left, top) ||
+        rom_collision_sample(map, right, top) ||
+        rom_collision_sample(map, left, bottom) ||
+        rom_collision_sample(map, right, bottom))
+        return SML2_NATIVE_COLLISION_SOLID;
+    return SML2_NATIVE_COLLISION_NONE;
+}
+
+int sml2_native_rom_step(Sml2NativeWorld *world,
+                         const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
+                         const Sml2NativeTileMap *map)
+{
+    unsigned i;
+    if (!world || !map || !map->block_ids ||
+        map->width_blocks != 256u || map->height_blocks != 48u)
+        return -1;
+    if (sml2_native_step(world, inputs, rom_player_collision,
+                         (void *)map) != 0)
+        return -1;
+
+    /* The source probes run against the post-movement player position. They
+       are deliberately separate from the broad AABB query: their asymmetric
+       offsets and powered/small-player heights are gameplay-significant. */
+    for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
+        Sml2NativePlayer *p = &world->players[i];
+        uint16_t x, y;
+        uint8_t tile;
+        int hit;
+        if (!p->active) continue;
+        x = (uint16_t)sml2_native_fp_to_int(p->x);
+        y = (uint16_t)sml2_native_fp_to_int(p->y);
+
+        if (p->vy < 0) {
+            hit = sml2_native_rom_ceiling_probe(map, x, y,
+                                                p->powerup, &tile);
+            if (hit > 0) {
+                p->vy = 0;
+            } else if (hit < 0) {
+                return -1;
+            }
+        }
+        if (p->vx < 0) {
+            hit = sml2_native_rom_wall_probe(map, x, y, 0,
+                                             p->powerup, 0, &tile);
+            if (hit > 0) p->vx = 0;
+            else if (hit < 0) return -1;
+        } else if (p->vx > 0) {
+            hit = sml2_native_rom_wall_probe(map, x, y, 1,
+                                             p->powerup, 0, &tile);
+            if (hit > 0) p->vx = 0;
+            else if (hit < 0) return -1;
+        }
+        if (p->vy >= 0) {
+            hit = sml2_native_rom_floor_probe(map, x, y, &tile);
+            if (hit > 0) {
+                p->grounded = 1;
+                p->vy = 0;
+            } else if (hit < 0) {
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
 int sml2_native_step(Sml2NativeWorld *world,
                      const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
                      Sml2NativeCollisionQuery collision_query,
