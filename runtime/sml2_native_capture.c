@@ -109,15 +109,15 @@ int sml2_native_capture_live_sml2(
 {
     unsigned camera_x, camera_y;
     Sml2NativeStage stage_check;
-    if (!capture || !read_memory || !ppu_vram ||
+    if (!capture) return SML2_NATIVE_CAPTURE_INVALID;
+    capture->valid = 0;
+    if (!read_memory || !ppu_vram ||
         min_samples == 0 || min_match_percent == 0 ||
         min_match_percent > 100 ||
         (collision_flags && collision_flags_count <
             SML2_NATIVE_SML2_BLOCK_COUNT) ||
         (!collision_flags && collision_flags_count != 0))
         return SML2_NATIVE_CAPTURE_INVALID;
-
-    capture->valid = 0;
     if (!capture_scene_valid(read_memory, memory_userdata, lcdc, wx, wy))
         return SML2_NATIVE_CAPTURE_WRONG_SCENE;
 
