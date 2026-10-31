@@ -133,6 +133,15 @@ int sml2_native_set_view(Sml2NativeWorld *world, uint8_t widescreen_mode,
                          uint8_t zoom_percent, uint16_t window_width,
                          uint16_t window_height, int auto_zoom);
 
+/* Shared camera helpers. World coordinates and returned view coordinates are
+ * signed 16.16 fixed-point pixels. Rect visibility uses the full logical view,
+ * so scenery, sprites, and enemy activation can share one widescreen boundary. */
+int sml2_native_world_to_view(const Sml2NativeWorld *world,
+                              int32_t world_x, int32_t world_y,
+                              int32_t *view_x, int32_t *view_y);
+int sml2_native_view_contains_rect(const Sml2NativeWorld *world,
+                                   const Sml2NativeRect *world_rect);
+
 /* Initialize with explicit movement/camera tuning. No ROM or game assets are
  * read by this layer. Returns 0 on success and -1 for invalid arguments. */
 int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config);
