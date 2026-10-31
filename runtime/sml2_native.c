@@ -414,6 +414,54 @@ int sml2_native_rom_ceiling_probe(const Sml2NativeTileMap *map,
     return 0;
 }
 
+int sml2_native_rom_environment_probe(const Sml2NativeTileMap *map,
+                                      uint16_t player_x, uint16_t player_y,
+                                      uint8_t powerup, uint8_t ducking,
+                                      uint8_t *environment_flags,
+                                      uint8_t *sampled_tile)
+{
+    uint8_t tile, hazard_y;
+    if (!environment_flags || !sampled_tile) return -1;
+    *environment_flags = 0;
+
+    /* $1C39/$1C4E: big Mario checks y+22 first, then y+28 on a miss. */
+    hazard_y = (powerup && !ducking) ? 22u : 28u;
+    if (sml2_native_rom_probe_tile(map,
+            (uint16_t)(player_x + 16u),
+            (uint16_t)(player_y + hazard_y), &tile) != 0)
+        return -1;
+    if ((tile & 0xFEu) == 0x50u) {
+        *environment_flags = SML2_NATIVE_ROM_ENV_HAZARD;
+        *sampled_tile = tile;
+        return 0;
+    }
+    if (hazard_y == 22u) {
+        if (sml2_native_rom_probe_tile(map,
+                (uint16_t)(player_x + 16u),
+                (uint16_t)(player_y + 28u), &tile) != 0)
+            return -1;
+        if ((tile & 0xFEu) == 0x50u) {
+            *environment_flags = SML2_NATIVE_ROM_ENV_HAZARD;
+            *sampled_tile = tile;
+            return 0;
+        }
+    }
+
+    /* The final y+28 sample selects water, exit, then moon physics. */
+    if (sml2_native_rom_probe_tile(map,
+            (uint16_t)(player_x + 16u),
+            (uint16_t)(player_y + 28u), &tile) != 0)
+        return -1;
+    *sampled_tile = tile;
+    if ((tile & 0xFCu) == 0x4Cu)
+        *environment_flags = SML2_NATIVE_ROM_ENV_WATER;
+    else if ((tile & 0xFEu) == 0x4Au)
+        *environment_flags = SML2_NATIVE_ROM_ENV_EXIT;
+    else if (tile >= 0x52u && tile <= 0x57u)
+        *environment_flags = SML2_NATIVE_ROM_ENV_MOON;
+    return 0;
+}
+
 int sml2_native_rom_wall_probe(const Sml2NativeTileMap *map,
                                uint16_t player_x, uint16_t player_y,
                                uint8_t probe_side, uint8_t powerup,
