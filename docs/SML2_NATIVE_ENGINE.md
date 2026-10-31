@@ -61,10 +61,11 @@ preset when players separate, while preserving the selected display aspect.
 The camera clamps against level edges; when a view is larger than a small
 level, it centres on the level rather than exposing invalid wrapping space.
 
-This is a camera/rendering contract for the future native renderer. It does
-not yet make additional terrain, enemies, or scenery drawable: the upcoming
-world renderer and actor-activation system must consume the same view origin
-and dimensions. The original emulator's current widened-PPU path remains
+The simulation exposes world-to-view conversion and rectangle visibility
+helpers so the upcoming world renderer and actor-activation system use the
+same camera origin and dimensions. This lets off-native-screen enemies and
+terrain be considered consistently. Actual stage drawing, enemy spawning,
+and object behavior still need to be ported and connected to these helpers. The original emulator's current widened-PPU path remains
 separate until the native renderer has full stage coverage.
 
 ## Integration plan
