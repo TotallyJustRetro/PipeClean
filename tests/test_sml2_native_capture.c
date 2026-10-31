@@ -58,8 +58,10 @@ int main(void)
         assert(pixels[0] == 0 && pixels[1] == 1 &&
                pixels[2] == 2 && pixels[3] == 3);
         pixels[7] = 4;
+        pixels[0] = 3;
         assert(sml2_native_apply_dmg_palette(pixels, 8, 1, 8,
                                              sizeof(pixels), 0xE4) == -1);
+        assert(pixels[0] == 3); /* invalid input leaves the row untouched */
     }
 
     /* The Homeworld uses a different map profile and must not be decoded as
