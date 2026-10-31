@@ -87,7 +87,9 @@ int sml2_native_stage_init(Sml2NativeStage *stage,
 {
     uint32_t cell_count, cell_i;
     uint16_t i;
-    if (!stage || !width_blocks || !height_blocks ||\n        (uint32_t)width_blocks * 16u > 32767u ||\n        (uint32_t)height_blocks * 16u > 32767u || !cells ||
+    if (!stage || !width_blocks || !height_blocks ||
+        (uint32_t)width_blocks * 16u > 32767u ||
+        (uint32_t)height_blocks * 16u > 32767u || !cells ||
         !tiles || !tile_count || tile_count > SML2_NATIVE_STAGE_MAX_TILES ||
         (object_count && !objects) || (room_count && !rooms) ||
         room_count > SML2_NATIVE_STAGE_MAX_ROOMS ||
