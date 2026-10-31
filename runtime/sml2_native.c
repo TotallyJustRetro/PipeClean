@@ -316,6 +316,52 @@ static void update_player(Sml2NativeWorld *world, Sml2NativePlayer *p,
         p->invulnerability_ticks--;
 }
 
+static int64_t floor_div_i64(int64_t value, int64_t divisor)
+{
+    int64_t quotient = value / divisor;
+    int64_t remainder = value % divisor;
+    if (remainder < 0) quotient--;
+    return quotient;
+}
+
+uint32_t sml2_native_level_collision(void *userdata,
+                                     const Sml2NativeRect *world_rect)
+{
+    const Sml2NativeTileMap *map = (const Sml2NativeTileMap *)userdata;
+    const int64_t block_fp = 16LL * FP_ONE;
+    int64_t first_x, last_x, first_y, last_y;
+    int64_t x, y;
+
+    if (!map || !world_rect || !map->block_ids ||
+        map->width_blocks == 0 || map->height_blocks == 0 ||
+        world_rect->left >= world_rect->right ||
+        world_rect->top >= world_rect->bottom)
+        return SML2_NATIVE_COLLISION_SOLID;
+
+    first_x = floor_div_i64(world_rect->left, block_fp);
+    last_x = floor_div_i64((int64_t)world_rect->right - 1, block_fp);
+    first_y = floor_div_i64(world_rect->top, block_fp);
+    last_y = floor_div_i64((int64_t)world_rect->bottom - 1, block_fp);
+
+    for (y = first_y; y <= last_y; ++y) {
+        for (x = first_x; x <= last_x; ++x) {
+            uint8_t block_id;
+            size_t index;
+            if (x < 0 || y < 0 ||
+                x >= map->width_blocks || y >= map->height_blocks) {
+                if (map->solid_out_of_bounds)
+                    return SML2_NATIVE_COLLISION_SOLID;
+                continue;
+            }
+            index = (size_t)y * map->width_blocks + (size_t)x;
+            block_id = map->block_ids[index];
+            if (map->block_flags[block_id] & SML2_NATIVE_BLOCK_SOLID)
+                return SML2_NATIVE_COLLISION_SOLID;
+        }
+    }
+    return SML2_NATIVE_COLLISION_NONE;
+}
+
 static int32_t camera_origin_axis(int32_t center_fp,
                                    int32_t view_pixels,
                                    int32_t world_pixels,
