@@ -19,7 +19,7 @@ int main(void)
     Sml2NativeStageObject objects[2] = {
         {1, 10, 2, 16, 16, 8, 8,
          SML2_NATIVE_STAGE_OBJECT_ENABLED | SML2_NATIVE_STAGE_OBJECT_UNIQUE},
-        {2, 11, 0, 120, 16, 8, 8, SML2_NATIVE_STAGE_OBJECT_ENABLED}
+        {2, 11, 0, 120, 16, 8, 8, SML2_NATIVE_STAGE_OBJECT_ENABLED | SML2_NATIVE_STAGE_OBJECT_PERSISTENT}
     };
     Sml2NativeStage stage;
     Sml2NativeActorWorld world;
@@ -42,7 +42,7 @@ int main(void)
     assert(sml2_native_actors_sync(&world, &stage, &far) == 0);
     assert(world.count == 2);
     assert(sml2_native_actor_find(&world, 1)->state == SML2_NATIVE_ACTOR_DEFEATED);
-    assert(sml2_native_actor_find(&world, 2)->state == SML2_NATIVE_ACTOR_AWAKE);
+    assert(sml2_native_actor_find(&world, 2)->state == SML2_NATIVE_ACTOR_AWAKE);\n    assert(sml2_native_actor_find(&world, 2)->flags & SML2_NATIVE_ACTOR_PERSISTENT);
     assert(sml2_native_actors_step(&world, update_actor, &updates) == 0);
     assert(updates == 2 && world.tick == 2);
     assert(sml2_native_actor_damage(&world, 99, 1) == -1);
