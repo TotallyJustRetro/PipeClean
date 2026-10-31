@@ -344,6 +344,112 @@ int sml2_native_rom_world_cell(uint16_t world_x, uint16_t world_y,
     return y < 48u ? 0 : 1;
 }
 
+int sml2_native_rom_probe_tile(const Sml2NativeTileMap *map,
+                               uint16_t sample_x, uint16_t sample_y,
+                               uint8_t *tile_id)
+{
+    uint16_t block_x, block_y;
+    uint16_t lookup_x, lookup_y;
+    int mapped;
+    if (!map || !map->block_ids || !tile_id ||
+        map->width_blocks != 256u || map->height_blocks != 48u)
+        return -1;
+
+    /* $1EFA: $B000 + ((y-16)>>4)*$100 + ((x-8)>>4). */
+    lookup_x = (uint16_t)(sample_x - 8u);
+    lookup_y = (uint16_t)(sample_y - 16u);
+    mapped = sml2_native_rom_world_cell(lookup_x, lookup_y,
+                                        &block_x, &block_y);
+    if (mapped < 0) return -1;
+    if (mapped > 0) {
+        *tile_id = 0;
+        return 0;
+    }
+    *tile_id = map->block_ids[(size_t)block_y * 256u + block_x];
+    return 0;
+}
+
+int sml2_native_rom_floor_probe(const Sml2NativeTileMap *map,
+                                uint16_t player_x, uint16_t player_y,
+                                uint8_t *tile_id)
+{
+    uint8_t tile;
+    if (!tile_id) return -1;
+    /* $1E3B's fractional-Y gate: (y-4)&$0F must be below five. */
+    if (((uint16_t)(player_y - 4u) & 0x0Fu) >= 5u) return 0;
+    if (sml2_native_rom_probe_tile(map,
+            (uint16_t)(player_x + 12u),
+            (uint16_t)(player_y + 44u), &tile) != 0)
+        return -1;
+    if (tile < 0x48u) {
+        *tile_id = tile;
+        return 1;
+    }
+    if (sml2_native_rom_probe_tile(map,
+            (uint16_t)(player_x + 20u),
+            (uint16_t)(player_y + 44u), &tile) != 0)
+        return -1;
+    if (tile < 0x48u) {
+        *tile_id = tile;
+        return 1;
+    }
+    return 0;
+}
+
+int sml2_native_rom_ceiling_probe(const Sml2NativeTileMap *map,
+                                  uint16_t player_x, uint16_t player_y,
+                                  uint8_t powerup, uint8_t *tile_id)
+{
+    uint8_t tile;
+    uint16_t dy = powerup ? 18u : 28u;
+    if (!tile_id ||
+        sml2_native_rom_probe_tile(map,
+            (uint16_t)(player_x + 16u),
+            (uint16_t)(player_y + dy), &tile) != 0)
+        return -1;
+    if (tile == 0x7Eu || tile < 0x38u) {
+        *tile_id = tile;
+        return 1;
+    }
+    return 0;
+}
+
+int sml2_native_rom_wall_probe(const Sml2NativeTileMap *map,
+                               uint16_t player_x, uint16_t player_y,
+                               uint8_t probe_side, uint8_t powerup,
+                               uint8_t ducking, uint8_t *tile_id)
+{
+    uint8_t tile;
+    uint16_t probe_x;
+    if (!tile_id || probe_side > 1u) return -1;
+    probe_x = (uint16_t)(player_x + (probe_side ? 20u : 11u));
+
+    if (powerup && !ducking) {
+        if (sml2_native_rom_probe_tile(map, probe_x,
+                (uint16_t)(player_y + 20u), &tile) != 0)
+            return -1;
+        if (tile < 0x38u) {
+            *tile_id = tile;
+            return 1;
+        }
+    }
+    if (sml2_native_rom_probe_tile(map, probe_x,
+            (uint16_t)(player_y + 32u), &tile) != 0)
+        return -1;
+    if (tile < 0x38u) {
+        *tile_id = tile;
+        return 1;
+    }
+    if (sml2_native_rom_probe_tile(map, probe_x,
+            (uint16_t)(player_y + 40u), &tile) != 0)
+        return -1;
+    if (tile < 0x38u) {
+        *tile_id = tile;
+        return 1;
+    }
+    return 0;
+}
+
 static uint32_t native_map_cell_flags(const Sml2NativeTileMap *map,
                                       int64_t x, int64_t y,
                                       int solid_outside)
