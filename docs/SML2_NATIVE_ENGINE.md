@@ -73,6 +73,20 @@ not a claim that commercial SML2 stage data has already been extracted or that
 the renderer/enemy behavior is complete. The next work is a private, legally
 sourced extractor and authentic SML2 metatile/collision/object decoding.
 
+### SML2 layout adapter
+
+The stage module also includes a decoder for the ordinary SML2 gameplay map
+layout observed by PipeClean's existing compatibility path: 256 columns × 48
+rows of 16×16 block IDs (4096×768 world pixels), plus 128 metatile definitions
+with four 8×8 graphics IDs each. It accepts caller-supplied memory snapshots
+and writes into caller-owned native buffers. A separate collision-material
+table is accepted rather than guessing collision behavior from graphics IDs.
+
+This is a decoder for supplied stage-memory data, not a ROM parser and not a
+claim that stage snapshots are currently being captured automatically from
+the game. Homeworld uses a separate 64×64 8×8 tile map and needs its own stage
+profile; it must not be misread as an ordinary gameplay room.
+
 ## Widescreen and zoom model
 
 The native camera uses a logical world-pixel view rather than stretching a
