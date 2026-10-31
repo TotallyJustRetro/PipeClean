@@ -29,7 +29,7 @@ provides:
   terminal velocity;
 - deterministic axis-separated collision queries against a caller-supplied
   world collision map, plus a native 16×16 block-map adapter with per-block
-  solid flags and explicit out-of-bounds behavior;
+  SML2 material/interaction flags and explicit out-of-bounds behavior;
 - a camera with Off, 16:9, 21:9, and live window-aspect view modes;
 - 100%, 125%, 150%, and 200% zoom presets, including the tall-window behavior
   that preserves the native horizontal field while revealing more vertically;
@@ -41,20 +41,25 @@ provides:
 - player input edge detection for jump and per-player invulnerability timers.
 
 Movement values are deliberately configurable and provisional. They are not
-claimed to reproduce the original game's physics yet. The initial native tile-map adapter treats 16×16 block IDs as collision
-materials and supports solid/out-of-bounds flags. It is a foundation, not the
-full SML2 collision table: slopes, one-way platforms, breakable blocks, moving
-surfaces, and special hazards still need their original rules ported.
+claimed to reproduce the original game's physics yet. The stage decoder now
+classifies SML2's global metatile-ID ranges: `$00-$37` solid/standable,
+`$38-$47` standable one-way slope/platform, `$48-$49` coin, `$4A-$4B` exit,
+`$4C-$4F` water, `$50-$51` hazard, `$52-$57` moon/low-gravity, and `$58-$7F`
+decor. It also marks `$04/$05` bounce, `$05` and `$08-$0F` pipes, `$06`
+breakable, and `$7E` hidden-block behavior. Collision queries now preserve the
+full material bitmask. The player mover currently reacts only to solid flags;
+exact slope geometry, floor-only platform resolution, pickups, water physics,
+hazards, breakable blocks, and special interactions still need their own
+source-derived simulation paths.
 
-The current collision interface only supplies solid geometry; enemies,
-breakable blocks, moving platforms, slopes, hazards, bosses, stage data,
-animation, and audio events are not implemented in this first slice.
+Enemies, moving platforms, bosses, stage transitions, animation, and audio
+events are not implemented in this first slice.
 
 ## Native stage-data contract
 
 `runtime/sml2_native_stage.h/.c` now defines a renderer- and ROM-independent
 stage container for extracted content. A stage supplies a 16×16 metatile grid,
-a table mapping each metatile to four 8×8 graphics IDs and collision material,
+a table mapping each metatile to four 8×8 graphics IDs and SML2 material/interaction flags,
 object spawn rectangles, and optional camera-lock rooms. The arrays remain
 caller-owned; initialization validates all references and prepares the native
 collision-map adapter without copying or taking ownership of game assets.
@@ -79,8 +84,8 @@ The stage module also includes a decoder for the ordinary SML2 gameplay map
 layout observed by PipeClean's existing compatibility path: 256 columns × 48
 rows of 16×16 block IDs (4096×768 world pixels), plus 128 metatile definitions
 with four 8×8 graphics IDs each. It accepts caller-supplied memory snapshots
-and writes into caller-owned native buffers. A separate collision-material
-table is accepted rather than guessing collision behavior from graphics IDs.
+and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
+uses SML2's global metatile-ID ranges and special-ID flags.
 
 This is a decoder for supplied stage-memory data, not a ROM parser and not a
 claim that stage snapshots are currently being captured automatically from
@@ -117,10 +122,10 @@ world origin and BGP register and exposes a helper to apply the active DMG
 background palette after rendering.
 
 This is a compatibility/reference capture seam, not the native runtime bridge:
-it still reads the live emulator's memory and VRAM. The native game loop,
-player/actor rendering, authentic collision table, and standalone asset
-extraction remain unconnected. Collision flags are explicitly caller-supplied;
-a missing table produces a visual-only, non-solid snapshot.
+it still reads the live emulator's memory and VRAM. The native game loop, player/actor rendering, and standalone asset extraction
+remain unconnected. Basic material/interaction flags are derived from the
+verified SML2 metatile-ID ranges when no override is supplied. Exact slope
+profiles and the simulation responses to those flags remain future work.
 
 ## Native actor lifecycle
 
@@ -184,8 +189,8 @@ camera bounds; it will not depend on emulator ROM-read hooks or PPU memory taps.
 ## Integration plan
 
 1. Build a ROM-independent native world and stage-data schema.
-2. Implement original SML2 collision/block-map semantics and compare movement
-   against traces from the existing emulator.
+2. Finish exact SML2 slope geometry and per-material movement/interaction
+   responses, then compare player movement against traces from the emulator.
 3. Add actors, enemies, projectiles, damage, power-ups, breakable blocks, and
    stage transitions.
 4. Add native rendering/audio event output without binding gameplay to SDL.
