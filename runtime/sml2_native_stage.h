@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sml2_native.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -96,6 +97,23 @@ int sml2_native_stage_visit_objects(const Sml2NativeStage *stage,
                                     const Sml2NativeRect *world_bounds,
                                     Sml2NativeStageObjectVisitor visitor,
                                     void *userdata);
+
+/* SML2 gameplay stages use a 256x48 grid of 16x16 blocks. The live
+ * decompressed map and four-8x8-tile block definitions can be copied into
+ * caller-owned buffers, then decoded here without emulator dependencies. */
+#define SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS 256
+#define SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS 48
+#define SML2_NATIVE_SML2_BLOCK_COUNT 128
+#define SML2_NATIVE_SML2_MAP_BYTES (256u * 48u)
+#define SML2_NATIVE_SML2_BLOCKDEF_BYTES (128u * 4u)
+
+int sml2_native_stage_decode_sml2(
+    Sml2NativeStage *stage,
+    const uint8_t *level_map, size_t level_map_size,
+    const uint8_t *block_definitions, size_t block_definitions_size,
+    const uint8_t *collision_flags, size_t collision_flags_count,
+    uint8_t *cells_out, size_t cells_capacity,
+    Sml2NativeStageTile tiles_out[SML2_NATIVE_SML2_BLOCK_COUNT]);
 
 /* Resolve a room ID to camera bounds. Returns -1 when the room is absent. */
 int sml2_native_stage_get_room(const Sml2NativeStage *stage, uint16_t room_id,
