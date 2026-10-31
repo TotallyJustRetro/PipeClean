@@ -11,6 +11,16 @@
 typedef int (*Sml2NativeReadTilePixels)(
     void *userdata, uint8_t graphics_id, uint8_t pixels_out[64]);
 
+/* Optional Game Boy VRAM adapter for original SML2 graphics. lcdc supplies
+ * LCDC.4 so signed/unsigned tile addressing matches the game's BG tile mode. */
+typedef struct Sml2NativeGbGraphics {
+    const uint8_t *vram; /* 0x2000 bytes */
+    uint8_t lcdc;
+} Sml2NativeGbGraphics;
+
+int sml2_native_read_gb_tile_pixels(
+    void *userdata, uint8_t graphics_id, uint8_t pixels_out[64]);
+
 /* Render the native stage at the world's logical camera size. The output is
  * one byte per pixel (Game Boy palette index 0..3); pitch is measured in
  * bytes and may exceed the logical width. Pixels outside the stage are filled
