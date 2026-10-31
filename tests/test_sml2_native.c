@@ -181,6 +181,31 @@ static void test_sml2_rom_player_probes(void)
     assert(sml2_native_rom_wall_probe(&map, 4, 4, 2, 0, 0, &tile) == -1);
 }
 
+static void test_sml2_rom_coin_cell_mutation(void)
+{
+    uint8_t cells[256 * 48] = {0};
+    uint8_t replacement = 0xAA;
+
+    cells[0] = 0x48;
+    cells[1] = 0x49;
+    assert(sml2_native_rom_collect_coin(cells, sizeof(cells),
+                                        8, 16, 0x48, &replacement) == 1);
+    assert(replacement == 0x60);
+    assert(cells[0] == 0x60);
+
+    assert(sml2_native_rom_collect_coin(cells, sizeof(cells),
+                                        24, 16, 0x49, &replacement) == 1);
+    assert(replacement == 0x7F);
+    assert(cells[1] == 0x7F);
+
+    replacement = 0xAA;
+    assert(sml2_native_rom_collect_coin(cells, sizeof(cells),
+                                        8, 16, 0x48, &replacement) == 0);
+    assert(replacement == 0xAA); /* stale sample cannot rewrite twice */
+    assert(sml2_native_rom_collect_coin(cells, 10,
+                                        8, 16, 0x48, &replacement) == -1);
+}
+
 static void test_sml2_rom_environment_probes(void)
 {
     uint8_t blocks[256 * 48] = {0};
@@ -297,6 +322,7 @@ int main(void)
     test_sml2_rom_world_wrap_and_echo();
     test_sml2_rom_player_probes();
     test_sml2_rom_environment_probes();
+    test_sml2_rom_coin_cell_mutation();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
     assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
