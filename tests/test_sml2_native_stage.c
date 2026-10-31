@@ -1,6 +1,7 @@
 #include "sml2_native_stage.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -37,8 +38,35 @@ static int record_object(void *userdata, const Sml2NativeStageObject *object)
     return 0;
 }
 
+static void test_sml2_layout_decode(void)
+{
+    uint8_t *map = (uint8_t *)calloc(SML2_NATIVE_SML2_MAP_BYTES, 1);
+    uint8_t defs[SML2_NATIVE_SML2_BLOCKDEF_BYTES];
+    uint8_t flags[SML2_NATIVE_SML2_BLOCK_COUNT] = {0};
+    Sml2NativeStageTile *tiles = (Sml2NativeStageTile *)calloc(
+        SML2_NATIVE_SML2_BLOCK_COUNT, sizeof(*tiles));
+    Sml2NativeStage stage;
+    assert(map && tiles);
+    for (unsigned i = 0; i < sizeof defs; ++i) defs[i] = (uint8_t)i;
+    map[7] = 3;
+    flags[3] = SML2_NATIVE_STAGE_TILE_SOLID;
+    assert(sml2_native_stage_decode_sml2(&stage, map,
+        SML2_NATIVE_SML2_MAP_BYTES, defs, sizeof defs, flags, sizeof flags,
+        map, SML2_NATIVE_SML2_MAP_BYTES, tiles) == 0);
+    assert(stage.width_blocks == 256 && stage.height_blocks == 48);
+    assert(tiles[3].graphics[0] == 12 && tiles[3].graphics[3] == 15);
+    assert(stage.collision_map.block_flags[3] == SML2_NATIVE_BLOCK_SOLID);
+    map[8] = 0x80;
+    assert(sml2_native_stage_decode_sml2(&stage, map,
+        SML2_NATIVE_SML2_MAP_BYTES, defs, sizeof defs, flags, sizeof flags,
+        map, SML2_NATIVE_SML2_MAP_BYTES, tiles) == -1);
+    free(tiles);
+    free(map);
+}
+
 int main(void)
 {
+    test_sml2_layout_decode();
     uint8_t cells[8 * 4] = {0};
     Sml2NativeStageTile tiles[2];
     Sml2NativeStageObject objects[3] = {
