@@ -181,6 +181,52 @@ static void test_sml2_rom_player_probes(void)
     assert(sml2_native_rom_wall_probe(&map, 4, 4, 2, 0, 0, &tile) == -1);
 }
 
+static void test_sml2_rom_environment_probes(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    uint8_t flags = 0xFF;
+    uint8_t tile = 0xFF;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+
+    /* Big Mario's y+22 hazard probe wins before the y+28 water sample. */
+    blocks[0 * 256] = 0x50;
+    blocks[1 * 256] = 0x4C;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 1, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_HAZARD);
+    assert(tile == 0x50);
+
+    /* With no hazard, the last y+28 sample classifies water. */
+    blocks[0 * 256] = 0x48;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_WATER);
+    assert(tile == 0x4C);
+
+    blocks[1 * 256] = 0x4B;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_EXIT);
+    assert(tile == 0x4B);
+
+    blocks[1 * 256] = 0x55;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_MOON);
+    assert(tile == 0x55);
+
+    blocks[1 * 256] = 0x48;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == 0);
+    assert(tile == 0x48);
+}
+
 static void test_sml2_rom_world_wrap_and_echo(void)
 {
     uint8_t blocks[256 * 48] = {0};
@@ -250,6 +296,7 @@ int main(void)
     test_native_tilemap_collision();
     test_sml2_rom_world_wrap_and_echo();
     test_sml2_rom_player_probes();
+    test_sml2_rom_environment_probes();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
     assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
