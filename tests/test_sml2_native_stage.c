@@ -143,19 +143,22 @@ int main(void)
     tiles[1].graphics[1] = 102;
     tiles[1].graphics[2] = 103;
     tiles[1].graphics[3] = 104;
-    tiles[1].collision_flags = SML2_NATIVE_STAGE_TILE_SOLID;
+    tiles[1].collision_flags = SML2_NATIVE_STAGE_TILE_SOLID |
+        SML2_NATIVE_STAGE_TILE_HAZARD | SML2_NATIVE_STAGE_TILE_PIPE;
     cells[1] = 1;
     cells[2 * 8 + 2] = 1;
 
     assert(sml2_native_stage_init(&stage, 8, 4, cells, tiles, 2,
                                   objects, 3, rooms, 1, 1) == 0);
-    assert(stage.collision_map.block_flags[1] == SML2_NATIVE_BLOCK_SOLID);
+    assert(stage.collision_map.block_flags[1] == tiles[1].collision_flags);
     assert(sml2_native_level_collision(&stage.collision_map,
              &(Sml2NativeRect){16 * SML2_NATIVE_FP_ONE,
                                0,
                                32 * SML2_NATIVE_FP_ONE,
                                16 * SML2_NATIVE_FP_ONE}) ==
-           SML2_NATIVE_COLLISION_SOLID);
+           (SML2_NATIVE_COLLISION_SOLID |
+            SML2_NATIVE_COLLISION_HAZARD |
+            SML2_NATIVE_COLLISION_PIPE));
 
     assert(sml2_native_stage_visit_draw_cells(&stage, &draw,
                                                record_draw, &log) == 0);
