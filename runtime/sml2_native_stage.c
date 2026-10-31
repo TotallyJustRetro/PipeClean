@@ -12,7 +12,7 @@ static int rect_valid(const Sml2NativeRect *r)
 
 int sml2_native_stage_capture_sml2(
     Sml2NativeStage *stage, Sml2NativeMemoryRead read_memory, void *userdata,
-    const uint8_t *collision_flags, size_t collision_flags_count,
+    const uint16_t *collision_flags, size_t collision_flags_count,
     uint8_t *cells_out, size_t cells_capacity,
     uint8_t *block_definitions_out, size_t block_definitions_capacity,
     Sml2NativeStageTile tiles_out[SML2_NATIVE_SML2_BLOCK_COUNT])
@@ -36,11 +36,56 @@ int sml2_native_stage_capture_sml2(
         cells_out, cells_capacity, tiles_out);
 }
 
+uint8_t sml2_native_sml2_material(uint8_t id)
+{
+    if (id <= 0x37u) return SML2_NATIVE_MATERIAL_SOLID;
+    if (id <= 0x47u) return SML2_NATIVE_MATERIAL_SLOPE;
+    if (id <= 0x49u) return SML2_NATIVE_MATERIAL_COIN;
+    if (id <= 0x4Bu) return SML2_NATIVE_MATERIAL_EXIT;
+    if (id <= 0x4Fu) return SML2_NATIVE_MATERIAL_WATER;
+    if (id <= 0x51u) return SML2_NATIVE_MATERIAL_HAZARD;
+    if (id <= 0x57u) return SML2_NATIVE_MATERIAL_MOON;
+    if (id == 0x7Eu) return SML2_NATIVE_MATERIAL_HIDDEN_BLOCK;
+    return SML2_NATIVE_MATERIAL_DECOR;
+}
+
+uint16_t sml2_native_sml2_collision_flags(uint8_t id)
+{
+    uint16_t flags = 0;
+    if (id <= 0x37u)
+        flags |= SML2_NATIVE_STAGE_TILE_SOLID |
+                 SML2_NATIVE_STAGE_TILE_STANDABLE;
+    else if (id <= 0x47u)
+        flags |= SML2_NATIVE_STAGE_TILE_STANDABLE |
+                 SML2_NATIVE_STAGE_TILE_ONE_WAY;
+    else if (id <= 0x49u)
+        flags |= SML2_NATIVE_STAGE_TILE_COIN;
+    else if (id <= 0x4Bu)
+        flags |= SML2_NATIVE_STAGE_TILE_EXIT;
+    else if (id <= 0x4Fu)
+        flags |= SML2_NATIVE_STAGE_TILE_WATER;
+    else if (id <= 0x51u)
+        flags |= SML2_NATIVE_STAGE_TILE_HAZARD;
+    else if (id <= 0x57u)
+        flags |= SML2_NATIVE_STAGE_TILE_MOON;
+
+    /* Special consumers inside the ordinary solid/decor ranges. */
+    if (id == 0x04u || id == 0x05u)
+        flags |= SML2_NATIVE_STAGE_TILE_BOUNCE;
+    if (id == 0x05u || (id >= 0x08u && id <= 0x0Fu))
+        flags |= SML2_NATIVE_STAGE_TILE_PIPE;
+    if (id == 0x06u)
+        flags |= SML2_NATIVE_STAGE_TILE_BREAKABLE;
+    if (id == 0x7Eu)
+        flags |= SML2_NATIVE_STAGE_TILE_HIDDEN;
+    return flags;
+}
+
 int sml2_native_stage_decode_sml2(
     Sml2NativeStage *stage,
     const uint8_t *level_map, size_t level_map_size,
     const uint8_t *block_definitions, size_t block_definitions_size,
-    const uint8_t *collision_flags, size_t collision_flags_count,
+    const uint16_t *collision_flags, size_t collision_flags_count,
     uint8_t *cells_out, size_t cells_capacity,
     Sml2NativeStageTile tiles_out[SML2_NATIVE_SML2_BLOCK_COUNT])
 {
@@ -66,8 +111,10 @@ int sml2_native_stage_decode_sml2(
         for (part = 0; part < 4; ++part)
             tiles_out[i].graphics[part] =
                 block_definitions[i * 4u + part];
-        if (collision_flags)
-            tiles_out[i].collision_flags = collision_flags[i];
+        tiles_out[i].material = sml2_native_sml2_material((uint8_t)i);
+        tiles_out[i].collision_flags = collision_flags
+            ? collision_flags[i]
+            : sml2_native_sml2_collision_flags((uint8_t)i);
     }
 
     return sml2_native_stage_init(stage,
@@ -134,10 +181,8 @@ int sml2_native_stage_init(Sml2NativeStage *stage,
     stage->collision_map.height_blocks = height_blocks;
     stage->collision_map.block_ids = cells;
     stage->collision_map.solid_out_of_bounds = solid_out_of_bounds;
-    for (i = 0; i < tile_count; ++i) {
-        if (tiles[i].collision_flags & SML2_NATIVE_STAGE_TILE_SOLID)
-            stage->collision_map.block_flags[i] = SML2_NATIVE_BLOCK_SOLID;
-    }
+    for (i = 0; i < tile_count; ++i)
+        stage->collision_map.block_flags[i] = tiles[i].collision_flags;
     return 0;
 }
 
