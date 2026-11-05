@@ -237,6 +237,34 @@ static void test_sml2_rom_step_shared_world(void)
     assert(blocks[6 * 256] == 0x37); /* ROM step never mutates the map */
 }
 
+static void test_sml2_rom_water_state(void)
+{
+    uint8_t cells[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+
+    /* At (4,4), the final environment probe reads row 1, column 0. */
+    cells[1 * 256] = 0x4Cu;
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = cells;
+    config.gravity = 0;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 4, 4, 5) == 0);
+
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.players[0].environment_flags == SML2_NATIVE_ROM_ENV_WATER);
+    assert(world.players[0].swimming == 1u);
+
+    /* Leaving the water clears the state on the next environment probe. */
+    cells[1 * 256] = 0u;
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.players[0].swimming == 0u);
+}
+
 static void test_native_swimming_controls(void)
 {
     Sml2NativeWorld world;
@@ -531,6 +559,7 @@ int main(void)
     test_sml2_rom_world_wrap_and_echo();
     test_sml2_rom_player_probes();
     test_sml2_rom_environment_probes();
+    test_sml2_rom_water_state();
     test_native_swimming_controls();
     test_sml2_rom_exit_bell_arm();
     test_sml2_rom_coin_cell_mutation();
