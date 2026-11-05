@@ -899,9 +899,34 @@ int sml2_native_rom_step(Sml2NativeWorld *world,
                          const Sml2NativeTileMap *map)
 {
     unsigned i;
+    int exit_phase = 0;
     if (!world || !map || !map->block_ids ||
         map->width_blocks != 256u || map->height_blocks != 48u)
         return -1;
+
+    /* State $18 replaces the in-level update after the bell arm. VBlank keeps
+       the fade timer running, but player movement, probes, and camera updates
+       stop until the 192-frame tail reaches the hand-off boundary. */
+    for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
+        if (world->players[i].active && world->players[i].exit_requested) {
+            exit_phase = 1;
+            break;
+        }
+    }
+    if (exit_phase) {
+        for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
+            Sml2NativePlayer *p = &world->players[i];
+            if (!p->active || !p->exit_requested || p->exit_completed)
+                continue;
+            if (p->exit_fade_ticks > 0u)
+                p->exit_fade_ticks--;
+            if (p->exit_fade_ticks == 0u)
+                p->exit_completed = 1u;
+        }
+        world->tick++;
+        return 0;
+    }
+
     if (sml2_native_step(world, inputs, rom_player_collision,
                          (void *)map) != 0)
         return -1;

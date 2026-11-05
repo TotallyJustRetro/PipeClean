@@ -262,10 +262,27 @@ static void test_sml2_rom_exit_bell_arm(void)
     assert(world.players[0].music_request == 3u);
     assert(world.players[0].exit_fade_ticks == 192u);
 
-    /* The arm is one-shot; a later frame must not restart the fade. */
-    world.players[0].exit_fade_ticks = 120u;
-    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
-    assert(world.players[0].exit_fade_ticks == 120u);
+    /* The arm is one-shot; the following 192 fixed ticks run only the
+       fade state. Gameplay and camera movement stay frozen throughout. */
+    {
+        int32_t frozen_x = world.players[0].x;
+        int32_t frozen_y = world.players[0].y;
+        assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+        assert(world.players[0].exit_fade_ticks == 191u);
+        assert(world.players[0].exit_completed == 0u);
+        assert(world.players[0].x == frozen_x);
+        assert(world.players[0].y == frozen_y);
+        for (unsigned frame = 0; frame < 191u; ++frame)
+            assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+        assert(world.players[0].exit_fade_ticks == 0u);
+        assert(world.players[0].exit_completed == 1u);
+        assert(world.players[0].x == frozen_x);
+        assert(world.players[0].y == frozen_y);
+        /* Completion is latched; later calls cannot underflow or re-arm. */
+        assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+        assert(world.players[0].exit_fade_ticks == 0u);
+        assert(world.players[0].exit_completed == 1u);
+    }
 }
 
 static void test_sml2_rom_coin_cell_mutation(void)

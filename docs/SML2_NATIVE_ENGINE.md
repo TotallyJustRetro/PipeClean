@@ -111,8 +111,11 @@ The ROM step stores the resulting environment flags and sampled tile on each
 native player, and uses floor/ceiling/wall hits to update grounded state and
 velocity. The $4A/$4B exit-bell arm is modelled as a one-shot event: it retains
 the sampled tile variant, requests level-clear music 3, clears the pending SFX
-request, and starts the 192-tick clear-fade countdown. Advancing that fade and
-performing the level/map hand-off remain runtime work. The mutable-layout step
+request, and starts the 192-tick clear-fade countdown. Subsequent native
+ROM steps now freeze player movement, probes, and camera updates while advancing
+that countdown once per fixed tick; completion is latched at zero. The BCD
+level-tally guards and banked level/map hand-off are still not implemented.
+The mutable-layout step
 now also reproduces side-probe coin touch
 in the ROM's pre-horizontal-movement order: left probe first, then right only
 when the left probe did not hit a solid tile. Each probe checks its ordered

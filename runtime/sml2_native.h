@@ -124,6 +124,7 @@ typedef struct {
     uint8_t exit_requested;   /* ROM $FF9B=24: level-clear fade has begun. */
     uint8_t exit_tile;        /* $4A or $4B, retained for level-tally rules. */
     uint16_t exit_fade_ticks; /* ROM fade duration: 192 frames. */
+    uint8_t exit_completed;  /* Fade reached zero; map hand-off is still external. */
     uint8_t active;
     uint8_t facing_right;
     uint8_t grounded;
