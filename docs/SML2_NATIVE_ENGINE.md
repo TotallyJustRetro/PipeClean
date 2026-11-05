@@ -250,3 +250,21 @@ camera bounds; it will not depend on emulator ROM-read hooks or PPU memory taps.
 The native simulation foundation is isolated and unit-tested. It is not yet a
 playable SML2 engine and is not connected to the launcher or active gameplay
 path.
+
+
+## Native widescreen presentation path
+
+The native stage renderer samples the logical camera in signed 16.16 world
+coordinates. Each destination pixel resolves its source world pixel with
+mathematical floor division, including negative fractional camera origins.
+This keeps camera motion and room-slide interpolation in the same coordinate
+system as physics instead of treating the fixed-point camera origin as an
+integer pixel count.
+
+The actor world exposes a stable-order visible-actor visitor. It builds each
+awake actor's world-space rectangle, culls it against the camera view, and
+supplies the rectangle projected into view coordinates. Terrain and actor
+drawing can therefore consume the same camera origin and half-open bounds
+without duplicating camera arithmetic. This is a render-facing data interface;
+it does not yet supply authentic SML2 actor sprites, animation frames, or
+gameplay behavior.

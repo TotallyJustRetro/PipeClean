@@ -46,6 +46,14 @@ typedef int (*Sml2NativeActorUpdate)(void *userdata,
                                      Sml2NativeActor *actor,
                                      uint64_t tick);
 
+/* One awake actor projected into the current camera's logical view. */
+typedef struct {
+    const Sml2NativeActor *actor;
+    Sml2NativeRect view_bounds;
+} Sml2NativeActorDraw;
+typedef int (*Sml2NativeActorDrawVisitor)(
+    void *userdata, const Sml2NativeActorDraw *draw);
+
 /* Clear all actor state. Call once when entering a new stage. */
 void sml2_native_actors_init(Sml2NativeActorWorld *world);
 
@@ -67,6 +75,12 @@ int sml2_native_actor_damage(Sml2NativeActorWorld *world, uint16_t actor_id,
 
 const Sml2NativeActor *sml2_native_actor_find(
     const Sml2NativeActorWorld *world, uint16_t actor_id);
+
+/* Visit visible awake actors in stable slot order with projected view bounds.
+ * A nonzero visitor result stops traversal and is returned unchanged. */
+int sml2_native_actors_visit_visible(
+    const Sml2NativeActorWorld *actors, const Sml2NativeWorld *camera,
+    Sml2NativeActorDrawVisitor visitor, void *userdata);
 
 #ifdef __cplusplus
 }

@@ -123,6 +123,46 @@ int sml2_native_actors_step(Sml2NativeActorWorld *world,
     return 0;
 }
 
+int sml2_native_actors_visit_visible(
+    const Sml2NativeActorWorld *actors, const Sml2NativeWorld *camera,
+    Sml2NativeActorDrawVisitor visitor, void *userdata)
+{
+    uint16_t i;
+    if (!actors || !camera || !visitor ||
+        actors->count > SML2_NATIVE_MAX_ACTORS ||
+        camera->camera_view_width <= 0 || camera->camera_view_height <= 0)
+        return -1;
+
+    for (i = 0; i < actors->count; ++i) {
+        const Sml2NativeActor *actor = &actors->actors[i];
+        Sml2NativeActorDraw draw;
+        Sml2NativeRect world_rect;
+        int64_t right, bottom;
+        int result;
+        if (actor->state != SML2_NATIVE_ACTOR_AWAKE) continue;
+        if (!actor->width || !actor->height) return -1;
+        right = (int64_t)actor->x +
+                (int64_t)actor->width * SML2_NATIVE_FP_ONE;
+        bottom = (int64_t)actor->y +
+                 (int64_t)actor->height * SML2_NATIVE_FP_ONE;
+        if (right > INT32_MAX || right < INT32_MIN ||
+            bottom > INT32_MAX || bottom < INT32_MIN)
+            return -1;
+        world_rect.left = actor->x;
+        world_rect.top = actor->y;
+        world_rect.right = (int32_t)right;
+        world_rect.bottom = (int32_t)bottom;
+        if (!sml2_native_view_contains_rect(camera, &world_rect)) continue;
+        if (sml2_native_world_rect_to_view(camera, &world_rect,
+                                            &draw.view_bounds) != 0)
+            return -1;
+        draw.actor = actor;
+        result = visitor(userdata, &draw);
+        if (result) return result;
+    }
+    return 0;
+}
+
 int sml2_native_actor_damage(Sml2NativeActorWorld *world, uint16_t actor_id,
                              uint16_t damage)
 {

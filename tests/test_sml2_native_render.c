@@ -75,8 +75,8 @@ int main(void)
 
     /* Move the logical camera into the stage. 16:9 is a true 256-pixel
        world viewport, not a stretched 160-pixel image. */
-    world.camera_x = 32;
-    world.camera_y = 16;
+    world.camera_x = 32 * SML2_NATIVE_FP_ONE;
+    world.camera_y = 16 * SML2_NATIVE_FP_ONE;
     assert(world.camera_view_width == 256);
     assert(world.camera_view_height == 144);
     assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
@@ -91,19 +91,35 @@ int main(void)
     assert(calls == 4);                     /* each graphics ID decoded once */
 
     /* Pixels beyond the 320x192 stage use the explicit clear palette index. */
-    world.camera_x = 100;
+    world.camera_x = 100 * SML2_NATIVE_FP_ONE;
     assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
                                     pixels, 256, sizeof(pixels), 2) == 0);
     assert(pixels[220] == 2);
 
     /* Enlarged views may extend beyond the left/top level edge. Those pixels
        are cleared while valid world pixels remain correctly sampled. */
-    world.camera_x = -8;
-    world.camera_y = -4;
+    world.camera_x = -8 * SML2_NATIVE_FP_ONE;
+    world.camera_y = -4 * SML2_NATIVE_FP_ONE;
     assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
                                     pixels, 256, sizeof(pixels), 2) == 0);
     assert(pixels[0] == 2);
     assert(pixels[8 * 256 + 8] == 1);
+
+    /* Fixed-point camera sampling floors fractional and negative origins. */
+    world.camera_x = 32 * SML2_NATIVE_FP_ONE +
+                     SML2_NATIVE_FP_ONE / 2;
+    world.camera_y = 16 * SML2_NATIVE_FP_ONE +
+                     SML2_NATIVE_FP_ONE / 2;
+    assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
+                                    pixels, 256, sizeof(pixels), 2) == 0);
+    assert(pixels[0] == 1);
+    assert(pixels[8] == 2);
+    world.camera_x = -SML2_NATIVE_FP_ONE / 2;
+    world.camera_y = -SML2_NATIVE_FP_ONE / 2;
+    assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
+                                    pixels, 256, sizeof(pixels), 2) == 0);
+    assert(pixels[0] == 2);
+    assert(pixels[256 + 1] == 1);
 
     /* A short pitch/capacity or an invalid palette index fails safely. */
     assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
