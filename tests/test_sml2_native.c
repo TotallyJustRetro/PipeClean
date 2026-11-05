@@ -208,7 +208,7 @@ static void test_sml2_rom_step_shared_world(void)
     config.level_width = 4096;
     config.level_height = 768;
     assert(sml2_native_init(&world, &config) == 0);
-    assert(sml2_native_spawn_player(&world, 0, 32, 68, 5) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 32, 69, 5) == 0);
     assert(sml2_native_spawn_player(&world, 1, 96, 68, 5) == 0);
 
     memset(inputs, 0, sizeof(inputs));
@@ -216,6 +216,8 @@ static void test_sml2_rom_step_shared_world(void)
     assert(world.tick == 1);
     assert(world.players[0].grounded);
     assert(world.players[1].grounded);
+    /* ROM landing alignment nudges a y=69 player to the y=68 grid. */
+    assert(sml2_native_fp_to_int(world.players[0].y) == 68);
     assert(world.players[0].environment_flags == SML2_NATIVE_ROM_ENV_WATER);
     assert(world.players[0].environment_tile == 0x4C);
     assert(world.players[1].environment_flags == SML2_NATIVE_ROM_ENV_MOON);
