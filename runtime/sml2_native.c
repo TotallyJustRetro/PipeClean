@@ -155,6 +155,15 @@ int sml2_native_init(Sml2NativeWorld *world, const Sml2NativeConfig *config)
     return 0;
 }
 
+static int camera_region_valid(const Sml2NativeWorld *world,
+                               const Sml2NativeCameraRegion *region)
+{
+    return world && region && region->left >= 0 && region->top >= 0 &&
+           region->right > region->left && region->bottom > region->top &&
+           region->right <= world->config.level_width &&
+           region->bottom <= world->config.level_height;
+}
+
 int sml2_native_set_camera_region(Sml2NativeWorld *world,
                                   const Sml2NativeCameraRegion *region)
 {
@@ -168,12 +177,33 @@ int sml2_native_set_camera_region(Sml2NativeWorld *world,
     } else {
         next = *region;
     }
-    if (next.left < 0 || next.top < 0 ||
-        next.right <= next.left || next.bottom <= next.top ||
-        next.right > world->config.level_width ||
-        next.bottom > world->config.level_height)
-        return -1;
+    if (!camera_region_valid(world, &next)) return -1;
     world->camera_region = next;
+    world->camera_slide_active = 0;
+    memset(&world->camera_slide, 0, sizeof(world->camera_slide));
+    return 0;
+}
+
+int sml2_native_set_camera_slide(Sml2NativeWorld *world,
+                                 const Sml2NativeCameraSlide *slide)
+{
+    if (!world) return -1;
+    if (!slide) {
+        world->camera_slide_active = 0;
+        memset(&world->camera_slide, 0, sizeof(world->camera_slide));
+        return 0;
+    }
+    if (!camera_region_valid(world, &slide->from) ||
+        !camera_region_valid(world, &slide->to) ||
+        slide->duration_ticks == 0 || slide->duration_ticks > 65535u ||
+        slide->progress_ticks >= slide->duration_ticks ||
+        slide->step_x < -4096 || slide->step_x > 4096 ||
+        slide->step_y < -4096 || slide->step_y > 4096)
+        return -1;
+
+    world->camera_slide = *slide;
+    world->camera_region = slide->from;
+    world->camera_slide_active = 1;
     return 0;
 }
 
@@ -761,15 +791,54 @@ static void update_camera(Sml2NativeWorld *world)
     {
         int32_t level_bias = view_height > 144
                            ? (view_height - 144) / 4 : 0;
-        world->camera_x = camera_origin_axis(center_x, view_width,
-                                             world->config.level_width,
-                                             world->camera_region.left,
-                                             world->camera_region.right, 0);
-        world->camera_y = camera_origin_axis(center_y, view_height,
-                                             world->config.level_height,
-                                             world->camera_region.top,
-                                             world->camera_region.bottom,
-                                             level_bias);
+        if (world->camera_slide_active) {
+            const Sml2NativeCameraSlide *slide = &world->camera_slide;
+            int64_t progress = slide->progress_ticks;
+            int64_t remaining = (int64_t)slide->duration_ticks - progress;
+            int32_t from_center_x = clamp_i64((int64_t)center_x -
+                (int64_t)slide->step_x * progress * FP_ONE);
+            int32_t from_center_y = clamp_i64((int64_t)center_y -
+                (int64_t)slide->step_y * progress * FP_ONE);
+            int32_t to_center_x = clamp_i64((int64_t)center_x +
+                (int64_t)slide->step_x * remaining * FP_ONE);
+            int32_t to_center_y = clamp_i64((int64_t)center_y +
+                (int64_t)slide->step_y * remaining * FP_ONE);
+            int32_t from_x = camera_origin_axis(from_center_x, view_width,
+                world->config.level_width, slide->from.left,
+                slide->from.right, 0);
+            int32_t from_y = camera_origin_axis(from_center_y, view_height,
+                world->config.level_height, slide->from.top,
+                slide->from.bottom, level_bias);
+            int32_t to_x = camera_origin_axis(to_center_x, view_width,
+                world->config.level_width, slide->to.left,
+                slide->to.right, 0);
+            int32_t to_y = camera_origin_axis(to_center_y, view_height,
+                world->config.level_height, slide->to.top,
+                slide->to.bottom, level_bias);
+            world->camera_x = clamp_i64((int64_t)from_x +
+                ((int64_t)to_x - from_x) * progress /
+                slide->duration_ticks);
+            world->camera_y = clamp_i64((int64_t)from_y +
+                ((int64_t)to_y - from_y) * progress /
+                slide->duration_ticks);
+
+            world->camera_slide.progress_ticks++;
+            if (world->camera_slide.progress_ticks >=
+                world->camera_slide.duration_ticks) {
+                world->camera_region = world->camera_slide.to;
+                world->camera_slide_active = 0;
+            }
+        } else {
+            world->camera_x = camera_origin_axis(center_x, view_width,
+                                                 world->config.level_width,
+                                                 world->camera_region.left,
+                                                 world->camera_region.right, 0);
+            world->camera_y = camera_origin_axis(center_y, view_height,
+                                                 world->config.level_height,
+                                                 world->camera_region.top,
+                                                 world->camera_region.bottom,
+                                                 level_bias);
+        }
     }
 }
 

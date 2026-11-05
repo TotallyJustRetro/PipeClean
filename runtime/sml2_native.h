@@ -83,6 +83,18 @@ typedef struct {
     int32_t bottom;
 } Sml2NativeCameraRegion;
 
+/* A bounded camera transition between two room locks. step_x/step_y are
+ * world pixels advanced per simulation tick; progress advances automatically
+ * from zero to duration_ticks. */
+typedef struct {
+    Sml2NativeCameraRegion from;
+    Sml2NativeCameraRegion to;
+    int32_t step_x;
+    int32_t step_y;
+    uint32_t progress_ticks;
+    uint32_t duration_ticks;
+} Sml2NativeCameraSlide;
+
 /* Data-only collision map. One cell is a 16×16 world-pixel block; block IDs
  * select flags below. Render tiles/graphics can be stored separately. */
 typedef struct {
@@ -160,12 +172,14 @@ typedef struct {
     Sml2NativeConfig config;
     Sml2NativePlayer players[SML2_NATIVE_MAX_PLAYERS];
     Sml2NativeCameraRegion camera_region;
+    Sml2NativeCameraSlide camera_slide;
     uint64_t tick;
     int32_t camera_x;
     int32_t camera_y;
     int32_t camera_view_width;
     int32_t camera_view_height;
     uint8_t camera_zoom_percent;
+    uint8_t camera_slide_active;
     uint8_t player_count;
 } Sml2NativeWorld;
 
@@ -196,6 +210,11 @@ int sml2_native_set_view(Sml2NativeWorld *world, uint8_t widescreen_mode,
  * Passing NULL restores the full-level camera region. */
 int sml2_native_set_camera_region(Sml2NativeWorld *world,
                                   const Sml2NativeCameraRegion *region);
+/* Begin a deterministic room-to-room camera slide. The current camera lock
+ * becomes slide.from; at completion the lock becomes slide.to. Passing NULL
+ * cancels an active slide without changing the current lock. */
+int sml2_native_set_camera_slide(Sml2NativeWorld *world,
+                                 const Sml2NativeCameraSlide *slide);
 
 /* Shared camera helpers. World coordinates and returned view coordinates are
  * signed 16.16 fixed-point pixels. Rect visibility uses the full logical view,

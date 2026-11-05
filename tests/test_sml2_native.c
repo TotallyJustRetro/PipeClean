@@ -546,6 +546,53 @@ static void test_sml2_rom_native_step(void)
     assert(world.tick == 1);
 }
 
+static void test_native_camera_room_slide(void)
+{
+    Sml2NativeConfig config = make_config();
+    Sml2NativeWorld world;
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+    Sml2NativeCameraRegion from = {0, 0, 512, 256};
+    Sml2NativeCameraRegion to = {512, 0, 1024, 256};
+    Sml2NativeCameraSlide slide;
+    int32_t previous;
+    unsigned tick;
+
+    config.level_width = 1024;
+    config.gravity = 0;
+    config.horizontal_friction = 0;
+    config.auto_zoom = 0;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 380, 104, 5) == 0);
+    world.players[0].vx = SML2_NATIVE_FP_ONE;
+    assert(sml2_native_set_camera_region(&world, &from) == 0);
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    assert(world.camera_x == sml2_native_fp_from_int(256));
+
+    memset(&slide, 0, sizeof(slide));
+    slide.from = from;
+    slide.to = to;
+    slide.step_x = 1;
+    slide.duration_ticks = 160;
+    assert(sml2_native_set_camera_slide(&world, &slide) == 0);
+    previous = world.camera_x;
+    for (tick = 0; tick < slide.duration_ticks; ++tick) {
+        assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+        assert(world.camera_x >= previous);
+        assert(world.camera_x - previous <= sml2_native_fp_from_int(3));
+        previous = world.camera_x;
+    }
+    assert(!world.camera_slide_active);
+    assert(world.camera_region.left == to.left);
+    assert(world.camera_region.right == to.right);
+    assert(world.camera_x == sml2_native_fp_from_int(512));
+
+    /* Invalid slides fail closed without replacing the current camera lock. */
+    slide.duration_ticks = 0;
+    assert(sml2_native_set_camera_slide(&world, &slide) == -1);
+    assert(!world.camera_slide_active);
+    assert(sml2_native_set_camera_slide(&world, NULL) == 0);
+}
+
 int main(void)
 {
     Sml2NativeConfig config = make_config();
@@ -566,6 +613,7 @@ int main(void)
     test_sml2_rom_step_collects_coins();
     test_sml2_rom_step_shared_world();
     test_sml2_rom_native_step();
+    test_native_camera_room_slide();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
     assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
