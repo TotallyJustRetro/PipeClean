@@ -202,6 +202,8 @@ static void test_sml2_rom_step_shared_world(void)
     /* ROM floor probes for players at y=68 sample map row 6. */
     for (x = 0; x < 256; ++x)
         blocks[6 * 256 + x] = 0x37;
+    blocks[5 * 256 + 2] = 0x4C; /* water at player 1's environment probe */
+    blocks[5 * 256 + 6] = 0x55; /* moon zone at player 2's probe */
 
     config.level_width = 4096;
     config.level_height = 768;
@@ -214,6 +216,10 @@ static void test_sml2_rom_step_shared_world(void)
     assert(world.tick == 1);
     assert(world.players[0].grounded);
     assert(world.players[1].grounded);
+    assert(world.players[0].environment_flags == SML2_NATIVE_ROM_ENV_WATER);
+    assert(world.players[0].environment_tile == 0x4C);
+    assert(world.players[1].environment_flags == SML2_NATIVE_ROM_ENV_MOON);
+    assert(world.players[1].environment_tile == 0x55);
     p0_ground_y = world.players[0].y;
     p1_ground_y = world.players[1].y;
 
