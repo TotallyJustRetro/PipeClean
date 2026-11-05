@@ -1242,6 +1242,15 @@ static int sml2_native_ppu_read_tile(void *userdata, uint8_t graphics_id,
  * bank-1 CGB attributes to a game whose original cartridge is monochrome. */
 static void sml2_native_prepare_view(int left, int width)
 {
+    /* Emergency safety gate: the first live full-view integration produced
+       corrupted SML2 frames in user testing. Keep the established margin
+       compositor authoritative until the native viewport's map/graphics and
+       camera transforms are validated against captured gameplay frames. */
+    (void)left;
+    (void)width;
+    sml2_native_view_active = 0;
+    return;
+
     Sml2NativeWorld view;
     int result;
 
