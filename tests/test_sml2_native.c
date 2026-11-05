@@ -184,6 +184,51 @@ static void test_sml2_rom_player_probes(void)
     assert(sml2_native_rom_wall_probe(&map, 4, 4, 2, 0, 0, &tile) == -1);
 }
 
+static void test_sml2_rom_step_shared_world(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS];
+    int32_t p0_ground_y, p1_ground_y;
+    unsigned x;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+
+    /* ROM floor probes for players at y=68 sample map row 6. */
+    for (x = 0; x < 256; ++x)
+        blocks[6 * 256 + x] = 0x37;
+
+    config.level_width = 4096;
+    config.level_height = 768;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 32, 68, 5) == 0);
+    assert(sml2_native_spawn_player(&world, 1, 96, 68, 5) == 0);
+
+    memset(inputs, 0, sizeof(inputs));
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.tick == 1);
+    assert(world.players[0].grounded);
+    assert(world.players[1].grounded);
+    p0_ground_y = world.players[0].y;
+    p1_ground_y = world.players[1].y;
+
+    /* Both players jump in the same tick against the same immutable map. */
+    inputs[0].buttons = SML2_NATIVE_BUTTON_JUMP;
+    inputs[1].buttons = SML2_NATIVE_BUTTON_JUMP;
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.tick == 2);
+    assert(world.players[0].y < p0_ground_y);
+    assert(world.players[1].y < p1_ground_y);
+    assert(world.players[0].vy < 0);
+    assert(world.players[1].vy < 0);
+    assert(blocks[6 * 256] == 0x37); /* ROM step never mutates the map */
+}
+
 static void test_sml2_rom_coin_cell_mutation(void)
 {
     uint8_t cells[256 * 48] = {0};
@@ -358,6 +403,7 @@ int main(void)
     test_sml2_rom_player_probes();
     test_sml2_rom_environment_probes();
     test_sml2_rom_coin_cell_mutation();
+    test_sml2_rom_step_shared_world();
     test_sml2_rom_native_step();
 
     /* Match the original project's supported aspect ratios and zoom presets. */
