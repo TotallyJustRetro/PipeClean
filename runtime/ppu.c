@@ -127,96 +127,6 @@ static void wl2_clear_visual_cache(void)
 }
 
 
-static uint8_t sml2_native_ppu_read_memory(void *userdata, uint16_t address)
-{
-    (void)userdata;
-#if defined(__GNUC__) || defined(__clang__)
-    if (!rd8) return 0xFFu;
-#endif
-    return rd8(address);
-}
-
-static int sml2_native_ppu_read_tile(void *userdata, uint8_t graphics_id,
-                                     uint8_t pixels_out[64])
-{
-    return sml2_native_read_gb_tile_pixels(userdata, graphics_id, pixels_out);
-}
-
-/* Capture and render a complete expanded SML2 level view once per frame.
- * The live 160px PPU tilemap must validate against the decoded stage before
- * this path is allowed to replace it. DMG-only gating avoids misapplying
- * bank-1 CGB attributes to a game whose original cartridge is monochrome. */
-static void sml2_native_prepare_view(int left, int width)
-{
-    Sml2NativeWorld view;
-    int result;
-
-    sml2_native_view_active = 0;
-#if defined(__GNUC__) || defined(__clang__)
-    if (!sml2_native_capture_live_sml2 || !sml2_native_capture_get_stage ||
-        !sml2_native_capture_get_graphics || !sml2_native_read_gb_tile_pixels ||
-        !sml2_native_render_stage || !rd8)
-        return;
-#endif
-    if (cgb_render_enabled || width <= GB_W || width > GB_WMAX)
-        return;
-
-    result = sml2_native_capture_live_sml2(
-        &sml2_native_live_capture, sml2_native_ppu_read_memory, NULL,
-        vram, lcdc, scx, scy, wx, wy, bgp, NULL, 0, 100, 95);
-    if (result != SML2_NATIVE_CAPTURE_OK ||
-        sml2_native_capture_get_stage(&sml2_native_live_capture,
-                                      &sml2_native_live_stage) != 0 ||
-        sml2_native_capture_get_graphics(&sml2_native_live_capture,
-                                         &sml2_native_live_graphics) != 0)
-        return;
-
-    memset(&view, 0, sizeof view);
-    view.camera_x = sml2_native_live_capture.world_origin_x - left;
-    view.camera_y = sml2_native_live_capture.world_origin_y;
-    view.camera_view_width = width;
-    view.camera_view_height = SML2_NATIVE_VIEW_HEIGHT;
-    if (sml2_native_render_stage(
-            &sml2_native_live_stage, &view, sml2_native_ppu_read_tile,
-            &sml2_native_live_graphics, &sml2_native_view_pixels[0][0],
-            GB_WMAX, sizeof sml2_native_view_pixels, 0) != 0)
-        return;
-
-    sml2_native_view_world_x0 = view.camera_x;
-    sml2_native_view_world_y0 = view.camera_y;
-    sml2_native_view_active = 1;
-}
-
-static void sml2_native_draw_view_line(int y, int width,
-                                       uint8_t *out, uint8_t *bgci,
-                                       uint8_t *bgattr)
-{
-    int world_y = sml2_native_view_world_y0 + y;
-    for (int x = 0; x < width; ++x) {
-        int world_x = sml2_native_view_world_x0 + x;
-        uint8_t ci = sml2_native_view_pixels[y][x];
-        uint16_t tile_id = 0xFFFFu;
-        uint8_t uv = 0;
-        if (world_x >= 0 && world_y >= 0 &&
-            world_x < SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS * 16 &&
-            world_y < SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS * 16) {
-            unsigned bx = (unsigned)world_x >> 4;
-            unsigned by = (unsigned)world_y >> 4;
-            unsigned block = sml2_native_live_capture.cells[
-                by * SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS + bx];
-            unsigned quadrant = (((unsigned)world_y >> 3) & 1u) * 2u |
-                                (((unsigned)world_x >> 3) & 1u);
-            tile_id = sml2_native_live_capture.tiles[block].graphics[quadrant];
-            uv = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
-        }
-        bgci[x] = ci;
-        bgattr[x] = 0;
-        out[x] = (uint8_t)((bgp >> (ci * 2u)) & 3u);
-        ppu_bgtile[y][x] = tile_id;
-        ppu_bguv[y][x] = uv;
-    }
-}
-
 void ppu_set_wl2_wide(int enabled)
 {
     int next = enabled != 0;
@@ -1310,6 +1220,96 @@ void ppu_write(uint8_t r, uint8_t v)
 }
 
 /* ------------------------------------------------------------------ */
+static uint8_t sml2_native_ppu_read_memory(void *userdata, uint16_t address)
+{
+    (void)userdata;
+#if defined(__GNUC__) || defined(__clang__)
+    if (!rd8) return 0xFFu;
+#endif
+    return rd8(address);
+}
+
+static int sml2_native_ppu_read_tile(void *userdata, uint8_t graphics_id,
+                                     uint8_t pixels_out[64])
+{
+    return sml2_native_read_gb_tile_pixels(userdata, graphics_id, pixels_out);
+}
+
+/* Capture and render a complete expanded SML2 level view once per frame.
+ * The live 160px PPU tilemap must validate against the decoded stage before
+ * this path is allowed to replace it. DMG-only gating avoids misapplying
+ * bank-1 CGB attributes to a game whose original cartridge is monochrome. */
+static void sml2_native_prepare_view(int left, int width)
+{
+    Sml2NativeWorld view;
+    int result;
+
+    sml2_native_view_active = 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (!sml2_native_capture_live_sml2 || !sml2_native_capture_get_stage ||
+        !sml2_native_capture_get_graphics || !sml2_native_read_gb_tile_pixels ||
+        !sml2_native_render_stage || !rd8)
+        return;
+#endif
+    if (cgb_render_enabled || width <= GB_W || width > GB_WMAX)
+        return;
+
+    result = sml2_native_capture_live_sml2(
+        &sml2_native_live_capture, sml2_native_ppu_read_memory, NULL,
+        vram, lcdc, scx, scy, wx, wy, bgp, NULL, 0, 100, 95);
+    if (result != SML2_NATIVE_CAPTURE_OK ||
+        sml2_native_capture_get_stage(&sml2_native_live_capture,
+                                      &sml2_native_live_stage) != 0 ||
+        sml2_native_capture_get_graphics(&sml2_native_live_capture,
+                                         &sml2_native_live_graphics) != 0)
+        return;
+
+    memset(&view, 0, sizeof view);
+    view.camera_x = sml2_native_live_capture.world_origin_x - left;
+    view.camera_y = sml2_native_live_capture.world_origin_y;
+    view.camera_view_width = width;
+    view.camera_view_height = SML2_NATIVE_VIEW_HEIGHT;
+    if (sml2_native_render_stage(
+            &sml2_native_live_stage, &view, sml2_native_ppu_read_tile,
+            &sml2_native_live_graphics, &sml2_native_view_pixels[0][0],
+            GB_WMAX, sizeof sml2_native_view_pixels, 0) != 0)
+        return;
+
+    sml2_native_view_world_x0 = view.camera_x;
+    sml2_native_view_world_y0 = view.camera_y;
+    sml2_native_view_active = 1;
+}
+
+static void sml2_native_draw_view_line(int y, int width,
+                                       uint8_t *out, uint8_t *bgci,
+                                       uint8_t *bgattr)
+{
+    int world_y = sml2_native_view_world_y0 + y;
+    for (int x = 0; x < width; ++x) {
+        int world_x = sml2_native_view_world_x0 + x;
+        uint8_t ci = sml2_native_view_pixels[y][x];
+        uint16_t tile_id = 0xFFFFu;
+        uint8_t uv = 0;
+        if (world_x >= 0 && world_y >= 0 &&
+            world_x < SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS * 16 &&
+            world_y < SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS * 16) {
+            unsigned bx = (unsigned)world_x >> 4;
+            unsigned by = (unsigned)world_y >> 4;
+            unsigned block = sml2_native_live_capture.cells[
+                by * SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS + bx];
+            unsigned quadrant = (((unsigned)world_y >> 3) & 1u) * 2u |
+                                (((unsigned)world_x >> 3) & 1u);
+            tile_id = sml2_native_live_capture.tiles[block].graphics[quadrant];
+            uv = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+        }
+        bgci[x] = ci;
+        bgattr[x] = 0;
+        out[x] = (uint8_t)((bgp >> (ci * 2u)) & 3u);
+        ppu_bgtile[y][x] = tile_id;
+        ppu_bguv[y][x] = uv;
+    }
+}
+
 static void render_line(int y)
 {
     if (y == 0) {
