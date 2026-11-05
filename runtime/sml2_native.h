@@ -183,6 +183,14 @@ typedef struct {
     uint8_t player_count;
 } Sml2NativeWorld;
 
+typedef struct {
+    unsigned player_index;
+    const Sml2NativePlayer *player;
+    Sml2NativeRect view_bounds;
+} Sml2NativePlayerDraw;
+typedef int (*Sml2NativePlayerDrawVisitor)(
+    void *userdata, const Sml2NativePlayerDraw *draw);
+
 /* Return a bitmask of SML2_NATIVE_COLLISION_* flags for a world-space AABB.
  * Rect coordinates are signed 16.16 fixed-point pixels, right/bottom exclusive.
  * The callback must be deterministic and must not mutate the simulation. */
@@ -227,6 +235,11 @@ int sml2_native_world_to_view(const Sml2NativeWorld *world,
 int sml2_native_world_rect_to_view(const Sml2NativeWorld *world,
                                    const Sml2NativeRect *world_rect,
                                    Sml2NativeRect *view_rect);
+/* Visit active players in player-index order with rectangles projected into
+ * the shared logical view. Visitor stop values are returned unchanged. */
+int sml2_native_players_visit_visible(
+    const Sml2NativeWorld *world,
+    Sml2NativePlayerDrawVisitor visitor, void *userdata);
 /* Return the camera's world-space view rectangle, expanded by an optional
  * pixel margin. Use margin=0 for rendering/culling and a positive margin for
  * pre-activating actors near newly visible edges. Returns -1 on invalid input. */

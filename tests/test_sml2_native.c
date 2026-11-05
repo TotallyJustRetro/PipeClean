@@ -46,6 +46,22 @@ static Sml2NativeConfig make_config(void)
     return c;
 }
 
+typedef struct {
+    unsigned count;
+    unsigned last_index;
+    Sml2NativeRect last_bounds;
+} PlayerDrawCapture;
+
+static int capture_player_draw(void *userdata,
+                               const Sml2NativePlayerDraw *draw)
+{
+    PlayerDrawCapture *capture = (PlayerDrawCapture *)userdata;
+    ++capture->count;
+    capture->last_index = draw->player_index;
+    capture->last_bounds = draw->view_bounds;
+    return 0;
+}
+
 static void run_script(Sml2NativeWorld *world)
 {
     Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS];
@@ -655,6 +671,24 @@ int main(void)
     assert(first.camera_view_width == 320);
     assert(first.camera_view_height == 180);
     assert(first.camera_zoom_percent == SML2_NATIVE_ZOOM_125);
+    {
+        PlayerDrawCapture capture;
+        memset(&capture, 0, sizeof(capture));
+        assert(sml2_native_players_visit_visible(&first,
+                    capture_player_draw, &capture) == 0);
+        assert(capture.count == 2);
+        assert(capture.last_index == 1);
+        assert(capture.last_bounds.left ==
+               first.players[1].x - first.camera_x);
+        assert(capture.last_bounds.top ==
+               first.players[1].y - first.camera_y);
+        assert(capture.last_bounds.right - capture.last_bounds.left ==
+               first.players[1].width);
+        assert(capture.last_bounds.bottom - capture.last_bounds.top ==
+               first.players[1].height);
+        assert(sml2_native_players_visit_visible(&first, NULL,
+                    &capture) == -1);
+    }
 
     /* The 16:9 camera's extra world area is available to both drawing and
        actor activation; it is not merely a stretched 160-pixel image. */
