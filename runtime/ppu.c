@@ -74,6 +74,7 @@ static Sml2NativeGbGraphics sml2_native_live_graphics;
 static uint8_t sml2_native_view_pixels[SML2_NATIVE_VIEW_HEIGHT][GB_WMAX];
 static int sml2_native_view_active;
 static int sml2_native_view_world_x0, sml2_native_view_world_y0;
+static int sml2_native_sprite_dx, sml2_native_sprite_dy;
 
 static int wario_wide_enabled, wario_frame_active;
 static int wl2_wide_enabled, wl2_frame_active;
@@ -1269,6 +1270,20 @@ static void sml2_native_prepare_view(int left, int width)
     view.camera_y = sml2_native_live_capture.world_origin_y;
     view.camera_view_width = width;
     view.camera_view_height = SML2_NATIVE_VIEW_HEIGHT;
+    {
+        int raw_x = view.camera_x, raw_y = view.camera_y;
+        int max_x = (int)SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS * 16 - width;
+        int max_y = (int)SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS * 16 -
+                    SML2_NATIVE_VIEW_HEIGHT;
+        if (max_x < 0) max_x = 0;
+        if (max_y < 0) max_y = 0;
+        if (view.camera_x < 0) view.camera_x = 0;
+        if (view.camera_x > max_x) view.camera_x = max_x;
+        if (view.camera_y < 0) view.camera_y = 0;
+        if (view.camera_y > max_y) view.camera_y = max_y;
+        sml2_native_sprite_dx = raw_x - view.camera_x;
+        sml2_native_sprite_dy = raw_y - view.camera_y;
+    }
     if (sml2_native_render_stage(
             &sml2_native_live_stage, &view, sml2_native_ppu_read_tile,
             &sml2_native_live_graphics, &sml2_native_view_pixels[0][0],
@@ -1447,7 +1462,13 @@ static void render_line(int y)
         wide_sml2_actor_sprites && wide_sml2_world_origin) {
         int count = 0, world_left = 0, world_top = 0;
         const WideSml2Sprite *sprites = wide_sml2_actor_sprites(&count);
-        if (sprites && count > 0 && wide_sml2_world_origin(&world_left, &world_top)) {
+        int have_origin = wide_sml2_world_origin(&world_left, &world_top);
+        if (sml2_native_view_active) {
+            world_left = sml2_native_view_world_x0;
+            world_top = sml2_native_view_world_y0;
+            have_origin = 1;
+        }
+        if (sprites && count > 0 && have_origin) {
             int h = (lcdc & 0x04) ? 16 : 8;
             for (int i = count - 1; i >= 0; i--) {
                 const WideSml2Sprite *sp = &sprites[i];
@@ -1491,7 +1512,7 @@ static void render_line(int y)
         int h = (lcdc & 0x04) ? 16 : 8;
         int idx[10], n = 0;
         for (int i = 0; i < 40 && n < 10; i++) {
-            int sy = oam[i * 4] - 16;
+            int sy = oam[i * 4] - 16 + (sml2_native_view_active ? sml2_native_sprite_dy : 0);
             if (y >= sy && y < sy + h) idx[n++] = i;
         }
         /* DMG (and CGB OPRI=1): lower X wins. Native CGB mode defaults to OAM order. */
@@ -1509,7 +1530,8 @@ static void render_line(int y)
             int i = idx[k];
             int ox = oam[i * 4 + 1];
             if (ox >= sprite_neg) ox -= 256;
-            int sy = oam[i * 4] - 16, sx = ox - 8 + L;
+            int sy = oam[i * 4] - 16 + (sml2_native_view_active ? sml2_native_sprite_dy : 0);
+            int sx = ox - 8 + L + (sml2_native_view_active ? sml2_native_sprite_dx : 0);
             uint8_t tile = oam[i * 4 + 2], fl = oam[i * 4 + 3];
             int row = y - sy;
             if (fl & 0x40) row = h - 1 - row;
