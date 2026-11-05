@@ -793,7 +793,10 @@ static void update_camera(Sml2NativeWorld *world)
                            ? (view_height - 144) / 4 : 0;
         if (world->camera_slide_active) {
             const Sml2NativeCameraSlide *slide = &world->camera_slide;
-            int64_t progress = slide->progress_ticks;
+            /* The camera state published for this tick represents the slide after
+               one simulation step, matching the reference's completed-scroll
+               interpolation rather than lagging one frame behind. */
+            int64_t progress = (int64_t)slide->progress_ticks + 1;
             int64_t remaining = (int64_t)slide->duration_ticks - progress;
             int32_t from_center_x = clamp_i64((int64_t)center_x -
                 (int64_t)slide->step_x * progress * FP_ONE);
