@@ -247,6 +247,7 @@ static void test_sml2_rom_exit_bell_arm(void)
 
     /* At (4,4), the exit probe's (x+16,y+28) sample maps to row 1, col 0. */
     cells[1 * 256] = 0x4B;
+    cells[1 * 256 + 1] = 0x48; /* Coin beside the exit: frozen during fade. */
     memset(&map, 0, sizeof(map));
     map.width_blocks = 256;
     map.height_blocks = 48;
@@ -263,11 +264,13 @@ static void test_sml2_rom_exit_bell_arm(void)
     assert(world.players[0].exit_fade_ticks == 192u);
 
     /* The arm is one-shot; the following 192 fixed ticks run only the
-       fade state. Gameplay and camera movement stay frozen throughout. */
+       fade state. Gameplay, camera movement, and mutable coin probes freeze. */
     {
         int32_t frozen_x = world.players[0].x;
         int32_t frozen_y = world.players[0].y;
-        assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+        assert(sml2_native_rom_step_mutable(&world, inputs, &map,
+                                             cells, sizeof(cells)) == 0);
+        assert(cells[1 * 256 + 1] == 0x48);
         assert(world.players[0].exit_fade_ticks == 191u);
         assert(world.players[0].exit_completed == 0u);
         assert(world.players[0].x == frozen_x);

@@ -1068,6 +1068,13 @@ int sml2_native_rom_step_mutable(
         cell_count < 256u * 48u)
         return -1;
 
+    /* The mutable wrapper normally performs coin touches before the ROM
+       movement step. Once state $18 is active, bypass those probes too. */
+    for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
+        if (world->players[i].active && world->players[i].exit_requested)
+            return sml2_native_rom_step(world, inputs, map);
+    }
+
     /* $0F71 calls the left and right wall probes before horizontal integration.
        Each probe can collect coins even when it finds no wall. The right probe
        is an else-if: a solid left-side hit suppresses it for this frame. */
