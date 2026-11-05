@@ -96,6 +96,15 @@ int main(void)
                                     pixels, 256, sizeof(pixels), 2) == 0);
     assert(pixels[220] == 2);
 
+    /* Enlarged views may extend beyond the left/top level edge. Those pixels
+       are cleared while valid world pixels remain correctly sampled. */
+    world.camera_x = -8;
+    world.camera_y = -4;
+    assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
+                                    pixels, 256, sizeof(pixels), 2) == 0);
+    assert(pixels[0] == 2);
+    assert(pixels[8 * 256 + 8] == 1);
+
     /* A short pitch/capacity or an invalid palette index fails safely. */
     assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,
                                     pixels, 255, sizeof(pixels), 0) == -1);

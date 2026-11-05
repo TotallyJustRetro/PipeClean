@@ -45,8 +45,7 @@ int sml2_native_render_stage(
     if (!stage || !world || !read_tile || !pixels || !stage->cells ||
         !stage->tiles || !stage->width_blocks || !stage->height_blocks ||
         !stage->tile_count || clear_color > 3 ||
-        world->camera_view_width <= 0 || world->camera_view_height <= 0 ||
-        world->camera_x < 0 || world->camera_y < 0)
+        world->camera_view_width <= 0 || world->camera_view_height <= 0)
         return -1;
 
     width = world->camera_view_width;
