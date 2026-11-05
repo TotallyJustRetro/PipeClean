@@ -96,6 +96,9 @@ static int config_valid(const Sml2NativeConfig *c)
            c->max_run_speed > 0 &&
            c->jump_velocity < 0 &&
            c->terminal_velocity > 0 &&
+           c->water_gravity >= 0 &&
+           c->water_jump_velocity <= 0 &&
+           c->water_terminal_velocity >= 0 &&
            c->player_width > 0 && c->player_width <= 32767 &&
            c->player_height > 0 && c->player_height <= 32767 &&
            c->camera_padding >= 0 && c->camera_padding <= 32767 &&
@@ -299,17 +302,24 @@ static void update_player(Sml2NativeWorld *world, Sml2NativePlayer *p,
               ? p->vx + c->horizontal_friction : 0;
     }
 
-    if (jump_pressed && p->grounded)
-        p->vy = c->jump_velocity;
+    if (jump_pressed && (p->grounded || p->swimming))
+        p->vy = (p->swimming && c->water_jump_velocity < 0)
+              ? c->water_jump_velocity : c->jump_velocity;
 
     p->jump_was_down = (uint8_t)jump_down;
 
     move_horizontal(p, p->vx, query, userdata);
 
-    if (p->vy < c->terminal_velocity)
-        p->vy = clamp_i64((int64_t)p->vy + c->gravity);
-    if (p->vy > c->terminal_velocity)
-        p->vy = c->terminal_velocity;
+    {
+        int32_t gravity = (p->swimming && c->water_gravity > 0)
+                        ? c->water_gravity : c->gravity;
+        int32_t terminal = (p->swimming && c->water_terminal_velocity > 0)
+                         ? c->water_terminal_velocity : c->terminal_velocity;
+        if (p->vy < terminal)
+            p->vy = clamp_i64((int64_t)p->vy + gravity);
+        if (p->vy > terminal)
+            p->vy = terminal;
+    }
     move_vertical(p, p->vy, query, userdata);
 
     if (p->invulnerability_ticks > 0)
@@ -984,6 +994,9 @@ int sml2_native_rom_step(Sml2NativeWorld *world,
                 map, x, y, p->powerup, 0,
                 &p->environment_flags, &p->environment_tile) != 0)
             return -1;
+        /* $1BFF clears sSwimming before probing; only the water arm sets it. */
+        p->swimming = (uint8_t)(
+            (p->environment_flags & SML2_NATIVE_ROM_ENV_WATER) != 0);
 
         /* $1CBA-$1D01: the exit tile arms the level-clear state once.
            The actual fade/state-machine hand-off is advanced by the runtime. */

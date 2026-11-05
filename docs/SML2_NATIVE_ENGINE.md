@@ -123,8 +123,12 @@ sample heights, rewrites $48/$49 to $60/$7F, increments the per-player BCD
 coin count with the original $0999 cap, and requests sound 7. The ordinary
 read-only step remains available when the caller must preserve its layout
 snapshot.
-Water/moon physics, hazard damage, and block-bump side effects remain future
-work. The stage decoder accepts
+Water detection now feeds a persistent per-player swimming state. Native
+movement permits jump presses while swimming and supports separately configured
+water gravity, jump impulse, and terminal velocity (zero tuning values retain
+the normal movement setting). These are engine tuning hooks, not yet a
+frame-exact port of SML2's water movement tables or swim-curve acceleration.
+Moon physics, hazard damage, and block-bump side effects remain future work. The stage decoder accepts
 caller-supplied memory snapshots and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
 uses SML2's global metatile-ID ranges and special-ID flags.
 

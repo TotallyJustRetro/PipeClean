@@ -237,6 +237,36 @@ static void test_sml2_rom_step_shared_world(void)
     assert(blocks[6 * 256] == 0x37); /* ROM step never mutates the map */
 }
 
+static void test_native_swimming_controls(void)
+{
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+    int32_t start_y;
+
+    config.gravity = 0;
+    config.water_gravity = 0x0800;
+    config.water_jump_velocity = -0x30000;
+    config.water_terminal_velocity = 0x18000;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 64, 64, 5) == 0);
+    world.players[0].swimming = 1;
+    start_y = world.players[0].y;
+
+    /* Swimming permits a fresh jump even without grounded contact. */
+    inputs[0].buttons = SML2_NATIVE_BUTTON_JUMP;
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    assert(world.players[0].vy < 0);
+    assert(world.players[0].y < start_y);
+
+    /* Releasing and pressing again starts another water jump. */
+    inputs[0].buttons = 0;
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    inputs[0].buttons = SML2_NATIVE_BUTTON_JUMP;
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    assert(world.players[0].vy < 0);
+}
+
 static void test_sml2_rom_exit_bell_arm(void)
 {
     uint8_t cells[256 * 48] = {0};
@@ -501,6 +531,7 @@ int main(void)
     test_sml2_rom_world_wrap_and_echo();
     test_sml2_rom_player_probes();
     test_sml2_rom_environment_probes();
+    test_native_swimming_controls();
     test_sml2_rom_exit_bell_arm();
     test_sml2_rom_coin_cell_mutation();
     test_sml2_rom_step_collects_coins();

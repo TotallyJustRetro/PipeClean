@@ -129,6 +129,7 @@ typedef struct {
     uint8_t facing_right;
     uint8_t grounded;
     uint8_t jump_was_down;
+    uint8_t swimming; /* Current ROM environment probe reports water. */
 } Sml2NativePlayer;
 
 typedef struct {
@@ -140,6 +141,10 @@ typedef struct {
     int32_t max_run_speed;
     int32_t jump_velocity;
     int32_t terminal_velocity;
+    /* Optional water tuning; zero preserves the corresponding normal value. */
+    int32_t water_gravity;
+    int32_t water_jump_velocity;
+    int32_t water_terminal_velocity;
     int32_t player_width;
     int32_t player_height;
     int32_t camera_padding;
