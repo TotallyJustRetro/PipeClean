@@ -48,8 +48,9 @@ The ROM-world adapter is based on the reference project's documented
 addressing model: the original game masks each camera-coordinate high byte to
 four bits, producing a 16×16-screen address space while the ordinary stage
 layout occupies 16×3 screens. It also reproduces the documented WRAM echo
-window at rows $30-$4D. This is a coordinate/map lookup profile only; it does
-not yet implement all of the original player's individual probe instructions.
+window at rows $30-$4D. The native ROM step now runs the source-derived
+floor, ceiling, and directional wall probes after the shared fixed-tick
+movement update; the probe behavior is still a partial player-physics port.
 
 Movement values are deliberately configurable and provisional. They are not
 claimed to reproduce the original game's physics yet. The stage decoder now
@@ -106,9 +107,12 @@ reproduces hazard precedence (powered-player y+22 with y+28 fallback), then
 water, exit-bell, and moon-zone classification from the final y+28 sample.
 The `$1D75` coin-touch mutation is also implemented: a verified `$48` cell
 becomes `$60`, and `$49` becomes `$7F`, with stale/repeated samples rejected.
-The helpers still do not credit the BCD coin counter or couple damage,
-collision response, and block-bump side effects to the native player update. It accepts caller-supplied memory snapshots
-and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
+The ROM step stores the resulting environment flags and sampled tile on each
+native player, and uses floor/ceiling/wall hits to update grounded state and
+velocity. It does not yet apply water/moon physics or hazard damage, credit the
+BCD coin counter, or implement block-bump side effects. The coin-cell mutation
+remains a separate caller-owned operation. The stage decoder accepts
+caller-supplied memory snapshots and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
 uses SML2's global metatile-ID ranges and special-ID flags.
 
 This is a decoder for supplied stage-memory data, not a ROM parser and not a
