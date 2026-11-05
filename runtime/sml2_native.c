@@ -857,6 +857,25 @@ int sml2_native_world_to_view(const Sml2NativeWorld *world,
     return 0;
 }
 
+int sml2_native_world_rect_to_view(const Sml2NativeWorld *world,
+                                   const Sml2NativeRect *world_rect,
+                                   Sml2NativeRect *view_rect)
+{
+    if (!world || !world_rect || !view_rect ||
+        world->camera_view_width <= 0 || world->camera_view_height <= 0 ||
+        world_rect->left >= world_rect->right ||
+        world_rect->top >= world_rect->bottom)
+        return -1;
+
+    /* Transform each edge independently so fractional sprite positions and
+       half-open bounds survive camera motion without rounding or resizing. */
+    view_rect->left = clamp_i64((int64_t)world_rect->left - world->camera_x);
+    view_rect->top = clamp_i64((int64_t)world_rect->top - world->camera_y);
+    view_rect->right = clamp_i64((int64_t)world_rect->right - world->camera_x);
+    view_rect->bottom = clamp_i64((int64_t)world_rect->bottom - world->camera_y);
+    return 0;
+}
+
 int sml2_native_view_bounds(const Sml2NativeWorld *world,
                             int32_t margin_pixels,
                             Sml2NativeRect *world_bounds)

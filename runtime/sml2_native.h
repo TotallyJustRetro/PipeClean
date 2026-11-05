@@ -222,6 +222,11 @@ int sml2_native_set_camera_slide(Sml2NativeWorld *world,
 int sml2_native_world_to_view(const Sml2NativeWorld *world,
                               int32_t world_x, int32_t world_y,
                               int32_t *view_x, int32_t *view_y);
+/* Project a half-open world-space rectangle through the same camera transform
+ * used for point/sprite anchors. All edges remain 16.16 view-space pixels. */
+int sml2_native_world_rect_to_view(const Sml2NativeWorld *world,
+                                   const Sml2NativeRect *world_rect,
+                                   Sml2NativeRect *view_rect);
 /* Return the camera's world-space view rectangle, expanded by an optional
  * pixel margin. Use margin=0 for rendering/culling and a positive margin for
  * pre-activating actors near newly visible edges. Returns -1 on invalid input. */

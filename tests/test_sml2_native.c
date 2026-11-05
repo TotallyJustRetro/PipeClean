@@ -722,6 +722,25 @@ int main(void)
                                           &screen_x, &screen_y) == 0);
         assert(screen_x == visible_extra.left - first.camera_x);
         assert(screen_y == visible_extra.top - first.camera_y);
+        {
+            Sml2NativeRect projected;
+            assert(sml2_native_world_rect_to_view(&first, &visible_extra,
+                                                   &projected) == 0);
+            assert(projected.left == screen_x);
+            assert(projected.top == screen_y);
+            assert(projected.right == visible_extra.right - first.camera_x);
+            assert(projected.bottom == visible_extra.bottom - first.camera_y);
+            assert(projected.right - projected.left ==
+                   visible_extra.right - visible_extra.left);
+            assert(projected.bottom - projected.top ==
+                   visible_extra.bottom - visible_extra.top);
+            assert(sml2_native_world_rect_to_view(&first, &invalid_rect,
+                                                   &projected) == -1);
+            assert(sml2_native_world_rect_to_view(&first, NULL,
+                                                   &projected) == -1);
+            assert(sml2_native_world_rect_to_view(&first, &visible_extra,
+                                                   NULL) == -1);
+        }
     }
 
     run_script(&first);
