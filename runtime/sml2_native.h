@@ -120,6 +120,10 @@ typedef struct {
     uint8_t coins_low;       /* BCD coin counter low byte ($A2B0). */
     uint8_t coins_high;      /* Coin counter high digit ($A2B1), capped at 9. */
     uint8_t sound_request;   /* One-shot sound request; 7 is coin pickup. */
+    uint8_t music_request;    /* One-shot music request; 3 is level-clear music. */
+    uint8_t exit_requested;   /* ROM $FF9B=24: level-clear fade has begun. */
+    uint8_t exit_tile;        /* $4A or $4B, retained for level-tally rules. */
+    uint16_t exit_fade_ticks; /* ROM fade duration: 192 frames. */
     uint8_t active;
     uint8_t facing_right;
     uint8_t grounded;

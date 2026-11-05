@@ -959,6 +959,17 @@ int sml2_native_rom_step(Sml2NativeWorld *world,
                 map, x, y, p->powerup, 0,
                 &p->environment_flags, &p->environment_tile) != 0)
             return -1;
+
+        /* $1CBA-$1D01: the exit tile arms the level-clear state once.
+           The actual fade/state-machine hand-off is advanced by the runtime. */
+        if (!p->exit_requested &&
+            (p->environment_flags & SML2_NATIVE_ROM_ENV_EXIT) != 0) {
+            p->exit_requested = 1u;
+            p->exit_tile = p->environment_tile;
+            p->music_request = 3u;
+            p->sound_request = 0u;
+            p->exit_fade_ticks = 192u;
+        }
     }
     return 0;
 }

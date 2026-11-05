@@ -109,7 +109,11 @@ The `$1D75` coin-touch mutation is also implemented: a verified `$48` cell
 becomes `$60`, and `$49` becomes `$7F`, with stale/repeated samples rejected.
 The ROM step stores the resulting environment flags and sampled tile on each
 native player, and uses floor/ceiling/wall hits to update grounded state and
-velocity. The mutable-layout step now also reproduces side-probe coin touch
+velocity. The $4A/$4B exit-bell arm is modelled as a one-shot event: it retains
+the sampled tile variant, requests level-clear music 3, clears the pending SFX
+request, and starts the 192-tick clear-fade countdown. Advancing that fade and
+performing the level/map hand-off remain runtime work. The mutable-layout step
+now also reproduces side-probe coin touch
 in the ROM's pre-horizontal-movement order: left probe first, then right only
 when the left probe did not hit a solid tile. Each probe checks its ordered
 sample heights, rewrites $48/$49 to $60/$7F, increments the per-player BCD
