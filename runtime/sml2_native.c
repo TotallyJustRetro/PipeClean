@@ -943,6 +943,10 @@ int sml2_native_rom_step(Sml2NativeWorld *world,
             if (hit > 0) {
                 p->grounded = 1;
                 p->vy = 0;
+                /* $134F/$1366 landing alignment: the ROM nudges Y upward
+                   by one pixel per landing frame until (y-4)&$0F is zero. */
+                if (((uint16_t)(y - 4u) & 0x0Fu) != 0)
+                    p->y = clamp_i64((int64_t)p->y - FP_ONE);
             } else if (hit < 0) {
                 return -1;
             }
