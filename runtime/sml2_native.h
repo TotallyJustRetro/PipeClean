@@ -281,8 +281,9 @@ int sml2_native_spawn_player(Sml2NativeWorld *world, unsigned player_index,
 
 /* Advance the native world using the original SML2 256x48 ROM tile map.
  * Solid-tile queries use the ROM's tile-ID collision class; the post-step
- * floor, ceiling, and directional wall probes refine the player response.
- * The map is read-only. Returns -1 for an invalid SML2 map profile. */
+ * floor, ceiling, and directional wall probes refine player response,
+ * including one-pixel landing alignment. Per-player environment flags are
+ * refreshed from the ROM probe. The map is read-only. */
 int sml2_native_rom_step(Sml2NativeWorld *world,
                          const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
                          const Sml2NativeTileMap *map);
