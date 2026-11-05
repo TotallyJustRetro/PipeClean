@@ -117,6 +117,9 @@ typedef struct {
     uint8_t powerup;
     uint8_t environment_flags;
     uint8_t environment_tile;
+    uint8_t coins_low;       /* BCD coin counter low byte ($A2B0). */
+    uint8_t coins_high;      /* Coin counter high digit ($A2B1), capped at 9. */
+    uint8_t sound_request;   /* One-shot sound request; 7 is coin pickup. */
     uint8_t active;
     uint8_t facing_right;
     uint8_t grounded;
@@ -287,6 +290,16 @@ int sml2_native_spawn_player(Sml2NativeWorld *world, unsigned player_index,
 int sml2_native_rom_step(Sml2NativeWorld *world,
                          const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
                          const Sml2NativeTileMap *map);
+
+/* Mutable gameplay variant. The map must reference the same caller-owned
+ * 256x48 layout buffer. In addition to the read-only ROM step, ordered side
+ * probes collect $48/$49 coins, rewrite their cells to $60/$7F, increment the
+ * player's BCD coin count (capped at 0999), and request sound 7. */
+int sml2_native_rom_step_mutable(
+    Sml2NativeWorld *world,
+    const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
+    const Sml2NativeTileMap *map,
+    uint8_t *layout_cells, size_t cell_count);
 
 /* Advance one fixed simulation tick for all active players simultaneously.
  * Inputs are indexed by player number; a NULL input array means no buttons.

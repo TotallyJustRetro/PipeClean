@@ -963,6 +963,91 @@ int sml2_native_rom_step(Sml2NativeWorld *world,
     return 0;
 }
 
+/* The ROM's coin counter uses a BCD low byte and a single high digit. */
+static void rom_coin_credit(Sml2NativePlayer *player)
+{
+    uint8_t ones = (uint8_t)((player->coins_low & 0x0Fu) + 1u);
+    uint8_t tens = (uint8_t)(player->coins_low >> 4);
+    if (ones > 9u) {
+        ones = (uint8_t)(ones - 10u);
+        tens++;
+    }
+    player->coins_low = tens > 9u
+                      ? 0u : (uint8_t)((tens << 4) | ones);
+    if (player->coins_low == 0u) {
+        player->coins_high++;
+        if (player->coins_high >= 0x0Au) {
+            player->coins_low = 0x99u;
+            player->coins_high = 0x09u;
+        }
+    }
+}
+
+/* Mirrors the ordered side-probe call: each non-solid sample is offered to
+   $1D75 before the next Y position is read. A solid sample ends the probe. */
+static int rom_collect_side_probe(Sml2NativePlayer *player,
+                                  const Sml2NativeTileMap *map,
+                                  uint8_t *layout_cells, size_t cell_count,
+                                  uint16_t player_x, uint16_t player_y,
+                                  uint8_t side)
+{
+    uint16_t probe_x = (uint16_t)(player_x + (side ? 20u : 11u));
+    uint16_t sample_y[3];
+    unsigned count = 0, i;
+    uint8_t tile, replacement;
+    int collected;
+
+    if (player->powerup) sample_y[count++] = (uint16_t)(player_y + 20u);
+    sample_y[count++] = (uint16_t)(player_y + 32u);
+    sample_y[count++] = (uint16_t)(player_y + 40u);
+
+    for (i = 0; i < count; ++i) {
+        if (sml2_native_rom_probe_tile(map, probe_x, sample_y[i], &tile) != 0)
+            return -1;
+        if (tile < 0x38u)
+            break;
+        if ((tile & 0xFEu) != 0x48u)
+            continue;
+        collected = sml2_native_rom_collect_coin(
+            layout_cells, cell_count, probe_x, sample_y[i], tile, &replacement);
+        if (collected < 0) return -1;
+        if (collected > 0) {
+            rom_coin_credit(player);
+            player->sound_request = 7u;
+        }
+    }
+    return 0;
+}
+
+int sml2_native_rom_step_mutable(
+    Sml2NativeWorld *world,
+    const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
+    const Sml2NativeTileMap *map,
+    uint8_t *layout_cells, size_t cell_count)
+{
+    unsigned i;
+    if (!world || !map || !map->block_ids || !layout_cells ||
+        map->block_ids != layout_cells ||
+        map->width_blocks != 256u || map->height_blocks != 48u ||
+        cell_count < 256u * 48u)
+        return -1;
+    if (sml2_native_rom_step(world, inputs, map) != 0)
+        return -1;
+
+    for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
+        Sml2NativePlayer *player = &world->players[i];
+        uint16_t x, y;
+        if (!player->active || player->vx == 0)
+            continue;
+        x = (uint16_t)sml2_native_fp_to_int(player->x);
+        y = (uint16_t)sml2_native_fp_to_int(player->y);
+        if (rom_collect_side_probe(player, map, layout_cells, cell_count,
+                                   x, y, player->vx > 0 ? 1u : 0u) != 0)
+            return -1;
+    }
+    return 0;
+}
+
 int sml2_native_step(Sml2NativeWorld *world,
                      const Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS],
                      Sml2NativeCollisionQuery collision_query,

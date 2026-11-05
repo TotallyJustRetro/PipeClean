@@ -262,6 +262,46 @@ static void test_sml2_rom_coin_cell_mutation(void)
                                         8, 16, 0x48, &replacement) == -1);
 }
 
+static void test_sml2_rom_step_collects_coins(void)
+{
+    uint8_t cells[256 * 48];
+    Sml2NativeTileMap map;
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+
+    memset(cells, 0x60, sizeof(cells));
+    /* The right-side probe at x+20 visits (24,24), then (24,36). */
+    cells[0 * 256 + 1] = 0x48;
+    cells[1 * 256 + 1] = 0x49;
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = cells;
+
+    config.level_width = 4096;
+    config.level_height = 768;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 4, 4, 5) == 0);
+    world.players[0].powerup = 1;
+    world.players[0].coins_low = 0x98;
+    inputs[0].buttons = SML2_NATIVE_BUTTON_RIGHT;
+
+    assert(sml2_native_rom_step_mutable(&world, inputs, &map,
+                                         cells, sizeof(cells)) == 0);
+    assert(cells[0 * 256 + 1] == 0x60);
+    assert(cells[1 * 256 + 1] == 0x7F);
+    assert(world.players[0].coins_low == 0x00); /* 98 -> 99 -> 100 */
+    assert(world.players[0].coins_high == 1);
+    assert(world.players[0].sound_request == 7);
+
+    /* A second step cannot award either rewritten coin again. */
+    assert(sml2_native_rom_step_mutable(&world, inputs, &map,
+                                         cells, sizeof(cells)) == 0);
+    assert(world.players[0].coins_low == 0x00);
+    assert(world.players[0].coins_high == 1);
+}
+
 static void test_sml2_rom_environment_probes(void)
 {
     uint8_t blocks[256 * 48] = {0};
@@ -411,6 +451,7 @@ int main(void)
     test_sml2_rom_player_probes();
     test_sml2_rom_environment_probes();
     test_sml2_rom_coin_cell_mutation();
+    test_sml2_rom_step_collects_coins();
     test_sml2_rom_step_shared_world();
     test_sml2_rom_native_step();
 

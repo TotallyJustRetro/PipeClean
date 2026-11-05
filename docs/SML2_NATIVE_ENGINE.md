@@ -109,9 +109,12 @@ The `$1D75` coin-touch mutation is also implemented: a verified `$48` cell
 becomes `$60`, and `$49` becomes `$7F`, with stale/repeated samples rejected.
 The ROM step stores the resulting environment flags and sampled tile on each
 native player, and uses floor/ceiling/wall hits to update grounded state and
-velocity. It does not yet apply water/moon physics or hazard damage, credit the
-BCD coin counter, or implement block-bump side effects. The coin-cell mutation
-remains a separate caller-owned operation. The stage decoder accepts
+velocity. The mutable-layout step now also reproduces side-probe coin touch:
+it rewrites $48/$49 to $60/$7F, increments the per-player BCD coin count
+with the original $0999 cap, and requests sound 7. The ordinary read-only
+step remains available when the caller must preserve its layout snapshot.
+Water/moon physics, hazard damage, and block-bump side effects remain future
+work. The stage decoder accepts
 caller-supplied memory snapshots and writes into caller-owned native buffers. A verified override table may be supplied for variants; otherwise the decoder
 uses SML2's global metatile-ID ranges and special-ID flags.
 
