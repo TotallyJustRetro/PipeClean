@@ -947,6 +947,14 @@ int sml2_native_rom_step(Sml2NativeWorld *world,
                 return -1;
             }
         }
+
+        /* Keep the original environment classification attached to each
+           player's native state so later physics can react without rescanning
+           a different or duplicated world. Ducking is not modelled yet. */
+        if (sml2_native_rom_environment_probe(
+                map, x, y, p->powerup, 0,
+                &p->environment_flags, &p->environment_tile) != 0)
+            return -1;
     }
     return 0;
 }
