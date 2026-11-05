@@ -84,6 +84,9 @@ int main(void)
         config.camera_zoom_percent = SML2_NATIVE_ZOOM_100;
         config.max_camera_zoom_percent = SML2_NATIVE_ZOOM_100;
         assert(sml2_native_init(&camera, &config) == 0);
+        /* The defeated-unique persistence assertion above is complete; make
+           the actor visible again to exercise the independent draw query. */
+        world.actors[0].state = SML2_NATIVE_ACTOR_AWAKE;
         camera.camera_view_width = 64;
         camera.camera_view_height = 48;
         camera.camera_x = 0;
@@ -100,7 +103,7 @@ int main(void)
         assert(sml2_native_actors_visit_visible(&world, &camera,
                     capture_actor_draw, &capture) == 0);
         assert(capture.count == 1 && capture.last_id == 2);
-        assert(capture.last_bounds.left == 56 * SML2_NATIVE_FP_ONE);
+        assert(capture.last_bounds.left == 57 * SML2_NATIVE_FP_ONE);
         assert(sml2_native_actors_visit_visible(NULL, &camera,
                     capture_actor_draw, &capture) == -1);
         assert(sml2_native_actors_visit_visible(&world, &camera,
