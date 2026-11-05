@@ -1005,7 +1005,7 @@ static int rom_collect_side_probe(Sml2NativePlayer *player,
         if (sml2_native_rom_probe_tile(map, probe_x, sample_y[i], &tile) != 0)
             return -1;
         if (tile < 0x38u)
-            break;
+            return 1; /* This side probe hit a wall; ROM skips the other side. */
         if ((tile & 0xFEu) != 0x48u)
             continue;
         collected = sml2_native_rom_collect_coin(
@@ -1031,21 +1031,27 @@ int sml2_native_rom_step_mutable(
         map->width_blocks != 256u || map->height_blocks != 48u ||
         cell_count < 256u * 48u)
         return -1;
-    if (sml2_native_rom_step(world, inputs, map) != 0)
-        return -1;
 
+    /* $0F71 calls the left and right wall probes before horizontal integration.
+       Each probe can collect coins even when it finds no wall. The right probe
+       is an else-if: a solid left-side hit suppresses it for this frame. */
     for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
         Sml2NativePlayer *player = &world->players[i];
         uint16_t x, y;
-        if (!player->active || player->vx == 0)
-            continue;
+        int left_hit;
+        if (!player->active) continue;
         x = (uint16_t)sml2_native_fp_to_int(player->x);
         y = (uint16_t)sml2_native_fp_to_int(player->y);
-        if (rom_collect_side_probe(player, map, layout_cells, cell_count,
-                                   x, y, player->vx > 0 ? 1u : 0u) != 0)
+        left_hit = rom_collect_side_probe(player, map, layout_cells,
+                                          cell_count, x, y, 0u);
+        if (left_hit < 0) return -1;
+        if (left_hit == 0 &&
+            rom_collect_side_probe(player, map, layout_cells, cell_count,
+                                   x, y, 1u) < 0)
             return -1;
     }
-    return 0;
+
+    return sml2_native_rom_step(world, inputs, map);
 }
 
 int sml2_native_step(Sml2NativeWorld *world,
