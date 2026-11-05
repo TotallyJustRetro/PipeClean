@@ -115,6 +115,8 @@ typedef struct {
     uint16_t invulnerability_ticks;
     uint8_t lives;
     uint8_t powerup;
+    uint8_t environment_flags;
+    uint8_t environment_tile;
     uint8_t active;
     uint8_t facing_right;
     uint8_t grounded;
