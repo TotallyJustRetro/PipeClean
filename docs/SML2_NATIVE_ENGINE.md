@@ -150,7 +150,9 @@ stage output can feed desktop, Android, screenshots, or a future GPU backend.
 
 A Game Boy VRAM adapter is included for validating the original 2-bit tile
 bitplanes and LCDC signed/unsigned tile addressing. The renderer now also has
-an indexed OBJ compositor for 8x8 and 8x16 sprites, including hardware-style
+an indexed OBJ compositor for 8x8 and 8x16 sprites. Its Game Boy OBJ tile
+reader always uses unsigned `$8000-$8FFF` addressing, independently of LCDC.4
+(which selects BG/window tile addressing), including hardware-style
 even-tile alignment in 8x16 mode, X/Y flips, color-zero transparency, palette
 mapping, viewport clipping, and caller-controlled OAM draw order. The tile
 reader remains the seam for a fully ROM-backed native asset decoder; automatic
