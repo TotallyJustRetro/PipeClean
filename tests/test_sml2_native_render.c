@@ -184,6 +184,7 @@ int main(void)
     {
         Sml2NativeActorWorld actors;
         unsigned resolved = 0;
+        unsigned sprite_calls = 0;
         sml2_native_actors_init(&actors);
         actors.count = 1;
         actors.actors[0].id = 77;
@@ -195,14 +196,17 @@ int main(void)
         world.camera_x = 0;
         world.camera_y = 0;
         assert(sml2_native_render_scene(&stage, &actors, &world, 123,
-                    resolve_test_actor, &resolved, read_test_tile, &calls,
+                    resolve_test_actor, &resolved,
+                    read_test_tile, &calls, read_sprite_tile, &sprite_calls,
                     pixels, 256, sizeof(pixels), 0) == 0);
         assert(resolved == 1);
+        assert(sprite_calls == 1);
         assert(pixels[5 * 256 + 4] == 3);
         actors.actors[0].state = SML2_NATIVE_ACTOR_ASLEEP;
         resolved = 0;
         assert(sml2_native_render_scene(&stage, &actors, &world, 123,
-                    resolve_test_actor, &resolved, read_test_tile, &calls,
+                    resolve_test_actor, &resolved,
+                    read_test_tile, &calls, read_sprite_tile, &sprite_calls,
                     pixels, 256, sizeof(pixels), 0) == 0);
         assert(resolved == 0);
     }
