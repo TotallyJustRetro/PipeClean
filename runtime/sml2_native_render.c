@@ -54,6 +54,16 @@ int sml2_native_read_gb_obj_tile_pixels(
     return 0;
 }
 
+int sml2_native_make_dmg_obj_palette(uint8_t obp, uint8_t palette_out[4])
+{
+    unsigned color;
+    if (!palette_out) return -1;
+    palette_out[0] = 0; /* OBJ color zero is transparent, not a shade. */
+    for (color = 1; color < 4; ++color)
+        palette_out[color] = (uint8_t)((obp >> (color * 2u)) & 3u);
+    return 0;
+}
+
 int sml2_native_draw_sprite(
     uint8_t *pixels, size_t pitch, size_t width, size_t height,
     const Sml2NativeSprite *sprite,
