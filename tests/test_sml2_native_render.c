@@ -94,6 +94,18 @@ int main(void)
     assert(decoded[8] == 2 && decoded[15] == 1);
     assert(sml2_native_read_gb_tile_pixels(NULL, 0, decoded) == -1);
 
+    /* OBJ tile IDs are always unsigned, even when BG tiles use signed mode.
+       Tile 0 must decode from VRAM offset 0, not $1000. */
+    memset(vram, 0, sizeof(vram));
+    vram[0] = 0x80;
+    vram[1] = 0x40;
+    vram[0x1000] = 0x40;
+    vram[0x1001] = 0x80;
+    gb.lcdc = 0x00;
+    assert(sml2_native_read_gb_obj_tile_pixels(&gb, 0, decoded) == 0);
+    assert(decoded[0] == 1 && decoded[1] == 2 && decoded[2] == 0);
+    assert(sml2_native_read_gb_obj_tile_pixels(NULL, 0, decoded) == -1);
+
     memset(&tiles, 0, sizeof(tiles));
     tiles[0].graphics[0] = 1;
     tiles[0].graphics[1] = 2;
