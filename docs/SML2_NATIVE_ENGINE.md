@@ -296,3 +296,24 @@ forwarded unchanged.
 These are composition interfaces, not authentic game art/animation yet:
 SML2 player/enemy frame tables, timing rules, ROM-backed asset extraction,
 and runtime presentation integration remain unfinished.
+
+ 
+### Runtime presentation status
+
+There is an experimental live-capture-to-native-stage path in `runtime/ppu.c`,
+but it is deliberately disabled by a safety gate. The first full-view attempt
+produced corrupted SML2 frames in user testing, so the established emulator
+margin compositor remains authoritative. Do not remove that gate until the
+expanded native framebuffer has been checked against captured gameplay frames.
+
+The experimental path captures the live emulator's decompressed stage map and
+VRAM, renders the expanded background with the native stage renderer, then
+hands its rows to the existing PPU compositor. It still depends on emulator
+memory/VRAM and original PPU sprite rendering; it is not a standalone native
+game loop or a native player/actor renderer.
+
+`sml2_native_capture_make_view()` centralizes the pixel-space viewport clamp
+and compensating sprite offsets needed when a wide view reaches a physical
+level edge. Its edge-clamp and sprite-alignment behavior has dedicated unit
+coverage. This removes duplicated viewport math from the experimental PPU
+hook, but does not enable that hook or change the active emulator path.
