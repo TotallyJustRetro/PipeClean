@@ -26,6 +26,9 @@ int sml2_native_read_gb_tile_pixels(
 int sml2_native_read_gb_obj_tile_pixels(
     void *userdata, uint8_t graphics_id, uint8_t pixels_out[64]);
 
+/* Build a transparent-zero indexed palette from a DMG OBP0/OBP1 register. */
+int sml2_native_make_dmg_obj_palette(uint8_t obp, uint8_t palette_out[4]);
+
 enum {
     SML2_NATIVE_SPRITE_FLIP_X = 1u << 0,
     SML2_NATIVE_SPRITE_FLIP_Y = 1u << 1,
