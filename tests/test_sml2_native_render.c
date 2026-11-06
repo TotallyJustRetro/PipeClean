@@ -24,6 +24,25 @@ static int read_sprite_tile(void *userdata, uint8_t tile_id, uint8_t out[64])
     return 0;
 }
 
+
+static int resolve_test_actor(void *userdata,
+                              const Sml2NativeActorDraw *draw,
+                              uint64_t tick, Sml2NativeSprite *sprite)
+{
+    unsigned *resolved = (unsigned *)userdata;
+    assert(draw && draw->actor && draw->actor->id == 77);
+    assert(tick == 123);
+    ++*resolved;
+    sprite->x = 4;
+    sprite->y = 5;
+    sprite->tile_id = 2;
+    sprite->palette[0] = 0;
+    sprite->palette[1] = 1;
+    sprite->palette[2] = 3;
+    sprite->palette[3] = 2;
+    return 0;
+}
+
 static Sml2NativeConfig make_config(void)
 {
     Sml2NativeConfig c;
@@ -146,6 +165,34 @@ int main(void)
         sprite.palette[1] = 4;
         assert(sml2_native_draw_sprite(sprite_frame, 8, 8, 16, &sprite,
                     read_sprite_tile, &sprite_calls) == -1);
+    }
+
+    /* The scene compositor draws terrain first, then resolves and draws
+       visible actors using a deterministic animation tick. */
+    {
+        Sml2NativeActorWorld actors;
+        unsigned resolved = 0;
+        sml2_native_actors_init(&actors);
+        actors.count = 1;
+        actors.actors[0].id = 77;
+        actors.actors[0].x = 10 * SML2_NATIVE_FP_ONE;
+        actors.actors[0].y = 10 * SML2_NATIVE_FP_ONE;
+        actors.actors[0].width = 8;
+        actors.actors[0].height = 8;
+        actors.actors[0].state = SML2_NATIVE_ACTOR_AWAKE;
+        world.camera_x = 0;
+        world.camera_y = 0;
+        assert(sml2_native_render_scene(&stage, &actors, &world, 123,
+                    resolve_test_actor, &resolved, read_test_tile, &calls,
+                    pixels, 256, sizeof(pixels), 0) == 0);
+        assert(resolved == 1);
+        assert(pixels[5 * 256 + 4] == 3);
+        actors.actors[0].state = SML2_NATIVE_ACTOR_ASLEEP;
+        resolved = 0;
+        assert(sml2_native_render_scene(&stage, &actors, &world, 123,
+                    resolve_test_actor, &resolved, read_test_tile, &calls,
+                    pixels, 256, sizeof(pixels), 0) == 0);
+        assert(resolved == 0);
     }
 
     /* A short pitch/capacity or an invalid palette index fails safely. */
