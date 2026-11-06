@@ -76,7 +76,10 @@ int sml2_native_draw_sprite(
 
     if (!pixels || !sprite || !read_tile || width == 0 || height == 0 ||
         width > 32767u || height > 32767u || pitch < width ||
-        pitch > (size_t)-1 / height)
+        pitch > (size_t)-1 / height ||
+        (sprite->flags & (uint8_t)~(SML2_NATIVE_SPRITE_FLIP_X |
+                                    SML2_NATIVE_SPRITE_FLIP_Y |
+                                    SML2_NATIVE_SPRITE_8X16)))
         return -1;
     required = (height - 1u) * pitch + width;
     if (required < width || (height - 1u) * pitch > (size_t)-1 - width)
