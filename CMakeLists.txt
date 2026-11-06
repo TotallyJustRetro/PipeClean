@@ -160,7 +160,7 @@ add_executable(test_sml2_native_actor tests/test_sml2_native_actor.c runtime/sml
 target_include_directories(test_sml2_native_actor PRIVATE runtime)
 add_test(NAME sml2_native_actor COMMAND test_sml2_native_actor)
 
-add_executable(test_sml2_native_render tests/test_sml2_native_render.c runtime/sml2_native.c runtime/sml2_native_stage.c runtime/sml2_native_render.c)
+add_executable(test_sml2_native_render tests/test_sml2_native_render.c runtime/sml2_native.c runtime/sml2_native_stage.c runtime/sml2_native_actor.c runtime/sml2_native_render.c)
 target_include_directories(test_sml2_native_render PRIVATE runtime)
 add_test(NAME sml2_native_render COMMAND test_sml2_native_render)
 
