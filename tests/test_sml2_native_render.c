@@ -186,6 +186,10 @@ int main(void)
         sprite.palette[1] = 4;
         assert(sml2_native_draw_sprite(sprite_frame, 8, 8, 16, &sprite,
                     read_sprite_tile, &sprite_calls) == -1);
+        sprite.palette[1] = 3;
+        sprite.flags |= 0x80;
+        assert(sml2_native_draw_sprite(sprite_frame, 8, 8, 8, &sprite,
+                    read_sprite_tile, &sprite_calls) == -1);
     }
 
     /* The scene compositor draws terrain first, then resolves and draws
