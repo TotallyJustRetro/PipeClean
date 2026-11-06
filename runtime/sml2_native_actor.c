@@ -136,6 +136,27 @@ int sml2_native_actors_step(Sml2NativeActorWorld *world,
     return 0;
 }
 
+/* Project both corners of a half-open world rectangle into the logical
+ * camera view. Coordinates remain 16.16 fixed point, matching physics and
+ * the native stage renderer; no integer-pixel rounding or image scaling. */
+static int actor_world_rect_to_view(const Sml2NativeWorld *camera,
+                                    const Sml2NativeRect *world_rect,
+                                    Sml2NativeRect *view_rect)
+{
+    if (!camera || !world_rect || !view_rect ||
+        world_rect->right <= world_rect->left ||
+        world_rect->bottom <= world_rect->top)
+        return -1;
+    if (sml2_native_world_to_view(camera, world_rect->left,
+                                  world_rect->top,
+                                  &view_rect->left, &view_rect->top) != 0 ||
+        sml2_native_world_to_view(camera, world_rect->right,
+                                  world_rect->bottom,
+                                  &view_rect->right, &view_rect->bottom) != 0)
+        return -1;
+    return 0;
+}
+
 int sml2_native_actors_visit_visible(
     const Sml2NativeActorWorld *actors, const Sml2NativeWorld *camera,
     Sml2NativeActorDrawVisitor visitor, void *userdata)
@@ -166,7 +187,7 @@ int sml2_native_actors_visit_visible(
         world_rect.right = (int32_t)right;
         world_rect.bottom = (int32_t)bottom;
         if (!sml2_native_view_contains_rect(camera, &world_rect)) continue;
-        if (sml2_native_world_rect_to_view(camera, &world_rect,
+        if (actor_world_rect_to_view(camera, &world_rect,
                                             &draw.view_bounds) != 0)
             return -1;
         draw.actor = actor;
