@@ -21,6 +21,11 @@ typedef struct Sml2NativeGbGraphics {
 int sml2_native_read_gb_tile_pixels(
     void *userdata, uint8_t graphics_id, uint8_t pixels_out[64]);
 
+/* OBJ tiles always use unsigned $8000-$8FFF addressing, independent of
+ * LCDC.4. Use this reader for sml2_native_draw_sprite(). */
+int sml2_native_read_gb_obj_tile_pixels(
+    void *userdata, uint8_t graphics_id, uint8_t pixels_out[64]);
+
 enum {
     SML2_NATIVE_SPRITE_FLIP_X = 1u << 0,
     SML2_NATIVE_SPRITE_FLIP_Y = 1u << 1,
