@@ -60,6 +60,32 @@ int main(void)
       assert(sml2_native_capture_get_graphics(&moved, &graphics) == 0);
       assert(graphics.vram == moved.vram); }
 
+    /* A captured 160px view can be expanded and clamped without losing
+       the offset needed to keep hardware sprites aligned with the new origin. */
+    {
+        Sml2NativeWorld view;
+        int32_t sprite_dx = 0, sprite_dy = 0;
+        capture.world_origin_x = 1000;
+        capture.world_origin_y = 500;
+        assert(sml2_native_capture_make_view(&capture, 49, 256, 136,
+                    &view, &sprite_dx, &sprite_dy) == 0);
+        assert(view.camera_x == 951 && view.camera_y == 500);
+        assert(view.camera_view_width == 256 && view.camera_view_height == 136);
+        assert(sprite_dx == 0 && sprite_dy == 0);
+
+        capture.world_origin_x = 10;
+        capture.world_origin_y = 750;
+        assert(sml2_native_capture_make_view(&capture, 49, 256, 136,
+                    &view, &sprite_dx, &sprite_dy) == 0);
+        assert(view.camera_x == 0 && view.camera_y == 632);
+        assert(sprite_dx == -39 && sprite_dy == 118);
+
+        assert(sml2_native_capture_make_view(&capture, 0, 0, 136,
+                    &view, &sprite_dx, &sprite_dy) == -1);
+        assert(sml2_native_capture_make_view(NULL, 0, 256, 136,
+                    &view, &sprite_dx, &sprite_dy) == -1);
+    }
+
     /* The DMG background palette is applied after raw tile decoding. */
     {
         uint8_t pixels[8 * 2] = {0, 1, 2, 3, 0, 1, 2, 3};

@@ -164,6 +164,42 @@ int sml2_native_capture_get_graphics(const Sml2NativeSml2Capture *capture,
     return 0;
 }
 
+int sml2_native_capture_make_view(const Sml2NativeSml2Capture *capture,
+                                  int32_t left, int32_t width, int32_t height,
+                                  Sml2NativeWorld *world,
+                                  int32_t *sprite_offset_x,
+                                  int32_t *sprite_offset_y)
+{
+    int64_t raw_x, raw_y, max_x, max_y, clamped_x, clamped_y;
+    if (!capture || !capture->valid || !world ||
+        !sprite_offset_x || !sprite_offset_y || width <= 0 || height <= 0)
+        return -1;
+
+    raw_x = (int64_t)capture->world_origin_x - left;
+    raw_y = capture->world_origin_y;
+    max_x = (int64_t)SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS * 16 - width;
+    max_y = (int64_t)SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS * 16 - height;
+    if (max_x < 0) max_x = 0;
+    if (max_y < 0) max_y = 0;
+
+    clamped_x = raw_x < 0 ? 0 : (raw_x > max_x ? max_x : raw_x);
+    clamped_y = raw_y < 0 ? 0 : (raw_y > max_y ? max_y : raw_y);
+    if (raw_x < INT32_MIN || raw_x > INT32_MAX ||
+        raw_y < INT32_MIN || raw_y > INT32_MAX ||
+        raw_x - clamped_x < INT32_MIN || raw_x - clamped_x > INT32_MAX ||
+        raw_y - clamped_y < INT32_MIN || raw_y - clamped_y > INT32_MAX)
+        return -1;
+
+    memset(world, 0, sizeof(*world));
+    world->camera_x = (int32_t)clamped_x;
+    world->camera_y = (int32_t)clamped_y;
+    world->camera_view_width = width;
+    world->camera_view_height = height;
+    *sprite_offset_x = (int32_t)(raw_x - clamped_x);
+    *sprite_offset_y = (int32_t)(raw_y - clamped_y);
+    return 0;
+}
+
 int sml2_native_apply_dmg_palette(uint8_t *pixels, size_t width, size_t height,
                                   size_t pitch, size_t capacity, uint8_t bgp)
 {

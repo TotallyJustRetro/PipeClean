@@ -41,6 +41,9 @@ extern int sml2_native_capture_get_stage(
     const Sml2NativeSml2Capture *, Sml2NativeStage *) __attribute__((weak));
 extern int sml2_native_capture_get_graphics(
     const Sml2NativeSml2Capture *, Sml2NativeGbGraphics *) __attribute__((weak));
+extern int sml2_native_capture_make_view(
+    const Sml2NativeSml2Capture *, int32_t, int32_t, int32_t,
+    Sml2NativeWorld *, int32_t *, int32_t *) __attribute__((weak));
 extern int sml2_native_read_gb_tile_pixels(
     void *, uint8_t, uint8_t [64]) __attribute__((weak));
 extern int sml2_native_render_stage(
@@ -1257,7 +1260,8 @@ static void sml2_native_prepare_view(int left, int width)
     sml2_native_view_active = 0;
 #if defined(__GNUC__) || defined(__clang__)
     if (!sml2_native_capture_live_sml2 || !sml2_native_capture_get_stage ||
-        !sml2_native_capture_get_graphics || !sml2_native_read_gb_tile_pixels ||
+        !sml2_native_capture_get_graphics || !sml2_native_capture_make_view ||
+        !sml2_native_read_gb_tile_pixels ||
         !sml2_native_render_stage || !rd8)
         return;
 #endif
@@ -1274,25 +1278,10 @@ static void sml2_native_prepare_view(int left, int width)
                                          &sml2_native_live_graphics) != 0)
         return;
 
-    memset(&view, 0, sizeof view);
-    view.camera_x = sml2_native_live_capture.world_origin_x - left;
-    view.camera_y = sml2_native_live_capture.world_origin_y;
-    view.camera_view_width = width;
-    view.camera_view_height = SML2_NATIVE_VIEW_HEIGHT;
-    {
-        int raw_x = view.camera_x, raw_y = view.camera_y;
-        int max_x = (int)SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS * 16 - width;
-        int max_y = (int)SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS * 16 -
-                    SML2_NATIVE_VIEW_HEIGHT;
-        if (max_x < 0) max_x = 0;
-        if (max_y < 0) max_y = 0;
-        if (view.camera_x < 0) view.camera_x = 0;
-        if (view.camera_x > max_x) view.camera_x = max_x;
-        if (view.camera_y < 0) view.camera_y = 0;
-        if (view.camera_y > max_y) view.camera_y = max_y;
-        sml2_native_sprite_dx = raw_x - view.camera_x;
-        sml2_native_sprite_dy = raw_y - view.camera_y;
-    }
+    if (sml2_native_capture_make_view(
+            &sml2_native_live_capture, left, width, SML2_NATIVE_VIEW_HEIGHT,
+            &view, &sml2_native_sprite_dx, &sml2_native_sprite_dy) != 0)
+        return;
     if (sml2_native_render_stage(
             &sml2_native_live_stage, &view, sml2_native_ppu_read_tile,
             &sml2_native_live_graphics, &sml2_native_view_pixels[0][0],

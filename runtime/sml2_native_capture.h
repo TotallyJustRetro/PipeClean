@@ -58,6 +58,16 @@ int sml2_native_capture_get_stage(const Sml2NativeSml2Capture *capture,
 int sml2_native_capture_get_graphics(const Sml2NativeSml2Capture *capture,
                                      Sml2NativeGbGraphics *graphics);
 
+/* Build a clamped integer-pixel viewport for the native stage renderer from
+ * a verified live capture. left is the logical display's left inset relative
+ * to the captured 160px view. sprite offsets preserve alignment when the
+ * viewport is clamped at a physical level edge. */
+int sml2_native_capture_make_view(const Sml2NativeSml2Capture *capture,
+                                  int32_t left, int32_t width, int32_t height,
+                                  Sml2NativeWorld *world,
+                                  int32_t *sprite_offset_x,
+                                  int32_t *sprite_offset_y);
+
 int sml2_native_capture_live_sml2(
     Sml2NativeSml2Capture *capture,
     Sml2NativeMemoryRead read_memory, void *memory_userdata,
