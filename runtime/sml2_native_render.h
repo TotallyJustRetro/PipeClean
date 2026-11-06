@@ -6,8 +6,8 @@
 #include <stdint.h>
 
 /* Supplies one decoded 8x8 Game Boy graphics tile as 64 palette indices.
- * Each pixel must be in the range 0..3. The renderer caches each graphics ID
- * once per frame, so callers may decode from ROM data or a native asset cache. */
+ * Each pixel must be in the range 0..3. The stage renderer caches BG tile IDs
+ * per render; the OBJ compositor reads one or two tiles per sprite draw. */
 typedef int (*Sml2NativeReadTilePixels)(
     void *userdata, uint8_t graphics_id, uint8_t pixels_out[64]);
 
