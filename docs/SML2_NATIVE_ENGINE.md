@@ -149,10 +149,13 @@ use an explicit palette index. The renderer is SDL-independent so the same
 stage output can feed desktop, Android, screenshots, or a future GPU backend.
 
 A Game Boy VRAM adapter is included for validating the original 2-bit tile
-bitplanes and LCDC signed/unsigned tile addressing. The graphics callback is
-still the seam for a fully ROM-backed native asset decoder; automatic SML2
-graphics extraction and the runtime/launcher presentation bridge still need
-to be connected.
+bitplanes and LCDC signed/unsigned tile addressing. The renderer now also has
+an indexed OBJ compositor for 8x8 and 8x16 sprites, including hardware-style
+even-tile alignment in 8x16 mode, X/Y flips, color-zero transparency, palette
+mapping, viewport clipping, and caller-controlled OAM draw order. The tile
+reader remains the seam for a fully ROM-backed native asset decoder; automatic
+SML2 player/enemy animation extraction and the runtime/launcher presentation
+bridge still need to be connected.
 
 `runtime/sml2_native_capture.h/.c` adds a read-only live-scene capture
 bridge for ordinary SML2 gameplay. It copies the decompressed `$B000-$DFFF`
@@ -272,8 +275,10 @@ integer pixel count.
 
 The actor world exposes a stable-order visible-actor visitor. It builds each
 awake actor's world-space rectangle, culls it against the camera view, and
-supplies the rectangle projected into view coordinates. Terrain and actor
-drawing can therefore consume the same camera origin and half-open bounds
-without duplicating camera arithmetic. This is a render-facing data interface;
-it does not yet supply authentic SML2 actor sprites, animation frames, or
-gameplay behavior.
+supplies the rectangle projected into view coordinates. Its camera-sync helper
+also materializes stage objects from the expanded view plus a wake margin, so
+widescreen and zoom settings affect the native simulation's actor frontier.
+The renderer's OBJ compositor can now draw decoded sprite tiles without
+stretching them. These are still lower-level interfaces: authentic SML2
+actor-to-animation selection, animation timing, asset extraction, and runtime
+presentation integration remain unfinished.

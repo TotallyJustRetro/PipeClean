@@ -21,6 +21,31 @@ typedef struct Sml2NativeGbGraphics {
 int sml2_native_read_gb_tile_pixels(
     void *userdata, uint8_t graphics_id, uint8_t pixels_out[64]);
 
+enum {
+    SML2_NATIVE_SPRITE_FLIP_X = 1u << 0,
+    SML2_NATIVE_SPRITE_FLIP_Y = 1u << 1,
+    SML2_NATIVE_SPRITE_8X16 = 1u << 2
+};
+
+/* One native sprite in logical view-pixel coordinates. tile_id is the Game
+ * Boy OBJ tile number; 8x16 sprites use its even-aligned pair. Palette maps
+ * source color indices 0..3 to framebuffer indices. Color zero is transparent. */
+typedef struct {
+    int32_t x;
+    int32_t y;
+    uint8_t tile_id;
+    uint8_t flags;
+    uint8_t palette[4];
+} Sml2NativeSprite;
+
+/* Composite one 8x8 or 8x16 OBJ into an indexed logical framebuffer. Call in
+ * OAM order to preserve caller-defined overlap priority. Clipping is applied
+ * at the viewport edges; tile decoding is cached for the duration of the draw. */
+int sml2_native_draw_sprite(
+    uint8_t *pixels, size_t pitch, size_t width, size_t height,
+    const Sml2NativeSprite *sprite,
+    Sml2NativeReadTilePixels read_tile, void *userdata);
+
 /* Render the native stage at the world's logical camera size. The output is
  * one byte per pixel (Game Boy palette index 0..3); pitch is measured in
  * bytes and may exceed the logical width. Pixels outside the stage are filled

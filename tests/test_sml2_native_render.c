@@ -13,6 +13,16 @@ static int read_test_tile(void *userdata, uint8_t tile_id, uint8_t out[64])
     return 0;
 }
 
+static int read_sprite_tile(void *userdata, uint8_t tile_id, uint8_t out[64])
+{
+    unsigned *calls = (unsigned *)userdata;
+    unsigned i;
+    ++*calls;
+    for (i = 0; i < 64; ++i)
+        out[i] = (uint8_t)(tile_id == 4 ? 1 : 2);
+    return 0;
+}
+
 static Sml2NativeConfig make_config(void)
 {
     Sml2NativeConfig c;
@@ -104,6 +114,36 @@ int main(void)
                                     pixels, 256, sizeof(pixels), 2) == 0);
     assert(pixels[0] == 2);
     assert(pixels[8 * 256 + 8] == 1);
+
+    /* Native OBJ composition supports 8x16 tile pairs, flips, palette maps,
+       transparency, and clipping without stretching the source Game Boy art. */
+    {
+        uint8_t sprite_frame[8 * 16] = {0};
+        Sml2NativeSprite sprite;
+        unsigned sprite_calls = 0;
+        memset(&sprite, 0, sizeof(sprite));
+        sprite.x = -2;
+        sprite.y = 0;
+        sprite.tile_id = 5; /* hardware 8x16 mode aligns this to tile 4 */
+        sprite.flags = SML2_NATIVE_SPRITE_8X16 |
+                       SML2_NATIVE_SPRITE_FLIP_Y;
+        sprite.palette[0] = 0;
+        sprite.palette[1] = 3;
+        sprite.palette[2] = 2;
+        sprite.palette[3] = 1;
+        assert(sml2_native_draw_sprite(sprite_frame, 8, 8, 16, &sprite,
+                    read_sprite_tile, &sprite_calls) == 0);
+        assert(sprite_calls == 2);
+        assert(sprite_frame[0] == 2);       /* top half uses second tile */
+        assert(sprite_frame[7] == 0);       /* right side is clipped */
+        assert(sprite_frame[8 * 8] == 3);   /* bottom half uses first tile */
+        assert(sprite_frame[15 * 8 + 5] == 3);
+        assert(sml2_native_draw_sprite(NULL, 8, 8, 16, &sprite,
+                    read_sprite_tile, &sprite_calls) == -1);
+        sprite.palette[1] = 4;
+        assert(sml2_native_draw_sprite(sprite_frame, 8, 8, 16, &sprite,
+                    read_sprite_tile, &sprite_calls) == -1);
+    }
 
     /* A short pitch/capacity or an invalid palette index fails safely. */
     assert(sml2_native_render_stage(&stage, &world, read_test_tile, &calls,

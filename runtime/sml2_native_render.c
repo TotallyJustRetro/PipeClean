@@ -29,6 +29,62 @@ int sml2_native_read_gb_tile_pixels(
     return 0;
 }
 
+int sml2_native_draw_sprite(
+    uint8_t *pixels, size_t pitch, size_t width, size_t height,
+    const Sml2NativeSprite *sprite,
+    Sml2NativeReadTilePixels read_tile, void *userdata)
+{
+    uint8_t tile_pixels[2][64];
+    unsigned sprite_height, tile_count, tile_base;
+    unsigned tile_index, i, x, y;
+    size_t required;
+
+    if (!pixels || !sprite || !read_tile || width == 0 || height == 0 ||
+        width > 32767u || height > 32767u || pitch < width ||
+        pitch > (size_t)-1 / height)
+        return -1;
+    required = (height - 1u) * pitch + width;
+    if (required < width || (height - 1u) * pitch > (size_t)-1 - width)
+        return -1;
+    for (i = 0; i < 4; ++i)
+        if (sprite->palette[i] > 3) return -1;
+
+    sprite_height = (sprite->flags & SML2_NATIVE_SPRITE_8X16) ? 16u : 8u;
+    tile_count = sprite_height / 8u;
+    tile_base = sprite->tile_id;
+    if (tile_count == 2u) tile_base &= ~1u;
+
+    for (tile_index = 0; tile_index < tile_count; ++tile_index) {
+        if (read_tile(userdata, (uint8_t)(tile_base + tile_index),
+                      tile_pixels[tile_index]) != 0)
+            return -1;
+        for (i = 0; i < 64; ++i)
+            if (tile_pixels[tile_index][i] > 3) return -1;
+    }
+
+    for (y = 0; y < sprite_height; ++y) {
+        int64_t dest_y = (int64_t)sprite->y + y;
+        unsigned source_y = (sprite->flags & SML2_NATIVE_SPRITE_FLIP_Y)
+                          ? sprite_height - 1u - y : y;
+        unsigned source_tile = source_y >> 3;
+        unsigned tile_y = source_y & 7u;
+        uint8_t *row;
+        if (dest_y < 0 || dest_y >= (int64_t)height) continue;
+        row = pixels + (size_t)dest_y * pitch;
+        for (x = 0; x < 8; ++x) {
+            int64_t dest_x = (int64_t)sprite->x + x;
+            unsigned source_x = (sprite->flags & SML2_NATIVE_SPRITE_FLIP_X)
+                              ? 7u - x : x;
+            uint8_t color;
+            if (dest_x < 0 || dest_x >= (int64_t)width) continue;
+            color = tile_pixels[source_tile][tile_y * 8u + source_x];
+            if (color != 0)
+                row[(size_t)dest_x] = sprite->palette[color];
+        }
+    }
+    return 0;
+}
+
 int sml2_native_render_stage(
     const Sml2NativeStage *stage, const Sml2NativeWorld *world,
     Sml2NativeReadTilePixels read_tile, void *userdata,
