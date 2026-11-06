@@ -63,6 +63,14 @@ int sml2_native_actors_sync(Sml2NativeActorWorld *world,
                             const Sml2NativeStage *stage,
                             const Sml2NativeRect *activation_bounds);
 
+/* Derive activation bounds from the live logical camera view plus a world-
+ * pixel wake margin, then synchronize stage objects into the actor world.
+ * This is the camera-to-gameplay bridge for newly exposed widescreen edges. */
+int sml2_native_actors_sync_camera(Sml2NativeActorWorld *world,
+                                   const Sml2NativeStage *stage,
+                                   const Sml2NativeWorld *camera,
+                                   int32_t wake_margin_pixels);
+
 /* Advance awake actors in stable slot order. Update callbacks must be
  * deterministic and may mutate only the actor passed to them. */
 int sml2_native_actors_step(Sml2NativeActorWorld *world,

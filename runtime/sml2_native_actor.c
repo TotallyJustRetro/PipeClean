@@ -107,6 +107,19 @@ int sml2_native_actors_sync(Sml2NativeActorWorld *world,
     return ctx.failed ? -1 : 0;
 }
 
+int sml2_native_actors_sync_camera(Sml2NativeActorWorld *world,
+                                   const Sml2NativeStage *stage,
+                                   const Sml2NativeWorld *camera,
+                                   int32_t wake_margin_pixels)
+{
+    Sml2NativeRect activation_bounds;
+    if (!world || !stage || !camera || wake_margin_pixels < 0 ||
+        sml2_native_view_bounds(camera, wake_margin_pixels,
+                                &activation_bounds) != 0)
+        return -1;
+    return sml2_native_actors_sync(world, stage, &activation_bounds);
+}
+
 int sml2_native_actors_step(Sml2NativeActorWorld *world,
                             Sml2NativeActorUpdate update, void *userdata)
 {

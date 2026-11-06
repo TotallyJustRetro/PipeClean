@@ -857,63 +857,6 @@ int sml2_native_world_to_view(const Sml2NativeWorld *world,
     return 0;
 }
 
-int sml2_native_world_rect_to_view(const Sml2NativeWorld *world,
-                                   const Sml2NativeRect *world_rect,
-                                   Sml2NativeRect *view_rect)
-{
-    if (!world || !world_rect || !view_rect ||
-        world->camera_view_width <= 0 || world->camera_view_height <= 0 ||
-        world_rect->left >= world_rect->right ||
-        world_rect->top >= world_rect->bottom)
-        return -1;
-
-    /* Transform each edge independently so fractional sprite positions and
-       half-open bounds survive camera motion without rounding or resizing. */
-    view_rect->left = clamp_i64((int64_t)world_rect->left - world->camera_x);
-    view_rect->top = clamp_i64((int64_t)world_rect->top - world->camera_y);
-    view_rect->right = clamp_i64((int64_t)world_rect->right - world->camera_x);
-    view_rect->bottom = clamp_i64((int64_t)world_rect->bottom - world->camera_y);
-    return 0;
-}
-
-int sml2_native_players_visit_visible(
-    const Sml2NativeWorld *world,
-    Sml2NativePlayerDrawVisitor visitor, void *userdata)
-{
-    unsigned i;
-    if (!world || !visitor || world->camera_view_width <= 0 ||
-        world->camera_view_height <= 0)
-        return -1;
-
-    for (i = 0; i < SML2_NATIVE_MAX_PLAYERS; ++i) {
-        const Sml2NativePlayer *player = &world->players[i];
-        Sml2NativePlayerDraw draw;
-        Sml2NativeRect world_rect;
-        int64_t right, bottom;
-        int result;
-        if (!player->active) continue;
-        if (player->width <= 0 || player->height <= 0) return -1;
-        right = (int64_t)player->x + player->width;
-        bottom = (int64_t)player->y + player->height;
-        if (right > INT32_MAX || right < INT32_MIN ||
-            bottom > INT32_MAX || bottom < INT32_MIN)
-            return -1;
-        world_rect.left = player->x;
-        world_rect.top = player->y;
-        world_rect.right = (int32_t)right;
-        world_rect.bottom = (int32_t)bottom;
-        if (!sml2_native_view_contains_rect(world, &world_rect)) continue;
-        if (sml2_native_world_rect_to_view(world, &world_rect,
-                                            &draw.view_bounds) != 0)
-            return -1;
-        draw.player_index = i;
-        draw.player = player;
-        result = visitor(userdata, &draw);
-        if (result) return result;
-    }
-    return 0;
-}
-
 int sml2_native_view_bounds(const Sml2NativeWorld *world,
                             int32_t margin_pixels,
                             Sml2NativeRect *world_bounds)

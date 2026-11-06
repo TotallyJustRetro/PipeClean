@@ -2,14 +2,6 @@
 
 #include <string.h>
 
-static int64_t render_floor_div(int64_t value, int64_t divisor)
-{
-    int64_t quotient = value / divisor;
-    int64_t remainder = value % divisor;
-    if (remainder < 0) --quotient;
-    return quotient;
-}
-
 int sml2_native_read_gb_tile_pixels(
     void *userdata, uint8_t graphics_id, uint8_t pixels_out[64])
 {
@@ -68,18 +60,14 @@ int sml2_native_render_stage(
     stage_height = (int32_t)stage->height_blocks * 16;
     for (y = 0; y < height; ++y) {
         uint8_t *row = pixels + (size_t)y * pitch;
-        int64_t world_y64 = render_floor_div(
-            (int64_t)world->camera_y + (int64_t)y * SML2_NATIVE_FP_ONE,
-            SML2_NATIVE_FP_ONE);
+        int64_t world_y64 = (int64_t)world->camera_y + y;
         int32_t world_y;
         memset(row, clear_color, (size_t)width);
 
         if (world_y64 < 0 || world_y64 >= stage_height) continue;
         world_y = (int32_t)world_y64;
         for (x = 0; x < width; ++x) {
-            int64_t world_x64 = render_floor_div(
-                (int64_t)world->camera_x + (int64_t)x * SML2_NATIVE_FP_ONE,
-                SML2_NATIVE_FP_ONE);
+            int64_t world_x64 = (int64_t)world->camera_x + x;
             int32_t world_x;
             uint32_t cell_index;
             uint8_t block_id, quadrant, graphics_id;
@@ -94,7 +82,7 @@ int sml2_native_render_stage(
 
             quadrant = (uint8_t)(((world_y & 8) ? 2 : 0) |
                                  ((world_x & 8) ? 1 : 0));
-            graphics_id = (uint8_t)stage->tiles[block_id].graphics[quadrant];
+            graphics_id = stage->tiles[block_id].graphics[quadrant];
             if (!tile_loaded[graphics_id]) {
                 unsigned p;
                 if (read_tile(userdata, graphics_id, tile_cache[graphics_id]) != 0)

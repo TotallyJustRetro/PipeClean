@@ -181,6 +181,15 @@ sleeps non-persistent actors outside the activation region, retains persistent a
 actors in stable slot order on a fixed simulation tick. It also supports health
 damage and a persistent defeated state for unique actors.
 
+The registry now also exposes `sml2_native_actors_sync_camera()`. It derives
+its activation rectangle directly from the logical camera view plus a caller-
+selected wake margin, then synchronizes the stage's spawn records. This closes
+a missing link between wider camera settings and which stage actors actually
+enter the native simulation: 16:9, 21:9, and zoomed-out views can materialize
+objects beyond the original 160-pixel edge without changing the emulator path.
+A regression constructs spawn records at x=200, 300, and 400 and verifies the
+expected activation frontier at 10:9, 16:9, 21:9, and 21:9/200%.
+
 The registry is deliberately behavior-agnostic: a game-specific update callback
 owns each enemy's movement, attacks, animation state, and special rules. This
 keeps the shared world scheduler ready for real SML2 enemy implementations

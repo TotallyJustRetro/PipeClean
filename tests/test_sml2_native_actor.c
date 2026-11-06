@@ -109,5 +109,82 @@ int main(void)
         assert(sml2_native_actors_visit_visible(&world, &camera,
                     NULL, &capture) == -1);
     }
+
+    {
+        /* The logical camera now drives actor activation: objects beyond the
+           old 160-pixel edge materialize only when the selected view exposes
+           them. Zoom-out expands the activation frontier again. */
+        uint8_t wide_cells[256 * 48] = {0};
+        Sml2NativeStageTile wide_tiles[1] = {{{0, 0, 0, 0}, 0, 0}};
+        Sml2NativeStageObject wide_objects[3] = {
+            {20, 1, 0, 200, 16, 8, 8, SML2_NATIVE_STAGE_OBJECT_ENABLED},
+            {21, 1, 0, 300, 16, 8, 8, SML2_NATIVE_STAGE_OBJECT_ENABLED},
+            {22, 1, 0, 400, 16, 8, 8, SML2_NATIVE_STAGE_OBJECT_ENABLED}
+        };
+        Sml2NativeStage wide_stage;
+        Sml2NativeActorWorld narrow_actors, wide_actors, cinema_actors;
+        Sml2NativeWorld narrow_camera, wide_camera, cinema_camera;
+        Sml2NativeConfig view;
+        assert(sml2_native_stage_init(&wide_stage, 256, 48, wide_cells,
+                    wide_tiles, 1, wide_objects, 3, NULL, 0, 1) == 0);
+        memset(&view, 0, sizeof(view));
+        view.level_width = 4096;
+        view.level_height = 768;
+        view.gravity = 0x3000;
+        view.horizontal_acceleration = 0x4000;
+        view.horizontal_friction = 0x3000;
+        view.max_run_speed = 0x28000;
+        view.jump_velocity = -0x50000;
+        view.terminal_velocity = 0x60000;
+        view.player_width = 12;
+        view.player_height = 16;
+        view.camera_padding = 8;
+        view.window_width = 160;
+        view.window_height = 144;
+        view.camera_zoom_percent = SML2_NATIVE_ZOOM_100;
+        view.max_camera_zoom_percent = SML2_NATIVE_ZOOM_200;
+
+        view.widescreen_mode = SML2_NATIVE_WIDESCREEN_OFF;
+        assert(sml2_native_init(&narrow_camera, &view) == 0);
+        sml2_native_actors_init(&narrow_actors);
+        assert(narrow_camera.camera_view_width == 160);
+        assert(sml2_native_actors_sync_camera(&narrow_actors, &wide_stage,
+                    &narrow_camera, 0) == 0);
+        assert(narrow_actors.count == 0);
+
+        view.widescreen_mode = SML2_NATIVE_WIDESCREEN_16_9;
+        assert(sml2_native_init(&wide_camera, &view) == 0);
+        sml2_native_actors_init(&wide_actors);
+        assert(wide_camera.camera_view_width == 256);
+        assert(sml2_native_actors_sync_camera(&wide_actors, &wide_stage,
+                    &wide_camera, 0) == 0);
+        assert(wide_actors.count == 1);
+        assert(sml2_native_actor_find(&wide_actors, 20) != NULL);
+        assert(sml2_native_actor_find(&wide_actors, 21) == NULL);
+
+        view.widescreen_mode = SML2_NATIVE_WIDESCREEN_21_9;
+        view.camera_zoom_percent = SML2_NATIVE_ZOOM_100;
+        assert(sml2_native_init(&cinema_camera, &view) == 0);
+        sml2_native_actors_init(&cinema_actors);
+        assert(cinema_camera.camera_view_width == 336);
+        assert(sml2_native_actors_sync_camera(&cinema_actors, &wide_stage,
+                    &cinema_camera, 0) == 0);
+        assert(cinema_actors.count == 2);
+        assert(sml2_native_actor_find(&cinema_actors, 20) != NULL);
+        assert(sml2_native_actor_find(&cinema_actors, 21) != NULL);
+        assert(sml2_native_actor_find(&cinema_actors, 22) == NULL);
+
+        view.camera_zoom_percent = SML2_NATIVE_ZOOM_200;
+        assert(sml2_native_init(&cinema_camera, &view) == 0);
+        sml2_native_actors_init(&cinema_actors);
+        assert(cinema_camera.camera_view_width == 672);
+        assert(sml2_native_actors_sync_camera(&cinema_actors, &wide_stage,
+                    &cinema_camera, 0) == 0);
+        assert(cinema_actors.count == 3);
+        assert(sml2_native_actor_find(&cinema_actors, 22) != NULL);
+
+        assert(sml2_native_actors_sync_camera(&cinema_actors, &wide_stage,
+                    &cinema_camera, -1) == -1);
+    }
     return 0;
 }
