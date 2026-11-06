@@ -105,6 +105,15 @@ int main(void)
     assert(sml2_native_read_gb_obj_tile_pixels(&gb, 0, decoded) == 0);
     assert(decoded[0] == 1 && decoded[1] == 2 && decoded[2] == 0);
     assert(sml2_native_read_gb_obj_tile_pixels(NULL, 0, decoded) == -1);
+    {
+        uint8_t obj_palette[4];
+        assert(sml2_native_make_dmg_obj_palette(0xE4, obj_palette) == 0);
+        assert(obj_palette[0] == 0);
+        assert(obj_palette[1] == 1);
+        assert(obj_palette[2] == 2);
+        assert(obj_palette[3] == 3);
+        assert(sml2_native_make_dmg_obj_palette(0x00, NULL) == -1);
+    }
 
     memset(&tiles, 0, sizeof(tiles));
     tiles[0].graphics[0] = 1;
