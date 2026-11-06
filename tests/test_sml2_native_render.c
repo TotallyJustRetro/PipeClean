@@ -20,6 +20,7 @@ static int read_sprite_tile(void *userdata, uint8_t tile_id, uint8_t out[64])
     ++*calls;
     for (i = 0; i < 64; ++i)
         out[i] = (uint8_t)(tile_id == 4 ? 1 : 2);
+    if (tile_id == 4) out[2] = 0; /* transparent source pixel */
     return 0;
 }
 
@@ -137,6 +138,8 @@ int main(void)
         assert(sprite_frame[0] == 2);       /* top half uses second tile */
         assert(sprite_frame[7] == 0);       /* right side is clipped */
         assert(sprite_frame[8 * 8] == 3);   /* bottom half uses first tile */
+        assert(sprite_frame[15 * 8 + 0] == 0); /* color zero stays transparent */
+        assert(sprite_frame[15 * 8 + 1] == 3);
         assert(sprite_frame[15 * 8 + 5] == 3);
         assert(sml2_native_draw_sprite(NULL, 8, 8, 16, &sprite,
                     read_sprite_tile, &sprite_calls) == -1);
