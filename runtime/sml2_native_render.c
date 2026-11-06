@@ -29,6 +29,31 @@ int sml2_native_read_gb_tile_pixels(
     return 0;
 }
 
+int sml2_native_read_gb_obj_tile_pixels(
+    void *userdata, uint8_t graphics_id, uint8_t pixels_out[64])
+{
+    const Sml2NativeGbGraphics *graphics =
+        (const Sml2NativeGbGraphics *)userdata;
+    unsigned address = (unsigned)graphics_id * 16u;
+    unsigned y, x;
+
+    if (!graphics || !graphics->vram || !pixels_out ||
+        address + 16u > 0x2000u)
+        return -1;
+
+    for (y = 0; y < 8; ++y) {
+        uint8_t low = graphics->vram[address + y * 2u];
+        uint8_t high = graphics->vram[address + y * 2u + 1u];
+        for (x = 0; x < 8; ++x) {
+            unsigned bit = 7u - x;
+            pixels_out[y * 8u + x] =
+                (uint8_t)((((high >> bit) & 1u) << 1) |
+                          ((low >> bit) & 1u));
+        }
+    }
+    return 0;
+}
+
 int sml2_native_draw_sprite(
     uint8_t *pixels, size_t pitch, size_t width, size_t height,
     const Sml2NativeSprite *sprite,
