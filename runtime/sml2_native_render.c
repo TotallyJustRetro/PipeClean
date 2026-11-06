@@ -157,8 +157,6 @@ int sml2_native_render_stage(
 }
 
 typedef struct {
-    const Sml2NativeActorWorld *actors;
-    const Sml2NativeWorld *world;
     uint64_t tick;
     Sml2NativeResolveActorSprite resolve_sprite;
     void *sprite_userdata;
@@ -204,8 +202,6 @@ int sml2_native_render_scene(
                                  clear_color) != 0)
         return -1;
 
-    ctx.actors = actors;
-    ctx.world = world;
     ctx.tick = tick;
     ctx.resolve_sprite = resolve_sprite;
     ctx.sprite_userdata = sprite_userdata;
