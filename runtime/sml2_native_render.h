@@ -72,7 +72,8 @@ int sml2_native_render_scene(
     const Sml2NativeStage *stage, const Sml2NativeActorWorld *actors,
     const Sml2NativeWorld *world, uint64_t tick,
     Sml2NativeResolveActorSprite resolve_sprite, void *sprite_userdata,
-    Sml2NativeReadTilePixels read_tile, void *tile_userdata,
+    Sml2NativeReadTilePixels read_bg_tile, void *bg_tile_userdata,
+    Sml2NativeReadTilePixels read_obj_tile, void *obj_tile_userdata,
     uint8_t *pixels, size_t pitch, size_t pixels_capacity,
     uint8_t clear_color);
 
