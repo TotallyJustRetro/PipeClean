@@ -279,6 +279,16 @@ supplies the rectangle projected into view coordinates. Its camera-sync helper
 also materializes stage objects from the expanded view plus a wake margin, so
 widescreen and zoom settings affect the native simulation's actor frontier.
 The renderer's OBJ compositor can now draw decoded sprite tiles without
-stretching them. These are still lower-level interfaces: authentic SML2
-actor-to-animation selection, animation timing, asset extraction, and runtime
-presentation integration remain unfinished.
+stretching them. `sml2_native_render_scene()` now composes a complete indexed
+scene in two passes: native stage first, then visible awake actors in stable
+actor-slot order. A caller-supplied resolver receives each actor's projected
+world bounds and deterministic simulation tick, and returns the current OBJ
+pose; the shared tile reader decodes the selected sprite tiles. This keeps
+animation selection game-specific while making scene ordering and composition
+part of the native renderer. Regression coverage verifies that actor sprites
+land over the stage, asleep actors are omitted, and the animation tick is
+forwarded unchanged.
+
+These are composition interfaces, not authentic game art/animation yet:
+SML2 player/enemy frame tables, timing rules, ROM-backed asset extraction,
+and runtime presentation integration remain unfinished.
