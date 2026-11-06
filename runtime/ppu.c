@@ -5,6 +5,7 @@
 #include "gb.h"
 #include "widescreen.h"
 #include "cart.h"
+#include "sml2_native_capture.h"
 #include <limits.h>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -32,6 +33,23 @@ extern int wide_wl3_block_attr(int, int, uint8_t *) __attribute__((weak));
 extern int wide_wl3_camera(int *, int *) __attribute__((weak));
 /* Renderer-only regression tests link ppu.c without the full GB bus module. */
 extern uint8_t rd8(uint16_t address) __attribute__((weak));
+extern int sml2_native_capture_live_sml2(
+    Sml2NativeSml2Capture *, Sml2NativeMemoryRead, void *,
+    const uint8_t [0x2000], uint8_t, uint8_t, uint8_t, uint8_t, uint8_t,
+    uint8_t, const uint16_t *, size_t, unsigned, unsigned) __attribute__((weak));
+extern int sml2_native_capture_get_stage(
+    const Sml2NativeSml2Capture *, Sml2NativeStage *) __attribute__((weak));
+extern int sml2_native_capture_get_graphics(
+    const Sml2NativeSml2Capture *, Sml2NativeGbGraphics *) __attribute__((weak));
+extern int sml2_native_capture_make_view(
+    const Sml2NativeSml2Capture *, int32_t, int32_t, int32_t,
+    Sml2NativeWorld *, int32_t *, int32_t *) __attribute__((weak));
+extern int sml2_native_read_gb_tile_pixels(
+    void *, uint8_t, uint8_t [64]) __attribute__((weak));
+extern int sml2_native_render_stage(
+    const Sml2NativeStage *, const Sml2NativeWorld *,
+    Sml2NativeReadTilePixels, void *, uint8_t *, size_t, size_t,
+    uint8_t) __attribute__((weak));
 #endif
 
 uint8_t vram[0x2000], oam[0xA0];
@@ -48,6 +66,19 @@ uint8_t ppu_bguv[GB_H][GB_WMAX], ppu_spruv[GB_H][GB_WMAX];
 int ppu_w = GB_W, ppu_xoff = 0;
 static int hud_lines, hud_shift, wide_r, sprite_neg = 256, win_centre, wide_gate, wide_on = 1, cfg_hud, cfg_win;
 static int cfg_left, cfg_right;
+/* Full-view SML2 renderer: one verified live map snapshot feeds the entire
+ * enlarged background, rather than retaining the old 160px PPU centre and
+ * painting only two reconstructed strips. The original sprite/PPU path stays
+ * authoritative for actors and for every unsupported scene. */
+#define SML2_NATIVE_VIEW_HEIGHT 136
+static Sml2NativeSml2Capture sml2_native_live_capture;
+static Sml2NativeStage sml2_native_live_stage;
+static Sml2NativeGbGraphics sml2_native_live_graphics;
+static uint8_t sml2_native_view_pixels[SML2_NATIVE_VIEW_HEIGHT][GB_WMAX];
+static int sml2_native_view_active;
+static int sml2_native_view_world_x0, sml2_native_view_world_y0;
+static int sml2_native_sprite_dx, sml2_native_sprite_dy;
+
 static int wario_wide_enabled, wario_frame_active;
 static int wl2_wide_enabled, wl2_frame_active;
 static int wl3_wide_enabled, wl3_frame_active;
@@ -98,6 +129,7 @@ static void wl2_clear_visual_cache(void)
     wl2_metatile_set = -1;
     wl2_cache_level = wl2_cache_tref = wl2_cache_cgb = -1;
 }
+
 
 void ppu_set_wl2_wide(int enabled)
 {
@@ -1192,6 +1224,105 @@ void ppu_write(uint8_t r, uint8_t v)
 }
 
 /* ------------------------------------------------------------------ */
+static uint8_t sml2_native_ppu_read_memory(void *userdata, uint16_t address)
+{
+    (void)userdata;
+#if defined(__GNUC__) || defined(__clang__)
+    if (!rd8) return 0xFFu;
+#endif
+    return rd8(address);
+}
+
+static int sml2_native_ppu_read_tile(void *userdata, uint8_t graphics_id,
+                                     uint8_t pixels_out[64])
+{
+    return sml2_native_read_gb_tile_pixels(userdata, graphics_id, pixels_out);
+}
+
+/* Capture and render a complete expanded SML2 level view once per frame.
+ * The live 160px PPU tilemap must validate against the decoded stage before
+ * this path is allowed to replace it. DMG-only gating avoids misapplying
+ * bank-1 CGB attributes to a game whose original cartridge is monochrome. */
+static void sml2_native_prepare_view(int left, int width)
+{
+    /* Emergency safety gate: the first live full-view integration produced
+       corrupted SML2 frames in user testing. Keep the established margin
+       compositor authoritative until the native viewport's map/graphics and
+       camera transforms are validated against captured gameplay frames. */
+    (void)left;
+    (void)width;
+    sml2_native_view_active = 0;
+    return;
+
+    Sml2NativeWorld view;
+    int result;
+
+    sml2_native_view_active = 0;
+#if defined(__GNUC__) || defined(__clang__)
+    if (!sml2_native_capture_live_sml2 || !sml2_native_capture_get_stage ||
+        !sml2_native_capture_get_graphics || !sml2_native_capture_make_view ||
+        !sml2_native_read_gb_tile_pixels ||
+        !sml2_native_render_stage || !rd8)
+        return;
+#endif
+    if (cgb_render_enabled || width <= GB_W || width > GB_WMAX)
+        return;
+
+    result = sml2_native_capture_live_sml2(
+        &sml2_native_live_capture, sml2_native_ppu_read_memory, NULL,
+        vram, lcdc, scx, scy, wx, wy, bgp, NULL, 0, 100, 95);
+    if (result != SML2_NATIVE_CAPTURE_OK ||
+        sml2_native_capture_get_stage(&sml2_native_live_capture,
+                                      &sml2_native_live_stage) != 0 ||
+        sml2_native_capture_get_graphics(&sml2_native_live_capture,
+                                         &sml2_native_live_graphics) != 0)
+        return;
+
+    if (sml2_native_capture_make_view(
+            &sml2_native_live_capture, left, width, SML2_NATIVE_VIEW_HEIGHT,
+            &view, &sml2_native_sprite_dx, &sml2_native_sprite_dy) != 0)
+        return;
+    if (sml2_native_render_stage(
+            &sml2_native_live_stage, &view, sml2_native_ppu_read_tile,
+            &sml2_native_live_graphics, &sml2_native_view_pixels[0][0],
+            GB_WMAX, sizeof sml2_native_view_pixels, 0) != 0)
+        return;
+
+    sml2_native_view_world_x0 = view.camera_x;
+    sml2_native_view_world_y0 = view.camera_y;
+    sml2_native_view_active = 1;
+}
+
+static void sml2_native_draw_view_line(int y, int width,
+                                       uint8_t *out, uint8_t *bgci,
+                                       uint8_t *bgattr)
+{
+    int world_y = sml2_native_view_world_y0 + y;
+    for (int x = 0; x < width; ++x) {
+        int world_x = sml2_native_view_world_x0 + x;
+        uint8_t ci = sml2_native_view_pixels[y][x];
+        uint16_t tile_id = 0xFFFFu;
+        uint8_t uv = 0;
+        if (world_x >= 0 && world_y >= 0 &&
+            world_x < SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS * 16 &&
+            world_y < SML2_NATIVE_SML2_STAGE_HEIGHT_BLOCKS * 16) {
+            unsigned bx = (unsigned)world_x >> 4;
+            unsigned by = (unsigned)world_y >> 4;
+            unsigned block = sml2_native_live_capture.cells[
+                by * SML2_NATIVE_SML2_STAGE_WIDTH_BLOCKS + bx];
+            unsigned quadrant = (((unsigned)world_y >> 3) & 1u) * 2u |
+                                (((unsigned)world_x >> 3) & 1u);
+            tile_id = sml2_native_live_capture.tiles[block].graphics[quadrant];
+            uv = (uint8_t)(((world_y & 7) << 3) | (world_x & 7));
+        }
+        bgci[x] = ci;
+        bgattr[x] = 0;
+        out[x] = (uint8_t)((bgp >> (ci * 2u)) & 3u);
+        ppu_bgtile[y][x] = tile_id;
+        ppu_bguv[y][x] = uv;
+    }
+}
+
 static void render_line(int y)
 {
     if (y == 0) {
@@ -1209,6 +1340,7 @@ static void render_line(int y)
         if (wide_sml2_snapshot_actors) wide_sml2_snapshot_actors();
         if (wide_sml2_prepare_frame)
             wide_sml2_prepare_frame(L, wide_r, scx, scy, lcdc, wx, wy, vram);
+        sml2_native_prepare_view(L, ppu_w);
         wario_prepare_frame();
         wl2_prepare_frame();
         wl3_prepare_frame();
@@ -1247,6 +1379,12 @@ static void render_line(int y)
         memset(rgb, 0, W * sizeof rgb[0]);
     }
 
+    /* Prefer the complete native SML2 stage view when the live map and native
+       PPU tilemap agree. Otherwise retain the established margin compositor. */
+    if (sml2_native_view_active && y < SML2_NATIVE_VIEW_HEIGHT) {
+        sml2_native_draw_view_line(y, W, out, bgci, bgattr);
+    }
+
     /* Wario's level map is reconstructed from its live 16x16 block layout;
        its hardware tilemap ring otherwise repeats old columns and pops in. */
     if (wide_on && W > GB_W && wario_wide_enabled)
@@ -1262,7 +1400,7 @@ static void render_line(int y)
     /* SML2's visible world is wider than its hardware tilemap ring. Rebuild
        only the margins from the live 16x16 block map, leaving the original
        160 columns untouched. Sprites and the native window keep their PPU path. */
-    if (wide_on && W > GB_W && y < wy && wide_sml2_margin_tile) {
+    if (!sml2_native_view_active && wide_on && W > GB_W && y < wy && wide_sml2_margin_tile) {
         for (int X = 0; X < W; X++) {
             if (X >= L && X < L + GB_W) continue;
             uint8_t tile = 0;
@@ -1322,7 +1460,13 @@ static void render_line(int y)
         wide_sml2_actor_sprites && wide_sml2_world_origin) {
         int count = 0, world_left = 0, world_top = 0;
         const WideSml2Sprite *sprites = wide_sml2_actor_sprites(&count);
-        if (sprites && count > 0 && wide_sml2_world_origin(&world_left, &world_top)) {
+        int have_origin = wide_sml2_world_origin(&world_left, &world_top);
+        if (sml2_native_view_active) {
+            world_left = sml2_native_view_world_x0;
+            world_top = sml2_native_view_world_y0;
+            have_origin = 1;
+        }
+        if (sprites && count > 0 && have_origin) {
             int h = (lcdc & 0x04) ? 16 : 8;
             for (int i = count - 1; i >= 0; i--) {
                 const WideSml2Sprite *sp = &sprites[i];
@@ -1366,7 +1510,7 @@ static void render_line(int y)
         int h = (lcdc & 0x04) ? 16 : 8;
         int idx[10], n = 0;
         for (int i = 0; i < 40 && n < 10; i++) {
-            int sy = oam[i * 4] - 16;
+            int sy = oam[i * 4] - 16 + (sml2_native_view_active ? sml2_native_sprite_dy : 0);
             if (y >= sy && y < sy + h) idx[n++] = i;
         }
         /* DMG (and CGB OPRI=1): lower X wins. Native CGB mode defaults to OAM order. */
@@ -1384,7 +1528,8 @@ static void render_line(int y)
             int i = idx[k];
             int ox = oam[i * 4 + 1];
             if (ox >= sprite_neg) ox -= 256;
-            int sy = oam[i * 4] - 16, sx = ox - 8 + L;
+            int sy = oam[i * 4] - 16 + (sml2_native_view_active ? sml2_native_sprite_dy : 0);
+            int sx = ox - 8 + L + (sml2_native_view_active ? sml2_native_sprite_dx : 0);
             uint8_t tile = oam[i * 4 + 2], fl = oam[i * 4 + 3];
             int row = y - sy;
             if (fl & 0x40) row = h - 1 - row;

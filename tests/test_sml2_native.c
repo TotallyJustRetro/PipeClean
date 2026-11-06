@@ -1,0 +1,800 @@
+#include "sml2_native.h"
+
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+
+static uint32_t test_collision(void *userdata, const Sml2NativeRect *r)
+{
+    const int32_t floor_y = sml2_native_fp_from_int(120);
+    const int32_t wall_left = sml2_native_fp_from_int(300);
+    const int32_t wall_right = sml2_native_fp_from_int(316);
+    (void)userdata;
+
+    if (r->left < 0 || r->right > sml2_native_fp_from_int(512))
+        return SML2_NATIVE_COLLISION_SOLID;
+    if (r->bottom > floor_y && r->top < floor_y)
+        return SML2_NATIVE_COLLISION_SOLID;
+    if (r->right > wall_left && r->left < wall_right &&
+        r->bottom > sml2_native_fp_from_int(80) &&
+        r->top < sml2_native_fp_from_int(120))
+        return SML2_NATIVE_COLLISION_SOLID;
+    return SML2_NATIVE_COLLISION_NONE;
+}
+
+static Sml2NativeConfig make_config(void)
+{
+    Sml2NativeConfig c;
+    memset(&c, 0, sizeof(c));
+    c.level_width = 512;
+    c.level_height = 256;
+    c.gravity = 0x3000;
+    c.horizontal_acceleration = 0x4000;
+    c.horizontal_friction = 0x3000;
+    c.max_run_speed = 0x28000;
+    c.jump_velocity = -0x50000;
+    c.terminal_velocity = 0x60000;
+    c.player_width = 12;
+    c.player_height = 16;
+    c.camera_padding = 24;
+    c.window_width = 1920;
+    c.window_height = 1080;
+    c.widescreen_mode = SML2_NATIVE_WIDESCREEN_16_9;
+    c.camera_zoom_percent = SML2_NATIVE_ZOOM_100;
+    c.max_camera_zoom_percent = SML2_NATIVE_ZOOM_200;
+    c.auto_zoom = 1;
+    return c;
+}
+
+static void run_script(Sml2NativeWorld *world)
+{
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS];
+    int32_t ground_y = world->players[0].y;
+    unsigned frame;
+    memset(inputs, 0, sizeof(inputs));
+
+    for (frame = 0; frame < 12; ++frame) {
+        inputs[0].buttons = SML2_NATIVE_BUTTON_RIGHT;
+        inputs[1].buttons = SML2_NATIVE_BUTTON_LEFT;
+        assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
+    }
+
+    /* Jump is edge-triggered; holding the button does not restart the jump. */
+    inputs[0].buttons = SML2_NATIVE_BUTTON_RIGHT | SML2_NATIVE_BUTTON_JUMP;
+    inputs[1].buttons = SML2_NATIVE_BUTTON_LEFT;
+    assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
+    assert(world->players[0].y < ground_y);
+    for (frame = 0; frame < 14; ++frame)
+        assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
+
+    inputs[0].buttons = SML2_NATIVE_BUTTON_RIGHT;
+    for (frame = 0; frame < 110; ++frame)
+        assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
+
+    memset(inputs, 0, sizeof(inputs));
+    for (frame = 0; frame < 3; ++frame)
+        assert(sml2_native_step(world, inputs, test_collision, NULL) == 0);
+
+    assert(world->players[0].grounded);
+    {
+        int32_t landing_error = world->players[0].y - ground_y;
+        if (landing_error < 0) landing_error = -landing_error;
+        assert(landing_error <= SML2_NATIVE_FP_ONE);
+    }
+    assert(world->players[0].x <= sml2_native_fp_from_int(288));
+    assert(world->players[1].x >= 0);
+}
+
+
+static void test_native_tilemap_collision(void)
+{
+    uint8_t blocks[32 * 16] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeRect rect;
+    unsigned x;
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 32;
+    map.height_blocks = 16;
+    map.block_ids = blocks;
+    map.block_flags[1] = SML2_NATIVE_BLOCK_SOLID;
+    map.solid_out_of_bounds = 1;
+
+    /* Build a floor at y=128 and one freestanding wall block. */
+    for (x = 0; x < 32; ++x) blocks[8 * 32 + x] = 1;
+    blocks[4 * 32 + 10] = 1;
+
+    rect.left = sml2_native_fp_from_int(20);
+    rect.top = sml2_native_fp_from_int(112);
+    rect.right = sml2_native_fp_from_int(32);
+    rect.bottom = sml2_native_fp_from_int(128);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE); /* touching the floor is not overlap */
+
+    rect.bottom++;
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID);
+
+    rect.left = sml2_native_fp_from_int(160);
+    rect.top = sml2_native_fp_from_int(64);
+    rect.right = sml2_native_fp_from_int(172);
+    rect.bottom = sml2_native_fp_from_int(80);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID); /* wall block */
+
+    rect.left = sml2_native_fp_from_int(144);
+    rect.right = sml2_native_fp_from_int(160);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE); /* right edge is exclusive */
+
+    rect.left = sml2_native_fp_from_int(-1);
+    rect.right = sml2_native_fp_from_int(8);
+    rect.top = sml2_native_fp_from_int(16);
+    rect.bottom = sml2_native_fp_from_int(24);
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID); /* explicit outside-level policy */
+
+    map.solid_out_of_bounds = 0;
+    assert(sml2_native_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE);
+}
+
+static void test_sml2_rom_player_probes(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    uint8_t tile = 0xFF;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+
+    /* $1EFA subtracts (8,16) before selecting a 16x16 map cell. */
+    blocks[1 * 256 + 0] = 0x7E;
+    assert(sml2_native_rom_probe_tile(&map, 8, 32, &tile) == 0);
+    assert(tile == 0x7E);
+    assert(sml2_native_rom_probe_tile(&map, 8, 0, &tile) == 0);
+    assert(tile == 0); /* outside the map/echo window reads zero */
+    blocks[16 * 256] = 0x36;
+    assert(sml2_native_rom_probe_tile(&map, 8, 0x310, &tile) == 0);
+    assert(tile == 0x36); /* row $30 aliases WRAM echo row $10 */
+
+    /* $1E3B: gated floor probe, x+12 first, x+20 only if needed. */
+    blocks[2 * 256 + 0] = 0x48; /* coin is not a standable floor tile */
+    blocks[2 * 256 + 1] = 0x37; /* second sample is standable */
+    assert(sml2_native_rom_floor_probe(&map, 4, 4, &tile) == 1);
+    assert(tile == 0x37);
+    assert(sml2_native_rom_floor_probe(&map, 4, 10, &tile) == 0);
+
+    /* $1DFE ceiling probe uses y+28 small / y+18 powered. */
+    blocks[1 * 256 + 0] = 0x7E;
+    assert(sml2_native_rom_ceiling_probe(&map, 4, 4, 0, &tile) == 1);
+    assert(tile == 0x7E);
+    blocks[1 * 256 + 0] = 0x48;
+    assert(sml2_native_rom_ceiling_probe(&map, 4, 4, 0, &tile) == 0);
+
+    /* $1E7C/$1E8D wall probes: powered Mario first checks y+20. */
+    blocks[0 * 256 + 0] = 0x37;
+    assert(sml2_native_rom_wall_probe(&map, 4, 4, 0, 1, 0, &tile) == 1);
+    assert(tile == 0x37);
+    blocks[0 * 256 + 0] = 0x48;
+    blocks[1 * 256 + 0] = 0x36;
+    assert(sml2_native_rom_wall_probe(&map, 4, 4, 0, 0, 0, &tile) == 1);
+    assert(tile == 0x36);
+    assert(sml2_native_rom_wall_probe(&map, 4, 4, 2, 0, 0, &tile) == -1);
+}
+
+static void test_sml2_rom_step_shared_world(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS];
+    int32_t p0_ground_y, p1_ground_y;
+    unsigned x;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+
+    /* ROM floor probes for players at y=68 sample map row 6. */
+    for (x = 0; x < 256; ++x)
+        blocks[6 * 256 + x] = 0x37;
+    blocks[5 * 256 + 2] = 0x4C; /* water at player 1's environment probe */
+    blocks[5 * 256 + 6] = 0x55; /* moon zone at player 2's probe */
+
+    config.level_width = 4096;
+    config.level_height = 768;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 32, 69, 5) == 0);
+    assert(sml2_native_spawn_player(&world, 1, 96, 68, 5) == 0);
+
+    memset(inputs, 0, sizeof(inputs));
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.tick == 1);
+    assert(world.players[0].grounded);
+    assert(world.players[1].grounded);
+    /* ROM landing alignment nudges a y=69 player to the y=68 grid. */
+    assert(sml2_native_fp_to_int(world.players[0].y) == 68);
+    assert(world.players[0].environment_flags == SML2_NATIVE_ROM_ENV_WATER);
+    assert(world.players[0].environment_tile == 0x4C);
+    assert(world.players[1].environment_flags == SML2_NATIVE_ROM_ENV_MOON);
+    assert(world.players[1].environment_tile == 0x55);
+    p0_ground_y = world.players[0].y;
+    p1_ground_y = world.players[1].y;
+
+    /* Both players jump in the same tick against the same immutable map. */
+    inputs[0].buttons = SML2_NATIVE_BUTTON_JUMP;
+    inputs[1].buttons = SML2_NATIVE_BUTTON_JUMP;
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.tick == 2);
+    assert(world.players[0].y < p0_ground_y);
+    assert(world.players[1].y < p1_ground_y);
+    assert(world.players[0].vy < 0);
+    assert(world.players[1].vy < 0);
+    assert(blocks[6 * 256] == 0x37); /* ROM step never mutates the map */
+}
+
+static void test_sml2_rom_water_state(void)
+{
+    uint8_t cells[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+
+    /* At (4,4), the final environment probe reads row 1, column 0. */
+    cells[1 * 256] = 0x4Cu;
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = cells;
+    config.gravity = 0;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 4, 4, 5) == 0);
+
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.players[0].environment_flags == SML2_NATIVE_ROM_ENV_WATER);
+    assert(world.players[0].swimming == 1u);
+
+    /* Leaving the water clears the state on the next environment probe. */
+    cells[1 * 256] = 0u;
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.players[0].swimming == 0u);
+}
+
+static void test_native_swimming_controls(void)
+{
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+    int32_t start_y;
+
+    config.gravity = 0;
+    config.water_gravity = 0x0800;
+    config.water_jump_velocity = -0x30000;
+    config.water_terminal_velocity = 0x18000;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 64, 64, 5) == 0);
+    world.players[0].swimming = 1;
+    start_y = world.players[0].y;
+
+    /* Swimming permits a fresh jump even without grounded contact. */
+    inputs[0].buttons = SML2_NATIVE_BUTTON_JUMP;
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    assert(world.players[0].vy < 0);
+    assert(world.players[0].y < start_y);
+
+    /* Releasing and pressing again starts another water jump. */
+    inputs[0].buttons = 0;
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    inputs[0].buttons = SML2_NATIVE_BUTTON_JUMP;
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    assert(world.players[0].vy < 0);
+}
+
+static void test_sml2_rom_exit_bell_arm(void)
+{
+    uint8_t cells[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+
+    /* At (4,4), the exit probe's (x+16,y+28) sample maps to row 1, col 0. */
+    cells[1 * 256] = 0x4B;
+    cells[1 * 256 + 1] = 0x48; /* Coin beside the exit: frozen during fade. */
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = cells;
+    config.gravity = 0;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 4, 4, 5) == 0);
+
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.players[0].environment_flags == SML2_NATIVE_ROM_ENV_EXIT);
+    assert(world.players[0].exit_requested == 1u);
+    assert(world.players[0].exit_tile == 0x4Bu);
+    assert(world.players[0].music_request == 3u);
+    assert(world.players[0].exit_fade_ticks == 192u);
+
+    /* The arm is one-shot; the following 192 fixed ticks run only the
+       fade state. Gameplay, camera movement, and mutable coin probes freeze. */
+    {
+        int32_t frozen_x = world.players[0].x;
+        int32_t frozen_y = world.players[0].y;
+        assert(sml2_native_rom_step_mutable(&world, inputs, &map,
+                                             cells, sizeof(cells)) == 0);
+        assert(cells[1 * 256 + 1] == 0x48);
+        assert(world.players[0].exit_fade_ticks == 191u);
+        assert(world.players[0].exit_completed == 0u);
+        assert(world.players[0].x == frozen_x);
+        assert(world.players[0].y == frozen_y);
+        for (unsigned frame = 0; frame < 191u; ++frame)
+            assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+        assert(world.players[0].exit_fade_ticks == 0u);
+        assert(world.players[0].exit_completed == 1u);
+        assert(world.players[0].x == frozen_x);
+        assert(world.players[0].y == frozen_y);
+        /* Completion is latched; later calls cannot underflow or re-arm. */
+        assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+        assert(world.players[0].exit_fade_ticks == 0u);
+        assert(world.players[0].exit_completed == 1u);
+    }
+}
+
+static void test_sml2_rom_coin_cell_mutation(void)
+{
+    uint8_t cells[256 * 48] = {0};
+    uint8_t replacement = 0xAA;
+
+    cells[0] = 0x48;
+    cells[1] = 0x49;
+    assert(sml2_native_rom_collect_coin(cells, sizeof(cells),
+                                        8, 16, 0x48, &replacement) == 1);
+    assert(replacement == 0x60);
+    assert(cells[0] == 0x60);
+
+    assert(sml2_native_rom_collect_coin(cells, sizeof(cells),
+                                        24, 16, 0x49, &replacement) == 1);
+    assert(replacement == 0x7F);
+    assert(cells[1] == 0x7F);
+
+    replacement = 0xAA;
+    assert(sml2_native_rom_collect_coin(cells, sizeof(cells),
+                                        8, 16, 0x48, &replacement) == 0);
+    assert(replacement == 0xAA); /* stale sample cannot rewrite twice */
+    assert(sml2_native_rom_collect_coin(cells, 10,
+                                        8, 16, 0x48, &replacement) == -1);
+}
+
+static void test_sml2_rom_step_collects_coins(void)
+{
+    uint8_t cells[256 * 48];
+    Sml2NativeTileMap map;
+    Sml2NativeWorld world;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+
+    memset(cells, 0x60, sizeof(cells));
+    /* The right-side probe at x+20 visits (24,24), then (24,36). */
+    cells[0 * 256 + 1] = 0x48;
+    cells[1 * 256 + 1] = 0x49;
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = cells;
+
+    config.level_width = 4096;
+    config.level_height = 768;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 4, 4, 5) == 0);
+    world.players[0].powerup = 1;
+    world.players[0].coins_low = 0x98;
+    inputs[0].buttons = SML2_NATIVE_BUTTON_RIGHT;
+
+    assert(sml2_native_rom_step_mutable(&world, inputs, &map,
+                                         cells, sizeof(cells)) == 0);
+    assert(cells[0 * 256 + 1] == 0x60);
+    assert(cells[1 * 256 + 1] == 0x7F);
+    assert(world.players[0].coins_low == 0x00); /* 98 -> 99 -> 100 */
+    assert(world.players[0].coins_high == 1);
+    assert(world.players[0].sound_request == 7);
+
+    /* A second step cannot award either rewritten coin again. */
+    assert(sml2_native_rom_step_mutable(&world, inputs, &map,
+                                         cells, sizeof(cells)) == 0);
+    assert(world.players[0].coins_low == 0x00);
+    assert(world.players[0].coins_high == 1);
+}
+
+static void test_sml2_rom_environment_probes(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    uint8_t flags = 0xFF;
+    uint8_t tile = 0xFF;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+
+    /* Big Mario's y+22 hazard probe wins before the y+28 water sample. */
+    blocks[0 * 256] = 0x50;
+    blocks[1 * 256] = 0x4C;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 1, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_HAZARD);
+    assert(tile == 0x50);
+
+    /* With no hazard, the last y+28 sample classifies water. */
+    blocks[0 * 256] = 0x48;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_WATER);
+    assert(tile == 0x4C);
+
+    blocks[1 * 256] = 0x4B;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_EXIT);
+    assert(tile == 0x4B);
+
+    blocks[1 * 256] = 0x55;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == SML2_NATIVE_ROM_ENV_MOON);
+    assert(tile == 0x55);
+
+    blocks[1 * 256] = 0x48;
+    assert(sml2_native_rom_environment_probe(&map, 4, 4, 0, 0,
+                                             &flags, &tile) == 0);
+    assert(flags == 0);
+    assert(tile == 0x48);
+}
+
+static void test_sml2_rom_world_wrap_and_echo(void)
+{
+    uint8_t blocks[256 * 48] = {0};
+    Sml2NativeTileMap map;
+    Sml2NativeRect rect;
+    uint16_t block_x, block_y;
+
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = blocks;
+    map.block_flags[1] = SML2_NATIVE_COLLISION_HAZARD;
+    map.block_flags[2] = SML2_NATIVE_COLLISION_SOLID;
+    map.solid_out_of_bounds = 1;
+
+    assert(sml2_native_rom_world_cell(0x1234u, 0x0300u,
+                                     &block_x, &block_y) == 0);
+    assert(block_x == 0x23u);
+    assert(block_y == 0x10u);
+    assert(sml2_native_rom_world_cell(0x1000u, 0x04D0u,
+                                     &block_x, &block_y) == 0);
+    assert(block_x == 0u);
+    assert(block_y == 0x2Du);
+    assert(sml2_native_rom_world_cell(0xFFFFu, 0x04E0u,
+                                     &block_x, &block_y) == 1);
+    assert(block_x == 0xFFu);
+    assert(block_y == 0x4Eu);
+    assert(sml2_native_rom_world_cell(0, 0, NULL, &block_y) == -1);
+
+    /* A ROM coordinate at $1000 wraps back to column zero. */
+    blocks[16 * 256] = 1;
+    rect.left = sml2_native_fp_from_int(4096);
+    rect.right = sml2_native_fp_from_int(4112);
+    rect.top = sml2_native_fp_from_int(0x300);
+    rect.bottom = sml2_native_fp_from_int(0x310);
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_HAZARD);
+
+    /* Rows $30-$4D read the $10-$2D WRAM echo. */
+    blocks[0x2D * 256 + 255] = 2;
+    rect.left = sml2_native_fp_from_int(-16);
+    rect.right = sml2_native_fp_from_int(0);
+    rect.top = sml2_native_fp_from_int(0x4D0);
+    rect.bottom = sml2_native_fp_from_int(0x4E0);
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID);
+
+    /* The first row beyond the echo uses the explicit out-of-bounds policy. */
+    rect.top = sml2_native_fp_from_int(0x4E0);
+    rect.bottom = sml2_native_fp_from_int(0x4F0);
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_SOLID);
+    map.solid_out_of_bounds = 0;
+    assert(sml2_native_rom_level_collision(&map, &rect) ==
+           SML2_NATIVE_COLLISION_NONE);
+}
+
+static void test_sml2_rom_native_step(void)
+{
+    uint8_t cells[256 * 48];
+    Sml2NativeTileMap map;
+    Sml2NativeConfig config = make_config();
+    Sml2NativeWorld world;
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+    unsigned x;
+
+    config.player_height = 28; /* match the ROM floor-probe anchor */
+    memset(cells, 0x60, sizeof(cells)); /* passable/empty map cells */
+    for (x = 0; x < 256; ++x)
+        cells[8 * 256 + x] = 0x01; /* ROM-solid floor row */
+    memset(&map, 0, sizeof(map));
+    map.width_blocks = 256;
+    map.height_blocks = 48;
+    map.block_ids = cells;
+
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 40, 100, 5) == 0);
+    assert(sml2_native_rom_step(&world, inputs, &map) == 0);
+    assert(world.tick == 1);
+    assert(world.players[0].grounded);
+    assert(world.players[0].vy == 0);
+    assert(world.players[0].y == sml2_native_fp_from_int(100));
+
+    /* A non-SML2 map profile is rejected before simulation advances. */
+    map.width_blocks = 32;
+    assert(sml2_native_rom_step(&world, inputs, &map) == -1);
+    assert(world.tick == 1);
+}
+
+static void test_native_camera_room_slide(void)
+{
+    Sml2NativeConfig config = make_config();
+    Sml2NativeWorld world;
+    Sml2NativeInput inputs[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+    Sml2NativeCameraRegion from = {0, 0, 512, 256};
+    Sml2NativeCameraRegion to = {512, 0, 1024, 256};
+    Sml2NativeCameraSlide slide;
+    int32_t previous;
+    unsigned tick;
+
+    config.level_width = 1024;
+    config.gravity = 0;
+    config.horizontal_friction = 0;
+    config.auto_zoom = 0;
+    assert(sml2_native_init(&world, &config) == 0);
+    assert(sml2_native_spawn_player(&world, 0, 380, 104, 5) == 0);
+    world.players[0].vx = SML2_NATIVE_FP_ONE;
+    assert(sml2_native_set_camera_region(&world, &from) == 0);
+    assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+    assert(world.camera_x == sml2_native_fp_from_int(256));
+
+    memset(&slide, 0, sizeof(slide));
+    slide.from = from;
+    slide.to = to;
+    slide.step_x = 1;
+    slide.duration_ticks = 160;
+    assert(sml2_native_set_camera_slide(&world, &slide) == 0);
+    previous = world.camera_x;
+    for (tick = 0; tick < slide.duration_ticks; ++tick) {
+        assert(sml2_native_step(&world, inputs, NULL, NULL) == 0);
+        assert(world.camera_x >= previous);
+        assert(world.camera_x - previous <= sml2_native_fp_from_int(3));
+        previous = world.camera_x;
+    }
+    assert(!world.camera_slide_active);
+    assert(world.camera_region.left == to.left);
+    assert(world.camera_region.right == to.right);
+    assert(world.camera_x == sml2_native_fp_from_int(512));
+
+    /* Invalid slides fail closed without replacing the current camera lock. */
+    slide.duration_ticks = 0;
+    assert(sml2_native_set_camera_slide(&world, &slide) == -1);
+    assert(!world.camera_slide_active);
+    assert(sml2_native_set_camera_slide(&world, NULL) == 0);
+}
+
+int main(void)
+{
+    Sml2NativeConfig config = make_config();
+    Sml2NativeWorld first, second, room_world;
+    Sml2NativeInput no_input[SML2_NATIVE_MAX_PLAYERS] = {{0}};
+
+    assert(sml2_native_fp_from_int(-12) == -786432);
+    int32_t view_width, view_height;
+    assert(sml2_native_fp_to_int(-786432) == -12);
+    test_native_tilemap_collision();
+    test_sml2_rom_world_wrap_and_echo();
+    test_sml2_rom_player_probes();
+    test_sml2_rom_environment_probes();
+    test_sml2_rom_water_state();
+    test_native_swimming_controls();
+    test_sml2_rom_exit_bell_arm();
+    test_sml2_rom_coin_cell_mutation();
+    test_sml2_rom_step_collects_coins();
+    test_sml2_rom_step_shared_world();
+    test_sml2_rom_native_step();
+    test_native_camera_room_slide();
+
+    /* Match the original project's supported aspect ratios and zoom presets. */
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_OFF, 100, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 160 && view_height == 144);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_16_9, 100, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 256 && view_height == 144);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_16_9, 150, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 384 && view_height == 216);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_21_9, 200, 2520, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 672 && view_height == 288);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_WINDOW, 100, 1920, 1080,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 256 && view_height == 144);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_WINDOW, 100, 480, 960,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 160 && view_height == 320);
+    assert(sml2_native_view_size(SML2_NATIVE_WIDESCREEN_WINDOW, 200, 480, 960,
+                                 &view_width, &view_height) == 0);
+    assert(view_width == 320 && view_height == 640);
+    assert(sml2_native_view_size(99, 100, 1920, 1080,
+                                 &view_width, &view_height) == -1);
+
+    assert(sml2_native_init(&first, &config) == 0);
+    assert(sml2_native_init(&second, &config) == 0);
+    assert(sml2_native_spawn_player(&first, 0, 40, 104, 5) == 0);
+    assert(sml2_native_spawn_player(&first, 1, 250, 104, 5) == 0);
+    assert(sml2_native_spawn_player(&second, 0, 40, 104, 5) == 0);
+    assert(sml2_native_spawn_player(&second, 1, 250, 104, 5) == 0);
+
+    /* The shared camera expands to keep both independently moving players in view. */
+    assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(sml2_native_step(&second, no_input, test_collision, NULL) == 0);
+    assert(first.players[0].grounded);
+    assert(first.players[1].grounded);
+    assert(first.camera_view_width == 320);
+    assert(first.camera_view_height == 180);
+    assert(first.camera_zoom_percent == SML2_NATIVE_ZOOM_125);
+
+    /* The 16:9 camera's extra world area is available to both drawing and
+       actor activation; it is not merely a stretched 160-pixel image. */
+    {
+        Sml2NativeRect visible_extra, beyond_view, invalid_rect;
+        int32_t screen_x, screen_y;
+        visible_extra.left = sml2_native_fp_from_int(250);
+        visible_extra.top = sml2_native_fp_from_int(80);
+        visible_extra.right = sml2_native_fp_from_int(270);
+        visible_extra.bottom = sml2_native_fp_from_int(104);
+        beyond_view.left = sml2_native_fp_from_int(330);
+        beyond_view.top = visible_extra.top;
+        beyond_view.right = sml2_native_fp_from_int(350);
+        beyond_view.bottom = visible_extra.bottom;
+        invalid_rect = visible_extra;
+        invalid_rect.right = invalid_rect.left;
+
+        assert(sml2_native_view_contains_rect(&first, &visible_extra));
+        assert(!sml2_native_view_contains_rect(&first, &beyond_view));
+        assert(!sml2_native_view_contains_rect(&first, &invalid_rect));
+        {
+            Sml2NativeRect render_bounds, activation_bounds;
+            assert(sml2_native_view_bounds(&first, 0, &render_bounds) == 0);
+            assert(sml2_native_view_bounds(&first, 32, &activation_bounds) == 0);
+            assert(render_bounds.left == first.camera_x);
+            assert(render_bounds.right == first.camera_x +
+                   sml2_native_fp_from_int(first.camera_view_width));
+            assert(activation_bounds.left >= 0);
+            assert(activation_bounds.top >= 0);
+            assert(activation_bounds.right <=
+                   sml2_native_fp_from_int(first.config.level_width));
+            assert(activation_bounds.bottom <=
+                   sml2_native_fp_from_int(first.config.level_height));
+            /* An actor just beyond the visible edge is eligible for early
+               activation; one farther away remains dormant. */
+            assert((int64_t)beyond_view.left < activation_bounds.right);
+            assert((int64_t)beyond_view.right > activation_bounds.left);
+            assert(sml2_native_view_bounds(&first, -1, &activation_bounds) == -1);
+        }
+        {
+            uint8_t empty_blocks[32 * 16] = {0};
+            Sml2NativeTileMap stage;
+            Sml2NativeBlockBounds draw_blocks, wake_blocks;
+            memset(&stage, 0, sizeof(stage));
+            stage.width_blocks = 32;
+            stage.height_blocks = 16;
+            stage.block_ids = empty_blocks;
+            assert(sml2_native_view_block_bounds(&first, &stage, 0,
+                                                 &draw_blocks) == 0);
+            assert(sml2_native_view_block_bounds(&first, &stage, 32,
+                                                 &wake_blocks) == 0);
+            assert(draw_blocks.left < draw_blocks.right);
+            assert(draw_blocks.top < draw_blocks.bottom);
+            assert(wake_blocks.left <= draw_blocks.left);
+            assert(wake_blocks.top <= draw_blocks.top);
+            assert(wake_blocks.right >= draw_blocks.right);
+            assert(wake_blocks.bottom >= draw_blocks.bottom);
+            assert(wake_blocks.right <= stage.width_blocks);
+            assert(wake_blocks.bottom <= stage.height_blocks);
+            assert(sml2_native_view_block_bounds(&first, &stage, -1,
+                                                 &wake_blocks) == -1);
+        }
+        assert(sml2_native_world_to_view(&first, visible_extra.left,
+                                          visible_extra.top,
+                                          &screen_x, &screen_y) == 0);
+        assert(screen_x == visible_extra.left - first.camera_x);
+        assert(screen_y == visible_extra.top - first.camera_y);
+    }
+
+    run_script(&first);
+    run_script(&second);
+    assert(first.tick == second.tick);
+    assert(first.players[0].x == second.players[0].x);
+    assert(first.players[0].y == second.players[0].y);
+    assert(first.players[0].vx == second.players[0].vx);
+    assert(first.players[0].vy == second.players[0].vy);
+    assert(first.players[1].x == second.players[1].x);
+    assert(first.players[1].y == second.players[1].y);
+    assert(first.camera_x == second.camera_x);
+    assert(first.camera_y == second.camera_y);
+    assert(first.camera_view_width == second.camera_view_width);
+    assert(first.camera_view_height == second.camera_view_height);
+    assert(first.camera_zoom_percent == second.camera_zoom_percent);
+
+    /* Switching the view mode live recomputes the camera's logical surface. */
+    assert(sml2_native_set_view(&first, SML2_NATIVE_WIDESCREEN_21_9,
+                                SML2_NATIVE_ZOOM_100, 2520, 1080, 0) == 0);
+    assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(first.camera_view_width == 336);
+    assert(first.camera_view_height == 144);
+    assert(first.camera_zoom_percent == SML2_NATIVE_ZOOM_100);
+
+    /* Tall window mode preserves the native horizontal field and grows vertically. */
+    assert(sml2_native_set_view(&first, SML2_NATIVE_WIDESCREEN_WINDOW,
+                                SML2_NATIVE_ZOOM_100, 480, 960, 0) == 0);
+    assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(first.camera_view_width == 160);
+    assert(first.camera_view_height == 320);
+
+    /* A view larger than a small level centres around the level instead of
+       clipping to its top-left edge or overflowing world coordinates. */
+    first.config.level_width = 128;
+    first.config.level_height = 100;
+    assert(sml2_native_set_view(&first, SML2_NATIVE_WIDESCREEN_21_9,
+                                SML2_NATIVE_ZOOM_200, 2520, 1080, 0) == 0);
+    assert(sml2_native_step(&first, no_input, test_collision, NULL) == 0);
+    assert(first.camera_view_width == 672);
+    assert(first.camera_view_height == 288);
+    assert(first.camera_x == 0);
+    assert(first.camera_y == 0);
+
+    /* Both players remain independent and inside the level's camera bounds. */
+    assert(first.players[0].active && first.players[1].active);
+    assert(first.players[0].x != first.players[1].x);
+    assert(first.camera_x <= sml2_native_fp_from_int(config.level_width));
+    assert(first.camera_y <= sml2_native_fp_from_int(config.level_height));
+
+    /* Invalid construction and player indices fail safely. */
+    assert(sml2_native_init(&first, NULL) == -1);
+    assert(sml2_native_spawn_player(&second, SML2_NATIVE_MAX_PLAYERS,
+                                    0, 0, 3) == -1);
+
+    /* A camera lock room constrains an enlarged view without changing the
+       underlying level geometry. A view wider than the room is centred on it. */
+    config = make_config();
+    assert(sml2_native_init(&room_world, &config) == 0);
+    assert(sml2_native_set_view(&room_world, SML2_NATIVE_WIDESCREEN_16_9,
+                                SML2_NATIVE_ZOOM_125, 1920, 1080, 0) == 0);
+    assert(sml2_native_spawn_player(&room_world, 0, 220, 104, 5) == 0);
+    assert(sml2_native_step(&room_world, no_input, test_collision, NULL) == 0);
+    {
+        Sml2NativeCameraRegion room = {128, 0, 384, 256};
+        assert(sml2_native_set_camera_region(&room_world, &room) == 0);
+        assert(sml2_native_step(&room_world, no_input, test_collision, NULL) == 0);
+        assert(room_world.camera_x == sml2_native_fp_from_int(96));
+        room.right = 513;
+        assert(sml2_native_set_camera_region(&room_world, &room) == -1);
+        assert(sml2_native_set_camera_region(&room_world, NULL) == 0);
+        assert(room_world.camera_region.left == 0);
+        assert(room_world.camera_region.right == config.level_width);
+    }
+    return 0;
+}
