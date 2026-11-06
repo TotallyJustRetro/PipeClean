@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sml2_native_stage.h"
+#include "sml2_native_actor.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -51,6 +51,26 @@ int sml2_native_draw_sprite(
  * bytes and may exceed the logical width. Pixels outside the stage are filled
  * with clear_color. This routine is SDL-independent and does not scale or
  * stretch a 160x144 hardware frame. */
+
+/* Resolve one visible native actor to its current OBJ pose. Return 0 to draw,
+ * a positive value to skip an actor with no visible sprite, or -1 on error.
+ * The resolver owns game-specific animation selection; tick is deterministic. */
+typedef int (*Sml2NativeResolveActorSprite)(
+    void *userdata, const Sml2NativeActorDraw *actor_draw, uint64_t tick,
+    Sml2NativeSprite *sprite);
+
+/* Compose one complete native scene: stage first, then visible awake actors in
+ * stable actor-slot order. Sprite positions are logical view pixels. This is
+ * the backend-neutral composition seam; callers supply authentic animation
+ * selection and graphics decoding separately. */
+int sml2_native_render_scene(
+    const Sml2NativeStage *stage, const Sml2NativeActorWorld *actors,
+    const Sml2NativeWorld *world, uint64_t tick,
+    Sml2NativeResolveActorSprite resolve_sprite, void *sprite_userdata,
+    Sml2NativeReadTilePixels read_tile, void *tile_userdata,
+    uint8_t *pixels, size_t pitch, size_t pixels_capacity,
+    uint8_t clear_color);
+
 int sml2_native_render_stage(
     const Sml2NativeStage *stage, const Sml2NativeWorld *world,
     Sml2NativeReadTilePixels read_tile, void *userdata,
