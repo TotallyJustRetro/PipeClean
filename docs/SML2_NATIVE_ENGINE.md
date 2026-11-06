@@ -285,7 +285,8 @@ stretching them. `sml2_native_render_scene()` now composes a complete indexed
 scene in two passes: native stage first, then visible awake actors in stable
 actor-slot order. A caller-supplied resolver receives each actor's projected
 world bounds and deterministic simulation tick, and returns the current OBJ
-pose; the shared tile reader decodes the selected sprite tiles. This keeps
+pose; a separate OBJ tile reader decodes sprite tiles so Game Boy's unsigned
+OBJ addressing cannot be confused with LCDC-selected BG/window addressing. This keeps
 animation selection game-specific while making scene ordering and composition
 part of the native renderer. Regression coverage verifies that actor sprites
 land over the stage, asleep actors are omitted, and the animation tick is
