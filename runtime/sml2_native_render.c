@@ -155,3 +155,66 @@ int sml2_native_render_stage(
     }
     return 0;
 }
+
+typedef struct {
+    const Sml2NativeActorWorld *actors;
+    const Sml2NativeWorld *world;
+    uint64_t tick;
+    Sml2NativeResolveActorSprite resolve_sprite;
+    void *sprite_userdata;
+    Sml2NativeReadTilePixels read_tile;
+    void *tile_userdata;
+    uint8_t *pixels;
+    size_t pitch;
+    size_t width;
+    size_t height;
+} Sml2NativeSceneContext;
+
+static int render_scene_actor(void *userdata,
+                              const Sml2NativeActorDraw *actor_draw)
+{
+    Sml2NativeSceneContext *ctx = (Sml2NativeSceneContext *)userdata;
+    Sml2NativeSprite sprite;
+    int result;
+    memset(&sprite, 0, sizeof(sprite));
+    result = ctx->resolve_sprite(ctx->sprite_userdata, actor_draw,
+                                 ctx->tick, &sprite);
+    if (result > 0) return 0;
+    if (result < 0) return result;
+    return sml2_native_draw_sprite(ctx->pixels, ctx->pitch, ctx->width,
+                                   ctx->height, &sprite, ctx->read_tile,
+                                   ctx->tile_userdata);
+}
+
+int sml2_native_render_scene(
+    const Sml2NativeStage *stage, const Sml2NativeActorWorld *actors,
+    const Sml2NativeWorld *world, uint64_t tick,
+    Sml2NativeResolveActorSprite resolve_sprite, void *sprite_userdata,
+    Sml2NativeReadTilePixels read_tile, void *tile_userdata,
+    uint8_t *pixels, size_t pitch, size_t pixels_capacity,
+    uint8_t clear_color)
+{
+    Sml2NativeSceneContext ctx;
+    if (!stage || !actors || !world || !resolve_sprite || !read_tile ||
+        !pixels || world->camera_view_width <= 0 ||
+        world->camera_view_height <= 0)
+        return -1;
+    if (sml2_native_render_stage(stage, world, read_tile, tile_userdata,
+                                 pixels, pitch, pixels_capacity,
+                                 clear_color) != 0)
+        return -1;
+
+    ctx.actors = actors;
+    ctx.world = world;
+    ctx.tick = tick;
+    ctx.resolve_sprite = resolve_sprite;
+    ctx.sprite_userdata = sprite_userdata;
+    ctx.read_tile = read_tile;
+    ctx.tile_userdata = tile_userdata;
+    ctx.pixels = pixels;
+    ctx.pitch = pitch;
+    ctx.width = (size_t)world->camera_view_width;
+    ctx.height = (size_t)world->camera_view_height;
+    return sml2_native_actors_visit_visible(actors, world,
+                                             render_scene_actor, &ctx);
+}
