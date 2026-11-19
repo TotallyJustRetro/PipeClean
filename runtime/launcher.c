@@ -2427,7 +2427,7 @@ static void sub_dualsense(int g, float x, float y)
                                    "Connect a controller to test rumble. DualSense lightbar and speaker require a DualSense or Edge.");
 #endif
 
-    label(x + 18, y + 90, "Light");
+    section_heading(x + 18, y + 90, lw - 36, "LIGHT");
     ui_seg(x + 18, y + 112, lw - 36, 34, led_names, N_LED, &c->ds_led_mode);
     label(x + 18, y + 158, "Brightness"); ui_slider(x + 110, y + 156, lw - 110 - 60, &c->ds_bright, 0, 100);
     char t[24]; snprintf(t, sizeof t, "%d%%", c->ds_bright); ui_text_r(F_REG, 13, x + lw - 18, y + 158, C_TEXT, t);
@@ -2439,7 +2439,7 @@ static void sub_dualsense(int g, float x, float y)
         if (ui_slider(x + 110, y + 190, lw - 110 - 60, &hue[g], 0, 359)) hue_to_rgb(hue[g], &c->ds_color);
         ui_rrect(x + lw - 18 - 36, y + 190, 36, 22, 6, HEX(c->ds_color));
     }
-    ui_text(F_BOLD, 12, x + 18, y + 232, C_DIM, "RUMBLE AND SPEAKER");
+    section_heading(x + 18, y + 232, lw - 36, "RUMBLE AND SPEAKER");
     label(x + 18, y + 256, "Rumble strength"); ui_slider(x + 160, y + 254, lw - 160 - 60, &c->ds_rumble, 0, 100);
     snprintf(t, sizeof t, "%d%%", c->ds_rumble); ui_text_r(F_REG, 13, x + lw - 18, y + 256, C_TEXT, t);
     label(x + 18, y + 290, "Speaker volume");
@@ -2623,7 +2623,7 @@ static void sub_textures(int g, float x, float y)
     } else ui_text(F_REG, 12, x + 200, y + 118, C_DIM, "Replaces the game's 8x8 tiles with your own pictures (any size that is a multiple of 8).");
     ui_rect(x + 18, y + 156, 772, 1, C_LINE);
 
-    ui_text(F_BOLD, 12, x + 18, y + 172, C_DIM, "MAKE YOUR OWN PACK");
+    section_heading(x + 18, y + 172, 772, "MAKE YOUR OWN PACK");
     ui_text_wrap(F_REG, 13, x + 18, y + 196, 772, C_MUTED,
                  "Play (or just open the game) and the launcher remembers every tile the game draws. Export them to a folder, redraw the ones you like, then choose that folder above. Tiles you don't change keep their original look.", 3);
     label(x + 18, y + 262, "Remember tiles while I play");
@@ -3413,7 +3413,8 @@ static void tab_online(float x, float y)
     if (mode_clicked) online_mode_menu = !online_mode_menu;
     if (online_mode_menu) {
         ui_shadow(x + 408, y + 89, 360, 66, 10, 6, RGBA(0, 0, 0, 100));
-        ui_rrect(x + 408, y + 89, 360, 66, 8, C_BG2);
+        ui_rrect(x + 408, y + 89, 360, 66, 8, RGBA(19, 27, 42, 250));
+        ui_stroke(x + 408, y + 89, 360, 66, 8, 1.0f, RGBA(111, 132, 169, 115));
         for (int mode = 0; mode < 2; mode++) {
             float my = y + 91 + mode * 32;
             int over = 0;
@@ -4375,7 +4376,7 @@ static void deck_editor_layout(float x, float y)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
     ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, "COMPANION DECK STUDIO");
-    ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, RGBA(116, 222, 255, 255),
+    ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, HEX(ui_accent),
                 companion_editor_game == GAME_DRMARIO ? "DR. MARIO  /  CLINIC CANVAS" :
                 companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" :
                 companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2  /  LIVE CANVAS" :
@@ -4436,7 +4437,7 @@ static void deck_editor_layout(float x, float y)
         deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
     if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
     ui_text_fit(F_BOLD, 8.2f, px, py + ph + 10, pw,
-                RGBA(112, 225, 255, 245), "31:27 THOR  •  FIT = NO CROP  •  DRAG TO RESIZE");
+                HEX(ui_accent), "31:27 THOR  •  FIT = NO CROP  •  DRAG TO RESIZE");
 
     float rx = x + 350;
     panel_surface(rx - 10, y + 180, 348, 280, 9);
@@ -4708,9 +4709,10 @@ static void deck_editor_draw(float x, float y)
     ui_shadow(x + 18, y + 70, 772, 404, 14, 7, RGBA(0, 0, 0, 112));
     ui_rrect(x + 18, y + 70, 772, 404, 12, RGBA(15, 22, 35, 255));
     ui_vgrad(x + 20, y + 72, 768, 48,
-             RGBA(43, 68, 96, 255), RGBA(22, 31, 47, 255));
-    ui_rect(x + 30, y + 72, 748, 2, RGBA(99, 220, 255, 230));
-    ui_stroke(x + 18, y + 70, 772, 404, 12, 1.0f, RGBA(77, 111, 149, 190));
+             mixc(RGBA(31, 42, 60, 255), HEX(ui_accent), 0.30f),
+             RGBA(22, 31, 47, 255));
+    ui_rect(x + 30, y + 72, 748, 2, HEX(ui_accent));
+    ui_stroke(x + 18, y + 70, 772, 404, 12, 1.0f, RGBA(104, 126, 164, 170));
     if (companion_editor_page == 0) deck_editor_list(x, y);
     else if (companion_editor_page == 2) deck_editor_sounds(x, y);
     else if (companion_editor_page == 3) deck_editor_items(x, y);
@@ -5776,7 +5778,11 @@ LauncherResult launcher_frame(float dt)
         float tx = (compact_layout ? vx + vw * 0.5f : UI_W * 0.5f) - tw * 0.5f;
         float ty = compact_layout ? vy + vh - 74 : UI_H - 74;
         ui_shadow(tx, ty, tw, 40, 12, 10, RGBA(0, 0, 0, (int)(90 * a)));
-        ui_rrect(tx, ty, tw, 40, 12, RGBA(40, 46, 66, (int)(250 * a)));
+        ui_rrect(tx, ty, tw, 40, 12, RGBA(19, 25, 40, (int)(250 * a)));
+        ui_stroke(tx, ty, tw, 40, 12, 1.0f,
+                  RGBA(104, 126, 164, (int)(150 * a)));
+        ui_rrect(tx + 11, ty + 10, 3, 20, 1.5f,
+                 HEXA(ui_accent, (int)(255 * a)));
         ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
 
