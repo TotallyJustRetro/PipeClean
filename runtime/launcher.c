@@ -982,11 +982,12 @@ static void section_heading(float x, float y, float w, const char *title)
 }
 
 static void row_surface(float x, float y, float w, float h,
-                        int selected, int hovered)
+                        int selected, int hovered, int alternate)
 {
     uint32_t fill = selected
         ? mixc(RGBA(27, 39, 59, 238), HEX(ui_accent), 0.24f)
-        : (hovered ? RGBA(72, 92, 129, 76) : RGBA(255, 255, 255, 6));
+        : (hovered ? RGBA(72, 92, 129, 76)
+                   : (alternate ? RGBA(255, 255, 255, 8) : RGBA(255, 255, 255, 4)));
     ui_rrect(x, y, w, h, 8, fill);
     if (selected)
         ui_stroke(x, y, w, h, 8, 1.2f, HEX(ui_accent));
@@ -1242,8 +1243,7 @@ static void sub_romhacks(int g, float x, float y)
         int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
         uint32_t bg = selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u)
                                : (over ? C_BTN_H : C_PANEL2);
-        ui_rrect(list_x + 2, ry, list_w - 4, row_h, 9, bg);
-        if (selected) ui_stroke(list_x + 2, ry, list_w - 4, row_h, 9, 1.5f, HEX(ui_accent));
+        row_surface(list_x + 2, ry, list_w - 4, row_h, selected, over, 0);
         draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
         const char *title = index < 0 ? "Original game" :
             (c->romhacks[index].title[0] ? c->romhacks[index].title : "Untitled ROM Hack");
@@ -1391,9 +1391,7 @@ static void sub_gba_rom_profiles(int g, float x, float y)
         int selected = c->romhack_selected == index;
         int over = 0;
         int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
-        ui_rrect(list_x + 2, ry, list_w - 4, row_h, 9,
-                 selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u) : (over ? C_BTN_H : C_PANEL2));
-        if (selected) ui_stroke(list_x + 2, ry, list_w - 4, row_h, 9, 1.5f, HEX(ui_accent));
+        row_surface(list_x + 2, ry, list_w - 4, row_h, selected, over, 0);
         draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
         const char *title = index < 0 ? "Original GBA profile" :
             (c->romhacks[index].title[0] ? c->romhacks[index].title : "Compiled GBA profile");
@@ -1621,6 +1619,8 @@ static void sub_gba_display(int g, float x, float y)
     GameCfg *c = &settings.g[g];
     static const char *gba_aspect_names[3] = {"Original (3:2)", "4:3", "16:9"};
     card(x, y, 808, 476, "GBA DISPLAY");
+    panel_surface(x + 12, y + 38, 520, 370, 9);
+    panel_surface(x + 540, y + 38, 256, 370, 9);
     ui_text_wrap(F_REG, 12, x + 18, y + 38, 772, C_DIM,
                  "These settings apply to the standalone GBA window. The GBA already renders full color; Game Boy Color palettes and PipeClean LCD/CRT filter presets are not used.", 3);
     label(x + 18, y + 110, "Window shape");
@@ -1981,7 +1981,7 @@ static void sub_save_states(int g, float x, float y)
         int selected = slot == c->state_slot;
         int over = 0;
         int clicked = clickable(bx, by, 368, 56, &over);
-        row_surface(bx, by, 368, 56, selected, over);
+        row_surface(bx, by, 368, 56, selected, over, 0);
 
         SDL_Texture *thumb = saved ? state_thumb_get(g, slot) : NULL;
         if (thumb) ui_image(thumb, NULL, bx + 8, by + 7, 88, 42);
@@ -2024,7 +2024,7 @@ static void sub_bindings(int g, float x, float y)
 
     for (int a = 0; a < N_ACTION; a++) {
         float ry = y + 98 + a * 52;
-        row_surface(x + 10, ry - 4, 788, 46, 0, a % 2 == 0);
+        row_surface(x + 10, ry - 4, 788, 46, 0, 0, a % 2 == 0);
         ui_text(F_BOLD, 13, x + 18, ry + 7, C_TEXT, action_names[a]);
         bind_action_cell(g, x + 270, ry + 3, 190, 3, a);
         bind_action_cell(g, x + 490, ry + 3, 190, 4, a);
@@ -2059,7 +2059,7 @@ static void sub_controls(int g, float x, float y)
     ui_text(F_BOLD, 12, x + colx[4] + 10, y + 112, C_MUTED, "Player 2 controller");
     for (int b = 0; b < N_BTN; b++) {
         float ry = y + 128 + b * 28;
-        row_surface(x + 10, ry - 2, 788, 28, 0, b % 2 == 0);
+        row_surface(x + 10, ry - 2, 788, 28, 0, 0, b % 2 == 0);
         ui_text(F_BOLD, 14, x + colx[0], ry + 2, C_TEXT, btn_names[b]);
         bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
         bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
@@ -2090,6 +2090,8 @@ static void sub_controls(int g, float x, float y)
 static void sub_gba_controllers(int g, float x, float y)
 {
     card(x, y, 808, 476, "GBA CONTROLLER");
+    panel_surface(x + 12, y + 38, 784, 145, 9);
+    panel_surface(x + 12, y + 198, 784, 125, 9);
     ui_text_wrap(F_REG, 12, x + 18, y + 40, 772, C_DIM,
                  "Choose which connected controller should drive the external GBA window. Your selection is saved for this game and passed to the recompiler at launch.", 3);
     controller_dropdown(g, 0, x + 18, y + 116, 470);
@@ -2109,12 +2111,13 @@ static void sub_gba_bindings(int g, float x, float y)
     static const char *names[10] = {"A", "B", "Select", "Start", "Right", "Left", "Up", "Down", "L", "R"};
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "GBA GAMEPLAY BINDINGS");
+    panel_surface(x + 12, y + 34, 784, 380, 9);
     ui_text(F_BOLD, 11, x + 18, y + 38, C_MUTED, "GBA BUTTON");
     ui_text(F_BOLD, 11, x + 260, y + 38, C_MUTED, "KEYBOARD");
     ui_text(F_BOLD, 11, x + 520, y + 38, C_MUTED, "CONTROLLER");
     for (int b = 0; b < 10; b++) {
         float ry = y + 58 + b * 34;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 32, 7, RGBA(255,255,255,6));
+        row_surface(x + 10, ry - 2, 788, 32, 0, 0, b % 2 == 0);
         ui_text(F_BOLD, 13, x + 18, ry + 4, C_TEXT, names[b]);
         bind_cell(g, x + 180, ry, 220, 1, b, 0);
         bind_cell(g, x + 440, ry, 300, 2, b, 0);
@@ -2208,7 +2211,7 @@ static void tab_multiplayer(float x, float y)
     for (int i = 0; i < 3; i++) {
         int p = i + 2;
         float ry = y + 140 + i * 40.0f;
-        row_surface(x + 12, ry - 1, 784, 33, 0, i % 2 == 0);
+        row_surface(x + 12, ry - 1, 784, 33, 0, 0, i % 2 == 0);
         char row_label[24];
         snprintf(row_label, sizeof row_label, "Player %d", p);
         ui_text(F_BOLD, 12, x + 18, ry + 8, C_MUTED, row_label);
@@ -2306,7 +2309,7 @@ static void tab_mp_controllers(float x, float y)
 
             for (int btn = 0; btn < N_BTN; btn++) {
                 float ry = y + 168 + btn * 29.0f;
-                row_surface(bx - 3, ry + 1, 188, 25, 0, btn % 2 == 0);
+                row_surface(bx - 3, ry + 1, 188, 25, 0, 0, btn % 2 == 0);
                 ui_text_fit(F_REG, 10, bx, ry + 8, 34, C_TEXT, control_labels[btn]);
                 bind_cell(mp_config_game, bx + 36, ry, 69, 1, btn, player);
                 bind_cell(mp_config_game, bx + 109, ry, 74, 2, btn, player);
@@ -2497,7 +2500,7 @@ static void sub_dualsense(int g, float x, float y)
     for (int i = 0; i < n; i++) {
         const EventDef *d = events_def(g, i);
         float ry = y + 62 + i * row_h;
-        ui_rrect(rx + 10, ry - 3, rw - 20, row_h - 2, 8, RGBA(255, 255, 255, i % 2 ? 0 : 6));
+        row_surface(rx + 10, ry - 3, rw - 20, row_h - 2, 0, 0, i % 2 == 0);
         ui_rrect(rx + 18, ry + 8, 8, 24, 3, HEX(d->color));
         ui_text_fit(F_BOLD, 13, rx + 34, ry + 2, 150, C_TEXT, d->name);
         ui_text_fit(F_REG, 11, rx + 34, ry + 20, 150, C_DIM, d->desc);
@@ -2894,7 +2897,7 @@ static void tab_audio(float x, float y)
     char t[96];
     float lw = 396;
     card(x, y, lw, 200, "GAME SOUND");
-    panel_surface(x + 12, y + 40, lw - 24, 132, 9);
+    panel_surface(x + 12, y + 40, lw - 24, 152, 9);
     label(x + 18, y + 44, "Volume");
     ui_slider(x + 100, y + 42, lw - 100 - 70, &s->volume, 0, 200);
     snprintf(t, sizeof t, "%d%%", s->volume); ui_text_r(F_REG, 13, x + lw - 18, y + 44, C_TEXT, t);
@@ -2975,7 +2978,7 @@ static void tab_audio(float x, float y)
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 504, "INTERFACE SOUNDS");
-    panel_surface(rx + 12, y + 40, rw - 24, 438, 9);
+    panel_surface(rx + 12, y + 40, rw - 24, 450, 9);
     label(rx + 18, y + 44, "Click and hover sounds");
     ui_toggle(rx + rw - 18 - 44, y + 40, &s->ui_sfx);
     label(rx + 18, y + 84, "Volume");
