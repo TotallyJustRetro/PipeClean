@@ -975,6 +975,20 @@ static void panel_surface(float x, float y, float w, float h, float radius)
     ui_stroke(x, y, w, h, radius, 1.0f, RGBA(104, 126, 164, 70));
 }
 
+static void page_heading(float x, float y, float w, float h,
+                          const char *title, const char *subtitle, uint32_t accent)
+{
+    ui_rrect(x, y, w, h, 12, RGBA(15, 22, 36, 246));
+    ui_vgrad(x + 1, y + 1, w - 2, h - 2,
+             RGBA((accent >> 16) & 255, (accent >> 8) & 255, accent & 255, 48),
+             RGBA((accent >> 16) & 255, (accent >> 8) & 255, accent & 255, 8));
+    ui_stroke(x, y, w, h, 12, 1.0f,
+              RGBA((accent >> 16) & 255, (accent >> 8) & 255, accent & 255, 110));
+    ui_rrect(x + 12, y + 10, 4, h - 20, 2, HEX(accent));
+    ui_text_fit(F_BOLD, 22, x + 26, y + 7, w - 240, C_TEXT, title);
+    ui_text_fit(F_REG, 11, x + 27, y + 37, w - 250, C_MUTED, subtitle);
+}
+
 static void label(float x, float y, const char *s) { ui_text(F_REG, 13, x, y, C_MUTED, s); }
 static void hint_area(float x, float y, float w, float h, const char *s) { if (ui_hover(x, y, w, h)) ui_hint(s); }
 
@@ -5588,8 +5602,8 @@ LauncherResult launcher_frame(float dt)
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, games[tab].name);
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, games[tab].sub);
+        page_heading(cx, cy - 14, 808, 64, games[tab].name,
+                     games[tab].sub, games[tab].accent);
         int can = rs[tab].ok;
         const char *play_label = tab == GAME_GBA_SAGA
             ? (c->romhack_selected >= 0 ? "Play Profile" : "Play GBA")
@@ -5649,32 +5663,32 @@ LauncherResult launcher_frame(float dt)
         }
         if (load_state_request[tab] >= 0) res.play = tab;
     } else if (tab == TAB_MULTIPLAYER) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Choose 2–4 players and customize names and character colors.");
+        page_heading(cx, cy - 14, 808, 64, "Multiplayer",
+                     "Choose 2–4 players and customize names and character colors.", 0x4C8DFF);
         tab_multiplayer(cx, cy + 58);
     } else if (tab == TAB_MP_CONTROLLERS) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer Controllers");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Assign controllers, respawn bindings, and independent sound banks for players 2–4.");
+        page_heading(cx, cy - 14, 808, 64, "Multiplayer Controllers",
+                     "Assign controllers, respawn bindings, and independent sound banks for players 2–4.", 0x4C8DFF);
         tab_mp_controllers(cx, cy + 58);
     } else if (tab == TAB_FILTERS) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Make the screen look like a real Game Boy, a CRT TV, or something glowing.");
+        page_heading(cx, cy - 14, 808, 64, "Filters",
+                     "Make the screen look like a real Game Boy, a CRT TV, or something glowing.", 0x4C8DFF);
         tab_filters(cx, cy + 58);
     } else if (tab == TAB_AUDIO) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Audio & menu");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Game volume, the launcher's own music and the little click sounds.");
+        page_heading(cx, cy - 14, 808, 64, "Audio & menu",
+                     "Game volume, the launcher's own music and the little click sounds.", 0x4C8DFF);
         tab_audio(cx, cy + 58);
     } else if (tab == TAB_ONLINE) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Online");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Session invites, player identity, and cross-platform play.");
+        page_heading(cx, cy - 14, 808, 64, "Online",
+                     "Session invites, player identity, and cross-platform play.", 0x4C8DFF);
         tab_online(cx, cy + 58);
     } else if (tab == TAB_DISPLAY) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Display & layout");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Adjust the launcher's size on desktop and Android.");
+        page_heading(cx, cy - 14, 808, 64, "Display & layout",
+                     "Adjust the launcher's size on desktop and Android.", 0x4C8DFF);
         tab_display(cx, cy + 58);
     } else {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Collectible Museum");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "A shared collection for every game: enemies, items, treasures, stages, and milestones.");
+        page_heading(cx, cy - 14, 808, 64, "Collectible Museum",
+                     "A shared collection for every game: enemies, items, treasures, stages, and milestones.", 0x4C8DFF);
         tab_museum(cx, cy + 58);
     }
 
