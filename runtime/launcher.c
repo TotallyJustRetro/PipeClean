@@ -5177,7 +5177,7 @@ static void tab_museum(float x, float y)
     ui_text_r(F_BOLD, 15, x + w - 16, y + 9, HEX(0xF5C842), total_label);
     ui_text_r(F_REG, 9, x + w - 16, y + 31, HEX(0xAEB8D2), "DISCOVERED");
 
-    const float gy = y + 62, gg = 4, gw = (w - gg * (ng - 1)) / ng;
+    const float gy = y + 62, gg = 4, gw = (w - gg * ng) / (ng + 1);
     for (int k = 0; k < ng; ++k) {
         if (ui_chip(x + k * (gw + gg), gy, gw, 25, game_labels[k],
                     !museum_hacks_view && museum_game == game_ids[k])) {
@@ -5186,7 +5186,7 @@ static void tab_museum(float x, float y)
             museum_selected[museum_game] = 0; museum_reset_confirm = 0;
         }
     }
-    if (ui_chip(x + w - 105, gy + 29, 105, 23, "ROM HACKS", museum_hacks_view)) {
+    if (ui_chip(x + ng * (gw + gg), gy, gw, 25, "ROM HACKS", museum_hacks_view)) {
         museum_hacks_view = 1; museum_hack_scroll = 0; museum_reset_confirm = 0;
     }
     if (museum_hacks_view) {
