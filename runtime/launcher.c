@@ -1418,47 +1418,97 @@ static void sub_gba_rom_profiles(int g, float x, float y)
 static void sub_game(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
-    card(x, y, 360, 476, "PREVIEW");
-    draw_preview(g, x + 16, y + 40, 328, 300, 0);
-    ui_text_c(F_REG, 12, x + 180, y + 352, C_DIM, "A short run of the game from power-on");
-    if (ui_button(x + 16, y + 386, 328, 38, "Refresh preview", B_NORMAL, rs[g].ok)) make_preview(g);
-    ui_text_wrap(F_REG, 12, x + 18, y + 434, 324, C_DIM, "Tip: drag and drop a ROM, patch or picture onto this window.", 2);
+    const float W = 808.0f;
+    const float hero_h = 86.0f;
+    const float card_y = y + hero_h + 12.0f;
 
-    float rx = x + 372, rw = 436;
-    card(rx, y, rw, 476, "FILES");
-    /* ROM */
-    label(rx + 18, y + 42, "Game ROM");
-    path_box(rx + 18, y + 64, rw - 18 * 2 - 110, c->rom_path, "Not chosen yet");
-    if (ui_button(rx + rw - 18 - 100, y + 64, 100, 36, "Browse…", B_NORMAL, 1)) {
+    /* Accent-tinted game header; the game-specific controls remain below. */
+    uint32_t a = games[g].accent;
+    ui_rrect(x, y, W, hero_h, 12, RGBA(15, 22, 36, 248));
+    ui_vgrad(x + 1, y + 1, W - 2, hero_h - 2,
+             RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 74),
+             RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 16));
+    ui_stroke(x, y, W, hero_h, 12, 1.2f,
+              RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 150));
+    ui_rrect(x + 16, y + 18, 3, 48, 1.5f, HEX(a));
+    ui_text(F_BOLD, 20, x + 30, y + 17, C_TEXT, games[g].name);
+    ui_text_fit(F_REG, 12, x + 30, y + 47, W - 230, C_MUTED,
+                games[g].sub ? games[g].sub : "Game profile");
+    const char *rom_state = rs[g].ok ? "ROM READY" :
+        (c->rom_path[0] ? "ROM NEEDS ATTENTION" : "ROM REQUIRED");
+    float pill_w = ui_text_w(F_BOLD, 10, rom_state) + 28.0f;
+    ui_rrect(x + W - pill_w - 16, y + 29, pill_w, 26, 13,
+             rs[g].ok ? RGBA(38, 116, 83, 220) :
+             (c->rom_path[0] ? RGBA(142, 66, 53, 220) : RGBA(105, 83, 43, 220)));
+    ui_text_c(F_BOLD, 10, x + W - pill_w * 0.5f - 16, y + 36,
+              C_TEXT, rom_state);
+
+    /* Live preview and all ROM/profile/save actions stay on this page. */
+    card(x, card_y, 360, 378, "PREVIEW");
+    draw_preview(g, x + 16, card_y + 42, 328, 224, 0);
+    ui_text_c(F_REG, 11, x + 180, card_y + 273, C_DIM,
+              "A short run of the game from power-on");
+    if (ui_button(x + 16, card_y + 300, 328, 36,
+                  "Refresh preview", B_NORMAL, rs[g].ok))
+        make_preview(g);
+    ui_text_wrap(F_REG, 11, x + 18, card_y + 346, 324, C_DIM,
+                 "Tip: drag and drop a ROM, patch or picture onto this window.", 2);
+
+    float rx = x + 372.0f, rw = 436.0f;
+    card(rx, card_y, rw, 378, "FILES");
+
+    label(rx + 18, card_y + 44, "Game ROM");
+    path_box(rx + 18, card_y + 64, rw - 18 * 2 - 100 - 8,
+             c->rom_path, "Drop a ROM here or browse");
+    if (ui_button(rx + rw - 18 - 100, card_y + 64, 100, 36,
+                  "Browse…", B_NORMAL, 1)) {
         char p[1100];
         if (dlg_pick(DLG_ROM, "Choose your ROM", p, sizeof p)) {
             int id = rom_identify_file(p);
-            if (id >= 0 && id != g) { snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", p); rom_check(id); make_preview(id); tab = id; launcher_toast("That ROM belongs to another game. Switched tabs."); }
-            else set_rom(g, p);
+            if (id >= 0 && id != g) {
+                snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", p);
+                rom_check(id);
+                make_preview(id);
+                tab = id;
+                launcher_toast("That ROM belongs to another game. Switched tabs.");
+            } else {
+                set_rom(g, p);
+            }
         }
     }
-    status_line(rx + 18, y + 108, rw - 36, rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2), rs[g].msg);
-    /* ROM hack profiles live separately from the source ROM path. */
-    label(rx + 18, y + 150, "ROM hack profiles");
-    ui_text_wrap(F_REG, 12, rx + 18, y + 172, rw - 36, C_DIM,
-                 "Add patches or already-patched ROMs on the ROM Hacks tab. Each entry is a separate selectable game profile; the original ROM file is never changed.", 3);
+    status_line(rx + 18, card_y + 108, rw - 36,
+                rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2), rs[g].msg);
+
+    label(rx + 18, card_y + 144, "ROM hack profiles");
+    ui_text_wrap(F_REG, 11, rx + 18, card_y + 164, rw - 36, C_DIM,
+                 "Add patches or pre-patched ROMs as separate profiles. The original ROM is never changed.", 2);
     char profile_label[128];
     if (c->romhack_selected >= 0 && c->romhack_selected < c->romhack_count)
         snprintf(profile_label, sizeof profile_label, "Selected: %s",
-                 c->romhacks[c->romhack_selected].title[0] ? c->romhacks[c->romhack_selected].title : "ROM hack");
+                 c->romhacks[c->romhack_selected].title[0] ?
+                 c->romhacks[c->romhack_selected].title : "ROM hack");
     else
         snprintf(profile_label, sizeof profile_label, "Selected: Original game");
-    ui_text_fit_tail(F_REG, 12, rx + 18, y + 224, rw - 36, C_TEXT, profile_label);
-    if (ui_button(rx + 18, y + 250, rw - 36, 34, "Manage ROM Hacks…", B_NORMAL, 1))
+    ui_text_fit_tail(F_REG, 11, rx + 18, card_y + 207,
+                     rw - 36, C_TEXT, profile_label);
+    if (ui_button(rx + 18, card_y + 228, rw - 36, 32,
+                  "Manage ROM Hacks…", B_NORMAL, 1))
         sub[g] = SUB_ROMHACKS;
-    /* save data */
-    label(rx + 18, y + 330, "Save data");
-    char sp[1200];
+
+    label(rx + 18, card_y + 274, "Save data");
     int bat = games[g].crc == 0 &&
               (g == GAME_SML2 || (g >= GAME_WARIO_SML3 && g <= GAME_WARIO_LAND2_GBC));
+    char sp[1200];
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
-    ui_text_wrap(F_REG, 12, rx + 18, y + 352, rw - 36, C_DIM, bat ? "Saved games are kept automatically next to the program, in the \"saves\" folder, one file per game." : "This cartridge has no save memory.", 3);
-    if (bat && ui_button(rx + 18, y + 396, 180, 36, "Open saves folder", B_NORMAL, 1)) { mkdir_u(sp); open_folder(sp); }
+    ui_text_wrap(F_REG, 11, rx + 18, card_y + 294, rw - 36,
+                 bat ? C_TEXT : C_DIM,
+                 bat ? "Saved games are kept automatically in the saves folder, one file per game."
+                     : "This cartridge has no battery-backed save memory.", 2);
+    if (bat && ui_button(rx + 18, card_y + 340, 180, 30,
+                         "Open saves folder", B_NORMAL, 1)) {
+        mkdir_u(sp);
+        open_folder(sp);
+    }
 }
 
 /* ------------------------------------------------------------------ game tab: Display */
