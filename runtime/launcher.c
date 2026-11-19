@@ -5176,6 +5176,17 @@ static void tab_museum(float x, float y)
             "A living field guide of the things you discover while playing");
     ui_text_r(F_BOLD, 15, x + w - 16, y + 9, HEX(0xF5C842), total_label);
     ui_text_r(F_REG, 9, x + w - 16, y + 31, HEX(0xAEB8D2), "DISCOVERED");
+    /* Compact collection progress bar, matching the refreshed navy-and-gold
+       Museum treatment without changing how progress is stored or counted. */
+    const float progress_x = x + 16.0f;
+    const float progress_y = y + 47.0f;
+    const float progress_w = w - 32.0f;
+    const float progress_ratio = total > 0
+        ? fminf(1.0f, (float)total_found / (float)total) : 0.0f;
+    ui_rrect(progress_x, progress_y, progress_w, 4.0f, 2.0f, HEX(0x2A3550));
+    if (progress_ratio > 0.0f)
+        ui_rrect(progress_x, progress_y, progress_w * progress_ratio,
+                 4.0f, 2.0f, HEX(0xF5C842));
 
     const float gy = y + 62, gg = 4, gw = (w - gg * ng) / (ng + 1);
     for (int k = 0; k < ng; ++k) {
