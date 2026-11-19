@@ -4645,7 +4645,8 @@ static void deck_editor_assets(float x, float y)
             d->asset_stretch[rows[i].asset_index] = !stretch;
             settings_save();        }
         if (ui_button(x + 536, ry + 3, 82, 22, "Choose…", B_GHOST, 1))
-            deck_editor_open_picker(rows[i].kind);        if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
+            deck_editor_open_picker(rows[i].kind);
+        if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
             deck_editor_snapshot();
             rows[i].path[0] = 0;
             d->asset_stretch[rows[i].asset_index] = 0;
