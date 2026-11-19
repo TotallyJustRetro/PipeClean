@@ -1075,6 +1075,7 @@ static void sub_external_game(int g, float x, float y)
         display_rom = active_rom;
     }
     card(x, y, 808, 476, "GAME ROM");
+    panel_surface(x + 12, y + 38, 784, 76, 9);
     label(x + 18, y + 42, g == GAME_GBA_SAGA ? "Game Boy Advance ROM" : "Game Boy / Game Boy Color ROM");
     path_box(x + 18, y + 64, 808 - 36 - 110, display_rom, "Drop a ROM here or browse");
     if (ui_button(x + 808 - 18 - 100, y + 64, 100, 36, "Browse…", B_NORMAL, 1)) {
@@ -1096,6 +1097,9 @@ static void sub_external_game(int g, float x, float y)
                          : (c->rom_path[0] ? rs[g].msg : "Choose a ROM to enable Play."));
 
     if (g == GAME_GBA_SAGA) {
+        panel_surface(x + 12, y + 140, 784, 62, 9);
+        panel_surface(x + 12, y + 206, 784, 62, 9);
+        panel_surface(x + 12, y + 278, 784, 180, 9);
         ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "GBA RECOMPILATION");
         ui_text_fit_tail(F_REG, 10, x + 18, y + 173, 660, C_TEXT, active_exe);
         if (ui_button(x + 690, y + 166, 100, 32, "Browse EXE…", B_NORMAL, 1)) {
@@ -1123,6 +1127,9 @@ static void sub_external_game(int g, float x, float y)
         return;
     }
 
+    panel_surface(x + 12, y + 140, 784, 118, 9);
+    panel_surface(x + 12, y + 266, 784, 110, 9);
+    panel_surface(x + 12, y + 374, 784, 78, 9);
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
                  g == GAME_GBA_SAGA
@@ -1241,8 +1248,6 @@ static void sub_romhacks(int g, float x, float y)
         int selected = c->romhack_selected == index;
         int over = 0;
         int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
-        uint32_t bg = selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u)
-                               : (over ? C_BTN_H : C_PANEL2);
         row_surface(list_x + 2, ry, list_w - 4, row_h, selected, over, 0);
         draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
         const char *title = index < 0 ? "Original game" :
