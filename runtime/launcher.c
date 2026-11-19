@@ -1566,6 +1566,8 @@ static void sub_display(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
     card(x, y, 536, 476, "GAME BOY COLORS");
+    panel_surface(x + 12, y + 38, 512, 208, 9);
+    panel_surface(x + 12, y + 254, 512, 210, 9);
     for (int i = 0; i < n_palettes; i++) {
         float cx = x + 16 + (i % 4) * 129, cy = y + 40 + (i / 4) * 52;
         int over;
@@ -1970,6 +1972,8 @@ static void sub_save_states(int g, float x, float y)
     char text[96];
 
     card(x, y, 808, 476, "SAVE STATES");
+    panel_surface(x + 12, y + 36, 784, 60, 9);
+    panel_surface(x + 12, y + 428, 784, 36, 9);
     ui_text(F_REG, 13, x + 18, y + 40, C_DIM,
             "Choose a slot here. Saving uses the Save State binding while you are playing; Load can start a game from any saved slot.");
 
@@ -2269,6 +2273,7 @@ static void tab_multiplayer(float x, float y)
         }
     }
 
+    panel_surface(x + 12, y + 266, 784, 166, 9);
     mp_draw_color_editor(c, x, y);
     ui_rect(x + 18, y + 442, 772, 1, C_LINE);
     ui_text_wrap(F_REG, 11, x + 18, y + 451, 772, C_DIM,
