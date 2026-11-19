@@ -968,6 +968,13 @@ static void card(float x, float y, float w, float h, const char *title)
     }
 }
 
+static void panel_surface(float x, float y, float w, float h, float radius)
+{
+    /* Secondary surfaces use the same layered navy treatment as the main cards. */
+    ui_rrect(x, y, w, h, radius, RGBA(22, 30, 48, 242));
+    ui_stroke(x, y, w, h, radius, 1.0f, RGBA(104, 126, 164, 70));
+}
+
 static void label(float x, float y, const char *s) { ui_text(F_REG, 13, x, y, C_MUTED, s); }
 static void hint_area(float x, float y, float w, float h, const char *s) { if (ui_hover(x, y, w, h)) ui_hint(s); }
 
@@ -3051,7 +3058,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         return;
     }
 
-    ui_rrect(x + 18, y + 82, 344, 328, 12, C_PANEL);
+    panel_surface(x + 18, y + 82, 344, 328, 12);
     ui_text(F_BOLD, 13, x + 34, y + 94, C_TEXT, "PLAYERS");
     ui_rrect(x + 30, y + 118, 320, 48, 9, RGBA(66, 126, 92, 32));
     ui_text(F_BOLD, 12, x + 44, y + 127, C_TEXT, host_name[0] ? host_name : "Host");
@@ -3094,7 +3101,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         online_report_local_rom(selected_game);
     }
 
-    ui_rrect(x + 374, y + 82, 416, 328, 12, C_PANEL);
+    panel_surface(x + 374, y + 82, 416, 328, 12);
     if (ui_button(x + 390, y + 108, 82, 26, "Chat",
                   online_lobby_panel == 0 ? B_PRIMARY : B_GHOST, 1))
         online_lobby_panel = 0;
@@ -3240,7 +3247,7 @@ static void tab_online(float x, float y)
                     ? "Direct peer-to-peer mode is not implemented in this build. Choose Traversal Server to play online."
                     : "Host a room, choose a supported game, and share its invite code with another player.");
 
-    ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
+    panel_surface(x + 18, y + 70, 354, 422, 12);
     ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
     ui_text(F_REG, 11, x + 34, y + 112, C_MUTED, "Display name");
     if (ui_button(x + 280, y + 106, 76, 22, "Reset", B_GHOST, 1)) {
@@ -3312,7 +3319,7 @@ static void tab_online(float x, float y)
     ui_text_fit(F_REG, 10, x + 34, y + 472, 322, C_DIM,
                 "Touch controls are useful on Android devices.");
 
-    ui_rrect(x + 390, y + 70, 400, 422, 12, C_PANEL);
+    panel_surface(x + 390, y + 70, 400, 422, 12);
     ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
                  "Choose the game before creating the room. Invite code is generated automatically.", 2);
@@ -4918,9 +4925,10 @@ static void tab_display(float x, float y)
         return;
     }
 #endif
-    ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
-    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "LAUNCHER DISPLAY");
-    ui_text_wrap(F_REG, 12, x + 36, y + 112, 724, C_MUTED,
+    panel_surface(x + 18, y + 70, 772, 404, 12);
+    ui_rrect(x + 34, y + 84, 3, 18, 1.5f, HEX(ui_accent));
+    ui_text(F_BOLD, 15, x + 46, y + 86, HEX(0xE5ECFA), "LAUNCHER DISPLAY");
+    ui_text_wrap(F_REG, 12, x + 46, y + 112, 710, C_MUTED,
                  "These options affect the launcher on desktop and Android. Per-game image shape and scaling remain in each game's Display page.", 3);
 
     ui_text(F_REG, 13, x + 36, y + 165, C_TEXT, "Interface size");
