@@ -1678,6 +1678,8 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
     uint32_t fill = !available ? RGBA(255,255,255,3) :
                     (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
     ui_rrect(x, y, w, 28, 7, fill);
+    ui_stroke(x, y, w, 28, 7, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     char b[48];
     if (!available) {
         snprintf(b, sizeof b, "—");
@@ -1909,6 +1911,8 @@ static void bind_mp_respawn_cell(int g, int player_slot, float x, float y, float
     int active = cap_kind == kind && cap_btn == player_slot;
     ui_rrect(x, y, w, 28, 7, !available ? RGBA(255,255,255,3) :
              (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN)));
+    ui_stroke(x, y, w, 28, 7, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     char value[48];
     if (!available) snprintf(value, sizeof value, "—");
     else if (active) snprintf(value, sizeof value, kind == 5 ? "press a key…" : "press a button…");
@@ -1941,6 +1945,8 @@ static void bind_action_cell(int g, float x, float y, float w, int kind, int act
     uint32_t fill = !available ? RGBA(255,255,255,3) :
                     (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
     ui_rrect(x, y, w, 32, 8, fill);
+    ui_stroke(x, y, w, 32, 8, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     char b[64];
     if (!available) {
         snprintf(b, sizeof b, "—");
@@ -2154,6 +2160,8 @@ static void mp_name_field(GameCfg *c, int player_number, float x, float y, float
     int active = multiplayer_name_editing == player_number;
     ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
              (over ? C_BTN_H : C_BTN));
+    ui_stroke(x, y, w, 32, 8, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     const char *current = name[0] ? name : (active ? "Type a name…" : "Click to rename");
     ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, name[0] ? C_TEXT : C_DIM, current);
     ui_rrect(x + w - 25, y + 6, 14, 20, 5, HEX(mp_effective_player_rgb(c, player_number)));
