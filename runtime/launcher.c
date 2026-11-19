@@ -975,6 +975,30 @@ static void panel_surface(float x, float y, float w, float h, float radius)
     ui_stroke(x, y, w, h, radius, 1.0f, RGBA(104, 126, 164, 70));
 }
 
+static void section_heading(float x, float y, float w, const char *title)
+{
+    ui_text(F_BOLD, 10, x, y, RGBA(173, 188, 213, 255), title);
+    ui_line(x, y + 18, x + w, y + 18, 1, RGBA(104, 126, 164, 62));
+}
+
+static void row_surface(float x, float y, float w, float h,
+                        int selected, int hovered)
+{
+    uint32_t fill = selected
+        ? mixc(RGBA(27, 39, 59, 238), HEX(ui_accent), 0.24f)
+        : (hovered ? RGBA(72, 92, 129, 76) : RGBA(255, 255, 255, 6));
+    ui_rrect(x, y, w, h, 8, fill);
+    if (selected)
+        ui_stroke(x, y, w, h, 8, 1.2f, HEX(ui_accent));
+    else if (hovered)
+        ui_stroke(x, y, w, h, 8, 0.8f, RGBA(137, 160, 200, 78));
+}
+
+static void field_outline(float x, float y, float w, float h, float radius)
+{
+    ui_stroke(x, y, w, h, radius, 1.0f, RGBA(111, 132, 169, 92));
+}
+
 static void page_heading(float x, float y, float w, float h,
                           const char *title, const char *subtitle, uint32_t accent)
 {
@@ -1578,7 +1602,9 @@ static void sub_display(int g, float x, float y)
     else snprintf(t, sizeof t, "PNG, JPG, BMP, TGA or animated GIF");
     ui_text_fit(F_REG, 11, rx + 18, y + 354 - look_compact, rw - 36, C_DIM, t);
     label(rx + 18, y + 380 - look_compact, "Darken background"); snprintf(t, sizeof t, "%d%%", c->bg_dim); ui_text_r(F_REG, 13, rx + rw - 18, y + 380 - look_compact, C_TEXT, t);
-    ui_slider(rx + 22, y + 402 - look_compact, rw - 44, &c->bg_dim, 0, 80);    if (games[g].wide_l + games[g].wide_r > 0) {        label(rx + 18, y + 428 - look_compact, "Widescreen");
+    ui_slider(rx + 22, y + 402 - look_compact, rw - 44, &c->bg_dim, 0, 80);
+    if (games[g].wide_l + games[g].wide_r > 0) {
+        label(rx + 18, y + 428 - look_compact, "Widescreen");
         snprintf(t, sizeof t, "%d%%", c->wide); ui_text_r(F_REG, 13, rx + rw - 18, y + 428 - look_compact, C_TEXT, t);
         if (ui_slider(rx + 22, y + 450 - look_compact, rw - 44, &c->wide, 0, 100)) wide_dirty = g + 1;
         hint_area(rx + 18, y + 424 - look_compact, rw - 36, 40, "Shows more of the level on the sides. 0% is the original 10:9 screen.");
@@ -1955,8 +1981,7 @@ static void sub_save_states(int g, float x, float y)
         int selected = slot == c->state_slot;
         int over = 0;
         int clicked = clickable(bx, by, 368, 56, &over);
-        ui_rrect(bx, by, 368, 56, 9, selected ? RGBA(255,255,255,14) : (over ? C_BTN_H : RGBA(255,255,255,6)));
-        if (selected) ui_stroke(bx, by, 368, 56, 9, 2, HEX(ui_accent));
+        row_surface(bx, by, 368, 56, selected, over);
 
         SDL_Texture *thumb = saved ? state_thumb_get(g, slot) : NULL;
         if (thumb) ui_image(thumb, NULL, bx + 8, by + 7, 88, 42);
@@ -1999,7 +2024,7 @@ static void sub_bindings(int g, float x, float y)
 
     for (int a = 0; a < N_ACTION; a++) {
         float ry = y + 98 + a * 52;
-        if (a % 2 == 0) ui_rrect(x + 10, ry - 4, 788, 46, 8, RGBA(255,255,255,6));
+        row_surface(x + 10, ry - 4, 788, 46, 0, a % 2 == 0);
         ui_text(F_BOLD, 13, x + 18, ry + 7, C_TEXT, action_names[a]);
         bind_action_cell(g, x + 270, ry + 3, 190, 3, a);
         bind_action_cell(g, x + 490, ry + 3, 190, 4, a);
@@ -2025,6 +2050,7 @@ static void sub_controls(int g, float x, float y)
     ui_text_fit(F_REG, 11, x + 18, my, 770, C_DIM,
                 "Local multiplayer settings, Luigi's name/color, and the rescue binding are on the Multiplayer tab.");
 
+    section_heading(x + 18, y + 91, 772, "BUTTON MAPPING");
     static const float colx[5] = {18, 150, 310, 470, 630};
     ui_text(F_BOLD, 12, x + colx[0], y + 112, C_MUTED, "Game Boy button");
     ui_text(F_BOLD, 12, x + colx[1] + 10, y + 112, C_MUTED, "Keyboard");
@@ -2033,7 +2059,7 @@ static void sub_controls(int g, float x, float y)
     ui_text(F_BOLD, 12, x + colx[4] + 10, y + 112, C_MUTED, "Player 2 controller");
     for (int b = 0; b < N_BTN; b++) {
         float ry = y + 128 + b * 28;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 28, 7, RGBA(255, 255, 255, 6));
+        row_surface(x + 10, ry - 2, 788, 28, 0, b % 2 == 0);
         ui_text(F_BOLD, 14, x + colx[0], ry + 2, C_TEXT, btn_names[b]);
         bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
         bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
@@ -2055,6 +2081,8 @@ static void sub_controls(int g, float x, float y)
      * Draw the controller menus last so their popups sit above the binding
      * grid and cannot be visually covered by the controls underneath.
      */
+    panel_surface(x + 12, y + 30, 384, 52, 9);
+    panel_surface(x + 410, y + 30, 384, 52, 9);
     controller_dropdown(g, 0, x + 18, y + 34, 374);
     controller_dropdown(g, 1, x + 414, y + 34, 374);
 }
@@ -2152,6 +2180,7 @@ static void tab_multiplayer(float x, float y)
     card(x, y, 808, 512, mp_config_game == GAME_SML ?
          "SUPER MARIO LAND 1 — MULTIPLAYER" : "SUPER MARIO LAND 2 — MULTIPLAYER");
 
+    panel_surface(x + 12, y + 34, 784, 40, 9);
     label(x + 18, y + 42, "Local multiplayer");
     if (ui_toggle(x + 178, y + 38, &c->multiplayer) && c->multiplayer)
         launcher_toast(mp_config_game == GAME_SML ? "Local multiplayer enabled for SML1." :
@@ -2161,6 +2190,7 @@ static void tab_multiplayer(float x, float y)
                                  "Off by default.");
     mp_game_target_button(x + 520, y + 38, 248, 32);
 
+    panel_surface(x + 12, y + 78, 784, 40, 9);
     label(x + 18, y + 86, "Players");
     int over = 0;
     int opened = clickable(x + 540, y + 74, 228, 34, &over);
@@ -2174,10 +2204,11 @@ static void tab_multiplayer(float x, float y)
     ui_text_fit(F_REG, 11, x + 18, y + 78, 460, C_DIM,
                 "Choose 2–4 independent character simulations.");
 
-    label(x + 18, y + 120, "Player names");
+    section_heading(x + 18, y + 116, 772, "PLAYER PROFILES");
     for (int i = 0; i < 3; i++) {
         int p = i + 2;
         float ry = y + 140 + i * 40.0f;
+        row_surface(x + 12, ry - 1, 784, 33, 0, i % 2 == 0);
         char row_label[24];
         snprintf(row_label, sizeof row_label, "Player %d", p);
         ui_text(F_BOLD, 12, x + 18, ry + 8, C_MUTED, row_label);
@@ -2238,6 +2269,7 @@ static void tab_mp_controllers(float x, float y)
 
     for (int player = 0; player < MAX_MP_PLAYERS; player++) {
         float bx = x + 18 + player * 192.0f;
+        panel_surface(bx - 6, y + 30, 184, 60, 9);
         char title[24];
         snprintf(title, sizeof title, "Player %d", player + 1);
         label(bx, y + 38, title);
@@ -2258,6 +2290,7 @@ static void tab_mp_controllers(float x, float y)
 
         for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             float bx = x + 18 + player * 193.0f;
+            panel_surface(bx - 6, y + 130, 184, 266, 9);
             char title[64];
             if (player == 0) snprintf(title, sizeof title, "P1  Mario");
             else {
@@ -2273,12 +2306,14 @@ static void tab_mp_controllers(float x, float y)
 
             for (int btn = 0; btn < N_BTN; btn++) {
                 float ry = y + 168 + btn * 29.0f;
+                row_surface(bx - 3, ry + 1, 188, 25, 0, btn % 2 == 0);
                 ui_text_fit(F_REG, 10, bx, ry + 8, 34, C_TEXT, control_labels[btn]);
                 bind_cell(mp_config_game, bx + 36, ry, 69, 1, btn, player);
                 bind_cell(mp_config_game, bx + 109, ry, 74, 2, btn, player);
             }
         }
 
+        panel_surface(x + 12, y + 400, 784, 104, 9);
         ui_rect(x + 18, y + 405, 772, 1, C_LINE);
         label(x + 18, y + 411, "Respawn bindings");
         ui_text_fit(F_REG, 10, x + 176, y + 412, 600, C_DIM,
@@ -2611,23 +2646,23 @@ static void tab_filters(float x, float y)
 {
     FilterCfg *f = &settings.flt;
     card(x, y, 428, 504, "SCREEN LOOK");
-    ui_text(F_BOLD, 12, x + 18, y + 38, C_MUTED, "Presets");
+    section_heading(x + 18, y + 38, 392, "PRESETS");
     for (int i = 0; i < n_filter_presets; i++) {
         float cx = x + 18 + (i % 3) * 133, cy = y + 58 + (i / 3) * 38;
         if (ui_chip(cx, cy, 125, 30, filter_preset_names[i], f->preset == i && i != 0 ? 1 : (i == 0 && !f->lcd_grid && !f->ghost && !f->scanlines && !f->mask && !f->curve && !f->bloom && !f->hdr && !f->vignette && !f->blur)))
             filter_preset(f, i);
     }
     float sy = y + 144;
-    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "Game Boy screen");
+    section_heading(x + 18, sy, 392, "GAME BOY SCREEN");
     slider_row(x + 18, sy + 24, 392, "Dot grid", &f->lcd_grid, "Dark gaps between the screen's dots, like the real LCD");
     slider_row(x + 18, sy + 52, 392, "Ghosting", &f->ghost, "Pixels fade slowly like the old LCD (visible while playing)");
     sy += 88;
-    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "CRT TV");
+    section_heading(x + 18, sy, 392, "CRT TV");
     slider_row(x + 18, sy + 24, 392, "Scanlines", &f->scanlines, "Dark lines between rows");
     slider_row(x + 18, sy + 52, 392, "Shadow mask", &f->mask, "Red, green and blue stripes");
     slider_row(x + 18, sy + 80, 392, "Curvature", &f->curve, "Bulges the picture like a curved tube");
     sy += 116;
-    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "Light");
+    section_heading(x + 18, sy, 392, "LIGHT");
     slider_row(x + 18, sy + 24, 392, "Bloom", &f->bloom, "Bright areas glow");
     slider_row(x + 18, sy + 52, 392, "HDR", &f->hdr, "Brighter highlights, richer colour and a stronger glow");
     slider_row(x + 18, sy + 80, 392, "Vignette", &f->vignette, "Darker corners");
@@ -2859,6 +2894,7 @@ static void tab_audio(float x, float y)
     char t[96];
     float lw = 396;
     card(x, y, lw, 200, "GAME SOUND");
+    panel_surface(x + 12, y + 40, lw - 24, 132, 9);
     label(x + 18, y + 44, "Volume");
     ui_slider(x + 100, y + 42, lw - 100 - 70, &s->volume, 0, 200);
     snprintf(t, sizeof t, "%d%%", s->volume); ui_text_r(F_REG, 13, x + lw - 18, y + 44, C_TEXT, t);
@@ -2873,6 +2909,7 @@ static void tab_audio(float x, float y)
     ui_text(F_REG, 12, x + 18, y + 174, C_DIM, "Changes to the delay apply the next time you start the program.");
 
     card(x, y + 212, lw, 292, "MENU MUSIC");
+    panel_surface(x + 12, y + 250, lw - 24, 238, 9);
     label(x + 18, y + 256, "Play music in the launcher");
     if (ui_toggle(x + lw - 18 - 44, y + 252, &s->menu_music)) {
         audio_menu_apply();
@@ -2938,6 +2975,7 @@ static void tab_audio(float x, float y)
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 504, "INTERFACE SOUNDS");
+    panel_surface(rx + 12, y + 40, rw - 24, 438, 9);
     label(rx + 18, y + 44, "Click and hover sounds");
     ui_toggle(rx + rw - 18 - 44, y + 40, &s->ui_sfx);
     label(rx + 18, y + 84, "Volume");
@@ -3076,8 +3114,10 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     ui_text(F_BOLD, 13, x + 34, y + 94, C_TEXT, "PLAYERS");
     ui_rrect(x + 30, y + 118, 320, 48, 9, RGBA(66, 126, 92, 32));
     ui_text(F_BOLD, 12, x + 44, y + 127, C_TEXT, host_name[0] ? host_name : "Host");
-    ui_text(F_REG, 10, x + 44, y + 145, C_OK, "HOST");    ui_rrect(x + 30, y + 176, 320, 48, 9,
-             connected ? RGBA(66, 126, 92, 32) : RGBA(237, 180, 81, 18));    ui_text(F_BOLD, 12, x + 44, y + 185, C_TEXT,
+    ui_text(F_REG, 10, x + 44, y + 145, C_OK, "HOST");
+    ui_rrect(x + 30, y + 176, 320, 48, 9,
+             connected ? RGBA(66, 126, 92, 32) : RGBA(237, 180, 81, 18));
+    ui_text(F_BOLD, 12, x + 44, y + 185, C_TEXT,
             connected ? guest_name : (np->is_host ? "Waiting for player…" : "Joining room…"));
     ui_text(F_REG, 10, x + 44, y + 203, connected ? C_OK : C_MUTED,
             connected ? (np->is_host ? "PLAYER 2" : "YOU") : "NOT CONNECTED");
@@ -3262,7 +3302,7 @@ static void tab_online(float x, float y)
                     : "Host a room, choose a supported game, and share its invite code with another player.");
 
     panel_surface(x + 18, y + 70, 354, 422, 12);
-    ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
+    section_heading(x + 34, y + 82, 322, "PLAYER PROFILE");
     ui_text(F_REG, 11, x + 34, y + 112, C_MUTED, "Display name");
     if (ui_button(x + 280, y + 106, 76, 22, "Reset", B_GHOST, 1)) {
         online_name_editing = online_server_editing = online_chat_editing = 0;
@@ -3275,6 +3315,7 @@ static void tab_online(float x, float y)
     int name_clicked = clickable(x + 34, y + 132, 322, 36, &name_over);
     ui_rrect(x + 34, y + 132, 322, 36, 8,
              online_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (name_over ? C_BTN_H : C_BTN));
+    field_outline(x + 34, y + 132, 322, 36, 8);
     const char *name = settings.online_name[0] ? settings.online_name :
                        (online_name_editing ? "Type a name…" : "Player");
     ui_text_fit(F_REG, 13, x + 46, y + 141, 292, online_name_editing ? C_DIM : C_TEXT, name);
@@ -3334,7 +3375,7 @@ static void tab_online(float x, float y)
                 "Touch controls are useful on Android devices.");
 
     panel_surface(x + 390, y + 70, 400, 422, 12);
-    ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
+    section_heading(x + 408, y + 84, 360, "HOST A SESSION");
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
                  "Choose the game before creating the room. Invite code is generated automatically.", 2);
 
@@ -3343,6 +3384,7 @@ static void tab_online(float x, float y)
     int mode_clicked = clickable(x + 408, y + 155, 360, 30, &mode_over);
     ui_rrect(x + 408, y + 155, 360, 30, 7,
              online_mode_menu ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (mode_over ? C_BTN_H : C_BTN));
+    field_outline(x + 408, y + 155, 360, 30, 7);
     ui_text_fit(F_REG, 12, x + 420, y + 163, 320, C_TEXT,
                 settings.online_connection_mode == 0 ? "Direct Connection" : "Traversal Server");
     ui_tri(x + 748, y + 165, x + 758, y + 165, x + 753, y + 172, C_MUTED);
@@ -3388,6 +3430,7 @@ static void tab_online(float x, float y)
     int server_clicked = clickable(x + 408, y + 254, 360, 30, &server_over);
     ui_rrect(x + 408, y + 254, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
+    field_outline(x + 408, y + 254, 360, 30, 7);
     const char *server_text = settings.online_server[0] ? settings.online_server :
                               (online_server_editing ? "Type host:port or wss://service.onrender.com…" : PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
     ui_text_fit(F_REG, 12, x + 420, y + 262, 336,
@@ -3417,6 +3460,7 @@ static void tab_online(float x, float y)
     int code_clicked = clickable(x + 408, y + 365, 228, 32, &code_over);
     ui_rrect(x + 408, y + 365, 228, 32, 8,
              online_code_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (code_over ? C_BTN_H : C_BTN));
+    field_outline(x + 408, y + 365, 228, 32, 8);
     ui_text_fit(F_BOLD, 13, x + 420, y + 373, 204, online_join_code[0] ? C_TEXT : C_DIM,
                 online_join_code[0] ? online_join_code : "Enter invite code");
     if (code_clicked) {
@@ -4940,6 +4984,8 @@ static void tab_display(float x, float y)
     }
 #endif
     panel_surface(x + 18, y + 70, 772, 404, 12);
+    panel_surface(x + 28, y + 142, 752, 76, 9);
+    panel_surface(x + 28, y + 232, 752, 184, 9);
     ui_rrect(x + 34, y + 84, 3, 18, 1.5f, HEX(ui_accent));
     ui_text(F_BOLD, 15, x + 46, y + 86, HEX(0xE5ECFA), "LAUNCHER DISPLAY");
     ui_text_wrap(F_REG, 12, x + 46, y + 112, 710, C_MUTED,
