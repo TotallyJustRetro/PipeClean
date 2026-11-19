@@ -1497,8 +1497,7 @@ static void sub_display(int g, float x, float y)
     else snprintf(t, sizeof t, "PNG, JPG, BMP, TGA or animated GIF");
     ui_text_fit(F_REG, 11, rx + 18, y + 354 - look_compact, rw - 36, C_DIM, t);
     label(rx + 18, y + 380 - look_compact, "Darken background"); snprintf(t, sizeof t, "%d%%", c->bg_dim); ui_text_r(F_REG, 13, rx + rw - 18, y + 380 - look_compact, C_TEXT, t);
-    ui_slider(rx + 22, y + 402 - look_compact, rw - 44, &c->bg_dim, 0, 80);    if (games[g].wide_l + games[g].wide_r > 0) {
-        label(rx + 18, y + 428 - look_compact, "Widescreen");
+    ui_slider(rx + 22, y + 402 - look_compact, rw - 44, &c->bg_dim, 0, 80);    if (games[g].wide_l + games[g].wide_r > 0) {        label(rx + 18, y + 428 - look_compact, "Widescreen");
         snprintf(t, sizeof t, "%d%%", c->wide); ui_text_r(F_REG, 13, rx + rw - 18, y + 428 - look_compact, C_TEXT, t);
         if (ui_slider(rx + 22, y + 450 - look_compact, rw - 44, &c->wide, 0, 100)) wide_dirty = g + 1;
         hint_area(rx + 18, y + 424 - look_compact, rw - 36, 40, "Shows more of the level on the sides. 0% is the original 10:9 screen.");
@@ -2997,8 +2996,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     ui_rrect(x + 30, y + 118, 320, 48, 9, RGBA(66, 126, 92, 32));
     ui_text(F_BOLD, 12, x + 44, y + 127, C_TEXT, host_name[0] ? host_name : "Host");
     ui_text(F_REG, 10, x + 44, y + 145, C_OK, "HOST");    ui_rrect(x + 30, y + 176, 320, 48, 9,
-             connected ? RGBA(66, 126, 92, 32) : RGBA(237, 180, 81, 18));
-    ui_text(F_BOLD, 12, x + 44, y + 185, C_TEXT,
+             connected ? RGBA(66, 126, 92, 32) : RGBA(237, 180, 81, 18));    ui_text(F_BOLD, 12, x + 44, y + 185, C_TEXT,
             connected ? guest_name : (np->is_host ? "Waiting for player…" : "Joining room…"));
     ui_text(F_REG, 10, x + 44, y + 203, connected ? C_OK : C_MUTED,
             connected ? (np->is_host ? "PLAYER 2" : "YOU") : "NOT CONNECTED");
@@ -4497,8 +4495,7 @@ static void deck_editor_assets(float x, float y)
             d->asset_stretch[rows[i].asset_index] = !stretch;
             settings_save();        }
         if (ui_button(x + 536, ry + 3, 82, 22, "Choose…", B_GHOST, 1))
-            deck_editor_open_picker(rows[i].kind);
-        if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
+            deck_editor_open_picker(rows[i].kind);        if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
             deck_editor_snapshot();
             rows[i].path[0] = 0;
             d->asset_stretch[rows[i].asset_index] = 0;
@@ -5310,7 +5307,7 @@ static void tab_museum(float x, float y)
             ui_text(F_BOLD, 9, ix, by + 67, HEX(0xD2B77E), "LOCKED SPECIMEN");
             ui_text(F_REG, 9, ix, by + 88, HEX(0xAEB8D2), "Found: 0 / 1");
         }
-        ui_line(rx + 13, by + 128, rx + rw - 13, by + 150, 1, HEX(0x3A4563));
+        ui_line(rx + 13, by + 150, rx + rw - 13, by + 150, 1, HEX(0x3A4563));
         ui_text(F_BOLD, 10, rx + 13, by + 160, HEX(0xF5C842), found ? "FIELD NOTES" : "UNDISCOVERED");
         if (found)
             ui_text_wrap(F_REG, 10, rx + 13, by + 180, rw - 26, HEX(0xD6DCEC),
@@ -5318,7 +5315,7 @@ static void tab_museum(float x, float y)
         else
             ui_text_wrap(F_REG, 10, rx + 13, by + 180, rw - 26, HEX(0xAEB8D2),
                 "Encounter this specimen in-game to reveal its name, artwork, and field notes.", 1.12f);
-        ui_line(rx + 13, by + 244, rx + rw - 13, by + 264, 1, HEX(0x3A4563));
+        ui_line(rx + 13, by + 264, rx + rw - 13, by + 264, 1, HEX(0x3A4563));
         ui_text(F_BOLD, 9, rx + 13, by + 274, HEX(0xF5C842), "GAME");
         ui_text_fit(F_REG, 9, rx + 52, by + 274, rw - 65, HEX(0xD6DCEC), games[museum_game].name);
         ui_text(F_BOLD, 9, rx + 13, by + 294, HEX(0xF5C842), "PROGRESS");
