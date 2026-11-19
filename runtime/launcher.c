@@ -954,9 +954,18 @@ static uint32_t mixc(uint32_t a, uint32_t b, float t)
 
 static void card(float x, float y, float w, float h, const char *title)
 {
-    ui_shadow(x, y, w, h, 14, 8, RGBA(0, 0, 0, 50));
-    ui_rrect(x, y, w, h, 14, (C_PANEL & 0xFFFFFF00u) | 232);
-    if (title) ui_text(F_BOLD, 12, x + 18, y + 14, C_DIM, title);
+    /* Shared launcher panel treatment: layered navy surface, quiet outline,
+       and a compact title rail. Keeping this in one helper refreshes every
+       settings page without changing any of their controls or data paths. */
+    ui_shadow(x, y, w, h, 14, 9, RGBA(0, 0, 0, 72));
+    ui_rrect(x, y, w, h, 14, RGBA(19, 25, 40, 246));
+    ui_rrect(x + 1, y + 1, w - 2, 34, 12, RGBA(31, 42, 63, 210));
+    ui_stroke(x, y, w, h, 14, 1.0f, RGBA(104, 126, 164, 88));
+    ui_line(x + 14, y + 36, x + w - 14, y + 36, 1, RGBA(111, 135, 177, 72));
+    if (title) {
+        ui_rrect(x + 10, y + 11, 3, 13, 1.5f, HEX(ui_accent));
+        ui_text(F_BOLD, 11, x + 20, y + 12, HEX(0xDCE5F6), title);
+    }
 }
 
 static void label(float x, float y, const char *s) { ui_text(F_REG, 13, x, y, C_MUTED, s); }
@@ -964,7 +973,8 @@ static void hint_area(float x, float y, float w, float h, const char *s) { if (u
 
 static void path_box(float x, float y, float w, const char *path, const char *placeholder)
 {
-    ui_rrect(x, y, w, 36, 9, C_BG2);
+    ui_rrect(x, y, w, 36, 9, RGBA(9, 14, 25, 226));
+    ui_stroke(x, y, w, 36, 9, 1, RGBA(100, 121, 157, 84));
     if (path[0]) ui_text_fit_tail(F_REG, 13, x + 12, y + 8, w - 24, C_TEXT, path);
     else ui_text_fit(F_REG, 13, x + 12, y + 8, w - 24, C_DIM, placeholder);
 }
@@ -5356,8 +5366,15 @@ static int tab_button(float x, float y, float w, float h, int selected, uint32_t
     int over;
     int clicked = clickable(x, y, w, h, &over);
     float a = ui_anim(ui_next_id() * 4 + 3, selected ? 1.0f : (over ? 0.5f : 0.0f), 16.0f);
-    if (a > 0.01f) ui_rrect(x, y, w, h, 12, RGBA(255, 255, 255, (int)(a * (selected ? 24 : 14))));
-    if (selected) ui_rrect(x, y + 10, 4, h - 20, 2, HEX(accent));
+    if (a > 0.01f)
+        ui_rrect(x, y, w, h, 12,
+                 RGBA(255, 255, 255, (int)(a * (selected ? 30 : 18))));
+    if (selected) {
+        ui_rrect(x + 2, y + 8, 4, h - 16, 2, HEX(accent));
+        ui_stroke(x, y, w, h, 12, 1, RGBA(255, 255, 255, 34));
+    } else if (over) {
+        ui_stroke(x, y, w, h, 12, 1, RGBA(255, 255, 255, 22));
+    }
     return clicked;
 }
 
