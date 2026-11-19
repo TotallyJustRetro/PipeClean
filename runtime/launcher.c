@@ -125,6 +125,7 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
     int over = 0;
     int clicked = clickable(x, y, w, 34, &over);
     ui_rrect(x, y, w, 34, 9, over ? C_BTN_H : C_BTN);
+    ui_stroke(x, y, w, 34, 9, 1.0f, RGBA(111, 132, 169, 92));
     char title[120];
     snprintf(title, sizeof title, "Player %d   %s", player + 1, name);
     ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, C_TEXT, title);
@@ -138,7 +139,8 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
     int count = pad_count();
     int options = count + 1;
     ui_shadow(x, py, w, options * 34 + 8, 10, 8, RGBA(0, 0, 0, 100));
-    ui_rrect(x, py, w, options * 34 + 8, 10, C_BG2);
+    ui_rrect(x, py, w, options * 34 + 8, 10, RGBA(19, 27, 42, 250));
+    ui_stroke(x, py, w, options * 34 + 8, 10, 1.0f, RGBA(111, 132, 169, 115));
 
     for (int o = 0; o < options; o++) {
         float oy = py + 4 + o * 34;
@@ -2238,7 +2240,8 @@ static void tab_multiplayer(float x, float y)
         const int options[3] = {2, 3, 4};
         float mx = x + 540, my = y + 110;
         ui_shadow(mx, my, 228, 3 * 32 + 8, 9, 7, RGBA(0,0,0,100));
-        ui_rrect(mx, my, 228, 3 * 32 + 8, 9, C_BG2);
+        ui_rrect(mx, my, 228, 3 * 32 + 8, 9, RGBA(19, 27, 42, 250));
+        ui_stroke(mx, my, 228, 3 * 32 + 8, 9, 1.0f, RGBA(111, 132, 169, 115));
         for (int i = 0; i < 3; i++) {
             float oy = my + 4 + i * 32;
             int ov = 0;
@@ -2409,6 +2412,8 @@ static void sub_dualsense(int g, float x, float y)
     char st[160];
     float lw = 392;
     card(x, y, lw, 476, "CONTROLLER");
+    panel_surface(x + 12, y + 36, lw - 24, 180, 9);
+    panel_surface(x + 12, y + 222, lw - 24, 240, 9);
     pad_status(st, sizeof st);
     status_line(x + 18, y + 38, lw - 36, ds ? 1 : (pad_count() ? 2 : 3), st);
     if (ds) ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM, audio_pad_available() ? (edge ? "DualSense Edge: light, rumble and speaker ready" : "DualSense: light, rumble and speaker ready") : "Light and rumble ready. Speaker needs the USB cable.");
@@ -2495,6 +2500,7 @@ static void sub_dualsense(int g, float x, float y)
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 476, "WHEN THIS HAPPENS");
+    panel_surface(rx + 12, y + 36, rw - 24, 426, 9);
     int n = events_count(g);
     float row_h = n > 7 ? 35.0f : 46.0f;
     float tx[3] = {rw - 18 - 44 - 64 - 64 - 44 + 0, 0, 0};
@@ -2539,6 +2545,7 @@ static void sub_gba_dualsense(int g, float x, float y)
     int ds = 0;
     for (int i = 0; i < pad_count(); i++) if (pad_is_dualsense(i)) ds = 1;
     card(x, y, 392, 476, "GBA CONTROLLER FEEDBACK");
+    panel_surface(x + 12, y + 36, 368, 420, 9);
     pad_status(status, sizeof status);
     status_line(x + 18, y + 38, 356, ds ? 1 : (pad_count() ? 2 : 3), status);
     ui_text_wrap(F_REG, 11, x + 18, y + 66, 356, C_DIM,
@@ -2577,6 +2584,7 @@ static void sub_gba_dualsense(int g, float x, float y)
 
     float rx = x + 404;
     card(rx, y, 404, 476, "WHAT WORKS IN THE GBA WINDOW");
+    panel_surface(rx + 12, y + 36, 380, 420, 9);
     ui_text(F_BOLD, 13, rx + 18, y + 44, C_TEXT, "Lightbar");
     ui_text_wrap(F_REG, 12, rx + 18, y + 68, 368, C_DIM,
                  "Off, current/preset color, custom color and brightness are applied when the standalone game starts.", 3);
@@ -2592,6 +2600,8 @@ static void sub_textures(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "TEXTURE PACK");
+    panel_surface(x + 12, y + 36, 784, 108, 9);
+    panel_surface(x + 12, y + 156, 784, 304, 9);
     label(x + 18, y + 42, "Pack folder");
     path_box(x + 18, y + 64, 808 - 36 - 330, c->tex_path, "Choose a folder of tile pictures");
     float bx = x + 808 - 18 - 312;
@@ -3100,6 +3110,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
                            (np->state == NETPLAY_CONNECTED ? settings.online_name : ""));
 
     card(x, y, 808, 512, "ONLINE SESSION LOBBY");
+    panel_surface(x + 18, y + 38, 644, 38, 8);
     ui_text_fit(F_REG, 11, x + 20, y + 41, 100, C_MUTED, "INVITE CODE");
     ui_text(F_BOLD, 18, x + 20, y + 56, C_TEXT, np->code[0] ? np->code : "Creating room…");
     if (np->code[0] && ui_button(x + 218, y + 43, 74, 30, "Copy code", B_GHOST, 1)) {
@@ -3188,6 +3199,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         ui_rrect(x + 390, y + 365, 286, 32, 7,
                  online_chat_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
                  (chat_over ? C_BTN_H : C_BTN));
+        field_outline(x + 390, y + 365, 286, 32, 7);
         const char *chat_value = online_chat_buffer[0] ? online_chat_buffer :
                                  (online_chat_editing ? "Type a message…" : "Message (Enter to send)");
         ui_text_fit(F_REG, 11, x + 401, y + 374, 264,
@@ -3223,6 +3235,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         }
         for (int slot = 0; slot < NETPLAY_SHARED_SLOT_COUNT; slot++) {
             float row_y = y + 158 + slot * 21.0f;
+            row_surface(x + 386, row_y - 1, 390, 20, slot == active_slot, 0, 0);
             char slot_name[32], status_text[20];
             int local_saved = 0, peer_saved = -1, pending = 0;
             netplay_shared_slot_name(slot, slot_name, sizeof slot_name);
@@ -3258,6 +3271,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         ui_rrect(x + 500, y + 368, 177, 27, 6,
                  online_save_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
                  (name_over ? C_BTN_H : C_BTN));
+        field_outline(x + 500, y + 368, 177, 27, 6);
         char current_name[32];
         netplay_shared_slot_name(active_slot, current_name, sizeof current_name);
         const char *shown_name = online_save_name_editing
@@ -4326,10 +4340,12 @@ static void deck_editor_list(float x, float y)
     ui_text_fit(F_REG, 10, x + 36, y + 109, 708, C_MUTED,
                 "Choose a game layout. Unreleased layouts are shown here but cannot be edited yet.");
     ui_rect(x + 36, y + 128, 728, 1, C_LINE);
+    panel_surface(x + 28, y + 130, 744, 292, 9);
     for (int g = 0; g < N_GAMES; g++) {
         float ry = y + 134 + g * 39.5f;
         int ready = deck_game_ready(g);
-        if (ready) ui_rrect(x + 32, ry - 2, 734, 35, 7, RGBA(255,255,255, g == companion_editor_game ? 14 : 5));
+        row_surface(x + 32, ry - 2, 734, 35, ready && g == companion_editor_game,
+                    ready && ui_hover(x + 32, ry - 2, 734, 35), g % 2 == 0);
         ui_text_fit(F_BOLD, 11, x + 40, ry + 5, 190, ready ? C_TEXT : C_DIM, games[g].name);
         ui_text_fit(F_REG, 9, x + 238, ry + 6, 105, ready ? C_OK : C_DIM,
                     ready ? "READY TO EDIT" : "COMING SOON");
@@ -4423,6 +4439,7 @@ static void deck_editor_layout(float x, float y)
                 RGBA(112, 225, 255, 245), "31:27 THOR  •  FIT = NO CROP  •  DRAG TO RESIZE");
 
     float rx = x + 350;
+    panel_surface(rx - 10, y + 180, 348, 280, 9);
     ui_text(F_BOLD, 10, rx, y + 190, C_TEXT, "LAYERS & TRANSFORM");
     ui_text_fit(F_REG, 8, rx + 148, y + 190, 180, C_MUTED,
                 "Select, move, reshape");
@@ -4497,7 +4514,7 @@ static void deck_editor_sounds(float x, float y)
     for (int i = 0; i < N_DECK_BUTTON_SOUNDS; i++) {
         int col = i % 2, row = i / 2;
         float bx = x + 36 + col * 365, by = y + 151 + row * 65;
-        ui_rrect(bx, by, 350, 54, 8, C_PANEL);
+        row_surface(bx, by, 350, 54, 0, 0, row % 2 == 0);
         ui_text_fit(F_BOLD, 10, bx + 12, by + 9, 155, C_TEXT, labels[i]);
         ui_text_fit(F_REG, 8, bx + 12, by + 28, 225, C_DIM,
                     d->button_sound_path[i][0] ? d->button_sound_path[i] : "Use built-in / silent default");
@@ -4505,13 +4522,13 @@ static void deck_editor_sounds(float x, float y)
         if (ui_button(bx + 266, by + 13, 72, 29, b, B_GHOST, 1))
             deck_editor_open_picker(DECK_PICK_SOUND_SAVE + i);
     }
-    ui_rrect(x + 36, y + 352, 350, 56, 8, C_PANEL);
+    row_surface(x + 36, y + 352, 350, 56, 0, 0, 0);
     ui_text_fit(F_BOLD, 10, x + 48, y + 362, 170, C_TEXT, "Item used");
     ui_text_fit(F_REG, 8, x + 48, y + 381, 220, C_DIM,
                 d->item_sound_path[0] ? d->item_sound_path : "Choose a sound for a usable item");
     if (ui_button(x + 302, y + 366, 70, 28, "Choose…", B_GHOST, 1))
         deck_editor_open_picker(DECK_PICK_ITEM_SOUND);
-    ui_rrect(x + 402, y + 352, 360, 56, 8, C_PANEL);
+    row_surface(x + 402, y + 352, 360, 56, 0, 0, 1);
     ui_text_fit(F_BOLD, 10, x + 414, y + 362, 180, C_TEXT, "Empty item slot");
     ui_text_fit(F_REG, 8, x + 414, y + 381, 220, C_DIM,
                 d->empty_item_sound_path[0] ? d->empty_item_sound_path : "Choose a sound when the slot is empty");
@@ -4539,7 +4556,7 @@ static void deck_editor_items(float x, float y)
         int item = item_ids[row];
         float ry = y + 153 + row * 82;
         int ready = item != 3 || companion_editor_game == GAME_SML2;
-        ui_rrect(x + 36, ry, 728, 70, 8, C_PANEL);
+        row_surface(x + 36, ry, 728, 70, 0, 0, row % 2 == 0);
         ui_text_fit(F_BOLD, 11, x + 50, ry + 12, 195, ready ? C_TEXT : C_DIM, labels[row]);
         const char *asset_path = d->item_texture_by_id[item];
         int asset_index = 11 + item;
@@ -4609,8 +4626,7 @@ static void deck_editor_assets(float x, float y)
     };
     for (int i = 0; i < (int)(sizeof rows / sizeof rows[0]); i++) {
         float ry = y + 151 + i * 31.0f;
-        ui_rrect(x + 36, ry, 728, 28, 6,
-                 i == 0 ? RGBA(44, 85, 117, 180) : C_PANEL);
+        row_surface(x + 36, ry, 728, 28, 0, 0, i % 2 == 0);
         ui_text_fit(F_BOLD, 9, x + 49, ry + 9, 164, C_TEXT, rows[i].label);
         const char *name = rows[i].path[0] ? path_base(rows[i].path) : "Built-in appearance";
         ui_text_fit(F_REG, 7.5f, x + 218, ry + 9, 140,
@@ -4667,10 +4683,8 @@ static void deck_editor_decorations(float x, float y)
         float colx = x + 36 + (visible % 4) * 183.0f;
         float ry = y + 151 + (visible / 4) * 65.0f;
         int selected = selected_slot == slot;
-        ui_rrect(colx, ry, 174, 56, 7,
-                 selected ? RGBA(65, 130, 190, 68) : C_PANEL);
-        if (selected)
-            ui_stroke(colx, ry, 174, 56, 7, 1.2f, C_ACCENT);
+        row_surface(colx, ry, 174, 56, selected,
+                    ui_hover(colx, ry, 174, 56), 0);
         ui_rrect(colx + 7, ry + 6, 42, 42, 5, RGBA(7, 13, 24, 255));
         ui_stroke(colx + 7, ry + 6, 42, 42, 5, 0.8f, RGBA(77, 111, 149, 180));
         ui_image_file_fit(asset_path, colx + 9, ry + 8, 38, 38);
