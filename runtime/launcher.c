@@ -1497,8 +1497,7 @@ static void sub_display(int g, float x, float y)
     else snprintf(t, sizeof t, "PNG, JPG, BMP, TGA or animated GIF");
     ui_text_fit(F_REG, 11, rx + 18, y + 354 - look_compact, rw - 36, C_DIM, t);
     label(rx + 18, y + 380 - look_compact, "Darken background"); snprintf(t, sizeof t, "%d%%", c->bg_dim); ui_text_r(F_REG, 13, rx + rw - 18, y + 380 - look_compact, C_TEXT, t);
-    ui_slider(rx + 22, y + 402 - look_compact, rw - 44, &c->bg_dim, 0, 80);
-    if (games[g].wide_l + games[g].wide_r > 0) {
+    ui_slider(rx + 22, y + 402 - look_compact, rw - 44, &c->bg_dim, 0, 80);    if (games[g].wide_l + games[g].wide_r > 0) {
         label(rx + 18, y + 428 - look_compact, "Widescreen");
         snprintf(t, sizeof t, "%d%%", c->wide); ui_text_r(F_REG, 13, rx + rw - 18, y + 428 - look_compact, C_TEXT, t);
         if (ui_slider(rx + 22, y + 450 - look_compact, rw - 44, &c->wide, 0, 100)) wide_dirty = g + 1;
@@ -2997,8 +2996,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
     ui_text(F_BOLD, 13, x + 34, y + 94, C_TEXT, "PLAYERS");
     ui_rrect(x + 30, y + 118, 320, 48, 9, RGBA(66, 126, 92, 32));
     ui_text(F_BOLD, 12, x + 44, y + 127, C_TEXT, host_name[0] ? host_name : "Host");
-    ui_text(F_REG, 10, x + 44, y + 145, C_OK, "HOST");
-    ui_rrect(x + 30, y + 176, 320, 48, 9,
+    ui_text(F_REG, 10, x + 44, y + 145, C_OK, "HOST");    ui_rrect(x + 30, y + 176, 320, 48, 9,
              connected ? RGBA(66, 126, 92, 32) : RGBA(237, 180, 81, 18));
     ui_text(F_BOLD, 12, x + 44, y + 185, C_TEXT,
             connected ? guest_name : (np->is_host ? "Waiting for player…" : "Joining room…"));
@@ -4497,8 +4495,7 @@ static void deck_editor_assets(float x, float y)
                       stretch ? B_PRIMARY : B_NORMAL, 1)) {
             deck_editor_snapshot();
             d->asset_stretch[rows[i].asset_index] = !stretch;
-            settings_save();
-        }
+            settings_save();        }
         if (ui_button(x + 536, ry + 3, 82, 22, "Choose…", B_GHOST, 1))
             deck_editor_open_picker(rows[i].kind);
         if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
@@ -5262,7 +5259,7 @@ static void tab_museum(float x, float y)
         museum_scroll = 0;
 
     const float gx = x + 12, gyy = by + 62, gridw = left - 24, gridh = bh - 74;
-    const float tg = 7, tilew = (gridw - 2 * tg) / 3, tileh = 78, step = tileh + 7;
+    const float tg = 7, tilew = (gridw - 2 * tg) / 3, tileh = 86, step = tileh + 7;
     const float content = ((visible + 2) / 3) * step;
     const float maxscroll = content > gridh ? content - gridh : 0;
     if (ui_mouse.x >= gx && ui_mouse.x <= gx + gridw && ui_mouse.y >= gyy &&
@@ -5285,14 +5282,14 @@ static void tab_museum(float x, float y)
         ui_stroke(tx, ty, tilew, tileh, 7, is_sel ? 1.5f : 1,
             is_sel ? HEX(0xF5C842) : HEX(0x3A4563));
         if (is_found) {
-            museum_draw_entry_art(museum_game, e, tx + 6, ty + 5, tilew - 12, 48, 1);
-            ui_text_fit(F_BOLD, 9, tx + 6, ty + 57, tilew - 12, HEX(0xF0F2FA), e->name);
-            ui_text_fit(F_REG, 8, tx + 6, ty + 68, tilew - 12, HEX(0xAAB5D0),
+            museum_draw_entry_art(museum_game, e, tx + 6, ty + 5, tilew - 12, 54, 1);
+            ui_text_fit(F_BOLD, 9, tx + 6, ty + 63, tilew - 12, HEX(0xF0F2FA), e->name);
+            ui_text_fit(F_REG, 8, tx + 6, ty + 75, tilew - 12, HEX(0xAAB5D0),
                 museum_category_name(e->category));
         } else {
-            museum_lock_glyph(tx + tilew * .5f - 12, ty + 10, 24, 30, 0);
-            ui_text_c(F_BOLD, 9, tx + tilew * .5f, ty + 53, HEX(0xD2B77E), "LOCKED");
-            ui_text_c(F_REG, 8, tx + tilew * .5f, ty + 66, HEX(0x8490AC),
+            museum_lock_glyph(tx + tilew * .5f - 13, ty + 9, 26, 34, 0);
+            ui_text_c(F_BOLD, 9, tx + tilew * .5f, ty + 63, HEX(0xD2B77E), "LOCKED");
+            ui_text_c(F_REG, 8, tx + tilew * .5f, ty + 75, HEX(0x8490AC),
                 museum_category_name(e->category));
         }
     }
@@ -5300,32 +5297,32 @@ static void tab_museum(float x, float y)
 
     ui_text(F_BOLD, 11, rx + 13, by + 10, HEX(0xF5C842), "SPECIMEN DETAILS");
     if (entry) {
-        museum_draw_entry_art(museum_game, entry, rx + 13, by + 34, 82, 82, found);
-        float ix = rx + 106, iw = rw - 119;
+        museum_draw_entry_art(museum_game, entry, rx + 13, by + 34, 104, 104, found);
+        float ix = rx + 128, iw = rw - 141;
         if (found) {
-            ui_text_fit(F_BOLD, 14, ix, by + 37, iw, HEX(0xF2F4FA), entry->name);
-            ui_text_fit(F_BOLD, 9, ix, by + 60, iw, HEX(0xF5C842),
+            ui_text_fit(F_BOLD, 14, ix, by + 39, iw, HEX(0xF2F4FA), entry->name);
+            ui_text_fit(F_BOLD, 9, ix, by + 64, iw, HEX(0xF5C842),
                 museum_category_name(entry->category));
-            ui_text(F_REG, 9, ix, by + 79, HEX(0xAEB8D2), "DISCOVERED");
-            ui_text(F_REG, 9, ix, by + 95, HEX(0xAEB8D2), "Found: 1 / 1");
+            ui_text(F_REG, 9, ix, by + 85, HEX(0xAEB8D2), "DISCOVERED");
+            ui_text(F_REG, 9, ix, by + 102, HEX(0xAEB8D2), "Found: 1 / 1");
         } else {
-            ui_text_fit(F_BOLD, 13, ix, by + 38, iw, HEX(0xF2F4FA), "NOT YET UNLOCKED");
-            ui_text(F_BOLD, 9, ix, by + 63, HEX(0xD2B77E), "LOCKED SPECIMEN");
-            ui_text(F_REG, 9, ix, by + 83, HEX(0xAEB8D2), "Found: 0 / 1");
+            ui_text_fit(F_BOLD, 13, ix, by + 40, iw, HEX(0xF2F4FA), "NOT YET UNLOCKED");
+            ui_text(F_BOLD, 9, ix, by + 67, HEX(0xD2B77E), "LOCKED SPECIMEN");
+            ui_text(F_REG, 9, ix, by + 88, HEX(0xAEB8D2), "Found: 0 / 1");
         }
-        ui_line(rx + 13, by + 128, rx + rw - 13, by + 128, 1, HEX(0x3A4563));
-        ui_text(F_BOLD, 10, rx + 13, by + 138, HEX(0xF5C842), found ? "FIELD NOTES" : "UNDISCOVERED");
+        ui_line(rx + 13, by + 128, rx + rw - 13, by + 150, 1, HEX(0x3A4563));
+        ui_text(F_BOLD, 10, rx + 13, by + 160, HEX(0xF5C842), found ? "FIELD NOTES" : "UNDISCOVERED");
         if (found)
-            ui_text_wrap(F_REG, 10, rx + 13, by + 158, rw - 26, HEX(0xD6DCEC),
+            ui_text_wrap(F_REG, 10, rx + 13, by + 180, rw - 26, HEX(0xD6DCEC),
                 entry->description, 1.12f);
         else
-            ui_text_wrap(F_REG, 10, rx + 13, by + 158, rw - 26, HEX(0xAEB8D2),
+            ui_text_wrap(F_REG, 10, rx + 13, by + 180, rw - 26, HEX(0xAEB8D2),
                 "Encounter this specimen in-game to reveal its name, artwork, and field notes.", 1.12f);
-        ui_line(rx + 13, by + 244, rx + rw - 13, by + 244, 1, HEX(0x3A4563));
-        ui_text(F_BOLD, 9, rx + 13, by + 253, HEX(0xF5C842), "GAME");
-        ui_text_fit(F_REG, 9, rx + 52, by + 253, rw - 65, HEX(0xD6DCEC), games[museum_game].name);
-        ui_text(F_BOLD, 9, rx + 13, by + 273, HEX(0xF5C842), "PROGRESS");
-        ui_text_fit(F_REG, 9, rx + 75, by + 273, rw - 88, HEX(0xD6DCEC), progress);
+        ui_line(rx + 13, by + 244, rx + rw - 13, by + 264, 1, HEX(0x3A4563));
+        ui_text(F_BOLD, 9, rx + 13, by + 274, HEX(0xF5C842), "GAME");
+        ui_text_fit(F_REG, 9, rx + 52, by + 274, rw - 65, HEX(0xD6DCEC), games[museum_game].name);
+        ui_text(F_BOLD, 9, rx + 13, by + 294, HEX(0xF5C842), "PROGRESS");
+        ui_text_fit(F_REG, 9, rx + 75, by + 294, rw - 88, HEX(0xD6DCEC), progress);
     } else {
         ui_text_c(F_BOLD, 15, rx + rw * .5f, by + 142, HEX(0xD2B77E), "NO MATCHING ENTRIES");
         ui_text_c(F_REG, 9, rx + rw * .5f, by + 166, HEX(0xAEB8D2), "Try another category or filter");
@@ -5998,86 +5995,3 @@ void launcher_event(const SDL_Event *e)
             }
         }
         return;
-    }
-    if (e->type == SDL_KEYDOWN && !e->key.repeat) {
-        if (e->key.keysym.sym == SDLK_TAB && (e->key.keysym.mod & KMOD_CTRL)) tab = (tab + 1) % N_TABS;
-    }
-}
-
-static int ends_with(const char *s, const char *ext)
-{
-    size_t a = strlen(s), b = strlen(ext);
-    if (a < b) return 0;
-    for (size_t i = 0; i < b; i++) if ((s[a - b + i] | 32) != (ext[i] | 32)) return 0;
-    return 1;
-}
-
-void launcher_drop(const char *path)
-{
-    int g = launcher_current_game();
-    int is_patch = ends_with(path, ".ips") || ends_with(path, ".bps") || ends_with(path, ".ups");
-    int is_gb_rom = ends_with(path, ".gb") || ends_with(path, ".gbc");
-
-    /* On the ROM Hacks tab, a supported full patched ROM is a secondary
-     * profile, not a replacement for the game's configured base ROM. */
-    if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS && (is_patch || is_gb_rom)) {
-        romhack_add(tab, path);
-        return;
-    }
-
-    int id = rom_identify_file(path);
-    if (id >= 0) {
-        snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", path);
-        rom_check(id);
-        if (rs[id].ok) make_preview(id);
-        /* Drag-and-drop is also a ROM selection; save its path immediately. */
-        settings_save();
-        tab = id;
-        launcher_toast(rs[id].ok ? "ROM added." : rs[id].msg);
-        return;
-    }
-    if (is_patch) {
-        if (tab >= N_GAMES) tab = g;
-        if (tab >= 0 && tab < N_GAMES) {
-            romhack_add(tab, path);
-            sub[tab] = SUB_ROMHACKS;
-        } else launcher_toast("Choose a game's tab before adding a ROM hack.");
-        return;
-    }
-    if (ends_with(path, ".png") || ends_with(path, ".jpg") || ends_with(path, ".jpeg") || ends_with(path, ".bmp") || ends_with(path, ".gif") || ends_with(path, ".tga")) {
-        if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS &&
-            settings.g[tab].romhack_selected >= 0 &&
-            settings.g[tab].romhack_selected < settings.g[tab].romhack_count) {
-            RomHackEntry *entry = &settings.g[tab].romhacks[settings.g[tab].romhack_selected];
-            snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", path);
-            clear_romhack_thumbs_game(tab);
-            settings_save();
-            launcher_toast("ROM hack thumbnail changed.");
-            return;
-        }
-        if (tab >= N_GAMES) tab = g;
-        snprintf(settings.g[tab].bg_path, sizeof settings.g[tab].bg_path, "%s", path);
-        ensure_background(tab);
-        launcher_toast(bg_msg[0] ? bg_msg : "Background changed.");
-        return;
-    }
-    if (ends_with(path, ".wav") || ends_with(path, ".mp3") || ends_with(path, ".ogg") || ends_with(path, ".flac")) {
-        snprintf(settings.menu_music_path, sizeof settings.menu_music_path, "%s", path);
-        audio_menu_apply();
-        tab = TAB_AUDIO;
-        launcher_toast(settings.menu_music_path[0] ? "Menu music changed." : "Couldn't read that audio file.");
-        return;
-    }
-    if (is_gb_rom) { launcher_toast("That ROM isn't one of the supported games."); return; }
-    /* a folder: texture pack */
-    {
-        SDL_RWops *r = SDL_RWFromFile(path, "rb");
-        if (r) { SDL_RWclose(r); launcher_toast("Not a file type I know."); return; }
-        if (tab >= N_GAMES) tab = g;
-        snprintf(settings.g[tab].tex_path, sizeof settings.g[tab].tex_path, "%s", path);
-        settings.g[tab].tex_on = 1;
-        loaded_pack_game = -1;
-        sub[tab] = SUB_TEXTURES;
-        launcher_toast("Texture pack folder set.");
-    }
-}
