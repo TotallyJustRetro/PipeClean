@@ -5144,256 +5144,193 @@ static void tab_museum_romhacks(float x, float y, float width)
 
 static void tab_museum(float x, float y)
 {
-    static const char *game_labels[] = {
-        "Dr. Mario", "Mario Land", "Land 2", "Wario Land",
-        "Wario II · GB", "Wario III · GBC", "Wario II · GBC"
-    };
-    static const char *category_labels[] = {
-        "All", "Enemies", "Items", "Treasures", "Stages", "Milestones", "Characters"
-    };
-    static const int category_values[] = {
-        MUSEUM_CATEGORY_ALL, MUSEUM_CATEGORY_ENEMY, MUSEUM_CATEGORY_ITEM,
-        MUSEUM_CATEGORY_TREASURE, MUSEUM_CATEGORY_STAGE,
-        MUSEUM_CATEGORY_MILESTONE, MUSEUM_CATEGORY_CHARACTER
-    };
-    /* Treasures are a Wario-series mechanic. Keep that filter out of Mario
-       and Dr. Mario tabs rather than showing an empty, misleading category. */
-    const int has_treasures = museum_game == GAME_WARIO_SML3 ||
-        museum_game == GAME_WARIO_LAND2_GB ||
-        museum_game == GAME_WARIO_LAND2_GBC ||
-        museum_game == GAME_WARIO_LAND3_GBC;
-    const int category_count = has_treasures ? 7 : 6;
-    static const char *filter_labels[] = {"All Entries", "Collected", "Undiscovered"};
-    const float width = 808.0f;
-    const int museum_game_count = (int)(sizeof game_labels / sizeof game_labels[0]);
-    ui_accent = museum_hacks_view ? 0xC77B44u : games[museum_game].accent;
-    const float game_gap = 4.0f, game_h = 27.0f;
-    const float game_w = (width - game_gap * museum_game_count) / (float)(museum_game_count + 1);
-    for (int g = 0; g < museum_game_count; ++g) {
-        float bx = x + g * (game_w + game_gap);
-        if (ui_chip(bx, y, game_w, game_h, game_labels[g],
-                    !museum_hacks_view && g == museum_game)) {
-            museum_game = g; museum_hacks_view = 0; museum_scroll = 0.0f;
-            museum_selected[g] = 0;
-            museum_reset_confirm = 0;
+    static const int game_ids[] = {GAME_DRMARIO, GAME_SML, GAME_SML2, GAME_WARIO_SML3,
+        GAME_WARIO_LAND2_GB, GAME_WARIO_LAND3_GBC, GAME_WARIO_LAND2_GBC};
+    static const char *game_labels[] = {"Dr. Mario", "Mario Land", "Land 2", "Wario Land",
+        "Wario II · GB", "Wario III · GBC", "Wario II · GBC"};
+    static const int cats[] = {MUSEUM_CATEGORY_ALL, MUSEUM_CATEGORY_ENEMY, MUSEUM_CATEGORY_ITEM,
+        MUSEUM_CATEGORY_TREASURE, MUSEUM_CATEGORY_STAGE, MUSEUM_CATEGORY_MILESTONE,
+        MUSEUM_CATEGORY_CHARACTER};
+    static const char *cat_names[] = {"All", "Enemies", "Items", "Treasures",
+        "Stages", "Milestones", "Characters"};
+    static const char *filters[] = {"All Entries", "Collected", "Undiscovered"};
+    const float w = 808.0f;
+    const int ng = (int)(sizeof game_ids / sizeof game_ids[0]);
+    const int treasures = museum_game == GAME_WARIO_SML3 || museum_game == GAME_WARIO_LAND2_GB ||
+        museum_game == GAME_WARIO_LAND2_GBC || museum_game == GAME_WARIO_LAND3_GBC;
+    const int nc = treasures ? 7 : 6;
+
+    /* New navy-and-gold presentation; catalogue, discoveries, assets and saves
+       remain owned by the original Museum backend. */
+    int total_found = 0, total = 0;
+    for (int k = 0; k < ng; ++k) {
+        total_found += museum_discovered_count(game_ids[k]);
+        total += museum_catalog_count(game_ids[k]);
+    }
+    char total_label[48];
+    snprintf(total_label, sizeof total_label, "%d / %d", total_found, total);
+    ui_rrect(x, y, w, 55, 10, HEX(0x171D32));
+    ui_stroke(x, y, w, 55, 10, 1.5f, RGBA(245, 200, 66, 75));
+    ui_text(F_BOLD, 18, x + 16, y + 8, HEX(0xF5C842), "MUSEUM");
+    ui_text(F_REG, 10, x + 17, y + 32, HEX(0xAEB8D2),
+            "A living field guide of the things you discover while playing");
+    ui_text_r(F_BOLD, 15, x + w - 16, y + 9, HEX(0xF5C842), total_label);
+    ui_text_r(F_REG, 9, x + w - 16, y + 31, HEX(0xAEB8D2), "DISCOVERED");
+
+    const float gy = y + 62, gg = 4, gw = (w - gg * (ng - 1)) / ng;
+    for (int k = 0; k < ng; ++k) {
+        if (ui_chip(x + k * (gw + gg), gy, gw, 25, game_labels[k],
+                    !museum_hacks_view && museum_game == game_ids[k])) {
+            museum_game = game_ids[k]; museum_hacks_view = 0; museum_scroll = 0;
+            museum_category = MUSEUM_CATEGORY_ALL; museum_filter_mode = 0;
+            museum_selected[museum_game] = 0; museum_reset_confirm = 0;
         }
     }
-    const float hacks_x = x + museum_game_count * (game_w + game_gap);
-    if (ui_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view)) {
-        museum_hacks_view = 1; museum_hack_scroll = 0.0f;
-        museum_reset_confirm = 0;
+    if (ui_chip(x + w - 105, gy + 29, 105, 23, "ROM HACKS", museum_hacks_view)) {
+        museum_hacks_view = 1; museum_hack_scroll = 0; museum_reset_confirm = 0;
     }
     if (museum_hacks_view) {
-        static const char *hack_filters[] = {"All Profiles", "File Available", "Missing File"};
-        for (int i = 0; i < 3; ++i) {
-            if (ui_chip(x + i * 136.0f, y + 31, 130, 25, hack_filters[i],
-                        museum_hacks_filter == i)) {
-                museum_hacks_filter = i; museum_hack_scroll = 0.0f;
+        static const char *hf[] = {"All Profiles", "File Available", "Missing File"};
+        for (int k = 0; k < 3; ++k)
+            if (ui_chip(x + k * 136, gy + 29, 130, 23, hf[k], museum_hacks_filter == k)) {
+                museum_hacks_filter = k; museum_hack_scroll = 0;
             }
-        }
-        tab_museum_romhacks(x, y, width);
+        tab_museum_romhacks(x, y, w);
         return;
     }
 
-    /* Keep reset in this fixed header row, outside the scrollable specimen
-       grid. On short/touch displays, footer controls could be mistaken for
-       the last visible discovery tile. */
-    const float cat_gap = 4.0f;
-    const float reset_w = 124.0f;
-    const float cat_area_w = width - reset_w - cat_gap;
-    const float cat_w = (cat_area_w - cat_gap * (category_count - 1)) / (float)category_count;
-    for (int i = 0; i < category_count; ++i) {
-        int category_index = i;
-        if (!has_treasures && i >= 3) category_index = i + 1;
-        float bx = x + i * (cat_w + cat_gap);
-        if (ui_chip(bx, y + 31, cat_w, 25, category_labels[category_index],
-                    museum_category == category_values[category_index])) {
-            museum_category = category_values[category_index]; museum_scroll = 0.0f;
-            museum_reset_confirm = 0;
+    const float cy = y + 91, reset_w = 105, cg = 4, ca = w - reset_w - cg;
+    const float cw = (ca - cg * (nc - 1)) / nc;
+    for (int k = 0; k < nc; ++k) {
+        int ci = (!treasures && k >= 3) ? k + 1 : k;
+        if (ui_chip(x + k * (cw + cg), cy, cw, 23, cat_names[ci],
+                    museum_category == cats[ci])) {
+            museum_category = cats[ci]; museum_scroll = 0; museum_reset_confirm = 0;
         }
     }
-
-    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until)
-        museum_reset_confirm = 0;
-    if (ui_button(x + cat_area_w + cat_gap, y + 31, reset_w, 25,
+    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until) museum_reset_confirm = 0;
+    if (ui_button(x + ca + cg, cy, reset_w, 23,
                   museum_reset_confirm ? "Confirm reset" : "Reset all",
                   museum_reset_confirm ? B_DANGER : B_GHOST, 1)) {
         if (!museum_reset_confirm) {
-            museum_reset_confirm = 1;
-            museum_reset_confirm_until = anim_clock + 4.0f;
-            launcher_toast("Press Confirm reset within 4 seconds to clear discoveries for every game.");
+            museum_reset_confirm = 1; museum_reset_confirm_until = anim_clock + 4.0f;
+            launcher_toast("Press Confirm reset within 4 seconds to clear every game's discoveries.");
         } else if (museum_clear_discoveries()) {
-            museum_reset_confirm = 0;
-            museum_category = MUSEUM_CATEGORY_ALL;
-            museum_filter_mode = 0;
-            museum_scroll = 0.0f;
-            for (int game = 0; game < N_GAMES; ++game)
-                museum_selected[game] = 0;
-            launcher_toast("All Museum discoveries cleared. Play again to start a fresh collection.");
+            museum_reset_confirm = 0; museum_category = MUSEUM_CATEGORY_ALL;
+            museum_filter_mode = 0; museum_scroll = 0;
+            for (int k = 0; k < N_GAMES; ++k) museum_selected[k] = 0;
+            launcher_toast("All Museum discoveries cleared.");
         } else {
             museum_reset_confirm = 0;
-            launcher_toast(museum_last_storage_error()[0]
-                ? museum_last_storage_error() : "Couldn't reset Museum discoveries.");
+            launcher_toast(museum_last_storage_error()[0] ? museum_last_storage_error() :
+                "Couldn't reset Museum discoveries.");
         }
     }
 
-    int all_count = museum_catalog_count(museum_game);
-    int found_count = museum_discovered_count(museum_game);
-    int visible = museum_visible_count();
-    int selected_index = museum_selected[museum_game];
-    const MuseumEntry *selected = museum_catalog_entry(museum_game, selected_index);
-    if (!museum_entry_matches(selected)) {
-        selected_index = museum_first_visible();
-        museum_selected[museum_game] = selected_index >= 0 ? selected_index : 0;
-        selected = museum_catalog_entry(museum_game, museum_selected[museum_game]);
+    const int count = museum_catalog_count(museum_game);
+    const int found_count = museum_discovered_count(museum_game);
+    const int visible = museum_visible_count();
+    int sel = museum_selected[museum_game];
+    const MuseumEntry *entry = sel >= 0 && sel < count ? museum_catalog_entry(museum_game, sel) : NULL;
+    if (!museum_entry_matches(entry)) {
+        sel = museum_first_visible(); museum_selected[museum_game] = sel;
+        entry = sel >= 0 ? museum_catalog_entry(museum_game, sel) : NULL;
     }
-    int selected_found = selected && museum_is_discovered(museum_game, selected->id);
+    const int found = entry && museum_is_discovered(museum_game, entry->id);
+    const float by = y + 120, bh = 356, left = 492, gap = 8;
+    const float rx = x + left + gap, rw = w - left - gap;
+    ui_rrect(x, by, left, bh, 10, HEX(0x151B2D));
+    ui_stroke(x, by, left, bh, 10, 1, RGBA(245, 200, 66, 38));
+    ui_rrect(rx, by, rw, bh, 10, HEX(0x151B2D));
+    ui_stroke(rx, by, rw, bh, 10, 1, RGBA(245, 200, 66, 38));
 
-    const float body_y = y + 63.0f, body_h = 413.0f;
-    const float left_w = 450.0f, gap = 8.0f, right_x = x + left_w + gap;
-    const float right_w = width - left_w - gap;
+    ui_text(F_BOLD, 11, x + 13, by + 10, HEX(0xF5C842), "COLLECTION");
+    char progress[48]; snprintf(progress, sizeof progress, "%d / %d", found_count, count);
+    ui_text_r(F_BOLD, 10, x + left - 13, by + 11, HEX(0xD9E0F2), progress);
+    if (ui_seg(x + 12, by + 31, left - 24, 22, filters, 3, &museum_filter_mode))
+        museum_scroll = 0;
 
-    /* Original handheld palette: warm paper, dark ink and a timber header. */
-    ui_rrect(x, body_y, width, body_h, 9, HEX(0x302016));
-    ui_stroke(x, body_y, width, body_h, 9, 2, HEX(0x0E0A08));
-
-    /* Detail / field-guide side. */
-    ui_rrect(x + 5, body_y + 5, left_w - 10, body_h - 10, 5, HEX(0xF2E5B7));
-    ui_rrect(x + 5, body_y + 5, left_w - 10, 25, 4, HEX(0x84340F));
-    ui_text(F_BOLD, 13, x + 16, body_y + 9, HEX(0xFFF3D4), "FIELD GUIDE");
-    ui_text_r(F_BOLD, 11, x + left_w - 16, body_y + 10, HEX(0xF4D19A),
-              selected_found ? museum_category_name(selected->category) :
-              (selected ? "LOCKED" : "EMPTY"));
-
-    museum_draw_entry_art(museum_game, selected, x + 13, body_y + 39, 108, 108,
-                          selected_found);
-    const float info_x = x + 132;
-    char provenance[120];
-    snprintf(provenance, sizeof provenance, "%s: %s",
-             selected_found ? "First seen" : "Game", games[museum_game].name);
-    if (selected_found && selected) {
-        ui_text_fit(F_BOLD, 18, info_x, body_y + 42, left_w - 153,
-                    HEX(0x25170E), selected->name);
-        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "SPECIMEN RECORDED");
-        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 1 / 1");
-        ui_text(F_REG, 10, info_x, body_y + 101, HEX(0x65452F),
-                rs[museum_game].ok ? "Cartridge: ready" : "Add this game's ROM for sprite capture");
-        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
-    } else {
-        ui_text_fit(F_BOLD, 17, info_x, body_y + 42, left_w - 153,
-                    HEX(0x25170E), "NOT YET UNLOCKED");
-        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "LOCKED SPECIMEN");
-        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 0 / 1");
-        ui_text_wrap(F_REG, 10, info_x, body_y + 101, left_w - 153, HEX(0x65452F),
-                     "This entry hasn't been unlocked. Discover it in-game to reveal its details.", 1.0f);
-        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
-    }
-
-    ui_line(x + 13, body_y + 156, x + left_w - 13, body_y + 156, 2, HEX(0xB87C3A));
-    ui_text(F_BOLD, 12, x + 15, body_y + 164, HEX(0x5F2E16),
-            selected_found ? "FIELD NOTES" : "LOCKED ENTRY");
-    if (selected_found && selected) {
-        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
-                     HEX(0x33251A), selected->description, 1.15f);
-    } else {
-        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
-                     HEX(0x65452F),
-                     "This entry hasn't been unlocked yet. Play the game and encounter it to reveal the name, sprite, and description.",
-                     1.15f);
-    }
-
-    ui_line(x + 13, body_y + 268, x + left_w - 13, body_y + 268, 1, HEX(0xC79A62));
-    ui_text(F_BOLD, 11, x + 15, body_y + 276, HEX(0x5F2E16), "RECENT DISCOVERIES");
-    int recent = 0;
-    for (int i = all_count - 1; i >= 0 && recent < 2; --i) {
-        const MuseumEntry *entry = museum_catalog_entry(museum_game, i);
-        if (!entry || !museum_is_discovered(museum_game, entry->id) ||
-            (selected && !strcmp(selected->id, entry->id))) continue;
-        float ry = body_y + 297 + recent * 49.0f;
-        museum_draw_entry_art(museum_game, entry, x + 15, ry, 38, 38, 1);
-        ui_text_fit(F_BOLD, 11, x + 62, ry + 2, left_w - 83,
-                    HEX(0x33251A), entry->name);
-        ui_text_fit(F_REG, 9, x + 62, ry + 20, left_w - 83,
-                    HEX(0x795A3B), museum_category_name(entry->category));
-        recent++;
-    }
-    if (!recent)
-        ui_text(F_REG, 10, x + 15, body_y + 300, HEX(0x795A3B),
-                "Your discoveries will be catalogued here.");
-
-    /* Collection shelf. The unknown slots look like a retro museum display. */
-    ui_rrect(right_x, body_y + 5, right_w - 5, body_h - 10, 5, HEX(0xA75A2D));
-    ui_stroke(right_x, body_y + 5, right_w - 5, body_h - 10, 5, 1, HEX(0x552713));
-    ui_rrect(right_x + 5, body_y + 10, right_w - 15, 25, 4, HEX(0x81320F));
-    ui_text(F_BOLD, 12, right_x + 14, body_y + 15, HEX(0xFFF0D1), "COLLECTION SHELF");
-    char progress[64];
-    snprintf(progress, sizeof progress, "%d / %d", found_count, all_count);
-    ui_text_r(F_BOLD, 11, right_x + right_w - 13, body_y + 16, HEX(0xF6D19A), progress);
-    if (ui_seg(right_x + 9, body_y + 40, right_w - 27, 24,
-               filter_labels, 3, &museum_filter_mode))
-        museum_scroll = 0.0f;
-
-    const float grid_x = right_x + 9, grid_y = body_y + 71;
-    const float grid_w = right_w - 27, grid_h = body_h - 83;
-    const float tile_gap_x = 7.0f, tile_gap_y = 7.0f;
-    const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
-    const float tile_h = 75.0f, row_step = tile_h + tile_gap_y;
-    int rows = (visible + 2) / 3;
-    float content_h = rows * row_step;
-    float max_scroll = content_h > grid_h ? content_h - grid_h : 0.0f;
-    if (ui_mouse.x >= grid_x && ui_mouse.x <= grid_x + grid_w &&
-        ui_mouse.y >= grid_y && ui_mouse.y <= grid_y + grid_h &&
-        ui_mouse.wheel != 0.0f)
-        museum_scroll -= ui_mouse.wheel * row_step;
-    if (museum_scroll < 0.0f) museum_scroll = 0.0f;
-    if (museum_scroll > max_scroll) museum_scroll = max_scroll;
-
-    ui_clip(grid_x, grid_y, grid_w, grid_h);
+    const float gx = x + 12, gyy = by + 62, gridw = left - 24, gridh = bh - 74;
+    const float tg = 7, tilew = (gridw - 2 * tg) / 3, tileh = 78, step = tileh + 7;
+    const float content = ((visible + 2) / 3) * step;
+    const float maxscroll = content > gridh ? content - gridh : 0;
+    if (ui_mouse.x >= gx && ui_mouse.x <= gx + gridw && ui_mouse.y >= gyy &&
+        ui_mouse.y <= gyy + gridh && ui_mouse.wheel) museum_scroll -= ui_mouse.wheel * step;
+    if (museum_scroll < 0) museum_scroll = 0;
+    if (museum_scroll > maxscroll) museum_scroll = maxscroll;
+    ui_clip(gx, gyy, gridw, gridh);
     int shown = 0;
-    for (int i = 0; i < all_count; ++i) {
-        const MuseumEntry *entry = museum_catalog_entry(museum_game, i);
-        if (!museum_entry_matches(entry)) continue;
-        int row = shown / 3, col = shown % 3;
-        shown++;
-        float tx = grid_x + col * (tile_w + tile_gap_x);
-        float ty = grid_y + row * row_step - museum_scroll;
-        if (ty + tile_h < grid_y || ty > grid_y + grid_h) continue;
-        int found = museum_is_discovered(museum_game, entry->id);
-        int selected_tile = selected && !strcmp(selected->id, entry->id);
-        if (ui_button(tx, ty, tile_w, tile_h, "", selected_tile ? B_PRIMARY : B_NORMAL, 1)) {
-            museum_selected[museum_game] = i;
-        }
-        ui_rrect(tx + 3, ty + 3, tile_w - 6, 51, 3,
-                 found ? HEX(0xE9D6A5) : HEX(0x814322));
-        if (found) {
-            museum_draw_entry_art(museum_game, entry, tx + 9, ty + 5, tile_w - 18, 47, 1);
-            ui_text_fit(F_BOLD, 9, tx + 4, ty + 57, tile_w - 8,
-                        HEX(0xFFF0D5), entry->name);
+    for (int k = 0; k < count; ++k) {
+        const MuseumEntry *e = museum_catalog_entry(museum_game, k);
+        if (!museum_entry_matches(e)) continue;
+        int row = shown / 3, col = shown % 3; ++shown;
+        float tx = gx + col * (tilew + tg), ty = gyy + row * step - museum_scroll;
+        if (ty + tileh < gyy || ty > gyy + gridh) continue;
+        int is_found = museum_is_discovered(museum_game, e->id);
+        int is_sel = entry && !strcmp(entry->id, e->id), over = 0;
+        if (clickable(tx, ty, tilew, tileh, &over)) museum_selected[museum_game] = k;
+        ui_rrect(tx, ty, tilew, tileh, 7, is_sel ? HEX(0x303B60) :
+            over ? HEX(0x252F4B) : HEX(0x1D263D));
+        ui_stroke(tx, ty, tilew, tileh, 7, is_sel ? 1.5f : 1,
+            is_sel ? HEX(0xF5C842) : HEX(0x3A4563));
+        if (is_found) {
+            museum_draw_entry_art(museum_game, e, tx + 6, ty + 5, tilew - 12, 48, 1);
+            ui_text_fit(F_BOLD, 9, tx + 6, ty + 57, tilew - 12, HEX(0xF0F2FA), e->name);
+            ui_text_fit(F_REG, 8, tx + 6, ty + 68, tilew - 12, HEX(0xAAB5D0),
+                museum_category_name(e->category));
         } else {
-            museum_lock_glyph(tx + 13, ty + 5, tile_w - 26, 46, 0);
-            ui_text_c(F_BOLD, 9, tx + tile_w * 0.5f, ty + 57, HEX(0xDDB98C), "LOCKED");
+            museum_lock_glyph(tx + tilew * .5f - 12, ty + 10, 24, 30, 0);
+            ui_text_c(F_BOLD, 9, tx + tilew * .5f, ty + 53, HEX(0xD2B77E), "LOCKED");
+            ui_text_c(F_REG, 8, tx + tilew * .5f, ty + 66, HEX(0x8490AC),
+                museum_category_name(e->category));
         }
-        if (selected_tile)
-            ui_stroke(tx + 1, ty + 1, tile_w - 2, tile_h - 2, 5, 2, HEX(0xFFE39A));
     }
     ui_unclip();
 
-    ui_text(F_BOLD, 10, x + 3, y + 486, HEX(0xD8B78A), "Discovery alerts");
-    if (ui_toggle(x + 112, y + 481, &settings.museum_discovery_notifications)) {
-        settings_save();
-        launcher_toast(settings.museum_discovery_notifications
-            ? "Museum discovery notifications enabled."
-            : "Museum discovery notifications disabled.");
+    ui_text(F_BOLD, 11, rx + 13, by + 10, HEX(0xF5C842), "SPECIMEN DETAILS");
+    if (entry) {
+        museum_draw_entry_art(museum_game, entry, rx + 13, by + 34, 82, 82, found);
+        float ix = rx + 106, iw = rw - 119;
+        if (found) {
+            ui_text_fit(F_BOLD, 14, ix, by + 37, iw, HEX(0xF2F4FA), entry->name);
+            ui_text_fit(F_BOLD, 9, ix, by + 60, iw, HEX(0xF5C842),
+                museum_category_name(entry->category));
+            ui_text(F_REG, 9, ix, by + 79, HEX(0xAEB8D2), "DISCOVERED");
+            ui_text(F_REG, 9, ix, by + 95, HEX(0xAEB8D2), "Found: 1 / 1");
+        } else {
+            ui_text_fit(F_BOLD, 13, ix, by + 38, iw, HEX(0xF2F4FA), "NOT YET UNLOCKED");
+            ui_text(F_BOLD, 9, ix, by + 63, HEX(0xD2B77E), "LOCKED SPECIMEN");
+            ui_text(F_REG, 9, ix, by + 83, HEX(0xAEB8D2), "Found: 0 / 1");
+        }
+        ui_line(rx + 13, by + 128, rx + rw - 13, by + 128, 1, HEX(0x3A4563));
+        ui_text(F_BOLD, 10, rx + 13, by + 138, HEX(0xF5C842), found ? "FIELD NOTES" : "UNDISCOVERED");
+        if (found)
+            ui_text_wrap(F_REG, 10, rx + 13, by + 158, rw - 26, HEX(0xD6DCEC),
+                entry->description, 1.12f);
+        else
+            ui_text_wrap(F_REG, 10, rx + 13, by + 158, rw - 26, HEX(0xAEB8D2),
+                "Encounter this specimen in-game to reveal its name, artwork, and field notes.", 1.12f);
+        ui_line(rx + 13, by + 244, rx + rw - 13, by + 244, 1, HEX(0x3A4563));
+        ui_text(F_BOLD, 9, rx + 13, by + 253, HEX(0xF5C842), "GAME");
+        ui_text_fit(F_REG, 9, rx + 52, by + 253, rw - 65, HEX(0xD6DCEC), games[museum_game].name);
+        ui_text(F_BOLD, 9, rx + 13, by + 273, HEX(0xF5C842), "PROGRESS");
+        ui_text_fit(F_REG, 9, rx + 75, by + 273, rw - 88, HEX(0xD6DCEC), progress);
+    } else {
+        ui_text_c(F_BOLD, 15, rx + rw * .5f, by + 142, HEX(0xD2B77E), "NO MATCHING ENTRIES");
+        ui_text_c(F_REG, 9, rx + rw * .5f, by + 166, HEX(0xAEB8D2), "Try another category or filter");
     }
-    ui_text_fit(F_REG, 10, x + 164, y + 486, 430, C_DIM,
-                settings.museum_discovery_notifications
-                    ? "Pop-ups appear over gameplay."
-                    : "Pop-ups off; progress still saves.");
 
-    /* Reset action is handled beside the category filters above. */
+    ui_text(F_BOLD, 9, x + 3, y + 483, HEX(0xD8B78A), "Discovery alerts");
+    if (ui_toggle(x + 105, y + 478, &settings.museum_discovery_notifications)) {
+        settings_save();
+        launcher_toast(settings.museum_discovery_notifications ?
+            "Museum discovery notifications enabled." : "Museum discovery notifications disabled.");
+    }
+    ui_text_fit(F_REG, 9, x + 155, y + 483, 430, C_DIM,
+        settings.museum_discovery_notifications ? "Pop-ups appear over gameplay." :
+        "Pop-ups off; progress still saves.");
     if (museum_last_storage_error()[0])
-        ui_text_fit(F_REG, 9, x + 3, y + 503, width - 6, C_ERR,
-                    museum_last_storage_error());
+        ui_text_fit(F_REG, 8, x + 3, y + 500, w - 6, C_ERR, museum_last_storage_error());
 }
 
 /* ------------------------------------------------------------------ frame */
