@@ -6059,3 +6059,86 @@ void launcher_event(const SDL_Event *e)
             }
         }
         return;
+    }
+    if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+        if (e->key.keysym.sym == SDLK_TAB && (e->key.keysym.mod & KMOD_CTRL)) tab = (tab + 1) % N_TABS;
+    }
+}
+
+static int ends_with(const char *s, const char *ext)
+{
+    size_t a = strlen(s), b = strlen(ext);
+    if (a < b) return 0;
+    for (size_t i = 0; i < b; i++) if ((s[a - b + i] | 32) != (ext[i] | 32)) return 0;
+    return 1;
+}
+
+void launcher_drop(const char *path)
+{
+    int g = launcher_current_game();
+    int is_patch = ends_with(path, ".ips") || ends_with(path, ".bps") || ends_with(path, ".ups");
+    int is_gb_rom = ends_with(path, ".gb") || ends_with(path, ".gbc");
+
+    /* On the ROM Hacks tab, a supported full patched ROM is a secondary
+     * profile, not a replacement for the game's configured base ROM. */
+    if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS && (is_patch || is_gb_rom)) {
+        romhack_add(tab, path);
+        return;
+    }
+
+    int id = rom_identify_file(path);
+    if (id >= 0) {
+        snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", path);
+        rom_check(id);
+        if (rs[id].ok) make_preview(id);
+        /* Drag-and-drop is also a ROM selection; save its path immediately. */
+        settings_save();
+        tab = id;
+        launcher_toast(rs[id].ok ? "ROM added." : rs[id].msg);
+        return;
+    }
+    if (is_patch) {
+        if (tab >= N_GAMES) tab = g;
+        if (tab >= 0 && tab < N_GAMES) {
+            romhack_add(tab, path);
+            sub[tab] = SUB_ROMHACKS;
+        } else launcher_toast("Choose a game's tab before adding a ROM hack.");
+        return;
+    }
+    if (ends_with(path, ".png") || ends_with(path, ".jpg") || ends_with(path, ".jpeg") || ends_with(path, ".bmp") || ends_with(path, ".gif") || ends_with(path, ".tga")) {
+        if (tab < N_GAMES && sub[tab] == SUB_ROMHACKS &&
+            settings.g[tab].romhack_selected >= 0 &&
+            settings.g[tab].romhack_selected < settings.g[tab].romhack_count) {
+            RomHackEntry *entry = &settings.g[tab].romhacks[settings.g[tab].romhack_selected];
+            snprintf(entry->thumbnail, sizeof entry->thumbnail, "%s", path);
+            clear_romhack_thumbs_game(tab);
+            settings_save();
+            launcher_toast("ROM hack thumbnail changed.");
+            return;
+        }
+        if (tab >= N_GAMES) tab = g;
+        snprintf(settings.g[tab].bg_path, sizeof settings.g[tab].bg_path, "%s", path);
+        ensure_background(tab);
+        launcher_toast(bg_msg[0] ? bg_msg : "Background changed.");
+        return;
+    }
+    if (ends_with(path, ".wav") || ends_with(path, ".mp3") || ends_with(path, ".ogg") || ends_with(path, ".flac")) {
+        snprintf(settings.menu_music_path, sizeof settings.menu_music_path, "%s", path);
+        audio_menu_apply();
+        tab = TAB_AUDIO;
+        launcher_toast(settings.menu_music_path[0] ? "Menu music changed." : "Couldn't read that audio file.");
+        return;
+    }
+    if (is_gb_rom) { launcher_toast("That ROM isn't one of the supported games."); return; }
+    /* a folder: texture pack */
+    {
+        SDL_RWops *r = SDL_RWFromFile(path, "rb");
+        if (r) { SDL_RWclose(r); launcher_toast("Not a file type I know."); return; }
+        if (tab >= N_GAMES) tab = g;
+        snprintf(settings.g[tab].tex_path, sizeof settings.g[tab].tex_path, "%s", path);
+        settings.g[tab].tex_on = 1;
+        loaded_pack_game = -1;
+        sub[tab] = SUB_TEXTURES;
+        launcher_toast("Texture pack folder set.");
+    }
+}
