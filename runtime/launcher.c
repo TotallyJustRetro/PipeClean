@@ -1531,8 +1531,8 @@ static void sub_game(int g, float x, float y)
     /* Keep the full description visible while retaining a large live preview. */
     card(x, card_y, 360, 378, "PREVIEW & ABOUT");
     ui_text_wrap(F_REG, 10, x + 18, card_y + 39, 324, C_DIM,
-                 games[g].desc ? games[g].desc : "Game information is not available.", 2);
-    draw_preview(g, x + 16, card_y + 72, 328, 188, 0);
+                 games[g].desc ? games[g].desc : "Game information is not available.", 3);
+    draw_preview(g, x + 16, card_y + 80, 328, 180, 0);
     ui_text_c(F_REG, 10, x + 180, card_y + 264, C_DIM,
               "Live preview from power-on");
     if (ui_button(x + 16, card_y + 282, 328, 34,
