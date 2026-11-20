@@ -23,6 +23,11 @@ typedef struct {
     int hud_window;
     int wide_gate;
     int external_player;              /* launch through a separate, ROM-specific recompilation frontend */
+    /* Optional launcher library metadata; display-only, never used by emulation. */
+    const char *desc;
+    const char *genre;
+    int year;
+    int players;
 } GameDef;
 
 extern const GameDef games[N_GAMES];
