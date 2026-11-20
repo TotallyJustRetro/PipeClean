@@ -1472,36 +1472,73 @@ static void sub_game(int g, float x, float y)
     const float hero_h = 86.0f;
     const float card_y = y + hero_h + 12.0f;
 
-    /* Accent-tinted game header; the game-specific controls remain below. */
+    /* Claude's game-library hero treatment, adapted to the current compact page. */
     uint32_t a = games[g].accent;
-    ui_rrect(x, y, W, hero_h, 12, RGBA(15, 22, 36, 248));
-    ui_vgrad(x + 1, y + 1, W - 2, hero_h - 2,
-             RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 74),
-             RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 16));
+    SDL_Texture *banner = branding_game_banner(g);
+    SDL_Texture *game_logo = branding_game_logo(g);
+    if (banner) {
+        int bw = 0, bh = 0;
+        if (SDL_QueryTexture(banner, NULL, NULL, &bw, &bh) == 0 && bw > 0 && bh > 0) {
+            ui_clip(x, y, W, hero_h);
+            draw_cover(banner, bw, bh, x, y, W, hero_h);
+            ui_unclip();
+        }
+        ui_vgrad(x, y, W, hero_h,
+                 RGBA(5, 8, 14, 36), RGBA(5, 8, 14, 218));
+    } else {
+        ui_rrect(x, y, W, hero_h, 12, RGBA(15, 22, 36, 248));
+        ui_vgrad(x + 1, y + 1, W - 2, hero_h - 2,
+                 RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 86),
+                 RGBA(8, 12, 20, 228));
+    }
     ui_stroke(x, y, W, hero_h, 12, 1.2f,
-              RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 150));
-    ui_rrect(x + 16, y + 18, 3, 48, 1.5f, HEX(a));
-    ui_text(F_BOLD, 20, x + 30, y + 17, C_TEXT, games[g].name);
-    ui_text_fit(F_REG, 12, x + 30, y + 47, W - 230, C_MUTED,
+              RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 170));
+
+    if (game_logo) {
+        int logo_w_px = 0, logo_h_px = 0;
+        if (SDL_QueryTexture(game_logo, NULL, NULL, &logo_w_px, &logo_h_px) == 0 &&
+            logo_w_px > 0 && logo_h_px > 0) {
+            float logo_h = 40.0f;
+            float logo_w = logo_h * ((float)logo_w_px / (float)logo_h_px);
+            if (logo_w > 220.0f) logo_w = 220.0f;
+            ui_image(game_logo, NULL, x + 18, y + 8, logo_w, logo_h);
+        } else {
+            ui_text_fit(F_BOLD, 20, x + 30, y + 13, W - 260, C_TEXT, games[g].name);
+        }
+    } else {
+        ui_text_fit(F_BOLD, 20, x + 30, y + 13, W - 260, C_TEXT, games[g].name);
+    }
+
+    ui_text_fit(F_REG, 10, x + 20, y + 51, W - 300, RGBA(232, 237, 247, 230),
                 games[g].sub ? games[g].sub : "Game profile");
+    char game_meta[128];
+    snprintf(game_meta, sizeof game_meta, "%s  ·  %d  ·  %d Player%s",
+             games[g].genre ? games[g].genre : "Game",
+             games[g].year,
+             games[g].players,
+             games[g].players == 1 ? "" : "s");
+    ui_text_fit(F_REG, 9, x + 20, y + 68, W - 300, RGBA(220, 225, 237, 220), game_meta);
+
     const char *rom_state = rs[g].ok ? "ROM READY" :
         (c->rom_path[0] ? "ROM NEEDS ATTENTION" : "ROM REQUIRED");
     float pill_w = ui_text_w(F_BOLD, 10, rom_state) + 28.0f;
-    ui_rrect(x + W - pill_w - 16, y + 29, pill_w, 26, 13,
-             rs[g].ok ? RGBA(38, 116, 83, 220) :
-             (c->rom_path[0] ? RGBA(142, 66, 53, 220) : RGBA(105, 83, 43, 220)));
-    ui_text_c(F_BOLD, 10, x + W - pill_w * 0.5f - 16, y + 36,
+    ui_rrect(x + W - pill_w - 16, y + 12, pill_w, 24, 12,
+             rs[g].ok ? RGBA(38, 116, 83, 230) :
+             (c->rom_path[0] ? RGBA(142, 66, 53, 230) : RGBA(105, 83, 43, 230)));
+    ui_text_c(F_BOLD, 10, x + W - pill_w * 0.5f - 16, y + 18,
               C_TEXT, rom_state);
 
-    /* Live preview and all ROM/profile/save actions stay on this page. */
-    card(x, card_y, 360, 378, "PREVIEW");
-    draw_preview(g, x + 16, card_y + 42, 328, 224, 0);
-    ui_text_c(F_REG, 11, x + 180, card_y + 273, C_DIM,
-              "A short run of the game from power-on");
-    if (ui_button(x + 16, card_y + 300, 328, 36,
+    /* Keep the full description visible while retaining a large live preview. */
+    card(x, card_y, 360, 378, "PREVIEW & ABOUT");
+    ui_text_wrap(F_REG, 10, x + 18, card_y + 39, 324, C_DIM,
+                 games[g].desc ? games[g].desc : "Game information is not available.", 2);
+    draw_preview(g, x + 16, card_y + 72, 328, 188, 0);
+    ui_text_c(F_REG, 10, x + 180, card_y + 264, C_DIM,
+              "Live preview from power-on");
+    if (ui_button(x + 16, card_y + 282, 328, 34,
                   "Refresh preview", B_NORMAL, rs[g].ok))
         make_preview(g);
-    ui_text_wrap(F_REG, 11, x + 18, card_y + 346, 324, C_DIM,
+    ui_text_wrap(F_REG, 10, x + 18, card_y + 324, 324, C_DIM,
                  "Tip: drag and drop a ROM, patch or picture onto this window.", 2);
 
     float rx = x + 372.0f, rw = 436.0f;
