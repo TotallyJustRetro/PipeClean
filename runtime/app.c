@@ -2662,6 +2662,7 @@ static int play_external_game(int g)
      * reacquire/re-sync them after the child exits. */
     pad_shutdown();
     int ok = 1;
+    int quit_from_yougame = 0;
 #ifdef _WIN32
     char command[4096];
     STARTUPINFOA si;
@@ -2677,7 +2678,24 @@ static int play_external_game(int g)
         snprintf(command, sizeof command, "\"%s\" \"%s\"%s",
                  player, launch_rom, launch_companion ? " --companion" : "");
     if (CreateProcessA(player, command, NULL, NULL, FALSE, 0, NULL, base[0] ? base : NULL, &si, &pi)) {
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        for (;;) {
+            DWORD child_wait = WaitForSingleObject(pi.hProcess, 50);
+            /* The parent window loop is suspended while the external player owns the display.
+               Keep servicing YouGame's stdio bridge so an embed quit can stop both processes. */
+            yougame_native_update();
+            if (yougame_native_take_quit_request()) {
+                quit_from_yougame = 1;
+                (void)TerminateProcess(pi.hProcess, 0);
+                (void)WaitForSingleObject(pi.hProcess, 5000);
+                break;
+            }
+            if (child_wait == WAIT_OBJECT_0) break;
+            if (child_wait == WAIT_FAILED) {
+                launcher_toast("Couldn't wait for the external game runtime.");
+                ok = 0;
+                break;
+            }
+        }
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
     } else {
@@ -2712,7 +2730,7 @@ static int play_external_game(int g)
     audio_menu_music(1);
     game_session_end();
     if (ok) settings_save();
-    return 0;
+    return quit_from_yougame ? 1 : 0;
 }
 
 /* returns 0 = back to launcher, 1 = quit */
