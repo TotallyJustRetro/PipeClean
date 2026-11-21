@@ -2982,8 +2982,11 @@ int app_run(const char *autorun, const char *hack)
 #if defined(__EMSCRIPTEN__)
     /* The YouGame patch listing supplies the player's own accepted SML2 ROM.
        The ROM is imported into the in-memory browser filesystem, never bundled. */
-    if (!yougame_web_prepare_base_game())
+    if (!yougame_web_prepare_base_game()) {
         launcher_toast("Load your own Super Mario Land 2 ROM using the local browser test picker.");
+    } else if (netplay_accept_invite() < 0) {
+        launcher_toast("Couldn't join the incoming YouGame invitation.");
+    }
 #endif
     launcher_enter();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
