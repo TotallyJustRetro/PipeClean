@@ -38,7 +38,10 @@ EM_JS(void, pc_yg_netplay_init, (), {
         else if (y.state === 3) y.status = "Connected to " + (y.peer || "your friend") + ".";
     };
     if (typeof YouGame !== "undefined" && YouGame.ready) {
-        YouGame.ready().then(() => { y.ready = true; }).catch(e => {
+        YouGame.ready().then(() => {
+            y.ready = true;
+            if (typeof YouGame.setGameState === "function") YouGame.setGameState("menu");
+        }).catch(e => {
             y.state = 4; y.status = "YouGame SDK unavailable: " + String(e && e.message || e);
         });
     }
@@ -75,6 +78,7 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
         room.on("ready", ({ matchConnections }) => {
             y.localIsP1 = !!(matchConnections && matchConnections[0] === room.me);
             y.playing = true; y.error = false; y.remoteGame = null;
+            if (typeof YouGame.setGameState === "function") YouGame.setGameState("playing");
             y.remoteInputs.clear(); y.localInputs.clear();
             y.startRequest = 2;
             y.status = "Match starting; synchronizing Mario and Luigi.";
@@ -134,7 +138,9 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
             } else y.refresh();
         });
         room.on("result", () => {
-            y.playing = false; y.startRequest = -1; y.remoteGame = null; y.refresh();
+            y.playing = false; y.startRequest = -1; y.remoteGame = null;
+    if (typeof YouGame !== "undefined" && typeof YouGame.setGameState === "function")
+        YouGame.setGameState("menu"); y.refresh();
         });
         room.on("close", ({ reason }) => {
             y.room = null; y.playing = false; y.startRequest = -1;
