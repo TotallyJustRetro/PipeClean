@@ -41,8 +41,9 @@ duration of the callback, so an adapter must copy any data it retains. This is r
 
 A separate C façade, `runtime/yougame_native_net.h/.c`, now wraps the native
 broker's `netOpen`, `netSend` and `netClose` calls. It JSON-escapes text safely,
-checks queue room-code syntax, validates `pass` (24 UTF-16 code units), `name`
-(40 UTF-16 code units) and close-reason length (123 UTF-8 bytes), parses the returned
+checks queue room-code syntax, validates UTF-8 text, `pass` (24 UTF-16 code
+units), `name` (40 UTF-16 code units), the 16 KiB room-message limit and close-reason
+length (123 UTF-8 bytes), parses the returned
 connection id, and forwards `net` pushes. Pushes may arrive before the `netOpen`
 answer; the future room client must buffer those events until it associates the
 connection id. This wrapper does not yet request `mpTicket` or implement room

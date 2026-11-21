@@ -285,7 +285,7 @@ long long yougame_native_net_send(int connection_id, const char *data,
     long long request_id;
     if (connection_id <= 0 || !data) return 0;
     length = strlen(data);
-    if (length > 16384) return 0;
+    if (length > 16384 || utf8_utf16_units(data, 0) < 0) return 0;
     capacity = length * 6 + 64;
     body = (char *)malloc(capacity);
     if (!body) return 0;
