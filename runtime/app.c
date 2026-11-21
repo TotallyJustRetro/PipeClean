@@ -23,6 +23,7 @@
 #include "wario_land2_state.h"
 #include "wario_land3_state.h"
 #include "netplay.h"
+#include "yougame_native.h"
 #include "render.h"
 #include "bgimg.h"
 #include "texpack.h"
@@ -2939,6 +2940,8 @@ int app_run(const char *autorun, const char *hack)
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
+    (void)yougame_native_init();
+    yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
     /* Keep native touch events enabled even when SDL also emits mouse events. */
     SDL_EventState(SDL_FINGERDOWN, SDL_ENABLE);
     SDL_EventState(SDL_FINGERMOTION, SDL_ENABLE);
@@ -2971,6 +2974,7 @@ int app_run(const char *autorun, const char *hack)
     ui_sfx_cb = sfx;
     launcher_init();
     launcher_enter();
+    yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
     int quit = 0;
@@ -2978,7 +2982,9 @@ int app_run(const char *autorun, const char *hack)
         int id = rom_identify_file(autorun);
         if (id >= 0) {
             snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", autorun);
+            yougame_native_set_state(PIPECLEAN_YOUGAME_PLAYING);
             quit = play(id);
+            yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
             launcher_enter();
             launcher_display_cache_reset();
         }
@@ -3036,6 +3042,8 @@ int app_run(const char *autorun, const char *hack)
                 break;
             }
         }
+        yougame_native_update();
+        if (yougame_native_take_quit_request()) quit = 1;
         if (audio_music_take_finished()) launcher_menu_music_step(1);
         if (!launcher_touch_pointer) mouse_sync();
         Uint64 now = SDL_GetPerformanceCounter();
@@ -3056,7 +3064,7 @@ int app_run(const char *autorun, const char *hack)
                 SDL_Surface *s = SDL_CreateRGBSurfaceWithFormat(0, W, H, 32, SDL_PIXELFORMAT_ARGB8888);
                 SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, s->pixels, s->pitch);
                 SDL_SaveBMP(s, getenv("GBL_SHOT"));
-                printf("out %dx%d hint='%s' mouse=%.0f,%.0f\n", W, H, ui_hint_text(), ui_mouse.x, ui_mouse.y);
+                fprintf(stderr, "out %dx%d hint='%s' mouse=%.0f,%.0f\n", W, H, ui_hint_text(), ui_mouse.x, ui_mouse.y);
                 quit = 1;
             }
         }
@@ -3073,7 +3081,9 @@ int app_run(const char *autorun, const char *hack)
         if (r.play >= 0) {
             audio_sfx(SFX_CONFIRM);
             settings_save();
+            yougame_native_set_state(PIPECLEAN_YOUGAME_PLAYING);
             quit = play(r.play);
+            yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
             launcher_enter();
             launcher_display_cache_reset();
             memset(&ui_mouse, 0, sizeof ui_mouse);
@@ -3083,6 +3093,7 @@ int app_run(const char *autorun, const char *hack)
 #if !defined(__ANDROID__)
     companion_sim_shutdown();
 #endif
+    yougame_native_shutdown();
     launcher_shutdown();
     branding_shutdown();
     settings_save();
