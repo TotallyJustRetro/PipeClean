@@ -110,7 +110,7 @@ int yougame_native_connected(void)
 
 int yougame_native_started_by_app(void)
 {
-    return g_yougame_initialized && yg_started_by_app() == YG_STARTED_BY_APP;
+    return g_yougame_initialized && yg_started_by() == YG_STARTED_BY_APP;
 }
 
 int yougame_native_player_state(void)
