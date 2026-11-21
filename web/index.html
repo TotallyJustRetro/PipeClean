@@ -82,15 +82,18 @@
     document.getElementById('pc-rom-file').addEventListener('change', async function (event) {
       var file = event.target.files && event.target.files[0];
       if (!file || !window.pcPipeCleanReady) return;
+      var ptr = 0;
       try {
         var bytes = new Uint8Array(await file.arrayBuffer());
         var digest = await crypto.subtle.digest('SHA-1', bytes);
         var sha1 = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-        var ptr = Module._malloc(bytes.length);
+        ptr = Module._malloc(bytes.length);
         if (!ptr) throw new Error('Not enough memory to import the ROM.');
-        Module.HEAPU8.set(bytes, ptr);
+        /* HEAPU8 is maintained by Emscripten as memory grows; it is not
+         * exported as Module.HEAPU8 in this build. */
+        if (typeof HEAPU8 === 'undefined') throw new Error('The PipeClean memory buffer is not ready yet.');
+        HEAPU8.set(bytes, ptr);
         var ok = Module._pc_yg_import_base_rom(ptr, bytes.length);
-        Module._free(ptr);
         if (!ok) throw new Error('That file is not a supported Super Mario Land 2 ROM.');
         var state = window.__pcYouGame || (window.__pcYouGame = {});
         state.baseSha1 = sha1;
@@ -98,6 +101,9 @@
         document.getElementById('pc-local-tools').style.display = 'none';
       } catch (error) {
         document.getElementById('pc-status').textContent = String(error && error.message || error);
+      } finally {
+        if (ptr) Module._free(ptr);
+        event.target.value = '';
       }
     });
   </script>
