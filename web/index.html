@@ -8,9 +8,10 @@
   <script src="https://staging.yougame.co/sdk.js"></script>
   <style>
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101724; color: #eef2fb; font: 14px system-ui, sans-serif; }
-    body { display: flex; flex-direction: column; }
-    #pc-status { box-sizing: border-box; min-height: 34px; padding: 8px 12px; color: #bac5dc; background: #0a101a; }
-    #canvas { display: block; width: 100%; height: calc(100% - 34px); object-fit: contain; outline: none; touch-action: none; }
+    body { position: relative; display: block; }
+    #pc-status { position: absolute; z-index: 20; left: 0; right: 0; top: 0; box-sizing: border-box; height: 34px; padding: 8px 12px; color: #bac5dc; background: #0a101a; pointer-events: none; }
+    #pc-game-surface { position: absolute; left: 72px; top: 72px; right: 192px; bottom: 60px; overflow: hidden; }
+    #canvas { display: block; width: 100%; height: 100%; object-fit: contain; outline: none; touch-action: none; user-select: none; -webkit-touch-callout: none; }
     #pc-local-tools { display: none; position: fixed; z-index: 100; left: 12px; top: 12px; padding: 10px; max-width: 300px; border: 1px solid #61708d; border-radius: 10px; background: rgba(10,16,26,.94); box-shadow: 0 8px 28px #0008; }
     #pc-local-tools button { padding: 8px 12px; border-radius: 7px; border: 0; background: #4e80de; color: white; font-weight: 600; }
     #pc-local-tools p { margin: 6px 0 0; color: #bac5dc; font-size: 12px; }
@@ -26,20 +27,49 @@
       onRuntimeInitialized: function () {
         window.pcPipeCleanReady = true;
         document.getElementById('pc-status').textContent = 'PipeClean browser runtime ready.';
+        var surface = document.getElementById('pc-game-surface');
+        var status = document.getElementById('pc-status');
         var showLocalPicker = function () {
-          if (typeof YouGame === 'undefined' || YouGame.mode !== 'bridge')
+          if (typeof YouGame === 'undefined' || YouGame.mode !== 'bridge') {
             document.getElementById('pc-local-tools').style.display = 'block';
+            if (status) status.style.display = 'block';
+            surface.style.left = '0px'; surface.style.top = '34px';
+            surface.style.right = '0px'; surface.style.bottom = '0px';
+          }
         };
-        if (typeof YouGame !== 'undefined' && YouGame.ready)
-          YouGame.ready().then(showLocalPicker).catch(showLocalPicker);
-        else showLocalPicker();
+        var applyHostLayout = function (layout) {
+          if (!layout || (layout.status !== 'ready' && layout.status !== 'standalone')) return;
+          var measured = YouGame.ui.getLayout(surface);
+          if (measured.status !== 'ready' && measured.status !== 'standalone') return;
+          var insets = measured.insets || { left: 0, top: 0, right: 0, bottom: 0 };
+          surface.style.left = Math.max(0, insets.left || 0) + 'px';
+          surface.style.top = Math.max(0, insets.top || 0) + 'px';
+          surface.style.right = Math.max(0, insets.right || 0) + 'px';
+          surface.style.bottom = Math.max(0, insets.bottom || 0) + 'px';
+          if (measured.status === 'ready') {
+            if (status) status.style.display = 'none';
+          } else {
+            if (status) status.style.display = 'block';
+          }
+        };
+        if (typeof YouGame !== 'undefined' && YouGame.ready) {
+          YouGame.ready().then(function () {
+            showLocalPicker();
+            if (YouGame.ui && YouGame.ui.onChange) {
+              YouGame.ui.onChange(function (layout) { applyHostLayout(layout); });
+              applyHostLayout(YouGame.ui.getLayout(surface));
+            }
+          }).catch(showLocalPicker);
+        } else showLocalPicker();
       }
     };
   </script>
 </head>
 <body>
   <div id="pc-status">Loading PipeClean…</div>
-  <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="pc-game-surface">
+    <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+  </div>
   <script>Module.canvas = document.getElementById('canvas');</script>
   <div id="pc-local-tools">
     <button id="pc-load-rom" type="button">Load my SML2 ROM (local test)</button>
