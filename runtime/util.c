@@ -171,6 +171,14 @@ int dlg_pick(int kind, const char *title, char *out, size_t n)
 }
 
 void open_folder(const char *path) { (void)path; }
+#elif defined(__EMSCRIPTEN__)
+int dlg_pick(int kind, const char *title, char *out, size_t n)
+{
+    (void)kind; (void)title;
+    if (out && n) out[0] = 0;
+    return 0;
+}
+void open_folder(const char *path) { (void)path; }
 #else
 int dlg_pick(int kind, const char *title, char *out, size_t n)
 {
