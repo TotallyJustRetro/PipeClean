@@ -24,6 +24,7 @@
 #include "wario_land3_state.h"
 #include "netplay.h"
 #include "yougame_native.h"
+#include "yougame_native_net.h"
 #include "render.h"
 #include "bgimg.h"
 #include "texpack.h"
@@ -3006,6 +3007,7 @@ int app_run(const char *autorun, const char *hack)
     pad_init();
     ui_sfx_cb = sfx;
     (void)yougame_native_init();
+    yougame_native_net_init();
     yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
     launcher_init();
     launcher_enter();
@@ -3135,6 +3137,8 @@ int app_run(const char *autorun, const char *hack)
 #endif
     launcher_shutdown();
     yougame_native_shutdown();
+    /* The SDK drops pending callbacks at shutdown; now retire their adapter contexts. */
+    yougame_native_net_shutdown();
     branding_shutdown();
     settings_save();
     pad_shutdown();
