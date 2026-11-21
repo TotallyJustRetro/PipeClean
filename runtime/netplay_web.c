@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define PC_YG_INPUT_DELAY 8
 
 static int np_selected_game = GAME_SML2;
 static int np_shared_local_saved[NETPLAY_SHARED_SLOT_COUNT];
@@ -20,7 +19,8 @@ EM_JS(void, pc_yg_netplay_init, (), {
     y.selectedGame = 2; y.startRequest = -1; y.playing = false;
     y.localIsP1 = false; y.error = false; y.remoteGame = null;
     y.localRom = null; y.remoteRom = null;
-    y.remoteInputs = new Map(); y.localInputs = new Map(); y.inputWaiters = new Map();
+    y.remoteInputs = new Map(); y.localInputs = new Map();
+    y.sendInputs = new Map(); y.inputWaiters = new Map();
     y.chat = []; y.room = null; y.baseSha1 = y.baseSha1 || "";
     y.refresh = () => {
         if (!y.room) {
@@ -67,8 +67,10 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
         y.startRequest = -1;
         y.playing = false;
         y.localRom = null; y.remoteRom = null;
+        y.romState = 0; y.romGame = 2;
+        y.romStatus = "Waiting for both players to verify their ROM.";
         y.remoteGame = null;
-        y.remoteInputs.clear(); y.localInputs.clear(); y.inputWaiters.clear();
+        y.remoteInputs.clear(); y.localInputs.clear(); y.sendInputs.clear(); y.inputWaiters.clear();
         room.on("lobby", () => y.refresh());
         room.on("ready", ({ matchConnections }) => {
             y.localIsP1 = !!(matchConnections && matchConnections[0] === room.me);
@@ -93,6 +95,18 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
             } else if (data.t === "pc_game") {
                 y.remoteGame = { game: Number(data.game), crc: Number(data.crc) >>> 0 };
                 if (y.gameWaiter) { const fn = y.gameWaiter; y.gameWaiter = null; fn(y.remoteGame); }
+            } else if (data.t === "pc_input_batch" && Array.isArray(data.items)) {
+                for (const item of data.items) {
+                    const frame = Number(item && item.frame);
+                    if (!Number.isSafeInteger(frame) || frame < 0) continue;
+                    const value = {
+                        frame, buttons: Number(item.buttons) & 255,
+                        dpad: Number(item.dpad) & 255, actions: Number(item.actions) & 255
+                    };
+                    y.remoteInputs.set(frame, value);
+                    const waiter = y.inputWaiters.get(frame);
+                    if (waiter) waiter(value);
+                }
             } else if (data.t === "pc_input") {
                 const frame = Number(data.frame);
                 if (Number.isSafeInteger(frame) && frame >= 0) {
@@ -210,9 +224,7 @@ EM_ASYNC_JS(int, pc_yg_game_begin, (int game, unsigned int crc), {
     try {
         if (!y.room || !y.room.playing || y.error || game !== 2) return -1;
         y.remoteGame = null;
-        y.room.send({ t: "pc_game", game, crc: Number(crc) >>> 0 });
-        const remote = await new Promise(resolve => {
-            if (y.remoteGame) { resolve(y.remoteGame); return; }
+        const remotePromise = new Promise(resolve => {
             let settled = false;
             const done = value => {
                 if (settled) return;
@@ -221,6 +233,8 @@ EM_ASYNC_JS(int, pc_yg_game_begin, (int game, unsigned int crc), {
             const timer = setTimeout(() => done(null), 12000);
             y.gameWaiter = done;
         });
+        y.room.send({ t: "pc_game", game, crc: Number(crc) >>> 0 });
+        const remote = await remotePromise;
         if (!remote || remote.game !== game || remote.crc !== (Number(crc) >>> 0)) {
             y.error = true; y.state = 4;
             y.status = "Game/ROM mismatch or the other player did not start.";
@@ -241,9 +255,28 @@ EM_ASYNC_JS(int, pc_yg_exchange_inputs,
         if (!y.room || !y.room.playing || y.error) return -1;
         const delay = 8;
         const sendFrame = frame + delay;
-        y.localInputs.set(sendFrame, {
+        const localValue = {
             frame: sendFrame, buttons: buttons & 255, dpad: dpad & 255, actions: actions & 255
-        });
+        };
+        y.localInputs.set(sendFrame, localValue);
+        y.sendInputs.set(sendFrame, localValue);
+
+        /* The first bundle is frames 8, 9 and 10, sent after frame 10 has
+           been sampled. Subsequent bundles repeat every three game frames. */
+        if (frame % 3 === 2) {
+            const items = [];
+            for (let i = sendFrame - 2; i <= sendFrame; i++) {
+                const item = y.sendInputs.get(i);
+                if (item) items.push(item);
+            }
+            if (items.length !== 3) {
+                y.error = true; y.state = 4; y.status = "Online input packet lost a local frame.";
+                return -1;
+            }
+            y.room.send({ t: "pc_input_batch", items });
+            for (const item of items) y.sendInputs.delete(item.frame);
+        }
+
         let remote = null;
         let waitPromise = null;
         if (frame >= delay) {
@@ -261,8 +294,6 @@ EM_ASYNC_JS(int, pc_yg_exchange_inputs,
                 });
             }
         }
-        y.room.send({ t: "pc_input", frame: sendFrame, buttons: buttons & 255,
-                      dpad: dpad & 255, actions: actions & 255 });
         if (waitPromise) remote = await waitPromise;
         if (frame >= delay && !remote) {
             y.error = true; y.state = 4; y.status = "Online input timed out; check the connection.";
@@ -283,6 +314,7 @@ EM_ASYNC_JS(int, pc_yg_exchange_inputs,
         }
         for (const key of y.remoteInputs.keys()) if (key < frame - 16) y.remoteInputs.delete(key);
         for (const key of y.localInputs.keys()) if (key < frame - 16) y.localInputs.delete(key);
+        for (const key of y.sendInputs.keys()) if (key < frame - 16) y.sendInputs.delete(key);
         return 0;
     } catch (error) {
         y.error = true; y.state = 4; y.status = String(error && error.message || error);
@@ -296,6 +328,7 @@ EM_JS(void, pc_yg_game_end, (), {
     y.playing = false; y.startRequest = -1; y.remoteGame = null;
     if (y.remoteInputs) y.remoteInputs.clear();
     if (y.localInputs) y.localInputs.clear();
+    if (y.sendInputs) y.sendInputs.clear();
     if (y.inputWaiters) { for (const fn of y.inputWaiters.values()) fn(null); y.inputWaiters.clear(); }
     if (typeof y.refresh === "function") y.refresh();
 });
