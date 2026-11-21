@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 enum {
@@ -43,6 +44,8 @@ void netplay_get_info(NetplayInfo *out);
 int netplay_is_connected(void);
 int netplay_is_host(void);
 void netplay_show_lobby(void);
+/* Emscripten browser builds automatically consume a pending YouGame invitation. */
+int netplay_accept_invite(void);
 
 /* Lobby API. Online-selectable games currently use GAME_SML and GAME_SML2. */
 int netplay_lobby_set_game(int game);
