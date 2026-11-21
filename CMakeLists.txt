@@ -4,6 +4,9 @@ project(PipeClean C)
 # Desktop: cmake -S . -B build -DROM=path/to/game.gb
 # Android: open android/ in Android Studio after android/setup-android.ps1.
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+# Secure native relay builds use mbedTLS. The YouGame browser provider uses
+# the platform SDK and must not bundle a second TLS / WebSocket client.
+if(NOT EMSCRIPTEN)
 # Secure Internet relays use mbedTLS and a current Mozilla-derived CA bundle.
 if(NOT EXISTS "${CMAKE_SOURCE_DIR}/assets/cacert.pem")
   file(DOWNLOAD "https://curl.se/ca/cacert.pem"
@@ -14,6 +17,7 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/assets/cacert.pem")
     message(FATAL_ERROR "Could not download assets/cacert.pem; download https://curl.se/ca/cacert.pem and retry")
   endif()
 endif()
+endif()
 
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
 set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
@@ -23,7 +27,18 @@ set(USE_SHARED_MBEDTLS_LIBRARY OFF CACHE BOOL "" FORCE)
 set(USE_STATIC_MBEDTLS_LIBRARY ON CACHE BOOL "" FORCE)
 set(ROM "" CACHE FILEPATH "ROM used by the static-recompilation generator")
 
-if(ANDROID)
+if(EMSCRIPTEN)
+  # ROM-independent browser build; this is generator metadata only.
+  set(ROM "${CMAKE_BINARY_DIR}/pipeclean_web_build_stub.gb")
+  execute_process(
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/make_emscripten_build_stub.py" "${ROM}"
+    RESULT_VARIABLE STUB_RESULT
+    ERROR_VARIABLE STUB_ERROR
+  )
+  if(NOT STUB_RESULT EQUAL 0)
+    message(FATAL_ERROR "Could not create Emscripten build stub ROM: ${STUB_ERROR}")
+  endif()
+elseif(ANDROID)
   if(NOT ROM)
     set(ROM "${CMAKE_BINARY_DIR}/pipeclean_build_stub.gb")
     execute_process(
@@ -103,6 +118,15 @@ add_custom_command(
 )
 
 file(GLOB RT CONFIGURE_DEPENDS runtime/*.c)
+if(EMSCRIPTEN)
+  list(REMOVE_ITEM RT
+    "${CMAKE_SOURCE_DIR}/runtime/netplay.c"
+    "${CMAKE_SOURCE_DIR}/runtime/netplay_tls.c")
+else()
+  list(REMOVE_ITEM RT
+    "${CMAKE_SOURCE_DIR}/runtime/netplay_web.c"
+    "${CMAKE_SOURCE_DIR}/runtime/yougame_web.c")
+endif()
 if(WIN32)
   set(PIPECLEAN_ICON_RC ${CMAKE_SOURCE_DIR}/assets/pipeclean.rc)
 endif()
@@ -117,12 +141,31 @@ else()
 endif()
 target_include_directories(${PIPECLEAN_RUNTIME_TARGET} PRIVATE runtime ${GEN})
 target_compile_definitions(${PIPECLEAN_RUNTIME_TARGET} PRIVATE USE_SDL)
-target_compile_definitions(${PIPECLEAN_RUNTIME_TARGET} PRIVATE "PIPECLEAN_SOURCE_ASSET_DIR=\"${CMAKE_SOURCE_DIR}/assets\"")
+if(EMSCRIPTEN)
+  target_compile_definitions(${PIPECLEAN_RUNTIME_TARGET} PRIVATE "PIPECLEAN_SOURCE_ASSET_DIR=\\\"/assets\\\"")
+else()
+  target_compile_definitions(${PIPECLEAN_RUNTIME_TARGET} PRIVATE "PIPECLEAN_SOURCE_ASSET_DIR=\\\"${CMAKE_SOURCE_DIR}/assets\\\"")
+endif()
 option(PIPECLEAN_DEV_BUILD "Enable live multiplayer diagnostics window and session logs" OFF)
 if(PIPECLEAN_DEV_BUILD)
   target_compile_definitions(${PIPECLEAN_RUNTIME_TARGET} PRIVATE PIPECLEAN_DEV_BUILD=1)
 endif()
-if(ANDROID)
+if(EMSCRIPTEN)
+  # SDL2 and SDL2_image are supplied by emscripten-ports.
+  target_compile_options(${PIPECLEAN_RUNTIME_TARGET} PRIVATE
+    --use-port=sdl2
+    --use-port=sdl2_image:formats=bmp,png,jpg)
+  target_link_options(${PIPECLEAN_RUNTIME_TARGET} PRIVATE
+    --use-port=sdl2
+    --use-port=sdl2_image:formats=bmp,png,jpg
+    -sASYNCIFY=1
+    -sALLOW_MEMORY_GROWTH=1
+    -sFORCE_FILESYSTEM=1
+    -sEXIT_RUNTIME=0
+    "-sEXPORTED_FUNCTIONS=['_main','_pc_yg_import_base_rom','_malloc','_free']"
+    "--preload-file=${CMAKE_SOURCE_DIR}/assets@/assets"
+    "--shell-file=${CMAKE_SOURCE_DIR}/web/index.html")
+elseif(ANDROID)
   target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE SDL2::SDL2 SDL2_image mbedtls mbedx509 mbedcrypto)
   if(TARGET SDL2main)
     target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE SDL2main)
@@ -130,14 +173,14 @@ if(ANDROID)
 else()
   target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE SDL2::SDL2 SDL2_image::SDL2_image mbedtls mbedx509 mbedcrypto)
 endif()
-if(NOT WIN32)
+if(NOT WIN32 AND NOT EMSCRIPTEN)
   target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE m)
 endif()
 if(WIN32)
   target_link_libraries(${PIPECLEAN_RUNTIME_TARGET} PRIVATE shell32 ole32 comdlg32 uuid ws2_32)
 endif()
 
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT EMSCRIPTEN)
 enable_testing()
 add_executable(test_companion_deck_state tests/test_companion_deck_state.c)
 target_include_directories(test_companion_deck_state PRIVATE runtime)
