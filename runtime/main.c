@@ -8,6 +8,9 @@
 #include "widescreen.h"
 #include "rom.h"
 #include "settings.h"
+#ifdef _WIN32
+#include <io.h>
+#endif
 #include "cart.h"
 #include "emu.h"
 #include "events.h"
@@ -260,6 +263,17 @@ static int run_mp_test(const char *script_path, const char *report_path, int fra
 static int widepct;
 int main(int argc, char **argv)
 {
+#ifdef _WIN32
+    /* YouGame owns the process stdout pipe in native stdio mode. Keep the Win32
+     * STD_OUTPUT_HANDLE intact for yougame.h (which writes with WriteFile), but
+     * redirect C stdio so cartridge serial output and diagnostic printf calls
+     * cannot corrupt the line-oriented SDK stream. */
+    if (getenv("YOUGAME_STDIO") && !strcmp(getenv("YOUGAME_STDIO"), "1")) {
+        fflush(stdout);
+        if (_dup2(_fileno(stderr), _fileno(stdout)) != 0)
+            fprintf(stderr, "[PipeClean/YouGame] Could not redirect C stdout away from the SDK pipe.\\n");
+    }
+#endif
     const char *path = NULL, *hack = NULL, *ppm = NULL, *misses = NULL, *ramdump = NULL, *tiles_arg = NULL;
     const char *mp_script = NULL, *mp_report_path = NULL;
     int wlo = -1, whi = 0;
