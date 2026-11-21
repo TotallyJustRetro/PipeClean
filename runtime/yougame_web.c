@@ -54,6 +54,7 @@ EM_ASYNC_JS(int, pc_yg_load_base_game_js, (), {
         const state = window.__pcYouGame || (window.__pcYouGame = {});
         state.baseSha1 = String(base.sha1).toLowerCase();
         state.baseName = String(base.name || "Super Mario Land 2");
+        if (typeof YouGame.setGameState === "function") YouGame.setGameState("menu");
         return 1;
     } catch (error) {
         console.error("[PipeClean/YouGame] Base-game import failed:", error);
