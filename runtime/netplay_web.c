@@ -154,6 +154,11 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
     }
 });
 
+EM_JS(int, pc_yg_has_invite, (), {
+    return typeof YouGame !== "undefined" &&
+           !!(YouGame.multiplayer && YouGame.multiplayer.invite);
+});
+
 EM_JS(void, pc_yg_disconnect, (), {
     const y = window.__pcYouGame;
     if (!y) return;
@@ -394,6 +399,11 @@ int netplay_is_host(void)
     return info.is_host;
 }
 void netplay_show_lobby(void) { pc_yg_show_lobby(); }
+int netplay_accept_invite(void)
+{
+    if (!pc_yg_has_invite()) return 0;
+    return pc_yg_join_friends_room("Player") ? 1 : -1;
+}
 int netplay_lobby_set_game(int game)
 {
     if (game != GAME_SML2) return 0;
