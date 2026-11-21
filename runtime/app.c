@@ -37,6 +37,9 @@
 #include "companion_sim.h"
 #endif
 #include <SDL_image.h>
+#if defined(__EMSCRIPTEN__)
+#include "yougame_web.h"
+#endif
 #if defined(__ANDROID__)
 #include <jni.h>
 #include <SDL_system.h>
@@ -2526,6 +2529,11 @@ static int write_gba_frontend_config(int g, const char *overlay_path,
 
 static int play_external_game(int g)
 {
+#if defined(__EMSCRIPTEN__)
+    (void)g;
+    launcher_toast("The YouGame browser pilot currently supports Super Mario Land 2 only.");
+    return 0;
+#else
     if (g < 0 || g >= N_GAMES || !games[g].external_player) return 0;
     GameCfg *c = &settings.g[g];
     RomStatus st;
@@ -2703,6 +2711,7 @@ static int play_external_game(int g)
     game_session_end();
     if (ok) settings_save();
     return 0;
+#endif
 }
 
 /* returns 0 = back to launcher, 1 = quit */
@@ -2970,6 +2979,12 @@ int app_run(const char *autorun, const char *hack)
     pad_init();
     ui_sfx_cb = sfx;
     launcher_init();
+#if defined(__EMSCRIPTEN__)
+    /* The YouGame patch listing supplies the player's own accepted SML2 ROM.
+       The ROM is imported into the in-memory browser filesystem, never bundled. */
+    if (!yougame_web_prepare_base_game())
+        launcher_toast("Load your own Super Mario Land 2 ROM using the local browser test picker.");
+#endif
     launcher_enter();
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
