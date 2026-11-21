@@ -342,7 +342,7 @@ EM_JS(int, pc_yg_chat_send, (const char *text), {
     const y = window.__pcYouGame || {};
     if (!y.room) return 0;
     const message = UTF8ToString(text);
-    if (!message || message.length > 88 || /[\r\n\t]/.test(message)) return 0;
+    if (!message || message.length > 88 || message.includes(String.fromCharCode(10)) || message.includes(String.fromCharCode(13)) || message.includes(String.fromCharCode(9))) return 0;
     const name = String((YouGame.player && YouGame.player.name) || "Player").slice(0, 31);
     y.chat.push({ name, text: message });
     if (y.chat.length > 8) y.chat.shift();
