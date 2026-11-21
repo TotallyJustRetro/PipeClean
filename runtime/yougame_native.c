@@ -114,6 +114,11 @@ int yougame_native_connected(void)
     return g_yougame_initialized && yg_connected();
 }
 
+int yougame_native_ready(void)
+{
+    return g_yougame_initialized && yg_ready();
+}
+
 int yougame_native_started_by_app(void)
 {
     return g_yougame_initialized && yg_started_by() == YG_STARTED_BY_APP;
@@ -147,6 +152,7 @@ void yougame_native_shutdown(void) {}
 void yougame_native_set_state(int state) { (void)state; }
 void yougame_native_relay_key(const char *key) { (void)key; }
 int yougame_native_connected(void) { return 0; }
+int yougame_native_ready(void) { return 0; }
 int yougame_native_started_by_app(void) { return 0; }
 int yougame_native_player_state(void) { return 0; }
 const char *yougame_native_player_name(void) { return ""; }
