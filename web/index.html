@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101724">
+  <title>PipeClean — Super Mario Land 2 Online</title>
+  <script src="https://staging.yougame.co/sdk.js"></script>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101724; color: #eef2fb; font: 14px system-ui, sans-serif; }
+    body { display: flex; flex-direction: column; }
+    #pc-status { box-sizing: border-box; min-height: 34px; padding: 8px 12px; color: #bac5dc; background: #0a101a; }
+    #canvas { display: block; width: 100%; height: calc(100% - 34px); object-fit: contain; outline: none; touch-action: none; }
+    #pc-local-tools { display: none; position: fixed; z-index: 100; left: 12px; top: 12px; padding: 10px; max-width: 300px; border: 1px solid #61708d; border-radius: 10px; background: rgba(10,16,26,.94); box-shadow: 0 8px 28px #0008; }
+    #pc-local-tools button { padding: 8px 12px; border-radius: 7px; border: 0; background: #4e80de; color: white; font-weight: 600; }
+    #pc-local-tools p { margin: 6px 0 0; color: #bac5dc; font-size: 12px; }
+  </style>
+  <script>
+    var Module = {
+      canvas: (function () { return document.getElementById('canvas'); })(),
+      print: function (text) { console.log(text); },
+      printErr: function (text) { console.error(text); },
+      setStatus: function (text) {
+        var el = document.getElementById('pc-status');
+        if (el) el.textContent = text || 'PipeClean is running.';
+      },
+      onRuntimeInitialized: function () {
+        window.pcPipeCleanReady = true;
+        document.getElementById('pc-status').textContent = 'PipeClean browser runtime ready.';
+        if (typeof YouGame === 'undefined' || YouGame.mode !== 'bridge') {
+          document.getElementById('pc-local-tools').style.display = 'block';
+        }
+      }
+    };
+  </script>
+</head>
+<body>
+  <div id="pc-status">Loading PipeClean…</div>
+  <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="pc-local-tools">
+    <button id="pc-load-rom" type="button">Load my SML2 ROM (local test)</button>
+    <p>Standalone development only. The hosted YouGame listing uses the player's accepted base-game copy instead.</p>
+    <input id="pc-rom-file" type="file" accept=".gb,.gbc" hidden>
+  </div>
+  <script>
+    document.getElementById('pc-load-rom').addEventListener('click', function () {
+      document.getElementById('pc-rom-file').click();
+    });
+    document.getElementById('pc-rom-file').addEventListener('change', async function (event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file || !window.pcPipeCleanReady) return;
+      try {
+        var bytes = new Uint8Array(await file.arrayBuffer());
+        var digest = await crypto.subtle.digest('SHA-1', bytes);
+        var sha1 = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+        var ptr = Module._malloc(bytes.length);
+        if (!ptr) throw new Error('Not enough memory to import the ROM.');
+        Module.HEAPU8.set(bytes, ptr);
+        var ok = Module._pc_yg_import_base_rom(ptr, bytes.length);
+        Module._free(ptr);
+        if (!ok) throw new Error('That file is not a supported Super Mario Land 2 ROM.');
+        var state = window.__pcYouGame || (window.__pcYouGame = {});
+        state.baseSha1 = sha1;
+        document.getElementById('pc-status').textContent = 'SML2 ROM loaded for local testing.';
+        document.getElementById('pc-local-tools').style.display = 'none';
+      } catch (error) {
+        document.getElementById('pc-status').textContent = String(error && error.message || error);
+      }
+    });
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>
