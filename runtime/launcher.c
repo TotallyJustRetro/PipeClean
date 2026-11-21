@@ -1469,81 +1469,41 @@ static void sub_game(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
     const float W = 808.0f;
-    const float hero_h = 86.0f;
-    const float card_y = y + hero_h + 12.0f;
+    const float card_y = y;
+    const float prev_w = 268.0f;
+    float prev_h = (float)UI_H - card_y - 4.0f;
+    if (prev_h > 230.0f) prev_h = 230.0f;
+    card(x, card_y, prev_w, prev_h, "PREVIEW");
+    draw_preview(g, x + 10, card_y + 36, prev_w - 20, prev_h - 58, 0);
+    ui_text_c(F_REG, 10, x + prev_w * 0.5f, card_y + prev_h - 18, C_DIM,
+              "Live preview  ·  drag to drop a ROM");
 
-    /* Claude's game-library hero treatment, adapted to the current compact page. */
-    uint32_t a = games[g].accent;
-    SDL_Texture *banner = branding_game_banner(g);
-    SDL_Texture *game_logo = branding_game_logo(g);
-    if (banner) {
-        int bw = 0, bh = 0;
-        if (SDL_QueryTexture(banner, NULL, NULL, &bw, &bh) == 0 && bw > 0 && bh > 0) {
-            ui_clip(x, y, W, hero_h);
-            draw_cover(banner, bw, bh, x, y, W, hero_h);
-            ui_unclip();
+    const float desc_w = 200.0f;
+    const float desc_x = x + prev_w + 10.0f;
+    card(desc_x, card_y, desc_w, prev_h, "ABOUT THIS GAME");
+    {
+        float chip_x = desc_x + 14, chip_y = card_y + 38;
+        char yr[8], pl[16];
+        snprintf(yr, sizeof yr, "%d", games[g].year);
+        snprintf(pl, sizeof pl, "%d Player%s", games[g].players, games[g].players == 1 ? "" : "s");
+        const char *chips[3] = {
+            games[g].genre ? games[g].genre : "Game", yr, pl
+        };
+        for (int ci = 0; ci < 3; ci++) {
+            float cw = ui_text_w(F_BOLD, 10, chips[ci]) + 16;
+            if (chip_x + cw > desc_x + desc_w - 8) break;
+            ui_rrect(chip_x, chip_y, cw, 20, 10, RGBA(255,255,255,14));
+            ui_text(F_BOLD, 10, chip_x + 8, chip_y + 5, HEX(0xc0c8e0), chips[ci]);
+            chip_x += cw + 6;
         }
-        ui_vgrad(x, y, W, hero_h,
-                 RGBA(5, 8, 14, 36), RGBA(5, 8, 14, 218));
-    } else {
-        ui_rrect(x, y, W, hero_h, 12, RGBA(15, 22, 36, 248));
-        ui_vgrad(x + 1, y + 1, W - 2, hero_h - 2,
-                 RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 86),
-                 RGBA(8, 12, 20, 228));
     }
-    ui_stroke(x, y, W, hero_h, 12, 1.2f,
-              RGBA((a >> 16) & 255, (a >> 8) & 255, a & 255, 170));
+    ui_text_wrap(F_REG, 11, desc_x + 14, card_y + 68, desc_w - 28, C_TEXT,
+                 games[g].desc ? games[g].desc : "Game information is not available.", 4);
 
-    if (game_logo) {
-        int logo_w_px = 0, logo_h_px = 0;
-        if (SDL_QueryTexture(game_logo, NULL, NULL, &logo_w_px, &logo_h_px) == 0 &&
-            logo_w_px > 0 && logo_h_px > 0) {
-            float logo_h = 40.0f;
-            float logo_w = logo_h * ((float)logo_w_px / (float)logo_h_px);
-            if (logo_w > 220.0f) logo_w = 220.0f;
-            ui_image(game_logo, NULL, x + 18, y + 8, logo_w, logo_h);
-        } else {
-            ui_text_fit(F_BOLD, 20, x + 30, y + 13, W - 260, C_TEXT, games[g].name);
-        }
-    } else {
-        ui_text_fit(F_BOLD, 20, x + 30, y + 13, W - 260, C_TEXT, games[g].name);
-    }
-
-    ui_text_fit(F_REG, 10, x + 20, y + 51, W - 300, RGBA(232, 237, 247, 230),
-                games[g].sub ? games[g].sub : "Game profile");
-    char game_meta[128];
-    snprintf(game_meta, sizeof game_meta, "%s  ·  %d  ·  %d Player%s",
-             games[g].genre ? games[g].genre : "Game",
-             games[g].year,
-             games[g].players,
-             games[g].players == 1 ? "" : "s");
-    ui_text_fit(F_REG, 9, x + 20, y + 68, W - 300, RGBA(220, 225, 237, 220), game_meta);
-
-    const char *rom_state = rs[g].ok ? "ROM READY" :
-        (c->rom_path[0] ? "ROM NEEDS ATTENTION" : "ROM REQUIRED");
-    float pill_w = ui_text_w(F_BOLD, 10, rom_state) + 28.0f;
-    ui_rrect(x + W - pill_w - 16, y + 12, pill_w, 24, 12,
-             rs[g].ok ? RGBA(38, 116, 83, 230) :
-             (c->rom_path[0] ? RGBA(142, 66, 53, 230) : RGBA(105, 83, 43, 230)));
-    ui_text_c(F_BOLD, 10, x + W - pill_w * 0.5f - 16, y + 18,
-              C_TEXT, rom_state);
-
-    /* Keep the full description visible while retaining a large live preview. */
-    card(x, card_y, 360, 378, "PREVIEW & ABOUT");
-    ui_text_wrap(F_REG, 10, x + 18, card_y + 39, 324, C_DIM,
-                 games[g].desc ? games[g].desc : "Game information is not available.", 3);
-    draw_preview(g, x + 16, card_y + 80, 328, 180, 0);
-    ui_text_c(F_REG, 10, x + 180, card_y + 264, C_DIM,
-              "Live preview from power-on");
-    if (ui_button(x + 16, card_y + 282, 328, 34,
-                  "Refresh preview", B_NORMAL, rs[g].ok))
-        make_preview(g);
-    ui_text_wrap(F_REG, 10, x + 18, card_y + 324, 324, C_DIM,
-                 "Tip: drag and drop a ROM, patch or picture onto this window.", 2);
-
-    float rx = x + 372.0f, rw = 436.0f;
-    card(rx, card_y, rw, 378, "FILES");
-
+    float rx = desc_x + desc_w + 10.0f, rw = W - (rx - x);
+    float files_h = (float)UI_H - card_y - 4.0f;
+    if (files_h > 390.0f) files_h = 390.0f;
+    card(rx, card_y, rw, files_h, "FILES");
     label(rx + 18, card_y + 44, "Game ROM");
     path_box(rx + 18, card_y + 64, rw - 18 * 2 - 100 - 8,
              c->rom_path, "Drop a ROM here or browse");
@@ -1565,7 +1525,6 @@ static void sub_game(int g, float x, float y)
     }
     status_line(rx + 18, card_y + 108, rw - 36,
                 rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2), rs[g].msg);
-
     label(rx + 18, card_y + 144, "ROM hack profiles");
     ui_text_wrap(F_REG, 11, rx + 18, card_y + 164, rw - 36, C_DIM,
                  "Add patches or pre-patched ROMs as separate profiles. The original ROM is never changed.", 2);
@@ -1576,12 +1535,9 @@ static void sub_game(int g, float x, float y)
                  c->romhacks[c->romhack_selected].title : "ROM hack");
     else
         snprintf(profile_label, sizeof profile_label, "Selected: Original game");
-    ui_text_fit_tail(F_REG, 11, rx + 18, card_y + 207,
-                     rw - 36, C_TEXT, profile_label);
-    if (ui_button(rx + 18, card_y + 228, rw - 36, 32,
-                  "Manage ROM Hacks…", B_NORMAL, 1))
+    ui_text_fit_tail(F_REG, 11, rx + 18, card_y + 207, rw - 36, C_TEXT, profile_label);
+    if (ui_button(rx + 18, card_y + 228, rw - 36, 32, "Manage ROM Hacks…", B_NORMAL, 1))
         sub[g] = SUB_ROMHACKS;
-
     label(rx + 18, card_y + 274, "Save data");
     int bat = games[g].crc == 0 &&
               (g == GAME_SML2 || (g >= GAME_WARIO_SML3 && g <= GAME_WARIO_LAND2_GBC));
@@ -1591,8 +1547,7 @@ static void sub_game(int g, float x, float y)
                  bat ? C_TEXT : C_DIM,
                  bat ? "Saved games are kept automatically in the saves folder, one file per game."
                      : "This cartridge has no battery-backed save memory.", 2);
-    if (bat && ui_button(rx + 18, card_y + 340, 180, 30,
-                         "Open saves folder", B_NORMAL, 1)) {
+    if (bat && ui_button(rx + 18, card_y + 340, 180, 30, "Open saves folder", B_NORMAL, 1)) {
         mkdir_u(sp);
         open_folder(sp);
     }
@@ -5645,8 +5600,6 @@ LauncherResult launcher_frame(float dt)
         float nav_w = vw - 190.0f;
         if (nav_w < 620.0f) nav_w = 620.0f;
         if (brand_logo) ui_image(brand_logo, NULL, vx + 14, 10, 138, 68);
-        /* Small windows move navigation into the header instead of squeezing
-           the content beside a permanent sidebar. */
 #if defined(__ANDROID__)
         const float game_nav_y = 4.0f, game_nav_h = 40.0f, game_label_y = 14.0f;
         const float global_nav_y = 46.0f, global_nav_h = 39.0f, global_label_y = 56.0f;
@@ -5676,46 +5629,107 @@ LauncherResult launcher_frame(float dt)
         }
         ui_rect(vx + 12, nav_divider_y, vw - 24, 1, C_LINE);
     } else {
-        if (brand_logo) ui_image(brand_logo, NULL, 20, 1, 170, 83);
-        ui_rect(20, 90, UI_W - 40, 1, C_LINE);
-
-        /* Desktop sidebar */
-        float sx = 24, sy = 108;
-        int compact_games = N_GAMES > 4;
-        float game_row = compact_games ? 46.0f : 76.0f;
-        float game_h = compact_games ? 42.0f : 68.0f;
+        /* Rich library sidebar. Eight game rows use matching 42px hitboxes and spacing. */
+        const float SB_X = 14.0f, SB_W = 240.0f;
+        const float SB_GAME_ROW = 42.0f;
+        const float SB_NAV_ROW  = 31.0f;
+        ui_rrect(0, 0, SB_X + SB_W + 6, (float)UI_H, 0, RGBA(6, 8, 16, 230));
+        ui_rect(SB_X + SB_W + 6, 0, 1, (float)UI_H, RGBA(255,255,255,12));
+        if (brand_logo) ui_image(brand_logo, NULL, SB_X + 4, 4, 170, 56);
+        ui_rect(SB_X, 65, SB_W, 1, RGBA(255,255,255,12));
+        ui_text(F_BOLD, 9, SB_X + 10, 71, RGBA(82,90,120,255), "YOUR GAMES");
+        float gsy = 83.0f;
         for (int i = 0; i < N_GAMES; i++) {
-            float y = sy + i * game_row;
-            if (tab_button(sx, y, 224, game_h, tab == i, games[i].accent)) tab = i;
-            if (compact_games) {
-                ui_text_fit(F_BOLD, 13, sx + 14, y + 4, 202, tab == i ? C_TEXT : C_MUTED, games[i].name);
-                int kind = rs[i].ok ? 1 : (settings.g[i].rom_path[0] ? 3 : 2);
-                const char *msg = rs[i].ok ? "Ready to play" : (settings.g[i].rom_path[0] ? "ROM issue" : "ROM needed");
-                status_line(sx + 14, y + 23, 202, kind, msg);
+            float gy = gsy + i * SB_GAME_ROW;
+            int gover = 0;
+            int gclicked = clickable(SB_X, gy, SB_W, 42, &gover);
+            if (gclicked) tab = i;
+            int gactive = (tab == i);
+            uint32_t gacc = games[i].accent;
+            if (gactive)
+                ui_rrect(SB_X, gy, SB_W, 42, 8,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255, 30));
+            else if (gover)
+                ui_rrect(SB_X, gy, SB_W, 42, 8, RGBA(255,255,255,8));
+            if (gactive)
+                ui_rrect(SB_X, gy + 8, 3, 34, 2,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255,255));
+            SDL_Texture *glogo = branding_game_logo(i);
+            float thmx = SB_X + 10, thmy = gy + 7, thms = 28;
+            if (glogo) {
+                int lw2, lh2;
+                SDL_QueryTexture(glogo, NULL, NULL, &lw2, &lh2);
+                float tw = thms * ((float)lw2 / (float)(lh2 > 0 ? lh2 : 1));
+                if (tw > thms * 2.0f) tw = thms * 2.0f;
+                ui_rrect(thmx, thmy, thms, thms, 8,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255, 60));
+                ui_image(glogo, NULL, thmx + (thms - tw) * 0.5f, thmy + 2, tw, thms - 4);
             } else {
-                ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
-                const GameCfg *gc = &settings.g[i];
-                const char *ready = !rs[i].ok ? "ROM needed" :
-                    (gc->romhack_selected >= 0 ? (hack_ok[i] ? "Ready with ROM hack" : "ROM hack selected") : "Ready to play");
-                status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, ready);
+                ui_rrect(thmx, thmy, thms, thms, 8,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255, 90));
+                char ltr[2] = {games[i].name[0], 0};
+                ui_text_c(F_BOLD, 16, thmx + thms * 0.5f, thmy + 10, C_TEXT, ltr);
+            }
+            float ntx = thmx + thms + 8;
+            float ntw = SB_X + SB_W - ntx - 18;
+            ui_text_fit(F_BOLD, 12, ntx, gy + 10, ntw,
+                        gactive ? C_TEXT : RGBA(192,200,224,255), games[i].name);
+            ui_text_fit(F_REG, 10, ntx, gy + 26, ntw,
+                        RGBA(106,116,144,255),
+                        games[i].genre ? games[i].genre : (games[i].sub ? games[i].sub : ""));
+            uint32_t dot = rs[i].ok ? RGBA(61,186,120,255) :
+                           (settings.g[i].rom_path[0] ? RGBA(245,200,66,255) : RGBA(82,90,120,255));
+            ui_rrect(SB_X + SB_W - 14, gy + 17, 7, 7, 4, dot);
+        }
+        float ndiv_y = gsy + N_GAMES * SB_GAME_ROW + 4.0f;
+        ui_rect(SB_X + 8, ndiv_y, SB_W - 16, 1, RGBA(255,255,255,10));
+        ui_text(F_BOLD, 9, SB_X + 10, ndiv_y + 8, RGBA(82,90,120,255), "NAVIGATION");
+        float nav2_y = ndiv_y + 22.0f;
+        static const char *sb_nav_labels[] = {
+            "Multiplayer", "Controllers", "Filters", "Audio", "Online", "Display", "Museum"
+        };
+        for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
+            float ny = nav2_y + (i - TAB_MULTIPLAYER) * SB_NAV_ROW;
+            int nover = 0;
+            int nclicked = clickable(SB_X, ny, SB_W, 29, &nover);
+            if (nclicked) tab = i;
+            int nactive = (tab == i);
+            uint32_t nacc = (i == TAB_MULTIPLAYER) ? games[mp_config_game].accent :
+                            (i == TAB_MUSEUM ? 0xF5C842 : 0x4C8DFF);
+            if (nactive) {
+                ui_rrect(SB_X, ny, SB_W, 29, 8,
+                         RGBA((nacc>>16)&255,(nacc>>8)&255,nacc&255, 25));
+                ui_rrect(SB_X, ny + 4, 3, 21, 2,
+                         RGBA((nacc>>16)&255,(nacc>>8)&255,nacc&255,255));
+            } else if (nover) {
+                ui_rrect(SB_X, ny, SB_W, 29, 8, RGBA(255,255,255,7));
+            }
+            ui_text_fit(F_BOLD, 11, SB_X + 14, ny + 9, SB_W - 46,
+                        nactive ? C_TEXT : RGBA(136,145,176,255),
+                        sb_nav_labels[i - TAB_MULTIPLAYER]);
+            if (i == TAB_MUSEUM) {
+                int found = 0;
+                for (int gi = 0; gi < N_GAMES; gi++) found += museum_discovered_count(gi);
+                if (found > 0) {
+                    char badge[16]; snprintf(badge, sizeof badge, "%d", found);
+                    float bw2 = (float)(int)ui_text_w(F_BOLD, 10, badge) + 12.0f;
+                    ui_rrect(SB_X + SB_W - bw2 - 6, ny + 7, bw2, 14, 7, RGBA(245,200,66,255));
+                    ui_text_c(F_BOLD, 9, SB_X + SB_W - bw2 * 0.5f - 6, ny + 9,
+                              RGBA(10,12,20,255), badge);
+                }
             }
         }
-        float y2 = sy + N_GAMES * game_row + 8;
-        ui_rect(sx + 8, y2, 208, 1, C_LINE);
-        float nav_y = y2 + 8;
-        int nav_count = N_TABS - TAB_MULTIPLAYER;
-        float nav_available = UI_H - 52.0f - nav_y;
-        float nav_step = nav_available / (float)nav_count;
-        if (nav_step > 43.0f) nav_step = 43.0f;
-        float nav_h = nav_step - 3.0f;
-        if (nav_h > 38.0f) nav_h = 38.0f;
-        for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
-            float y = nav_y + (i - TAB_MULTIPLAYER) * nav_step;
-            uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
-            if (tab_button(sx, y, 224, nav_h, tab == i, accent)) tab = i;
-            ui_text_fit(F_BOLD, nav_h < 32.0f ? 12 : 14, sx + 18,
-                        y + (nav_h - 21.0f) * 0.5f, 194,
-                        tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
+        {
+            float ob_y = (float)UI_H - 36.0f;
+            ui_rrect(SB_X, ob_y, SB_W, 32, 8, RGBA(20,24,42,160));
+            ui_rect(SB_X, ob_y, SB_W, 1, RGBA(255,255,255,10));
+            NetplayInfo ni2; netplay_get_info(&ni2);
+            int online = ni2.state == NETPLAY_HOSTING || ni2.state == NETPLAY_CONNECTED;
+            uint32_t odot = online ? RGBA(61,186,120,255) : RGBA(82,90,120,255);
+            ui_rrect(SB_X + 12, ob_y + 13, 7, 7, 4, odot);
+            ui_text(F_BOLD, 10, SB_X + 24, ob_y + 11,
+                    online ? RGBA(61,186,120,255) : RGBA(106,116,144,255),
+                    online ? "Online" : "Offline");
         }
     }
 
@@ -5723,63 +5737,97 @@ LauncherResult launcher_frame(float dt)
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
-        page_heading(cx, cy - 14, 808, 64, games[tab].name,
-                     games[tab].sub, games[tab].accent);
         int can = rs[tab].ok;
+        const float HERO_H = 172.0f;
+        SDL_Texture *hero_banner = branding_game_banner(tab);
+        uint32_t acc3 = HEX(games[tab].accent);
+        if (hero_banner) {
+            int hbw, hbh;
+            SDL_QueryTexture(hero_banner, NULL, NULL, &hbw, &hbh);
+            ui_clip(cx, cy - 14, 808, HERO_H);
+            draw_cover(hero_banner, hbw, hbh, cx, cy - 14, 808, HERO_H);
+            ui_unclip();
+        } else {
+            ui_vgrad(cx, cy - 14, 808, HERO_H,
+                     RGBA((acc3>>24)&255,(acc3>>16)&255,(acc3>>8)&255, 55),
+                     RGBA(8, 10, 18, 240));
+        }
+        ui_hgrad(cx, cy - 14, 808, HERO_H,
+                 RGBA(8,10,18, 0), RGBA(8,10,18, 200));
+        ui_vgrad(cx, cy - 14 + HERO_H * 0.5f, 808, HERO_H * 0.5f,
+                 RGBA(8,10,18,0), RGBA(8,10,18,220));
+        ui_rrect(cx, cy - 14, 3, HERO_H, 2, acc3);
+        SDL_Texture *hero_logo = branding_game_logo(tab);
+        float logo_bottom = cy - 14 + HERO_H - 20.0f;
+        if (hero_logo) {
+            int hlw, hlh;
+            SDL_QueryTexture(hero_logo, NULL, NULL, &hlw, &hlh);
+            float lh = 56.0f, lw3 = lh * ((float)hlw / (float)(hlh > 0 ? hlh : 1));
+            if (lw3 > 240.0f) lw3 = 240.0f;
+            ui_image(hero_logo, NULL, cx + 16, logo_bottom - lh, lw3, lh);
+        } else {
+            ui_text(F_BOLD, 26, cx + 20, logo_bottom - 56, C_TEXT, games[tab].name);
+        }
+        ui_text(F_REG, 11, cx + 18, logo_bottom - 20, RGBA(255,255,255,140),
+                games[tab].sub ? games[tab].sub : "");
+        {
+            char hmeta[80];
+            snprintf(hmeta, sizeof hmeta, "%s  ·  %d  ·  %d Player%s",
+                     games[tab].genre ? games[tab].genre : "",
+                     games[tab].year, games[tab].players, games[tab].players == 1 ? "" : "s");
+            ui_text(F_REG, 10, cx + 18, logo_bottom - 4, RGBA(255,255,255,100), hmeta);
+        }
+        {
+            const char *pill_txt = can ? "ROM READY" :
+                (settings.g[tab].rom_path[0] ? "ROM ERROR" : "ROM NEEDED");
+            uint32_t pill_bg = can ? RGBA(38,116,83,230) :
+                (settings.g[tab].rom_path[0] ? RGBA(142,66,53,230) : RGBA(80,70,30,230));
+            float pw = ui_text_w(F_BOLD, 10, pill_txt) + 24.0f;
+            ui_rrect(cx + 808 - pw - 14, cy - 14 + 14, pw, 22, 11, pill_bg);
+            ui_text_c(F_BOLD, 10, cx + 808 - pw * 0.5f - 14, cy - 14 + 18, C_TEXT, pill_txt);
+        }
         const char *play_label = tab == GAME_GBA_SAGA
             ? (c->romhack_selected >= 0 ? "Play Profile" : "Play GBA")
-            : (c->romhack_selected >= 0 ? "Play Hack" : "Play");
-        if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? play_label : "Needs ROM", B_PRIMARY, can)) res.play = tab;
-        if (!can) hint_area(cx + 808 - 176, cy + 2, 176, 52, "Choose your ROM on the Game tab (or drop it on this window)");
-        float y = cy + 118;
+            : (c->romhack_selected >= 0 ? "▶  Play Hack" : "▶  Play");
+        if (ui_button(cx + 808 - 176, cy - 14 + HERO_H * 0.5f - 26, 162, 52,
+                      can ? play_label : "▶  Needs ROM", B_PRIMARY, can))
+            res.play = tab;
+        if (!can) hint_area(cx + 808 - 176, cy - 14 + HERO_H * 0.5f - 26, 162, 52,
+                            "Choose your ROM on the Game tab (or drop it on this window)");
+        float y_seg = cy - 14 + HERO_H + 6.0f;
+        float y_cont = y_seg + 44.0f;
         pad_set_context(tab, 0);
         if (tab == GAME_GBA_SAGA) {
             static const char *gba_sub_names[6] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense"};
             if (sub[tab] < 0 || sub[tab] >= 6) sub[tab] = SUB_GAME;
-            ui_seg(cx, cy + 66, 808, 38, gba_sub_names, 6, &sub[tab]);
+            ui_seg(cx, y_seg, 808, 38, gba_sub_names, 6, &sub[tab]);
             switch (sub[tab]) {
-            case SUB_GAME: sub_external_game(tab, cx, y); break;
-            case SUB_ROMHACKS: sub_gba_rom_profiles(tab, cx, y); break;
-            case SUB_DISPLAY: sub_gba_display(tab, cx, y); break;
-            case SUB_CONTROLS: sub_gba_controllers(tab, cx, y); break;
-            case SUB_BINDINGS: sub_gba_bindings(tab, cx, y); break;
-            case SUB_DUALSENSE: sub_gba_dualsense(tab, cx, y); break;
-            default: sub_external_game(tab, cx, y); break;
+            case SUB_GAME: sub_external_game(tab, cx, y_cont); break;
+            case SUB_ROMHACKS: sub_gba_rom_profiles(tab, cx, y_cont); break;
+            case SUB_DISPLAY: sub_gba_display(tab, cx, y_cont); break;
+            case SUB_CONTROLS: sub_gba_controllers(tab, cx, y_cont); break;
+            case SUB_BINDINGS: sub_gba_bindings(tab, cx, y_cont); break;
+            case SUB_DUALSENSE: sub_gba_dualsense(tab, cx, y_cont); break;
+            default: sub_external_game(tab, cx, y_cont); break;
             }
         } else if (games[tab].external_player) {
             const char *external_sub_names[2] = {"Game", "ROM Hacks"};
             int external_sub = sub[tab] == SUB_ROMHACKS ? 1 : 0;
-            ui_seg(cx, cy + 66, 808, 38, external_sub_names, 2, &external_sub);
+            ui_seg(cx, y_seg, 808, 38, external_sub_names, 2, &external_sub);
             sub[tab] = external_sub ? SUB_ROMHACKS : SUB_GAME;
-            if (sub[tab] == SUB_ROMHACKS) sub_romhacks(tab, cx, y);
-            else sub_external_game(tab, cx, y);
+            if (sub[tab] == SUB_ROMHACKS) sub_romhacks(tab, cx, y_cont);
+            else sub_external_game(tab, cx, y_cont);
         } else {
-            ui_seg(cx, cy + 66, 808, 38, sub_names, N_SUB, &sub[tab]);
+            ui_seg(cx, y_seg, 808, 38, sub_names, N_SUB, &sub[tab]);
             switch (sub[tab]) {
-        case SUB_GAME:
-            sub_game(tab, cx, y);
-            break;
-        case SUB_ROMHACKS:
-            sub_romhacks(tab, cx, y);
-            break;
-        case SUB_DISPLAY:
-            sub_display(tab, cx, y);
-            break;
-        case SUB_CONTROLS:
-            sub_controls(tab, cx, y);
-            break;
-        case SUB_BINDINGS:
-            sub_bindings(tab, cx, y);
-            break;
-        case SUB_DUALSENSE:
-            sub_dualsense(tab, cx, y);
-            break;
-        case SUB_SAVE_STATES:
-            sub_save_states(tab, cx, y);
-            break;
-            default:
-                sub_textures(tab, cx, y);
-                break;
+            case SUB_GAME: sub_game(tab, cx, y_cont); break;
+            case SUB_ROMHACKS: sub_romhacks(tab, cx, y_cont); break;
+            case SUB_DISPLAY: sub_display(tab, cx, y_cont); break;
+            case SUB_CONTROLS: sub_controls(tab, cx, y_cont); break;
+            case SUB_BINDINGS: sub_bindings(tab, cx, y_cont); break;
+            case SUB_DUALSENSE: sub_dualsense(tab, cx, y_cont); break;
+            case SUB_SAVE_STATES: sub_save_states(tab, cx, y_cont); break;
+            default: sub_textures(tab, cx, y_cont); break;
             }
         }
         if (load_state_request[tab] >= 0) res.play = tab;
