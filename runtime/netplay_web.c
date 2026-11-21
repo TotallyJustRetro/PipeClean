@@ -141,15 +141,16 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
         });
         room.on("result", () => {
             y.playing = false; y.startRequest = -1; y.remoteGame = null;
-    if (typeof YouGame !== "undefined" && typeof YouGame.setGameState === "function")
-        YouGame.setGameState("menu");
-    if (typeof YouGame !== "undefined" && YouGame.input && typeof YouGame.input.hide === "function")
-        YouGame.input.hide(); y.refresh();
+            if (typeof YouGame.setGameState === "function") YouGame.setGameState("menu");
+            if (YouGame.input && typeof YouGame.input.hide === "function") YouGame.input.hide();
+            y.refresh();
         });
         room.on("close", ({ reason }) => {
             y.room = null; y.playing = false; y.startRequest = -1;
             y.error = false; y.state = 0; y.code = ""; y.peer = "";
             y.status = "Friends room closed" + (reason ? ": " + reason : "") + ".";
+            if (typeof YouGame.setGameState === "function") YouGame.setGameState("menu");
+            if (YouGame.input && typeof YouGame.input.hide === "function") YouGame.input.hide();
             for (const resolve of y.inputWaiters.values()) resolve(null);
             y.inputWaiters.clear();
             if (y.gameWaiter) { y.gameWaiter(null); y.gameWaiter = null; }
@@ -341,10 +342,25 @@ EM_ASYNC_JS(int, pc_yg_exchange_inputs,
     }
 });
 
-EM_JS(void, pc_yg_game_end, (), {
+EM_ASYNC_JS(void, pc_yg_game_end, (), {
     const y = window.__pcYouGame || {};
-    if (y.room && y.room.playing) y.room.completeMatch({ draw: true }).catch(() => {});
+    const room = y.room;
+    if (room && room.playing) {
+        try {
+            /* SML2 co-op has no winner: both clients record the session as a draw,
+               then complete the overall private-room match. */
+            const round = Number.isSafeInteger(room.round) ? room.round : 0;
+            await room.reportGame({ id: "sml2-coop-" + String(round), draw: true });
+            await room.completeMatch({ draw: true });
+        } catch (error) {
+            console.warn("[PipeClean/YouGame] Result report failed:", error);
+        }
+    }
     y.playing = false; y.startRequest = -1; y.remoteGame = null;
+    if (typeof YouGame !== "undefined" && typeof YouGame.setGameState === "function")
+        YouGame.setGameState("menu");
+    if (typeof YouGame !== "undefined" && YouGame.input && typeof YouGame.input.hide === "function")
+        YouGame.input.hide();
     if (y.remoteInputs) y.remoteInputs.clear();
     if (y.localInputs) y.localInputs.clear();
     if (y.sendInputs) y.sendInputs.clear();
