@@ -18,6 +18,7 @@ void yougame_native_shutdown(void);
 void yougame_native_set_state(int state);
 void yougame_native_relay_key(const char *key);
 int yougame_native_connected(void);
+int yougame_native_ready(void);
 int yougame_native_started_by_app(void);
 int yougame_native_player_state(void);
 const char *yougame_native_player_name(void);
