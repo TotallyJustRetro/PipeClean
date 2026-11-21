@@ -9,14 +9,30 @@
 #include <dirent.h>
 
 const GameDef games[N_GAMES] = {
-    {"drmario",    "Dr. Mario",             "Falling-pill puzzle. Recompiled to native code.",                "DR.MARIO",         0xF0225DD0u, 1, 0xE0584C, 200, 0,  0,  0, 0, 0, 0},
-    {"sml",        "Super Mario Land",      "Sarasaland platformer.",                                          "SUPER MARIOLAND",  0,           0, 0x4FA85A, 420, 32, 56, 16, 0, 0, 0},
-    {"sml2",       "Super Mario Land 2",    "6 Golden Coins.",                                                 "MARIOLAND2",       0,           0, 0xE8B23A, 700, 49, 33,  0, 0, 0, 0},
-    {"wario-sml3", "Wario Land: SML3",      "Wario's first adventure.",                "SUPERMARIOLAND3",  0,           0, 0xE4A144, 420, 33, 33,  0, 0, 0, 0},
-    {"wario2-gb",  "Wario Land II (GB)",    "The monochrome Game Boy release.",       "WARIOLAND2",       0,           0, 0xC77B44, 420, 32, 32,  0, 0, 0, 0},
-    {"wario3-gbc", "Wario Land 3 (GBC)",    "Wario's color-era adventure.",           "WARIOLAND3",       0,           0, 0x58B5C9, 500, 32, 32,  0, 0, 0, 0},
-    {"wario2-gbc", "Wario Land II (GBC)",  "The Game Boy Color release.",             "CGBWARIOLAND2",    0,           0, 0x8A80D4, 420, 32, 32,  0, 0, 0, 0},
-    {"mario-luigi-ss", "Superstar Saga (GBA)", "Experimental BIOS-free GBA recompilation test.", "MARIO&LUIGIU", 0, 0, 0x72B95B, 0, 0, 0, 0, 0, 0, 1},
+    {"drmario",    "Dr. Mario",             "Falling-pill puzzle. Recompiled to native code.",                "DR.MARIO",         0xF0225DD0u, 1, 0xE0584C, 200, 0,  0,  0, 0, 0, 0,
+     "Dr. Mario throws megavitamin capsules into a bottle filled with viruses. Match four capsule halves or viruses in a row to clear them. Clear all viruses to advance through increasingly difficult levels.",
+     "Puzzle", 1990, 2},
+    {"sml",        "Super Mario Land",      "Sarasaland platformer.",                                          "SUPER MARIOLAND",  0,           0, 0x4FA85A, 420, 32, 56, 16, 0, 0, 0,
+     "Travel across Sarasaland to rescue Princess Daisy from Tatanga. Explore distinct kingdoms, use the Superball power-up, and take to the skies and seas in special vehicle stages.",
+     "Platformer", 1989, 2},
+    {"sml2",       "Super Mario Land 2",    "6 Golden Coins.",                                                 "MARIOLAND2",       0,           0, 0xE8B23A, 700, 49, 33,  0, 0, 0, 0,
+     "Collect the six Golden Coins and stop Wario from taking over Mario's castle. Journey through six distinct worlds, each with its own stages, secrets, and boss.",
+     "Platformer", 1992, 2},
+    {"wario-sml3", "Wario Land: SML3",      "Wario's first adventure.",                "SUPERMARIOLAND3",  0,           0, 0xE4A144, 420, 33, 33,  0, 0, 0, 0,
+     "Help Wario raid Kitchen Island and steal the Black Sugar Gang's treasure. Search for hidden riches, secret exits, and the biggest possible payday.",
+     "Platformer", 1994, 1},
+    {"wario2-gb",  "Wario Land II (GB)",    "The monochrome Game Boy release.",       "WARIOLAND2",       0,           0, 0xC77B44, 420, 32, 32,  0, 0, 0, 0,
+     "Wario's body transforms when enemies attack, turning damage into new abilities. Use these unusual forms to solve puzzles, explore branching stages, and find hidden treasure.",
+     "Platformer", 1998, 1},
+    {"wario3-gbc", "Wario Land 3 (GBC)",    "Wario's color-era adventure.",           "WARIOLAND3",       0,           0, 0x58B5C9, 500, 32, 32,  0, 0, 0, 0,
+     "Escape a magical music box by revisiting stages with new powers. Unlock new paths, solve environmental puzzles, and collect the treasures hidden throughout the world.",
+     "Platformer", 2000, 1},
+    {"wario2-gbc", "Wario Land II (GBC)",  "The Game Boy Color release.",             "CGBWARIOLAND2",    0,           0, 0x8A80D4, 420, 32, 32,  0, 0, 0, 0,
+     "Explore the full-color Game Boy Color edition of Wario Land II. Transformations, branching routes, and treasure hunting return with richer color presentation.",
+     "Platformer", 1998, 1},
+    {"mario-luigi-ss", "Superstar Saga (GBA)", "Experimental BIOS-free GBA recompilation test.", "MARIO&LUIGIU", 0, 0, 0x72B95B, 0, 0, 0, 0, 0, 0, 1,
+     "Mario and Luigi travel through the Beanbean Kingdom in a role-playing adventure built around timed, cooperative action commands.",
+     "RPG", 2003, 1},
 };
 
 #define MAX_ROM (8u << 20)

@@ -125,6 +125,7 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
     int over = 0;
     int clicked = clickable(x, y, w, 34, &over);
     ui_rrect(x, y, w, 34, 9, over ? C_BTN_H : C_BTN);
+    ui_stroke(x, y, w, 34, 9, 1.0f, RGBA(111, 132, 169, 92));
     char title[120];
     snprintf(title, sizeof title, "Player %d   %s", player + 1, name);
     ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, C_TEXT, title);
@@ -138,7 +139,8 @@ static void controller_dropdown(int g, int player, float x, float y, float w)
     int count = pad_count();
     int options = count + 1;
     ui_shadow(x, py, w, options * 34 + 8, 10, 8, RGBA(0, 0, 0, 100));
-    ui_rrect(x, py, w, options * 34 + 8, 10, C_BG2);
+    ui_rrect(x, py, w, options * 34 + 8, 10, RGBA(19, 27, 42, 250));
+    ui_stroke(x, py, w, options * 34 + 8, 10, 1.0f, RGBA(111, 132, 169, 115));
 
     for (int o = 0; o < options; o++) {
         float oy = py + 4 + o * 34;
@@ -954,9 +956,64 @@ static uint32_t mixc(uint32_t a, uint32_t b, float t)
 
 static void card(float x, float y, float w, float h, const char *title)
 {
-    ui_shadow(x, y, w, h, 14, 8, RGBA(0, 0, 0, 50));
-    ui_rrect(x, y, w, h, 14, (C_PANEL & 0xFFFFFF00u) | 232);
-    if (title) ui_text(F_BOLD, 12, x + 18, y + 14, C_DIM, title);
+    /* Shared launcher panel treatment: layered navy surface, quiet outline,
+       and a compact title rail. Keeping this in one helper refreshes every
+       settings page without changing any of their controls or data paths. */
+    ui_shadow(x, y, w, h, 14, 9, RGBA(0, 0, 0, 72));
+    ui_rrect(x, y, w, h, 14, RGBA(19, 25, 40, 246));
+    ui_rrect(x + 1, y + 1, w - 2, 34, 12, RGBA(31, 42, 63, 210));
+    ui_stroke(x, y, w, h, 14, 1.0f, RGBA(104, 126, 164, 88));
+    ui_line(x + 14, y + 36, x + w - 14, y + 36, 1, RGBA(111, 135, 177, 72));
+    if (title) {
+        ui_rrect(x + 10, y + 11, 3, 13, 1.5f, HEX(ui_accent));
+        ui_text(F_BOLD, 11, x + 20, y + 12, HEX(0xDCE5F6), title);
+    }
+}
+
+static void panel_surface(float x, float y, float w, float h, float radius)
+{
+    /* Secondary surfaces use the same layered navy treatment as the main cards. */
+    ui_rrect(x, y, w, h, radius, RGBA(22, 30, 48, 242));
+    ui_stroke(x, y, w, h, radius, 1.0f, RGBA(104, 126, 164, 70));
+}
+
+static void section_heading(float x, float y, float w, const char *title)
+{
+    ui_text(F_BOLD, 10, x, y, RGBA(173, 188, 213, 255), title);
+    ui_line(x, y + 18, x + w, y + 18, 1, RGBA(104, 126, 164, 62));
+}
+
+static void row_surface(float x, float y, float w, float h,
+                        int selected, int hovered, int alternate)
+{
+    uint32_t fill = selected
+        ? mixc(RGBA(27, 39, 59, 238), HEX(ui_accent), 0.24f)
+        : (hovered ? RGBA(72, 92, 129, 76)
+                   : (alternate ? RGBA(255, 255, 255, 8) : RGBA(255, 255, 255, 4)));
+    ui_rrect(x, y, w, h, 8, fill);
+    if (selected)
+        ui_stroke(x, y, w, h, 8, 1.2f, HEX(ui_accent));
+    else if (hovered)
+        ui_stroke(x, y, w, h, 8, 0.8f, RGBA(137, 160, 200, 78));
+}
+
+static void field_outline(float x, float y, float w, float h, float radius)
+{
+    ui_stroke(x, y, w, h, radius, 1.0f, RGBA(111, 132, 169, 92));
+}
+
+static void page_heading(float x, float y, float w, float h,
+                          const char *title, const char *subtitle, uint32_t accent)
+{
+    ui_rrect(x, y, w, h, 12, RGBA(15, 22, 36, 246));
+    ui_vgrad(x + 1, y + 1, w - 2, h - 2,
+             RGBA((accent >> 16) & 255, (accent >> 8) & 255, accent & 255, 48),
+             RGBA((accent >> 16) & 255, (accent >> 8) & 255, accent & 255, 8));
+    ui_stroke(x, y, w, h, 12, 1.0f,
+              RGBA((accent >> 16) & 255, (accent >> 8) & 255, accent & 255, 110));
+    ui_rrect(x + 12, y + 10, 4, h - 20, 2, HEX(accent));
+    ui_text_fit(F_BOLD, 22, x + 26, y + 7, w - 240, C_TEXT, title);
+    ui_text_fit(F_REG, 11, x + 27, y + 37, w - 250, C_MUTED, subtitle);
 }
 
 static void label(float x, float y, const char *s) { ui_text(F_REG, 13, x, y, C_MUTED, s); }
@@ -964,7 +1021,8 @@ static void hint_area(float x, float y, float w, float h, const char *s) { if (u
 
 static void path_box(float x, float y, float w, const char *path, const char *placeholder)
 {
-    ui_rrect(x, y, w, 36, 9, C_BG2);
+    ui_rrect(x, y, w, 36, 9, RGBA(9, 14, 25, 226));
+    ui_stroke(x, y, w, 36, 9, 1, RGBA(100, 121, 157, 84));
     if (path[0]) ui_text_fit_tail(F_REG, 13, x + 12, y + 8, w - 24, C_TEXT, path);
     else ui_text_fit(F_REG, 13, x + 12, y + 8, w - 24, C_DIM, placeholder);
 }
@@ -1019,6 +1077,7 @@ static void sub_external_game(int g, float x, float y)
         display_rom = active_rom;
     }
     card(x, y, 808, 476, "GAME ROM");
+    panel_surface(x + 12, y + 38, 784, 76, 9);
     label(x + 18, y + 42, g == GAME_GBA_SAGA ? "Game Boy Advance ROM" : "Game Boy / Game Boy Color ROM");
     path_box(x + 18, y + 64, 808 - 36 - 110, display_rom, "Drop a ROM here or browse");
     if (ui_button(x + 808 - 18 - 100, y + 64, 100, 36, "Browse…", B_NORMAL, 1)) {
@@ -1040,6 +1099,9 @@ static void sub_external_game(int g, float x, float y)
                          : (c->rom_path[0] ? rs[g].msg : "Choose a ROM to enable Play."));
 
     if (g == GAME_GBA_SAGA) {
+        panel_surface(x + 12, y + 140, 784, 62, 9);
+        panel_surface(x + 12, y + 206, 784, 62, 9);
+        panel_surface(x + 12, y + 278, 784, 180, 9);
         ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "GBA RECOMPILATION");
         ui_text_fit_tail(F_REG, 10, x + 18, y + 173, 660, C_TEXT, active_exe);
         if (ui_button(x + 690, y + 166, 100, 32, "Browse EXE…", B_NORMAL, 1)) {
@@ -1067,6 +1129,9 @@ static void sub_external_game(int g, float x, float y)
         return;
     }
 
+    panel_surface(x + 12, y + 140, 784, 118, 9);
+    panel_surface(x + 12, y + 266, 784, 110, 9);
+    panel_surface(x + 12, y + 374, 784, 78, 9);
     ui_text(F_BOLD, 12, x + 18, y + 150, C_MUTED, "PLAYER");
     ui_text_wrap(F_REG, 12, x + 18, y + 174, 772, C_DIM,
                  g == GAME_GBA_SAGA
@@ -1185,10 +1250,7 @@ static void sub_romhacks(int g, float x, float y)
         int selected = c->romhack_selected == index;
         int over = 0;
         int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
-        uint32_t bg = selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u)
-                               : (over ? C_BTN_H : C_PANEL2);
-        ui_rrect(list_x + 2, ry, list_w - 4, row_h, 9, bg);
-        if (selected) ui_stroke(list_x + 2, ry, list_w - 4, row_h, 9, 1.5f, HEX(ui_accent));
+        row_surface(list_x + 2, ry, list_w - 4, row_h, selected, over, 0);
         draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
         const char *title = index < 0 ? "Original game" :
             (c->romhacks[index].title[0] ? c->romhacks[index].title : "Untitled ROM Hack");
@@ -1336,9 +1398,7 @@ static void sub_gba_rom_profiles(int g, float x, float y)
         int selected = c->romhack_selected == index;
         int over = 0;
         int clicked = clickable(list_x + 2, ry, list_w - 4, row_h, &over);
-        ui_rrect(list_x + 2, ry, list_w - 4, row_h, 9,
-                 selected ? ((HEX(ui_accent) & 0xFFFFFF00u) | 50u) : (over ? C_BTN_H : C_PANEL2));
-        if (selected) ui_stroke(list_x + 2, ry, list_w - 4, row_h, 9, 1.5f, HEX(ui_accent));
+        row_surface(list_x + 2, ry, list_w - 4, row_h, selected, over, 0);
         draw_romhack_thumb(g, index, list_x + 8, ry + 7, 72, 54);
         const char *title = index < 0 ? "Original GBA profile" :
             (c->romhacks[index].title[0] ? c->romhacks[index].title : "Compiled GBA profile");
@@ -1408,47 +1468,89 @@ static void sub_gba_rom_profiles(int g, float x, float y)
 static void sub_game(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
-    card(x, y, 360, 476, "PREVIEW");
-    draw_preview(g, x + 16, y + 40, 328, 300, 0);
-    ui_text_c(F_REG, 12, x + 180, y + 352, C_DIM, "A short run of the game from power-on");
-    if (ui_button(x + 16, y + 386, 328, 38, "Refresh preview", B_NORMAL, rs[g].ok)) make_preview(g);
-    ui_text_wrap(F_REG, 12, x + 18, y + 434, 324, C_DIM, "Tip: drag and drop a ROM, patch or picture onto this window.", 2);
+    const float W = 808.0f;
+    const float card_y = y;
+    const float prev_w = 268.0f;
+    float prev_h = (float)UI_H - card_y - 4.0f;
+    if (prev_h > 230.0f) prev_h = 230.0f;
+    card(x, card_y, prev_w, prev_h, "PREVIEW");
+    draw_preview(g, x + 10, card_y + 36, prev_w - 20, prev_h - 58, 0);
+    ui_text_c(F_REG, 10, x + prev_w * 0.5f, card_y + prev_h - 18, C_DIM,
+              "Live preview  ·  drag to drop a ROM");
 
-    float rx = x + 372, rw = 436;
-    card(rx, y, rw, 476, "FILES");
-    /* ROM */
-    label(rx + 18, y + 42, "Game ROM");
-    path_box(rx + 18, y + 64, rw - 18 * 2 - 110, c->rom_path, "Not chosen yet");
-    if (ui_button(rx + rw - 18 - 100, y + 64, 100, 36, "Browse…", B_NORMAL, 1)) {
+    const float desc_w = 200.0f;
+    const float desc_x = x + prev_w + 10.0f;
+    card(desc_x, card_y, desc_w, prev_h, "ABOUT THIS GAME");
+    {
+        float chip_x = desc_x + 14, chip_y = card_y + 38;
+        char yr[8], pl[16];
+        snprintf(yr, sizeof yr, "%d", games[g].year);
+        snprintf(pl, sizeof pl, "%d Player%s", games[g].players, games[g].players == 1 ? "" : "s");
+        const char *chips[3] = {
+            games[g].genre ? games[g].genre : "Game", yr, pl
+        };
+        for (int ci = 0; ci < 3; ci++) {
+            float cw = ui_text_w(F_BOLD, 10, chips[ci]) + 16;
+            if (chip_x + cw > desc_x + desc_w - 8) break;
+            ui_rrect(chip_x, chip_y, cw, 20, 10, RGBA(255,255,255,14));
+            ui_text(F_BOLD, 10, chip_x + 8, chip_y + 5, HEX(0xc0c8e0), chips[ci]);
+            chip_x += cw + 6;
+        }
+    }
+    ui_text_wrap(F_REG, 11, desc_x + 14, card_y + 68, desc_w - 28, C_TEXT,
+                 games[g].desc ? games[g].desc : "Game information is not available.", 4);
+
+    float rx = desc_x + desc_w + 10.0f, rw = W - (rx - x);
+    float files_h = (float)UI_H - card_y - 4.0f;
+    if (files_h > 390.0f) files_h = 390.0f;
+    card(rx, card_y, rw, files_h, "FILES");
+    label(rx + 18, card_y + 44, "Game ROM");
+    path_box(rx + 18, card_y + 64, rw - 18 * 2 - 100 - 8,
+             c->rom_path, "Drop a ROM here or browse");
+    if (ui_button(rx + rw - 18 - 100, card_y + 64, 100, 36,
+                  "Browse…", B_NORMAL, 1)) {
         char p[1100];
         if (dlg_pick(DLG_ROM, "Choose your ROM", p, sizeof p)) {
             int id = rom_identify_file(p);
-            if (id >= 0 && id != g) { snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", p); rom_check(id); make_preview(id); tab = id; launcher_toast("That ROM belongs to another game. Switched tabs."); }
-            else set_rom(g, p);
+            if (id >= 0 && id != g) {
+                snprintf(settings.g[id].rom_path, sizeof settings.g[id].rom_path, "%s", p);
+                rom_check(id);
+                make_preview(id);
+                tab = id;
+                launcher_toast("That ROM belongs to another game. Switched tabs.");
+            } else {
+                set_rom(g, p);
+            }
         }
     }
-    status_line(rx + 18, y + 108, rw - 36, rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2), rs[g].msg);
-    /* ROM hack profiles live separately from the source ROM path. */
-    label(rx + 18, y + 150, "ROM hack profiles");
-    ui_text_wrap(F_REG, 12, rx + 18, y + 172, rw - 36, C_DIM,
-                 "Add patches or already-patched ROMs on the ROM Hacks tab. Each entry is a separate selectable game profile; the original ROM file is never changed.", 3);
+    status_line(rx + 18, card_y + 108, rw - 36,
+                rs[g].ok ? 1 : (c->rom_path[0] ? 3 : 2), rs[g].msg);
+    label(rx + 18, card_y + 144, "ROM hack profiles");
+    ui_text_wrap(F_REG, 11, rx + 18, card_y + 164, rw - 36, C_DIM,
+                 "Add patches or pre-patched ROMs as separate profiles. The original ROM is never changed.", 2);
     char profile_label[128];
     if (c->romhack_selected >= 0 && c->romhack_selected < c->romhack_count)
         snprintf(profile_label, sizeof profile_label, "Selected: %s",
-                 c->romhacks[c->romhack_selected].title[0] ? c->romhacks[c->romhack_selected].title : "ROM hack");
+                 c->romhacks[c->romhack_selected].title[0] ?
+                 c->romhacks[c->romhack_selected].title : "ROM hack");
     else
         snprintf(profile_label, sizeof profile_label, "Selected: Original game");
-    ui_text_fit_tail(F_REG, 12, rx + 18, y + 224, rw - 36, C_TEXT, profile_label);
-    if (ui_button(rx + 18, y + 250, rw - 36, 34, "Manage ROM Hacks…", B_NORMAL, 1))
+    ui_text_fit_tail(F_REG, 11, rx + 18, card_y + 207, rw - 36, C_TEXT, profile_label);
+    if (ui_button(rx + 18, card_y + 228, rw - 36, 32, "Manage ROM Hacks…", B_NORMAL, 1))
         sub[g] = SUB_ROMHACKS;
-    /* save data */
-    label(rx + 18, y + 330, "Save data");
-    char sp[1200];
+    label(rx + 18, card_y + 274, "Save data");
     int bat = games[g].crc == 0 &&
               (g == GAME_SML2 || (g >= GAME_WARIO_SML3 && g <= GAME_WARIO_LAND2_GBC));
+    char sp[1200];
     snprintf(sp, sizeof sp, "%ssaves/", settings_dir());
-    ui_text_wrap(F_REG, 12, rx + 18, y + 352, rw - 36, C_DIM, bat ? "Saved games are kept automatically next to the program, in the \"saves\" folder, one file per game." : "This cartridge has no save memory.", 3);
-    if (bat && ui_button(rx + 18, y + 396, 180, 36, "Open saves folder", B_NORMAL, 1)) { mkdir_u(sp); open_folder(sp); }
+    ui_text_wrap(F_REG, 11, rx + 18, card_y + 294, rw - 36,
+                 bat ? C_TEXT : C_DIM,
+                 bat ? "Saved games are kept automatically in the saves folder, one file per game."
+                     : "This cartridge has no battery-backed save memory.", 2);
+    if (bat && ui_button(rx + 18, card_y + 340, 180, 30, "Open saves folder", B_NORMAL, 1)) {
+        mkdir_u(sp);
+        open_folder(sp);
+    }
 }
 
 /* ------------------------------------------------------------------ game tab: Display */
@@ -1456,6 +1558,8 @@ static void sub_display(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
     card(x, y, 536, 476, "GAME BOY COLORS");
+    panel_surface(x + 12, y + 38, 512, 208, 9);
+    panel_surface(x + 12, y + 254, 512, 210, 9);
     for (int i = 0; i < n_palettes; i++) {
         float cx = x + 16 + (i % 4) * 129, cy = y + 40 + (i / 4) * 52;
         int over;
@@ -1516,6 +1620,8 @@ static void sub_gba_display(int g, float x, float y)
     GameCfg *c = &settings.g[g];
     static const char *gba_aspect_names[3] = {"Original (3:2)", "4:3", "16:9"};
     card(x, y, 808, 476, "GBA DISPLAY");
+    panel_surface(x + 12, y + 38, 520, 370, 9);
+    panel_surface(x + 540, y + 38, 256, 370, 9);
     ui_text_wrap(F_REG, 12, x + 18, y + 38, 772, C_DIM,
                  "These settings apply to the standalone GBA window. The GBA already renders full color; Game Boy Color palettes and PipeClean LCD/CRT filter presets are not used.", 3);
     label(x + 18, y + 110, "Window shape");
@@ -1566,6 +1672,8 @@ static void bind_cell(int g, float x, float y, float w, int kind, int btn, int s
     uint32_t fill = !available ? RGBA(255,255,255,3) :
                     (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
     ui_rrect(x, y, w, 28, 7, fill);
+    ui_stroke(x, y, w, 28, 7, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     char b[48];
     if (!available) {
         snprintf(b, sizeof b, "—");
@@ -1797,6 +1905,8 @@ static void bind_mp_respawn_cell(int g, int player_slot, float x, float y, float
     int active = cap_kind == kind && cap_btn == player_slot;
     ui_rrect(x, y, w, 28, 7, !available ? RGBA(255,255,255,3) :
              (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN)));
+    ui_stroke(x, y, w, 28, 7, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     char value[48];
     if (!available) snprintf(value, sizeof value, "—");
     else if (active) snprintf(value, sizeof value, kind == 5 ? "press a key…" : "press a button…");
@@ -1829,6 +1939,8 @@ static void bind_action_cell(int g, float x, float y, float w, int kind, int act
     uint32_t fill = !available ? RGBA(255,255,255,3) :
                     (active ? mixc(C_BTN, HEX(ui_accent), 0.5f) : (over ? C_BTN_H : C_BTN));
     ui_rrect(x, y, w, 32, 8, fill);
+    ui_stroke(x, y, w, 32, 8, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     char b[64];
     if (!available) {
         snprintf(b, sizeof b, "—");
@@ -1852,6 +1964,8 @@ static void sub_save_states(int g, float x, float y)
     char text[96];
 
     card(x, y, 808, 476, "SAVE STATES");
+    panel_surface(x + 12, y + 36, 784, 60, 9);
+    panel_surface(x + 12, y + 428, 784, 36, 9);
     ui_text(F_REG, 13, x + 18, y + 40, C_DIM,
             "Choose a slot here. Saving uses the Save State binding while you are playing; Load can start a game from any saved slot.");
 
@@ -1876,8 +1990,7 @@ static void sub_save_states(int g, float x, float y)
         int selected = slot == c->state_slot;
         int over = 0;
         int clicked = clickable(bx, by, 368, 56, &over);
-        ui_rrect(bx, by, 368, 56, 9, selected ? RGBA(255,255,255,14) : (over ? C_BTN_H : RGBA(255,255,255,6)));
-        if (selected) ui_stroke(bx, by, 368, 56, 9, 2, HEX(ui_accent));
+        row_surface(bx, by, 368, 56, selected, over, 0);
 
         SDL_Texture *thumb = saved ? state_thumb_get(g, slot) : NULL;
         if (thumb) ui_image(thumb, NULL, bx + 8, by + 7, 88, 42);
@@ -1920,7 +2033,7 @@ static void sub_bindings(int g, float x, float y)
 
     for (int a = 0; a < N_ACTION; a++) {
         float ry = y + 98 + a * 52;
-        if (a % 2 == 0) ui_rrect(x + 10, ry - 4, 788, 46, 8, RGBA(255,255,255,6));
+        row_surface(x + 10, ry - 4, 788, 46, 0, 0, a % 2 == 0);
         ui_text(F_BOLD, 13, x + 18, ry + 7, C_TEXT, action_names[a]);
         bind_action_cell(g, x + 270, ry + 3, 190, 3, a);
         bind_action_cell(g, x + 490, ry + 3, 190, 4, a);
@@ -1946,6 +2059,7 @@ static void sub_controls(int g, float x, float y)
     ui_text_fit(F_REG, 11, x + 18, my, 770, C_DIM,
                 "Local multiplayer settings, Luigi's name/color, and the rescue binding are on the Multiplayer tab.");
 
+    section_heading(x + 18, y + 91, 772, "BUTTON MAPPING");
     static const float colx[5] = {18, 150, 310, 470, 630};
     ui_text(F_BOLD, 12, x + colx[0], y + 112, C_MUTED, "Game Boy button");
     ui_text(F_BOLD, 12, x + colx[1] + 10, y + 112, C_MUTED, "Keyboard");
@@ -1954,7 +2068,7 @@ static void sub_controls(int g, float x, float y)
     ui_text(F_BOLD, 12, x + colx[4] + 10, y + 112, C_MUTED, "Player 2 controller");
     for (int b = 0; b < N_BTN; b++) {
         float ry = y + 128 + b * 28;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 28, 7, RGBA(255, 255, 255, 6));
+        row_surface(x + 10, ry - 2, 788, 28, 0, 0, b % 2 == 0);
         ui_text(F_BOLD, 14, x + colx[0], ry + 2, C_TEXT, btn_names[b]);
         bind_cell(g, x + colx[1], ry, 150, 1, b, 0);
         bind_cell(g, x + colx[2], ry, 150, 1, b, 1);
@@ -1976,6 +2090,8 @@ static void sub_controls(int g, float x, float y)
      * Draw the controller menus last so their popups sit above the binding
      * grid and cannot be visually covered by the controls underneath.
      */
+    panel_surface(x + 12, y + 30, 384, 52, 9);
+    panel_surface(x + 410, y + 30, 384, 52, 9);
     controller_dropdown(g, 0, x + 18, y + 34, 374);
     controller_dropdown(g, 1, x + 414, y + 34, 374);
 }
@@ -1983,6 +2099,8 @@ static void sub_controls(int g, float x, float y)
 static void sub_gba_controllers(int g, float x, float y)
 {
     card(x, y, 808, 476, "GBA CONTROLLER");
+    panel_surface(x + 12, y + 38, 784, 145, 9);
+    panel_surface(x + 12, y + 198, 784, 125, 9);
     ui_text_wrap(F_REG, 12, x + 18, y + 40, 772, C_DIM,
                  "Choose which connected controller should drive the external GBA window. Your selection is saved for this game and passed to the recompiler at launch.", 3);
     controller_dropdown(g, 0, x + 18, y + 116, 470);
@@ -2002,12 +2120,13 @@ static void sub_gba_bindings(int g, float x, float y)
     static const char *names[10] = {"A", "B", "Select", "Start", "Right", "Left", "Up", "Down", "L", "R"};
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "GBA GAMEPLAY BINDINGS");
+    panel_surface(x + 12, y + 34, 784, 380, 9);
     ui_text(F_BOLD, 11, x + 18, y + 38, C_MUTED, "GBA BUTTON");
     ui_text(F_BOLD, 11, x + 260, y + 38, C_MUTED, "KEYBOARD");
     ui_text(F_BOLD, 11, x + 520, y + 38, C_MUTED, "CONTROLLER");
     for (int b = 0; b < 10; b++) {
         float ry = y + 58 + b * 34;
-        if (b % 2 == 0) ui_rrect(x + 10, ry - 2, 788, 32, 7, RGBA(255,255,255,6));
+        row_surface(x + 10, ry - 2, 788, 32, 0, 0, b % 2 == 0);
         ui_text(F_BOLD, 13, x + 18, ry + 4, C_TEXT, names[b]);
         bind_cell(g, x + 180, ry, 220, 1, b, 0);
         bind_cell(g, x + 440, ry, 300, 2, b, 0);
@@ -2037,6 +2156,8 @@ static void mp_name_field(GameCfg *c, int player_number, float x, float y, float
     int active = multiplayer_name_editing == player_number;
     ui_rrect(x, y, w, 32, 8, active ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
              (over ? C_BTN_H : C_BTN));
+    ui_stroke(x, y, w, 32, 8, active ? 1.3f : 0.8f,
+              active ? HEX(ui_accent) : RGBA(111, 132, 169, 74));
     const char *current = name[0] ? name : (active ? "Type a name…" : "Click to rename");
     ui_text_fit(F_REG, 13, x + 12, y + 8, w - 42, name[0] ? C_TEXT : C_DIM, current);
     ui_rrect(x + w - 25, y + 6, 14, 20, 5, HEX(mp_effective_player_rgb(c, player_number)));
@@ -2073,6 +2194,7 @@ static void tab_multiplayer(float x, float y)
     card(x, y, 808, 512, mp_config_game == GAME_SML ?
          "SUPER MARIO LAND 1 — MULTIPLAYER" : "SUPER MARIO LAND 2 — MULTIPLAYER");
 
+    panel_surface(x + 12, y + 34, 784, 40, 9);
     label(x + 18, y + 42, "Local multiplayer");
     if (ui_toggle(x + 178, y + 38, &c->multiplayer) && c->multiplayer)
         launcher_toast(mp_config_game == GAME_SML ? "Local multiplayer enabled for SML1." :
@@ -2082,6 +2204,7 @@ static void tab_multiplayer(float x, float y)
                                  "Off by default.");
     mp_game_target_button(x + 520, y + 38, 248, 32);
 
+    panel_surface(x + 12, y + 78, 784, 40, 9);
     label(x + 18, y + 86, "Players");
     int over = 0;
     int opened = clickable(x + 540, y + 74, 228, 34, &over);
@@ -2095,10 +2218,11 @@ static void tab_multiplayer(float x, float y)
     ui_text_fit(F_REG, 11, x + 18, y + 78, 460, C_DIM,
                 "Choose 2–4 independent character simulations.");
 
-    label(x + 18, y + 120, "Player names");
+    section_heading(x + 18, y + 116, 772, "PLAYER PROFILES");
     for (int i = 0; i < 3; i++) {
         int p = i + 2;
         float ry = y + 140 + i * 40.0f;
+        row_surface(x + 12, ry - 1, 784, 33, 0, 0, i % 2 == 0);
         char row_label[24];
         snprintf(row_label, sizeof row_label, "Player %d", p);
         ui_text(F_BOLD, 12, x + 18, ry + 8, C_MUTED, row_label);
@@ -2120,7 +2244,8 @@ static void tab_multiplayer(float x, float y)
         const int options[3] = {2, 3, 4};
         float mx = x + 540, my = y + 110;
         ui_shadow(mx, my, 228, 3 * 32 + 8, 9, 7, RGBA(0,0,0,100));
-        ui_rrect(mx, my, 228, 3 * 32 + 8, 9, C_BG2);
+        ui_rrect(mx, my, 228, 3 * 32 + 8, 9, RGBA(19, 27, 42, 250));
+        ui_stroke(mx, my, 228, 3 * 32 + 8, 9, 1.0f, RGBA(111, 132, 169, 115));
         for (int i = 0; i < 3; i++) {
             float oy = my + 4 + i * 32;
             int ov = 0;
@@ -2140,6 +2265,7 @@ static void tab_multiplayer(float x, float y)
         }
     }
 
+    panel_surface(x + 12, y + 266, 784, 166, 9);
     mp_draw_color_editor(c, x, y);
     ui_rect(x + 18, y + 442, 772, 1, C_LINE);
     ui_text_wrap(F_REG, 11, x + 18, y + 451, 772, C_DIM,
@@ -2159,6 +2285,7 @@ static void tab_mp_controllers(float x, float y)
 
     for (int player = 0; player < MAX_MP_PLAYERS; player++) {
         float bx = x + 18 + player * 192.0f;
+        panel_surface(bx - 6, y + 30, 184, 60, 9);
         char title[24];
         snprintf(title, sizeof title, "Player %d", player + 1);
         label(bx, y + 38, title);
@@ -2179,6 +2306,7 @@ static void tab_mp_controllers(float x, float y)
 
         for (int player = 0; player < MAX_MP_PLAYERS; player++) {
             float bx = x + 18 + player * 193.0f;
+            panel_surface(bx - 6, y + 130, 184, 266, 9);
             char title[64];
             if (player == 0) snprintf(title, sizeof title, "P1  Mario");
             else {
@@ -2194,12 +2322,14 @@ static void tab_mp_controllers(float x, float y)
 
             for (int btn = 0; btn < N_BTN; btn++) {
                 float ry = y + 168 + btn * 29.0f;
+                row_surface(bx - 3, ry + 1, 188, 25, 0, 0, btn % 2 == 0);
                 ui_text_fit(F_REG, 10, bx, ry + 8, 34, C_TEXT, control_labels[btn]);
                 bind_cell(mp_config_game, bx + 36, ry, 69, 1, btn, player);
                 bind_cell(mp_config_game, bx + 109, ry, 74, 2, btn, player);
             }
         }
 
+        panel_surface(x + 12, y + 400, 784, 104, 9);
         ui_rect(x + 18, y + 405, 772, 1, C_LINE);
         label(x + 18, y + 411, "Respawn bindings");
         ui_text_fit(F_REG, 10, x + 176, y + 412, 600, C_DIM,
@@ -2287,6 +2417,8 @@ static void sub_dualsense(int g, float x, float y)
     char st[160];
     float lw = 392;
     card(x, y, lw, 476, "CONTROLLER");
+    panel_surface(x + 12, y + 36, lw - 24, 180, 9);
+    panel_surface(x + 12, y + 222, lw - 24, 240, 9);
     pad_status(st, sizeof st);
     status_line(x + 18, y + 38, lw - 36, ds ? 1 : (pad_count() ? 2 : 3), st);
     if (ds) ui_text_fit(F_REG, 12, x + 18, y + 60, lw - 36, C_DIM, audio_pad_available() ? (edge ? "DualSense Edge: light, rumble and speaker ready" : "DualSense: light, rumble and speaker ready") : "Light and rumble ready. Speaker needs the USB cable.");
@@ -2300,7 +2432,7 @@ static void sub_dualsense(int g, float x, float y)
                                    "Connect a controller to test rumble. DualSense lightbar and speaker require a DualSense or Edge.");
 #endif
 
-    label(x + 18, y + 90, "Light");
+    section_heading(x + 18, y + 90, lw - 36, "LIGHT");
     ui_seg(x + 18, y + 112, lw - 36, 34, led_names, N_LED, &c->ds_led_mode);
     label(x + 18, y + 158, "Brightness"); ui_slider(x + 110, y + 156, lw - 110 - 60, &c->ds_bright, 0, 100);
     char t[24]; snprintf(t, sizeof t, "%d%%", c->ds_bright); ui_text_r(F_REG, 13, x + lw - 18, y + 158, C_TEXT, t);
@@ -2312,7 +2444,7 @@ static void sub_dualsense(int g, float x, float y)
         if (ui_slider(x + 110, y + 190, lw - 110 - 60, &hue[g], 0, 359)) hue_to_rgb(hue[g], &c->ds_color);
         ui_rrect(x + lw - 18 - 36, y + 190, 36, 22, 6, HEX(c->ds_color));
     }
-    ui_text(F_BOLD, 12, x + 18, y + 232, C_DIM, "RUMBLE AND SPEAKER");
+    section_heading(x + 18, y + 232, lw - 36, "RUMBLE AND SPEAKER");
     label(x + 18, y + 256, "Rumble strength"); ui_slider(x + 160, y + 254, lw - 160 - 60, &c->ds_rumble, 0, 100);
     snprintf(t, sizeof t, "%d%%", c->ds_rumble); ui_text_r(F_REG, 13, x + lw - 18, y + 256, C_TEXT, t);
     label(x + 18, y + 290, "Speaker volume");
@@ -2373,6 +2505,7 @@ static void sub_dualsense(int g, float x, float y)
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 476, "WHEN THIS HAPPENS");
+    panel_surface(rx + 12, y + 36, rw - 24, 426, 9);
     int n = events_count(g);
     float row_h = n > 7 ? 35.0f : 46.0f;
     float tx[3] = {rw - 18 - 44 - 64 - 64 - 44 + 0, 0, 0};
@@ -2383,7 +2516,7 @@ static void sub_dualsense(int g, float x, float y)
     for (int i = 0; i < n; i++) {
         const EventDef *d = events_def(g, i);
         float ry = y + 62 + i * row_h;
-        ui_rrect(rx + 10, ry - 3, rw - 20, row_h - 2, 8, RGBA(255, 255, 255, i % 2 ? 0 : 6));
+        row_surface(rx + 10, ry - 3, rw - 20, row_h - 2, 0, 0, i % 2 == 0);
         ui_rrect(rx + 18, ry + 8, 8, 24, 3, HEX(d->color));
         ui_text_fit(F_BOLD, 13, rx + 34, ry + 2, 150, C_TEXT, d->name);
         ui_text_fit(F_REG, 11, rx + 34, ry + 20, 150, C_DIM, d->desc);
@@ -2417,6 +2550,7 @@ static void sub_gba_dualsense(int g, float x, float y)
     int ds = 0;
     for (int i = 0; i < pad_count(); i++) if (pad_is_dualsense(i)) ds = 1;
     card(x, y, 392, 476, "GBA CONTROLLER FEEDBACK");
+    panel_surface(x + 12, y + 36, 368, 420, 9);
     pad_status(status, sizeof status);
     status_line(x + 18, y + 38, 356, ds ? 1 : (pad_count() ? 2 : 3), status);
     ui_text_wrap(F_REG, 11, x + 18, y + 66, 356, C_DIM,
@@ -2455,6 +2589,7 @@ static void sub_gba_dualsense(int g, float x, float y)
 
     float rx = x + 404;
     card(rx, y, 404, 476, "WHAT WORKS IN THE GBA WINDOW");
+    panel_surface(rx + 12, y + 36, 380, 420, 9);
     ui_text(F_BOLD, 13, rx + 18, y + 44, C_TEXT, "Lightbar");
     ui_text_wrap(F_REG, 12, rx + 18, y + 68, 368, C_DIM,
                  "Off, current/preset color, custom color and brightness are applied when the standalone game starts.", 3);
@@ -2470,6 +2605,8 @@ static void sub_textures(int g, float x, float y)
 {
     GameCfg *c = &settings.g[g];
     card(x, y, 808, 476, "TEXTURE PACK");
+    panel_surface(x + 12, y + 36, 784, 108, 9);
+    panel_surface(x + 12, y + 156, 784, 304, 9);
     label(x + 18, y + 42, "Pack folder");
     path_box(x + 18, y + 64, 808 - 36 - 330, c->tex_path, "Choose a folder of tile pictures");
     float bx = x + 808 - 18 - 312;
@@ -2491,7 +2628,7 @@ static void sub_textures(int g, float x, float y)
     } else ui_text(F_REG, 12, x + 200, y + 118, C_DIM, "Replaces the game's 8x8 tiles with your own pictures (any size that is a multiple of 8).");
     ui_rect(x + 18, y + 156, 772, 1, C_LINE);
 
-    ui_text(F_BOLD, 12, x + 18, y + 172, C_DIM, "MAKE YOUR OWN PACK");
+    section_heading(x + 18, y + 172, 772, "MAKE YOUR OWN PACK");
     ui_text_wrap(F_REG, 13, x + 18, y + 196, 772, C_MUTED,
                  "Play (or just open the game) and the launcher remembers every tile the game draws. Export them to a folder, redraw the ones you like, then choose that folder above. Tiles you don't change keep their original look.", 3);
     label(x + 18, y + 262, "Remember tiles while I play");
@@ -2532,23 +2669,23 @@ static void tab_filters(float x, float y)
 {
     FilterCfg *f = &settings.flt;
     card(x, y, 428, 504, "SCREEN LOOK");
-    ui_text(F_BOLD, 12, x + 18, y + 38, C_MUTED, "Presets");
+    section_heading(x + 18, y + 38, 392, "PRESETS");
     for (int i = 0; i < n_filter_presets; i++) {
         float cx = x + 18 + (i % 3) * 133, cy = y + 58 + (i / 3) * 38;
         if (ui_chip(cx, cy, 125, 30, filter_preset_names[i], f->preset == i && i != 0 ? 1 : (i == 0 && !f->lcd_grid && !f->ghost && !f->scanlines && !f->mask && !f->curve && !f->bloom && !f->hdr && !f->vignette && !f->blur)))
             filter_preset(f, i);
     }
     float sy = y + 144;
-    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "Game Boy screen");
+    section_heading(x + 18, sy, 392, "GAME BOY SCREEN");
     slider_row(x + 18, sy + 24, 392, "Dot grid", &f->lcd_grid, "Dark gaps between the screen's dots, like the real LCD");
     slider_row(x + 18, sy + 52, 392, "Ghosting", &f->ghost, "Pixels fade slowly like the old LCD (visible while playing)");
     sy += 88;
-    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "CRT TV");
+    section_heading(x + 18, sy, 392, "CRT TV");
     slider_row(x + 18, sy + 24, 392, "Scanlines", &f->scanlines, "Dark lines between rows");
     slider_row(x + 18, sy + 52, 392, "Shadow mask", &f->mask, "Red, green and blue stripes");
     slider_row(x + 18, sy + 80, 392, "Curvature", &f->curve, "Bulges the picture like a curved tube");
     sy += 116;
-    ui_text(F_BOLD, 12, x + 18, sy, C_MUTED, "Light");
+    section_heading(x + 18, sy, 392, "LIGHT");
     slider_row(x + 18, sy + 24, 392, "Bloom", &f->bloom, "Bright areas glow");
     slider_row(x + 18, sy + 52, 392, "HDR", &f->hdr, "Brighter highlights, richer colour and a stronger glow");
     slider_row(x + 18, sy + 80, 392, "Vignette", &f->vignette, "Darker corners");
@@ -2780,6 +2917,7 @@ static void tab_audio(float x, float y)
     char t[96];
     float lw = 396;
     card(x, y, lw, 200, "GAME SOUND");
+    panel_surface(x + 12, y + 40, lw - 24, 152, 9);
     label(x + 18, y + 44, "Volume");
     ui_slider(x + 100, y + 42, lw - 100 - 70, &s->volume, 0, 200);
     snprintf(t, sizeof t, "%d%%", s->volume); ui_text_r(F_REG, 13, x + lw - 18, y + 44, C_TEXT, t);
@@ -2794,6 +2932,7 @@ static void tab_audio(float x, float y)
     ui_text(F_REG, 12, x + 18, y + 174, C_DIM, "Changes to the delay apply the next time you start the program.");
 
     card(x, y + 212, lw, 292, "MENU MUSIC");
+    panel_surface(x + 12, y + 250, lw - 24, 238, 9);
     label(x + 18, y + 256, "Play music in the launcher");
     if (ui_toggle(x + lw - 18 - 44, y + 252, &s->menu_music)) {
         audio_menu_apply();
@@ -2859,6 +2998,7 @@ static void tab_audio(float x, float y)
 
     float rx = x + lw + 12, rw = 808 - lw - 12;
     card(rx, y, rw, 504, "INTERFACE SOUNDS");
+    panel_surface(rx + 12, y + 40, rw - 24, 450, 9);
     label(rx + 18, y + 44, "Click and hover sounds");
     ui_toggle(rx + rw - 18 - 44, y + 40, &s->ui_sfx);
     label(rx + 18, y + 84, "Volume");
@@ -2975,6 +3115,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
                            (np->state == NETPLAY_CONNECTED ? settings.online_name : ""));
 
     card(x, y, 808, 512, "ONLINE SESSION LOBBY");
+    panel_surface(x + 18, y + 38, 644, 38, 8);
     ui_text_fit(F_REG, 11, x + 20, y + 41, 100, C_MUTED, "INVITE CODE");
     ui_text(F_BOLD, 18, x + 20, y + 56, C_TEXT, np->code[0] ? np->code : "Creating room…");
     if (np->code[0] && ui_button(x + 218, y + 43, 74, 30, "Copy code", B_GHOST, 1)) {
@@ -2993,7 +3134,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         return;
     }
 
-    ui_rrect(x + 18, y + 82, 344, 328, 12, C_PANEL);
+    panel_surface(x + 18, y + 82, 344, 328, 12);
     ui_text(F_BOLD, 13, x + 34, y + 94, C_TEXT, "PLAYERS");
     ui_rrect(x + 30, y + 118, 320, 48, 9, RGBA(66, 126, 92, 32));
     ui_text(F_BOLD, 12, x + 44, y + 127, C_TEXT, host_name[0] ? host_name : "Host");
@@ -3038,7 +3179,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         online_report_local_rom(selected_game);
     }
 
-    ui_rrect(x + 374, y + 82, 416, 328, 12, C_PANEL);
+    panel_surface(x + 374, y + 82, 416, 328, 12);
     if (ui_button(x + 390, y + 108, 82, 26, "Chat",
                   online_lobby_panel == 0 ? B_PRIMARY : B_GHOST, 1))
         online_lobby_panel = 0;
@@ -3063,6 +3204,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         ui_rrect(x + 390, y + 365, 286, 32, 7,
                  online_chat_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
                  (chat_over ? C_BTN_H : C_BTN));
+        field_outline(x + 390, y + 365, 286, 32, 7);
         const char *chat_value = online_chat_buffer[0] ? online_chat_buffer :
                                  (online_chat_editing ? "Type a message…" : "Message (Enter to send)");
         ui_text_fit(F_REG, 11, x + 401, y + 374, 264,
@@ -3098,6 +3240,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         }
         for (int slot = 0; slot < NETPLAY_SHARED_SLOT_COUNT; slot++) {
             float row_y = y + 158 + slot * 21.0f;
+            row_surface(x + 386, row_y - 1, 390, 20, slot == active_slot, 0, 0);
             char slot_name[32], status_text[20];
             int local_saved = 0, peer_saved = -1, pending = 0;
             netplay_shared_slot_name(slot, slot_name, sizeof slot_name);
@@ -3133,6 +3276,7 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
         ui_rrect(x + 500, y + 368, 177, 27, 6,
                  online_save_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) :
                  (name_over ? C_BTN_H : C_BTN));
+        field_outline(x + 500, y + 368, 177, 27, 6);
         char current_name[32];
         netplay_shared_slot_name(active_slot, current_name, sizeof current_name);
         const char *shown_name = online_save_name_editing
@@ -3184,8 +3328,8 @@ static void tab_online(float x, float y)
                     ? "Direct peer-to-peer mode is not implemented in this build. Choose Traversal Server to play online."
                     : "Host a room, choose a supported game, and share its invite code with another player.");
 
-    ui_rrect(x + 18, y + 70, 354, 422, 12, C_PANEL);
-    ui_text(F_BOLD, 14, x + 34, y + 82, C_TEXT, "PLAYER PROFILE");
+    panel_surface(x + 18, y + 70, 354, 422, 12);
+    section_heading(x + 34, y + 82, 322, "PLAYER PROFILE");
     ui_text(F_REG, 11, x + 34, y + 112, C_MUTED, "Display name");
     if (ui_button(x + 280, y + 106, 76, 22, "Reset", B_GHOST, 1)) {
         online_name_editing = online_server_editing = online_chat_editing = 0;
@@ -3198,6 +3342,7 @@ static void tab_online(float x, float y)
     int name_clicked = clickable(x + 34, y + 132, 322, 36, &name_over);
     ui_rrect(x + 34, y + 132, 322, 36, 8,
              online_name_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (name_over ? C_BTN_H : C_BTN));
+    field_outline(x + 34, y + 132, 322, 36, 8);
     const char *name = settings.online_name[0] ? settings.online_name :
                        (online_name_editing ? "Type a name…" : "Player");
     ui_text_fit(F_REG, 13, x + 46, y + 141, 292, online_name_editing ? C_DIM : C_TEXT, name);
@@ -3256,8 +3401,8 @@ static void tab_online(float x, float y)
     ui_text_fit(F_REG, 10, x + 34, y + 472, 322, C_DIM,
                 "Touch controls are useful on Android devices.");
 
-    ui_rrect(x + 390, y + 70, 400, 422, 12, C_PANEL);
-    ui_text(F_BOLD, 14, x + 408, y + 84, C_TEXT, "HOST A SESSION");
+    panel_surface(x + 390, y + 70, 400, 422, 12);
+    section_heading(x + 408, y + 84, 360, "HOST A SESSION");
     ui_text_wrap(F_REG, 11, x + 408, y + 110, 360, C_DIM,
                  "Choose the game before creating the room. Invite code is generated automatically.", 2);
 
@@ -3266,13 +3411,15 @@ static void tab_online(float x, float y)
     int mode_clicked = clickable(x + 408, y + 155, 360, 30, &mode_over);
     ui_rrect(x + 408, y + 155, 360, 30, 7,
              online_mode_menu ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (mode_over ? C_BTN_H : C_BTN));
+    field_outline(x + 408, y + 155, 360, 30, 7);
     ui_text_fit(F_REG, 12, x + 420, y + 163, 320, C_TEXT,
                 settings.online_connection_mode == 0 ? "Direct Connection" : "Traversal Server");
     ui_tri(x + 748, y + 165, x + 758, y + 165, x + 753, y + 172, C_MUTED);
     if (mode_clicked) online_mode_menu = !online_mode_menu;
     if (online_mode_menu) {
         ui_shadow(x + 408, y + 89, 360, 66, 10, 6, RGBA(0, 0, 0, 100));
-        ui_rrect(x + 408, y + 89, 360, 66, 8, C_BG2);
+        ui_rrect(x + 408, y + 89, 360, 66, 8, RGBA(19, 27, 42, 250));
+        ui_stroke(x + 408, y + 89, 360, 66, 8, 1.0f, RGBA(111, 132, 169, 115));
         for (int mode = 0; mode < 2; mode++) {
             float my = y + 91 + mode * 32;
             int over = 0;
@@ -3311,6 +3458,7 @@ static void tab_online(float x, float y)
     int server_clicked = clickable(x + 408, y + 254, 360, 30, &server_over);
     ui_rrect(x + 408, y + 254, 360, 30, 7,
              online_server_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (server_over ? C_BTN_H : C_BTN));
+    field_outline(x + 408, y + 254, 360, 30, 7);
     const char *server_text = settings.online_server[0] ? settings.online_server :
                               (online_server_editing ? "Type host:port or wss://service.onrender.com…" : PIPECLEAN_DEFAULT_RELAY_ENDPOINT);
     ui_text_fit(F_REG, 12, x + 420, y + 262, 336,
@@ -3340,6 +3488,7 @@ static void tab_online(float x, float y)
     int code_clicked = clickable(x + 408, y + 365, 228, 32, &code_over);
     ui_rrect(x + 408, y + 365, 228, 32, 8,
              online_code_editing ? mixc(C_BTN, HEX(ui_accent), 0.38f) : (code_over ? C_BTN_H : C_BTN));
+    field_outline(x + 408, y + 365, 228, 32, 8);
     ui_text_fit(F_BOLD, 13, x + 420, y + 373, 204, online_join_code[0] ? C_TEXT : C_DIM,
                 online_join_code[0] ? online_join_code : "Enter invite code");
     if (code_clicked) {
@@ -4197,10 +4346,12 @@ static void deck_editor_list(float x, float y)
     ui_text_fit(F_REG, 10, x + 36, y + 109, 708, C_MUTED,
                 "Choose a game layout. Unreleased layouts are shown here but cannot be edited yet.");
     ui_rect(x + 36, y + 128, 728, 1, C_LINE);
+    panel_surface(x + 28, y + 130, 744, 292, 9);
     for (int g = 0; g < N_GAMES; g++) {
         float ry = y + 134 + g * 39.5f;
         int ready = deck_game_ready(g);
-        if (ready) ui_rrect(x + 32, ry - 2, 734, 35, 7, RGBA(255,255,255, g == companion_editor_game ? 14 : 5));
+        row_surface(x + 32, ry - 2, 734, 35, ready && g == companion_editor_game,
+                    ready && ui_hover(x + 32, ry - 2, 734, 35), g % 2 == 0);
         ui_text_fit(F_BOLD, 11, x + 40, ry + 5, 190, ready ? C_TEXT : C_DIM, games[g].name);
         ui_text_fit(F_REG, 9, x + 238, ry + 6, 105, ready ? C_OK : C_DIM,
                     ready ? "READY TO EDIT" : "COMING SOON");
@@ -4230,7 +4381,7 @@ static void deck_editor_layout(float x, float y)
 {
     CompanionLayoutCfg *d = &settings.deck_layout[companion_editor_game];
     ui_text(F_BOLD, 15, x + 36, y + 82, C_TEXT, "COMPANION DECK STUDIO");
-    ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, RGBA(116, 222, 255, 255),
+    ui_text_fit(F_BOLD, 9, x + 360, y + 86, 392, HEX(ui_accent),
                 companion_editor_game == GAME_DRMARIO ? "DR. MARIO  /  CLINIC CANVAS" :
                 companion_editor_game == GAME_SML ? "SUPER MARIO LAND  /  LIVE CANVAS" :
                 companion_editor_game == GAME_SML2 ? "SUPER MARIO LAND 2  /  LIVE CANVAS" :
@@ -4291,9 +4442,10 @@ static void deck_editor_layout(float x, float y)
         deck_editor_drag(ui_mouse.x, ui_mouse.y, pw, ph);
     if (ui_mouse.released || !ui_mouse.down) companion_editor_dragging = 0;
     ui_text_fit(F_BOLD, 8.2f, px, py + ph + 10, pw,
-                RGBA(112, 225, 255, 245), "31:27 THOR  •  FIT = NO CROP  •  DRAG TO RESIZE");
+                HEX(ui_accent), "31:27 THOR  •  FIT = NO CROP  •  DRAG TO RESIZE");
 
     float rx = x + 350;
+    panel_surface(rx - 10, y + 180, 348, 280, 9);
     ui_text(F_BOLD, 10, rx, y + 190, C_TEXT, "LAYERS & TRANSFORM");
     ui_text_fit(F_REG, 8, rx + 148, y + 190, 180, C_MUTED,
                 "Select, move, reshape");
@@ -4368,7 +4520,7 @@ static void deck_editor_sounds(float x, float y)
     for (int i = 0; i < N_DECK_BUTTON_SOUNDS; i++) {
         int col = i % 2, row = i / 2;
         float bx = x + 36 + col * 365, by = y + 151 + row * 65;
-        ui_rrect(bx, by, 350, 54, 8, C_PANEL);
+        row_surface(bx, by, 350, 54, 0, 0, row % 2 == 0);
         ui_text_fit(F_BOLD, 10, bx + 12, by + 9, 155, C_TEXT, labels[i]);
         ui_text_fit(F_REG, 8, bx + 12, by + 28, 225, C_DIM,
                     d->button_sound_path[i][0] ? d->button_sound_path[i] : "Use built-in / silent default");
@@ -4376,13 +4528,13 @@ static void deck_editor_sounds(float x, float y)
         if (ui_button(bx + 266, by + 13, 72, 29, b, B_GHOST, 1))
             deck_editor_open_picker(DECK_PICK_SOUND_SAVE + i);
     }
-    ui_rrect(x + 36, y + 352, 350, 56, 8, C_PANEL);
+    row_surface(x + 36, y + 352, 350, 56, 0, 0, 0);
     ui_text_fit(F_BOLD, 10, x + 48, y + 362, 170, C_TEXT, "Item used");
     ui_text_fit(F_REG, 8, x + 48, y + 381, 220, C_DIM,
                 d->item_sound_path[0] ? d->item_sound_path : "Choose a sound for a usable item");
     if (ui_button(x + 302, y + 366, 70, 28, "Choose…", B_GHOST, 1))
         deck_editor_open_picker(DECK_PICK_ITEM_SOUND);
-    ui_rrect(x + 402, y + 352, 360, 56, 8, C_PANEL);
+    row_surface(x + 402, y + 352, 360, 56, 0, 0, 1);
     ui_text_fit(F_BOLD, 10, x + 414, y + 362, 180, C_TEXT, "Empty item slot");
     ui_text_fit(F_REG, 8, x + 414, y + 381, 220, C_DIM,
                 d->empty_item_sound_path[0] ? d->empty_item_sound_path : "Choose a sound when the slot is empty");
@@ -4410,7 +4562,7 @@ static void deck_editor_items(float x, float y)
         int item = item_ids[row];
         float ry = y + 153 + row * 82;
         int ready = item != 3 || companion_editor_game == GAME_SML2;
-        ui_rrect(x + 36, ry, 728, 70, 8, C_PANEL);
+        row_surface(x + 36, ry, 728, 70, 0, 0, row % 2 == 0);
         ui_text_fit(F_BOLD, 11, x + 50, ry + 12, 195, ready ? C_TEXT : C_DIM, labels[row]);
         const char *asset_path = d->item_texture_by_id[item];
         int asset_index = 11 + item;
@@ -4480,8 +4632,7 @@ static void deck_editor_assets(float x, float y)
     };
     for (int i = 0; i < (int)(sizeof rows / sizeof rows[0]); i++) {
         float ry = y + 151 + i * 31.0f;
-        ui_rrect(x + 36, ry, 728, 28, 6,
-                 i == 0 ? RGBA(44, 85, 117, 180) : C_PANEL);
+        row_surface(x + 36, ry, 728, 28, 0, 0, i % 2 == 0);
         ui_text_fit(F_BOLD, 9, x + 49, ry + 9, 164, C_TEXT, rows[i].label);
         const char *name = rows[i].path[0] ? path_base(rows[i].path) : "Built-in appearance";
         ui_text_fit(F_REG, 7.5f, x + 218, ry + 9, 140,
@@ -4497,8 +4648,7 @@ static void deck_editor_assets(float x, float y)
                       stretch ? B_PRIMARY : B_NORMAL, 1)) {
             deck_editor_snapshot();
             d->asset_stretch[rows[i].asset_index] = !stretch;
-            settings_save();
-        }
+            settings_save();        }
         if (ui_button(x + 536, ry + 3, 82, 22, "Choose…", B_GHOST, 1))
             deck_editor_open_picker(rows[i].kind);
         if (ui_button(x + 626, ry + 3, 124, 22, "Clear texture", B_DANGER, rows[i].path[0] != 0)) {
@@ -4540,10 +4690,8 @@ static void deck_editor_decorations(float x, float y)
         float colx = x + 36 + (visible % 4) * 183.0f;
         float ry = y + 151 + (visible / 4) * 65.0f;
         int selected = selected_slot == slot;
-        ui_rrect(colx, ry, 174, 56, 7,
-                 selected ? RGBA(65, 130, 190, 68) : C_PANEL);
-        if (selected)
-            ui_stroke(colx, ry, 174, 56, 7, 1.2f, C_ACCENT);
+        row_surface(colx, ry, 174, 56, selected,
+                    ui_hover(colx, ry, 174, 56), 0);
         ui_rrect(colx + 7, ry + 6, 42, 42, 5, RGBA(7, 13, 24, 255));
         ui_stroke(colx + 7, ry + 6, 42, 42, 5, 0.8f, RGBA(77, 111, 149, 180));
         ui_image_file_fit(asset_path, colx + 9, ry + 8, 38, 38);
@@ -4567,9 +4715,10 @@ static void deck_editor_draw(float x, float y)
     ui_shadow(x + 18, y + 70, 772, 404, 14, 7, RGBA(0, 0, 0, 112));
     ui_rrect(x + 18, y + 70, 772, 404, 12, RGBA(15, 22, 35, 255));
     ui_vgrad(x + 20, y + 72, 768, 48,
-             RGBA(43, 68, 96, 255), RGBA(22, 31, 47, 255));
-    ui_rect(x + 30, y + 72, 748, 2, RGBA(99, 220, 255, 230));
-    ui_stroke(x + 18, y + 70, 772, 404, 12, 1.0f, RGBA(77, 111, 149, 190));
+             mixc(RGBA(31, 42, 60, 255), HEX(ui_accent), 0.30f),
+             RGBA(22, 31, 47, 255));
+    ui_rect(x + 30, y + 72, 748, 2, HEX(ui_accent));
+    ui_stroke(x + 18, y + 70, 772, 404, 12, 1.0f, RGBA(104, 126, 164, 170));
     if (companion_editor_page == 0) deck_editor_list(x, y);
     else if (companion_editor_page == 2) deck_editor_sounds(x, y);
     else if (companion_editor_page == 3) deck_editor_items(x, y);
@@ -4864,9 +5013,12 @@ static void tab_display(float x, float y)
         return;
     }
 #endif
-    ui_rrect(x + 18, y + 70, 772, 404, 12, C_PANEL);
-    ui_text(F_BOLD, 15, x + 36, y + 86, C_TEXT, "LAUNCHER DISPLAY");
-    ui_text_wrap(F_REG, 12, x + 36, y + 112, 724, C_MUTED,
+    panel_surface(x + 18, y + 70, 772, 404, 12);
+    panel_surface(x + 28, y + 142, 752, 76, 9);
+    panel_surface(x + 28, y + 232, 752, 184, 9);
+    ui_rrect(x + 34, y + 84, 3, 18, 1.5f, HEX(ui_accent));
+    ui_text(F_BOLD, 15, x + 46, y + 86, HEX(0xE5ECFA), "LAUNCHER DISPLAY");
+    ui_text_wrap(F_REG, 12, x + 46, y + 112, 710, C_MUTED,
                  "These options affect the launcher on desktop and Android. Per-game image shape and scaling remain in each game's Display page.", 3);
 
     ui_text(F_REG, 13, x + 36, y + 165, C_TEXT, "Interface size");
@@ -5144,256 +5296,204 @@ static void tab_museum_romhacks(float x, float y, float width)
 
 static void tab_museum(float x, float y)
 {
-    static const char *game_labels[] = {
-        "Dr. Mario", "Mario Land", "Land 2", "Wario Land",
-        "Wario II · GB", "Wario III · GBC", "Wario II · GBC"
-    };
-    static const char *category_labels[] = {
-        "All", "Enemies", "Items", "Treasures", "Stages", "Milestones", "Characters"
-    };
-    static const int category_values[] = {
-        MUSEUM_CATEGORY_ALL, MUSEUM_CATEGORY_ENEMY, MUSEUM_CATEGORY_ITEM,
-        MUSEUM_CATEGORY_TREASURE, MUSEUM_CATEGORY_STAGE,
-        MUSEUM_CATEGORY_MILESTONE, MUSEUM_CATEGORY_CHARACTER
-    };
-    /* Treasures are a Wario-series mechanic. Keep that filter out of Mario
-       and Dr. Mario tabs rather than showing an empty, misleading category. */
-    const int has_treasures = museum_game == GAME_WARIO_SML3 ||
-        museum_game == GAME_WARIO_LAND2_GB ||
-        museum_game == GAME_WARIO_LAND2_GBC ||
-        museum_game == GAME_WARIO_LAND3_GBC;
-    const int category_count = has_treasures ? 7 : 6;
-    static const char *filter_labels[] = {"All Entries", "Collected", "Undiscovered"};
-    const float width = 808.0f;
-    const int museum_game_count = (int)(sizeof game_labels / sizeof game_labels[0]);
-    ui_accent = museum_hacks_view ? 0xC77B44u : games[museum_game].accent;
-    const float game_gap = 4.0f, game_h = 27.0f;
-    const float game_w = (width - game_gap * museum_game_count) / (float)(museum_game_count + 1);
-    for (int g = 0; g < museum_game_count; ++g) {
-        float bx = x + g * (game_w + game_gap);
-        if (ui_chip(bx, y, game_w, game_h, game_labels[g],
-                    !museum_hacks_view && g == museum_game)) {
-            museum_game = g; museum_hacks_view = 0; museum_scroll = 0.0f;
-            museum_selected[g] = 0;
-            museum_reset_confirm = 0;
+    static const int game_ids[] = {GAME_DRMARIO, GAME_SML, GAME_SML2, GAME_WARIO_SML3,
+        GAME_WARIO_LAND2_GB, GAME_WARIO_LAND3_GBC, GAME_WARIO_LAND2_GBC};
+    static const char *game_labels[] = {"Dr. Mario", "Mario Land", "Land 2", "Wario Land",
+        "Wario II · GB", "Wario III · GBC", "Wario II · GBC"};
+    static const int cats[] = {MUSEUM_CATEGORY_ALL, MUSEUM_CATEGORY_ENEMY, MUSEUM_CATEGORY_ITEM,
+        MUSEUM_CATEGORY_TREASURE, MUSEUM_CATEGORY_STAGE, MUSEUM_CATEGORY_MILESTONE,
+        MUSEUM_CATEGORY_CHARACTER};
+    static const char *cat_names[] = {"All", "Enemies", "Items", "Treasures",
+        "Stages", "Milestones", "Characters"};
+    static const char *filters[] = {"All Entries", "Collected", "Undiscovered"};
+    const float w = 808.0f;
+    const int ng = (int)(sizeof game_ids / sizeof game_ids[0]);
+    const int treasures = museum_game == GAME_WARIO_SML3 || museum_game == GAME_WARIO_LAND2_GB ||
+        museum_game == GAME_WARIO_LAND2_GBC || museum_game == GAME_WARIO_LAND3_GBC;
+    const int nc = treasures ? 7 : 6;
+
+    /* New navy-and-gold presentation; catalogue, discoveries, assets and saves
+       remain owned by the original Museum backend. */
+    int total_found = 0, total = 0;
+    for (int k = 0; k < ng; ++k) {
+        total_found += museum_discovered_count(game_ids[k]);
+        total += museum_catalog_count(game_ids[k]);
+    }
+    char total_label[48];
+    snprintf(total_label, sizeof total_label, "%d / %d", total_found, total);
+    ui_rrect(x, y, w, 55, 10, HEX(0x171D32));
+    ui_stroke(x, y, w, 55, 10, 1.5f, RGBA(245, 200, 66, 75));
+    ui_text(F_BOLD, 18, x + 16, y + 8, HEX(0xF5C842), "MUSEUM");
+    ui_text(F_REG, 10, x + 17, y + 32, HEX(0xAEB8D2),
+            "A living field guide of the things you discover while playing");
+    ui_text_r(F_BOLD, 15, x + w - 16, y + 9, HEX(0xF5C842), total_label);
+    ui_text_r(F_REG, 9, x + w - 16, y + 31, HEX(0xAEB8D2), "DISCOVERED");
+    /* Compact collection progress bar, matching the refreshed navy-and-gold
+       Museum treatment without changing how progress is stored or counted. */
+    const float progress_x = x + 16.0f;
+    const float progress_y = y + 47.0f;
+    const float progress_w = w - 32.0f;
+    const float progress_ratio = total > 0
+        ? fminf(1.0f, (float)total_found / (float)total) : 0.0f;
+    ui_rrect(progress_x, progress_y, progress_w, 4.0f, 2.0f, HEX(0x2A3550));
+    if (progress_ratio > 0.0f)
+        ui_rrect(progress_x, progress_y, progress_w * progress_ratio,
+                 4.0f, 2.0f, HEX(0xF5C842));
+
+    const float gy = y + 62, gg = 4, gw = (w - gg * ng) / (ng + 1);
+    for (int k = 0; k < ng; ++k) {
+        if (ui_chip(x + k * (gw + gg), gy, gw, 25, game_labels[k],
+                    !museum_hacks_view && museum_game == game_ids[k])) {
+            museum_game = game_ids[k]; museum_hacks_view = 0; museum_scroll = 0;
+            museum_category = MUSEUM_CATEGORY_ALL; museum_filter_mode = 0;
+            museum_selected[museum_game] = 0; museum_reset_confirm = 0;
         }
     }
-    const float hacks_x = x + museum_game_count * (game_w + game_gap);
-    if (ui_chip(hacks_x, y, game_w, game_h, "ROM HACKS", museum_hacks_view)) {
-        museum_hacks_view = 1; museum_hack_scroll = 0.0f;
-        museum_reset_confirm = 0;
+    if (ui_chip(x + ng * (gw + gg), gy, gw, 25, "ROM HACKS", museum_hacks_view)) {
+        museum_hacks_view = 1; museum_hack_scroll = 0; museum_reset_confirm = 0;
     }
     if (museum_hacks_view) {
-        static const char *hack_filters[] = {"All Profiles", "File Available", "Missing File"};
-        for (int i = 0; i < 3; ++i) {
-            if (ui_chip(x + i * 136.0f, y + 31, 130, 25, hack_filters[i],
-                        museum_hacks_filter == i)) {
-                museum_hacks_filter = i; museum_hack_scroll = 0.0f;
+        static const char *hf[] = {"All Profiles", "File Available", "Missing File"};
+        for (int k = 0; k < 3; ++k)
+            if (ui_chip(x + k * 136, gy + 29, 130, 23, hf[k], museum_hacks_filter == k)) {
+                museum_hacks_filter = k; museum_hack_scroll = 0;
             }
-        }
-        tab_museum_romhacks(x, y, width);
+        tab_museum_romhacks(x, y, w);
         return;
     }
 
-    /* Keep reset in this fixed header row, outside the scrollable specimen
-       grid. On short/touch displays, footer controls could be mistaken for
-       the last visible discovery tile. */
-    const float cat_gap = 4.0f;
-    const float reset_w = 124.0f;
-    const float cat_area_w = width - reset_w - cat_gap;
-    const float cat_w = (cat_area_w - cat_gap * (category_count - 1)) / (float)category_count;
-    for (int i = 0; i < category_count; ++i) {
-        int category_index = i;
-        if (!has_treasures && i >= 3) category_index = i + 1;
-        float bx = x + i * (cat_w + cat_gap);
-        if (ui_chip(bx, y + 31, cat_w, 25, category_labels[category_index],
-                    museum_category == category_values[category_index])) {
-            museum_category = category_values[category_index]; museum_scroll = 0.0f;
-            museum_reset_confirm = 0;
+    const float cy = y + 91, reset_w = 105, cg = 4, ca = w - reset_w - cg;
+    const float cw = (ca - cg * (nc - 1)) / nc;
+    for (int k = 0; k < nc; ++k) {
+        int ci = (!treasures && k >= 3) ? k + 1 : k;
+        if (ui_chip(x + k * (cw + cg), cy, cw, 23, cat_names[ci],
+                    museum_category == cats[ci])) {
+            museum_category = cats[ci]; museum_scroll = 0; museum_reset_confirm = 0;
         }
     }
-
-    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until)
-        museum_reset_confirm = 0;
-    if (ui_button(x + cat_area_w + cat_gap, y + 31, reset_w, 25,
+    if (museum_reset_confirm && anim_clock >= museum_reset_confirm_until) museum_reset_confirm = 0;
+    if (ui_button(x + ca + cg, cy, reset_w, 23,
                   museum_reset_confirm ? "Confirm reset" : "Reset all",
                   museum_reset_confirm ? B_DANGER : B_GHOST, 1)) {
         if (!museum_reset_confirm) {
-            museum_reset_confirm = 1;
-            museum_reset_confirm_until = anim_clock + 4.0f;
-            launcher_toast("Press Confirm reset within 4 seconds to clear discoveries for every game.");
+            museum_reset_confirm = 1; museum_reset_confirm_until = anim_clock + 4.0f;
+            launcher_toast("Press Confirm reset within 4 seconds to clear every game's discoveries.");
         } else if (museum_clear_discoveries()) {
-            museum_reset_confirm = 0;
-            museum_category = MUSEUM_CATEGORY_ALL;
-            museum_filter_mode = 0;
-            museum_scroll = 0.0f;
-            for (int game = 0; game < N_GAMES; ++game)
-                museum_selected[game] = 0;
-            launcher_toast("All Museum discoveries cleared. Play again to start a fresh collection.");
+            museum_reset_confirm = 0; museum_category = MUSEUM_CATEGORY_ALL;
+            museum_filter_mode = 0; museum_scroll = 0;
+            for (int k = 0; k < N_GAMES; ++k) museum_selected[k] = 0;
+            launcher_toast("All Museum discoveries cleared.");
         } else {
             museum_reset_confirm = 0;
-            launcher_toast(museum_last_storage_error()[0]
-                ? museum_last_storage_error() : "Couldn't reset Museum discoveries.");
+            launcher_toast(museum_last_storage_error()[0] ? museum_last_storage_error() :
+                "Couldn't reset Museum discoveries.");
         }
     }
 
-    int all_count = museum_catalog_count(museum_game);
-    int found_count = museum_discovered_count(museum_game);
-    int visible = museum_visible_count();
-    int selected_index = museum_selected[museum_game];
-    const MuseumEntry *selected = museum_catalog_entry(museum_game, selected_index);
-    if (!museum_entry_matches(selected)) {
-        selected_index = museum_first_visible();
-        museum_selected[museum_game] = selected_index >= 0 ? selected_index : 0;
-        selected = museum_catalog_entry(museum_game, museum_selected[museum_game]);
+    const int count = museum_catalog_count(museum_game);
+    const int found_count = museum_discovered_count(museum_game);
+    const int visible = museum_visible_count();
+    int sel = museum_selected[museum_game];
+    const MuseumEntry *entry = sel >= 0 && sel < count ? museum_catalog_entry(museum_game, sel) : NULL;
+    if (!museum_entry_matches(entry)) {
+        sel = museum_first_visible(); museum_selected[museum_game] = sel;
+        entry = sel >= 0 ? museum_catalog_entry(museum_game, sel) : NULL;
     }
-    int selected_found = selected && museum_is_discovered(museum_game, selected->id);
+    const int found = entry && museum_is_discovered(museum_game, entry->id);
+    const float by = y + 120, bh = 356, left = 492, gap = 8;
+    const float rx = x + left + gap, rw = w - left - gap;
+    ui_rrect(x, by, left, bh, 10, HEX(0x151B2D));
+    ui_stroke(x, by, left, bh, 10, 1, RGBA(245, 200, 66, 38));
+    ui_rrect(rx, by, rw, bh, 10, HEX(0x151B2D));
+    ui_stroke(rx, by, rw, bh, 10, 1, RGBA(245, 200, 66, 38));
 
-    const float body_y = y + 63.0f, body_h = 413.0f;
-    const float left_w = 450.0f, gap = 8.0f, right_x = x + left_w + gap;
-    const float right_w = width - left_w - gap;
+    ui_text(F_BOLD, 11, x + 13, by + 10, HEX(0xF5C842), "COLLECTION");
+    char progress[48]; snprintf(progress, sizeof progress, "%d / %d", found_count, count);
+    ui_text_r(F_BOLD, 10, x + left - 13, by + 11, HEX(0xD9E0F2), progress);
+    if (ui_seg(x + 12, by + 31, left - 24, 22, filters, 3, &museum_filter_mode))
+        museum_scroll = 0;
 
-    /* Original handheld palette: warm paper, dark ink and a timber header. */
-    ui_rrect(x, body_y, width, body_h, 9, HEX(0x302016));
-    ui_stroke(x, body_y, width, body_h, 9, 2, HEX(0x0E0A08));
-
-    /* Detail / field-guide side. */
-    ui_rrect(x + 5, body_y + 5, left_w - 10, body_h - 10, 5, HEX(0xF2E5B7));
-    ui_rrect(x + 5, body_y + 5, left_w - 10, 25, 4, HEX(0x84340F));
-    ui_text(F_BOLD, 13, x + 16, body_y + 9, HEX(0xFFF3D4), "FIELD GUIDE");
-    ui_text_r(F_BOLD, 11, x + left_w - 16, body_y + 10, HEX(0xF4D19A),
-              selected_found ? museum_category_name(selected->category) :
-              (selected ? "LOCKED" : "EMPTY"));
-
-    museum_draw_entry_art(museum_game, selected, x + 13, body_y + 39, 108, 108,
-                          selected_found);
-    const float info_x = x + 132;
-    char provenance[120];
-    snprintf(provenance, sizeof provenance, "%s: %s",
-             selected_found ? "First seen" : "Game", games[museum_game].name);
-    if (selected_found && selected) {
-        ui_text_fit(F_BOLD, 18, info_x, body_y + 42, left_w - 153,
-                    HEX(0x25170E), selected->name);
-        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "SPECIMEN RECORDED");
-        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 1 / 1");
-        ui_text(F_REG, 10, info_x, body_y + 101, HEX(0x65452F),
-                rs[museum_game].ok ? "Cartridge: ready" : "Add this game's ROM for sprite capture");
-        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
-    } else {
-        ui_text_fit(F_BOLD, 17, info_x, body_y + 42, left_w - 153,
-                    HEX(0x25170E), "NOT YET UNLOCKED");
-        ui_text(F_BOLD, 11, info_x, body_y + 66, HEX(0x75401E), "LOCKED SPECIMEN");
-        ui_text(F_REG, 11, info_x, body_y + 84, HEX(0x3B291C), "Found: 0 / 1");
-        ui_text_wrap(F_REG, 10, info_x, body_y + 101, left_w - 153, HEX(0x65452F),
-                     "This entry hasn't been unlocked. Discover it in-game to reveal its details.", 1.0f);
-        ui_text_fit(F_REG, 10, info_x, body_y + 117, left_w - 153, HEX(0x65452F), provenance);
-    }
-
-    ui_line(x + 13, body_y + 156, x + left_w - 13, body_y + 156, 2, HEX(0xB87C3A));
-    ui_text(F_BOLD, 12, x + 15, body_y + 164, HEX(0x5F2E16),
-            selected_found ? "FIELD NOTES" : "LOCKED ENTRY");
-    if (selected_found && selected) {
-        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
-                     HEX(0x33251A), selected->description, 1.15f);
-    } else {
-        ui_text_wrap(F_REG, 12, x + 15, body_y + 186, left_w - 30,
-                     HEX(0x65452F),
-                     "This entry hasn't been unlocked yet. Play the game and encounter it to reveal the name, sprite, and description.",
-                     1.15f);
-    }
-
-    ui_line(x + 13, body_y + 268, x + left_w - 13, body_y + 268, 1, HEX(0xC79A62));
-    ui_text(F_BOLD, 11, x + 15, body_y + 276, HEX(0x5F2E16), "RECENT DISCOVERIES");
-    int recent = 0;
-    for (int i = all_count - 1; i >= 0 && recent < 2; --i) {
-        const MuseumEntry *entry = museum_catalog_entry(museum_game, i);
-        if (!entry || !museum_is_discovered(museum_game, entry->id) ||
-            (selected && !strcmp(selected->id, entry->id))) continue;
-        float ry = body_y + 297 + recent * 49.0f;
-        museum_draw_entry_art(museum_game, entry, x + 15, ry, 38, 38, 1);
-        ui_text_fit(F_BOLD, 11, x + 62, ry + 2, left_w - 83,
-                    HEX(0x33251A), entry->name);
-        ui_text_fit(F_REG, 9, x + 62, ry + 20, left_w - 83,
-                    HEX(0x795A3B), museum_category_name(entry->category));
-        recent++;
-    }
-    if (!recent)
-        ui_text(F_REG, 10, x + 15, body_y + 300, HEX(0x795A3B),
-                "Your discoveries will be catalogued here.");
-
-    /* Collection shelf. The unknown slots look like a retro museum display. */
-    ui_rrect(right_x, body_y + 5, right_w - 5, body_h - 10, 5, HEX(0xA75A2D));
-    ui_stroke(right_x, body_y + 5, right_w - 5, body_h - 10, 5, 1, HEX(0x552713));
-    ui_rrect(right_x + 5, body_y + 10, right_w - 15, 25, 4, HEX(0x81320F));
-    ui_text(F_BOLD, 12, right_x + 14, body_y + 15, HEX(0xFFF0D1), "COLLECTION SHELF");
-    char progress[64];
-    snprintf(progress, sizeof progress, "%d / %d", found_count, all_count);
-    ui_text_r(F_BOLD, 11, right_x + right_w - 13, body_y + 16, HEX(0xF6D19A), progress);
-    if (ui_seg(right_x + 9, body_y + 40, right_w - 27, 24,
-               filter_labels, 3, &museum_filter_mode))
-        museum_scroll = 0.0f;
-
-    const float grid_x = right_x + 9, grid_y = body_y + 71;
-    const float grid_w = right_w - 27, grid_h = body_h - 83;
-    const float tile_gap_x = 7.0f, tile_gap_y = 7.0f;
-    const float tile_w = (grid_w - tile_gap_x * 2.0f) / 3.0f;
-    const float tile_h = 75.0f, row_step = tile_h + tile_gap_y;
-    int rows = (visible + 2) / 3;
-    float content_h = rows * row_step;
-    float max_scroll = content_h > grid_h ? content_h - grid_h : 0.0f;
-    if (ui_mouse.x >= grid_x && ui_mouse.x <= grid_x + grid_w &&
-        ui_mouse.y >= grid_y && ui_mouse.y <= grid_y + grid_h &&
-        ui_mouse.wheel != 0.0f)
-        museum_scroll -= ui_mouse.wheel * row_step;
-    if (museum_scroll < 0.0f) museum_scroll = 0.0f;
-    if (museum_scroll > max_scroll) museum_scroll = max_scroll;
-
-    ui_clip(grid_x, grid_y, grid_w, grid_h);
+    const float gx = x + 12, gyy = by + 62, gridw = left - 24, gridh = bh - 74;
+    const float tg = 7, tilew = (gridw - 2 * tg) / 3, tileh = 86, step = tileh + 7;
+    const float content = ((visible + 2) / 3) * step;
+    const float maxscroll = content > gridh ? content - gridh : 0;
+    if (ui_mouse.x >= gx && ui_mouse.x <= gx + gridw && ui_mouse.y >= gyy &&
+        ui_mouse.y <= gyy + gridh && ui_mouse.wheel) museum_scroll -= ui_mouse.wheel * step;
+    if (museum_scroll < 0) museum_scroll = 0;
+    if (museum_scroll > maxscroll) museum_scroll = maxscroll;
+    ui_clip(gx, gyy, gridw, gridh);
     int shown = 0;
-    for (int i = 0; i < all_count; ++i) {
-        const MuseumEntry *entry = museum_catalog_entry(museum_game, i);
-        if (!museum_entry_matches(entry)) continue;
-        int row = shown / 3, col = shown % 3;
-        shown++;
-        float tx = grid_x + col * (tile_w + tile_gap_x);
-        float ty = grid_y + row * row_step - museum_scroll;
-        if (ty + tile_h < grid_y || ty > grid_y + grid_h) continue;
-        int found = museum_is_discovered(museum_game, entry->id);
-        int selected_tile = selected && !strcmp(selected->id, entry->id);
-        if (ui_button(tx, ty, tile_w, tile_h, "", selected_tile ? B_PRIMARY : B_NORMAL, 1)) {
-            museum_selected[museum_game] = i;
-        }
-        ui_rrect(tx + 3, ty + 3, tile_w - 6, 51, 3,
-                 found ? HEX(0xE9D6A5) : HEX(0x814322));
-        if (found) {
-            museum_draw_entry_art(museum_game, entry, tx + 9, ty + 5, tile_w - 18, 47, 1);
-            ui_text_fit(F_BOLD, 9, tx + 4, ty + 57, tile_w - 8,
-                        HEX(0xFFF0D5), entry->name);
+    for (int k = 0; k < count; ++k) {
+        const MuseumEntry *e = museum_catalog_entry(museum_game, k);
+        if (!museum_entry_matches(e)) continue;
+        int row = shown / 3, col = shown % 3; ++shown;
+        float tx = gx + col * (tilew + tg), ty = gyy + row * step - museum_scroll;
+        if (ty + tileh < gyy || ty > gyy + gridh) continue;
+        int is_found = museum_is_discovered(museum_game, e->id);
+        int is_sel = entry && !strcmp(entry->id, e->id), over = 0;
+        if (clickable(tx, ty, tilew, tileh, &over)) museum_selected[museum_game] = k;
+        ui_rrect(tx, ty, tilew, tileh, 7, is_sel ? HEX(0x303B60) :
+            over ? HEX(0x252F4B) : HEX(0x1D263D));
+        ui_stroke(tx, ty, tilew, tileh, 7, is_sel ? 1.5f : 1,
+            is_sel ? HEX(0xF5C842) : HEX(0x3A4563));
+        if (is_found) {
+            museum_draw_entry_art(museum_game, e, tx + 6, ty + 5, tilew - 12, 54, 1);
+            ui_text_fit(F_BOLD, 9, tx + 6, ty + 63, tilew - 12, HEX(0xF0F2FA), e->name);
+            ui_text_fit(F_REG, 8, tx + 6, ty + 75, tilew - 12, HEX(0xAAB5D0),
+                museum_category_name(e->category));
         } else {
-            museum_lock_glyph(tx + 13, ty + 5, tile_w - 26, 46, 0);
-            ui_text_c(F_BOLD, 9, tx + tile_w * 0.5f, ty + 57, HEX(0xDDB98C), "LOCKED");
+            museum_lock_glyph(tx + tilew * .5f - 13, ty + 9, 26, 34, 0);
+            ui_text_c(F_BOLD, 9, tx + tilew * .5f, ty + 63, HEX(0xD2B77E), "LOCKED");
+            ui_text_c(F_REG, 8, tx + tilew * .5f, ty + 75, HEX(0x8490AC),
+                museum_category_name(e->category));
         }
-        if (selected_tile)
-            ui_stroke(tx + 1, ty + 1, tile_w - 2, tile_h - 2, 5, 2, HEX(0xFFE39A));
     }
     ui_unclip();
 
-    ui_text(F_BOLD, 10, x + 3, y + 486, HEX(0xD8B78A), "Discovery alerts");
-    if (ui_toggle(x + 112, y + 481, &settings.museum_discovery_notifications)) {
-        settings_save();
-        launcher_toast(settings.museum_discovery_notifications
-            ? "Museum discovery notifications enabled."
-            : "Museum discovery notifications disabled.");
+    ui_text(F_BOLD, 11, rx + 13, by + 10, HEX(0xF5C842), "SPECIMEN DETAILS");
+    if (entry) {
+        museum_draw_entry_art(museum_game, entry, rx + 13, by + 34, 104, 104, found);
+        float ix = rx + 128, iw = rw - 141;
+        if (found) {
+            ui_text_fit(F_BOLD, 14, ix, by + 39, iw, HEX(0xF2F4FA), entry->name);
+            ui_text_fit(F_BOLD, 9, ix, by + 64, iw, HEX(0xF5C842),
+                museum_category_name(entry->category));
+            ui_text(F_REG, 9, ix, by + 85, HEX(0xAEB8D2), "DISCOVERED");
+            ui_text(F_REG, 9, ix, by + 102, HEX(0xAEB8D2), "Found: 1 / 1");
+        } else {
+            ui_text_fit(F_BOLD, 13, ix, by + 40, iw, HEX(0xF2F4FA), "NOT YET UNLOCKED");
+            ui_text(F_BOLD, 9, ix, by + 67, HEX(0xD2B77E), "LOCKED SPECIMEN");
+            ui_text(F_REG, 9, ix, by + 88, HEX(0xAEB8D2), "Found: 0 / 1");
+        }
+        ui_line(rx + 13, by + 150, rx + rw - 13, by + 150, 1, HEX(0x3A4563));
+        ui_text(F_BOLD, 10, rx + 13, by + 160, HEX(0xF5C842), found ? "FIELD NOTES" : "UNDISCOVERED");
+        if (found)
+            ui_text_wrap(F_REG, 10, rx + 13, by + 180, rw - 26, HEX(0xD6DCEC),
+                entry->description, 1.12f);
+        else
+            ui_text_wrap(F_REG, 10, rx + 13, by + 180, rw - 26, HEX(0xAEB8D2),
+                "Encounter this specimen in-game to reveal its name, artwork, and field notes.", 1.12f);
+        ui_line(rx + 13, by + 264, rx + rw - 13, by + 264, 1, HEX(0x3A4563));
+        ui_text(F_BOLD, 9, rx + 13, by + 274, HEX(0xF5C842), "GAME");
+        ui_text_fit(F_REG, 9, rx + 52, by + 274, rw - 65, HEX(0xD6DCEC), games[museum_game].name);
+        ui_text(F_BOLD, 9, rx + 13, by + 294, HEX(0xF5C842), "PROGRESS");
+        ui_text_fit(F_REG, 9, rx + 75, by + 294, rw - 88, HEX(0xD6DCEC), progress);
+    } else {
+        ui_text_c(F_BOLD, 15, rx + rw * .5f, by + 142, HEX(0xD2B77E), "NO MATCHING ENTRIES");
+        ui_text_c(F_REG, 9, rx + rw * .5f, by + 166, HEX(0xAEB8D2), "Try another category or filter");
     }
-    ui_text_fit(F_REG, 10, x + 164, y + 486, 430, C_DIM,
-                settings.museum_discovery_notifications
-                    ? "Pop-ups appear over gameplay."
-                    : "Pop-ups off; progress still saves.");
 
-    /* Reset action is handled beside the category filters above. */
+    ui_text(F_BOLD, 9, x + 3, y + 483, HEX(0xD8B78A), "Discovery alerts");
+    if (ui_toggle(x + 105, y + 478, &settings.museum_discovery_notifications)) {
+        settings_save();
+        launcher_toast(settings.museum_discovery_notifications ?
+            "Museum discovery notifications enabled." : "Museum discovery notifications disabled.");
+    }
+    ui_text_fit(F_REG, 9, x + 155, y + 483, 430, C_DIM,
+        settings.museum_discovery_notifications ? "Pop-ups appear over gameplay." :
+        "Pop-ups off; progress still saves.");
     if (museum_last_storage_error()[0])
-        ui_text_fit(F_REG, 9, x + 3, y + 503, width - 6, C_ERR,
-                    museum_last_storage_error());
+        ui_text_fit(F_REG, 8, x + 3, y + 500, w - 6, C_ERR, museum_last_storage_error());
 }
 
 /* ------------------------------------------------------------------ frame */
@@ -5414,8 +5514,15 @@ static int tab_button(float x, float y, float w, float h, int selected, uint32_t
     int over;
     int clicked = clickable(x, y, w, h, &over);
     float a = ui_anim(ui_next_id() * 4 + 3, selected ? 1.0f : (over ? 0.5f : 0.0f), 16.0f);
-    if (a > 0.01f) ui_rrect(x, y, w, h, 12, RGBA(255, 255, 255, (int)(a * (selected ? 24 : 14))));
-    if (selected) ui_rrect(x, y + 10, 4, h - 20, 2, HEX(accent));
+    if (a > 0.01f)
+        ui_rrect(x, y, w, h, 12,
+                 RGBA(255, 255, 255, (int)(a * (selected ? 30 : 18))));
+    if (selected) {
+        ui_rrect(x + 2, y + 8, 4, h - 16, 2, HEX(accent));
+        ui_stroke(x, y, w, h, 12, 1, RGBA(255, 255, 255, 34));
+    } else if (over) {
+        ui_stroke(x, y, w, h, 12, 1, RGBA(255, 255, 255, 22));
+    }
     return clicked;
 }
 
@@ -5493,8 +5600,6 @@ LauncherResult launcher_frame(float dt)
         float nav_w = vw - 190.0f;
         if (nav_w < 620.0f) nav_w = 620.0f;
         if (brand_logo) ui_image(brand_logo, NULL, vx + 14, 10, 138, 68);
-        /* Small windows move navigation into the header instead of squeezing
-           the content beside a permanent sidebar. */
 #if defined(__ANDROID__)
         const float game_nav_y = 4.0f, game_nav_h = 40.0f, game_label_y = 14.0f;
         const float global_nav_y = 46.0f, global_nav_h = 39.0f, global_label_y = 56.0f;
@@ -5524,46 +5629,107 @@ LauncherResult launcher_frame(float dt)
         }
         ui_rect(vx + 12, nav_divider_y, vw - 24, 1, C_LINE);
     } else {
-        if (brand_logo) ui_image(brand_logo, NULL, 20, 1, 170, 83);
-        ui_rect(20, 90, UI_W - 40, 1, C_LINE);
-
-        /* Desktop sidebar */
-        float sx = 24, sy = 108;
-        int compact_games = N_GAMES > 4;
-        float game_row = compact_games ? 46.0f : 76.0f;
-        float game_h = compact_games ? 42.0f : 68.0f;
+        /* Rich library sidebar. Eight game rows use matching 42px hitboxes and spacing. */
+        const float SB_X = 14.0f, SB_W = 240.0f;
+        const float SB_GAME_ROW = 42.0f;
+        const float SB_NAV_ROW  = 31.0f;
+        ui_rrect(0, 0, SB_X + SB_W + 6, (float)UI_H, 0, RGBA(6, 8, 16, 230));
+        ui_rect(SB_X + SB_W + 6, 0, 1, (float)UI_H, RGBA(255,255,255,12));
+        if (brand_logo) ui_image(brand_logo, NULL, SB_X + 4, 4, 170, 56);
+        ui_rect(SB_X, 65, SB_W, 1, RGBA(255,255,255,12));
+        ui_text(F_BOLD, 9, SB_X + 10, 71, RGBA(82,90,120,255), "YOUR GAMES");
+        float gsy = 83.0f;
         for (int i = 0; i < N_GAMES; i++) {
-            float y = sy + i * game_row;
-            if (tab_button(sx, y, 224, game_h, tab == i, games[i].accent)) tab = i;
-            if (compact_games) {
-                ui_text_fit(F_BOLD, 13, sx + 14, y + 4, 202, tab == i ? C_TEXT : C_MUTED, games[i].name);
-                int kind = rs[i].ok ? 1 : (settings.g[i].rom_path[0] ? 3 : 2);
-                const char *msg = rs[i].ok ? "Ready to play" : (settings.g[i].rom_path[0] ? "ROM issue" : "ROM needed");
-                status_line(sx + 14, y + 23, 202, kind, msg);
+            float gy = gsy + i * SB_GAME_ROW;
+            int gover = 0;
+            int gclicked = clickable(SB_X, gy, SB_W, 42, &gover);
+            if (gclicked) tab = i;
+            int gactive = (tab == i);
+            uint32_t gacc = games[i].accent;
+            if (gactive)
+                ui_rrect(SB_X, gy, SB_W, 42, 8,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255, 30));
+            else if (gover)
+                ui_rrect(SB_X, gy, SB_W, 42, 8, RGBA(255,255,255,8));
+            if (gactive)
+                ui_rrect(SB_X, gy + 8, 3, 34, 2,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255,255));
+            SDL_Texture *glogo = branding_game_logo(i);
+            float thmx = SB_X + 10, thmy = gy + 7, thms = 28;
+            if (glogo) {
+                int lw2, lh2;
+                SDL_QueryTexture(glogo, NULL, NULL, &lw2, &lh2);
+                float tw = thms * ((float)lw2 / (float)(lh2 > 0 ? lh2 : 1));
+                if (tw > thms * 2.0f) tw = thms * 2.0f;
+                ui_rrect(thmx, thmy, thms, thms, 8,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255, 60));
+                ui_image(glogo, NULL, thmx + (thms - tw) * 0.5f, thmy + 2, tw, thms - 4);
             } else {
-                ui_text_fit(F_BOLD, 15, sx + 18, y + 11, 196, tab == i ? C_TEXT : C_MUTED, games[i].name);
-                const GameCfg *gc = &settings.g[i];
-                const char *ready = !rs[i].ok ? "ROM needed" :
-                    (gc->romhack_selected >= 0 ? (hack_ok[i] ? "Ready with ROM hack" : "ROM hack selected") : "Ready to play");
-                status_line(sx + 18, y + 38, 196, rs[i].ok ? 1 : 2, ready);
+                ui_rrect(thmx, thmy, thms, thms, 8,
+                         RGBA((gacc>>16)&255,(gacc>>8)&255,gacc&255, 90));
+                char ltr[2] = {games[i].name[0], 0};
+                ui_text_c(F_BOLD, 16, thmx + thms * 0.5f, thmy + 10, C_TEXT, ltr);
+            }
+            float ntx = thmx + thms + 8;
+            float ntw = SB_X + SB_W - ntx - 18;
+            ui_text_fit(F_BOLD, 12, ntx, gy + 10, ntw,
+                        gactive ? C_TEXT : RGBA(192,200,224,255), games[i].name);
+            ui_text_fit(F_REG, 10, ntx, gy + 26, ntw,
+                        RGBA(106,116,144,255),
+                        games[i].genre ? games[i].genre : (games[i].sub ? games[i].sub : ""));
+            uint32_t dot = rs[i].ok ? RGBA(61,186,120,255) :
+                           (settings.g[i].rom_path[0] ? RGBA(245,200,66,255) : RGBA(82,90,120,255));
+            ui_rrect(SB_X + SB_W - 14, gy + 17, 7, 7, 4, dot);
+        }
+        float ndiv_y = gsy + N_GAMES * SB_GAME_ROW + 4.0f;
+        ui_rect(SB_X + 8, ndiv_y, SB_W - 16, 1, RGBA(255,255,255,10));
+        ui_text(F_BOLD, 9, SB_X + 10, ndiv_y + 8, RGBA(82,90,120,255), "NAVIGATION");
+        float nav2_y = ndiv_y + 22.0f;
+        static const char *sb_nav_labels[] = {
+            "Multiplayer", "Controllers", "Filters", "Audio", "Online", "Display", "Museum"
+        };
+        for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
+            float ny = nav2_y + (i - TAB_MULTIPLAYER) * SB_NAV_ROW;
+            int nover = 0;
+            int nclicked = clickable(SB_X, ny, SB_W, 29, &nover);
+            if (nclicked) tab = i;
+            int nactive = (tab == i);
+            uint32_t nacc = (i == TAB_MULTIPLAYER) ? games[mp_config_game].accent :
+                            (i == TAB_MUSEUM ? 0xF5C842 : 0x4C8DFF);
+            if (nactive) {
+                ui_rrect(SB_X, ny, SB_W, 29, 8,
+                         RGBA((nacc>>16)&255,(nacc>>8)&255,nacc&255, 25));
+                ui_rrect(SB_X, ny + 4, 3, 21, 2,
+                         RGBA((nacc>>16)&255,(nacc>>8)&255,nacc&255,255));
+            } else if (nover) {
+                ui_rrect(SB_X, ny, SB_W, 29, 8, RGBA(255,255,255,7));
+            }
+            ui_text_fit(F_BOLD, 11, SB_X + 14, ny + 9, SB_W - 46,
+                        nactive ? C_TEXT : RGBA(136,145,176,255),
+                        sb_nav_labels[i - TAB_MULTIPLAYER]);
+            if (i == TAB_MUSEUM) {
+                int found = 0;
+                for (int gi = 0; gi < N_GAMES; gi++) found += museum_discovered_count(gi);
+                if (found > 0) {
+                    char badge[16]; snprintf(badge, sizeof badge, "%d", found);
+                    float bw2 = (float)(int)ui_text_w(F_BOLD, 10, badge) + 12.0f;
+                    ui_rrect(SB_X + SB_W - bw2 - 6, ny + 7, bw2, 14, 7, RGBA(245,200,66,255));
+                    ui_text_c(F_BOLD, 9, SB_X + SB_W - bw2 * 0.5f - 6, ny + 9,
+                              RGBA(10,12,20,255), badge);
+                }
             }
         }
-        float y2 = sy + N_GAMES * game_row + 8;
-        ui_rect(sx + 8, y2, 208, 1, C_LINE);
-        float nav_y = y2 + 8;
-        int nav_count = N_TABS - TAB_MULTIPLAYER;
-        float nav_available = UI_H - 52.0f - nav_y;
-        float nav_step = nav_available / (float)nav_count;
-        if (nav_step > 43.0f) nav_step = 43.0f;
-        float nav_h = nav_step - 3.0f;
-        if (nav_h > 38.0f) nav_h = 38.0f;
-        for (int i = TAB_MULTIPLAYER; i < N_TABS; i++) {
-            float y = nav_y + (i - TAB_MULTIPLAYER) * nav_step;
-            uint32_t accent = i == TAB_MULTIPLAYER ? games[mp_config_game].accent : 0x4C8DFF;
-            if (tab_button(sx, y, 224, nav_h, tab == i, accent)) tab = i;
-            ui_text_fit(F_BOLD, nav_h < 32.0f ? 12 : 14, sx + 18,
-                        y + (nav_h - 21.0f) * 0.5f, 194,
-                        tab == i ? C_TEXT : C_MUTED, tab_labels[i]);
+        {
+            float ob_y = (float)UI_H - 36.0f;
+            ui_rrect(SB_X, ob_y, SB_W, 32, 8, RGBA(20,24,42,160));
+            ui_rect(SB_X, ob_y, SB_W, 1, RGBA(255,255,255,10));
+            NetplayInfo ni2; netplay_get_info(&ni2);
+            int online = ni2.state == NETPLAY_HOSTING || ni2.state == NETPLAY_CONNECTED;
+            uint32_t odot = online ? RGBA(61,186,120,255) : RGBA(82,90,120,255);
+            ui_rrect(SB_X + 12, ob_y + 13, 7, 7, 4, odot);
+            ui_text(F_BOLD, 10, SB_X + 24, ob_y + 11,
+                    online ? RGBA(61,186,120,255) : RGBA(106,116,144,255),
+                    online ? "Online" : "Offline");
         }
     }
 
@@ -5571,93 +5737,127 @@ LauncherResult launcher_frame(float dt)
     if (tab < N_GAMES) {
         GameCfg *c = &settings.g[tab];
         ui_accent = games[tab].accent;
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, games[tab].name);
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, games[tab].sub);
         int can = rs[tab].ok;
+        const float HERO_H = 172.0f;
+        SDL_Texture *hero_banner = branding_game_banner(tab);
+        uint32_t acc3 = HEX(games[tab].accent);
+        if (hero_banner) {
+            int hbw, hbh;
+            SDL_QueryTexture(hero_banner, NULL, NULL, &hbw, &hbh);
+            ui_clip(cx, cy - 14, 808, HERO_H);
+            draw_cover(hero_banner, hbw, hbh, cx, cy - 14, 808, HERO_H);
+            ui_unclip();
+        } else {
+            ui_vgrad(cx, cy - 14, 808, HERO_H,
+                     RGBA((acc3>>24)&255,(acc3>>16)&255,(acc3>>8)&255, 55),
+                     RGBA(8, 10, 18, 240));
+        }
+        ui_hgrad(cx, cy - 14, 808, HERO_H,
+                 RGBA(8,10,18, 0), RGBA(8,10,18, 200));
+        ui_vgrad(cx, cy - 14 + HERO_H * 0.5f, 808, HERO_H * 0.5f,
+                 RGBA(8,10,18,0), RGBA(8,10,18,220));
+        ui_rrect(cx, cy - 14, 3, HERO_H, 2, acc3);
+        SDL_Texture *hero_logo = branding_game_logo(tab);
+        float logo_bottom = cy - 14 + HERO_H - 20.0f;
+        if (hero_logo) {
+            int hlw, hlh;
+            SDL_QueryTexture(hero_logo, NULL, NULL, &hlw, &hlh);
+            float lh = 56.0f, lw3 = lh * ((float)hlw / (float)(hlh > 0 ? hlh : 1));
+            if (lw3 > 240.0f) lw3 = 240.0f;
+            ui_image(hero_logo, NULL, cx + 16, logo_bottom - lh, lw3, lh);
+        } else {
+            ui_text(F_BOLD, 26, cx + 20, logo_bottom - 56, C_TEXT, games[tab].name);
+        }
+        ui_text(F_REG, 11, cx + 18, logo_bottom - 20, RGBA(255,255,255,140),
+                games[tab].sub ? games[tab].sub : "");
+        {
+            char hmeta[80];
+            snprintf(hmeta, sizeof hmeta, "%s  ·  %d  ·  %d Player%s",
+                     games[tab].genre ? games[tab].genre : "",
+                     games[tab].year, games[tab].players, games[tab].players == 1 ? "" : "s");
+            ui_text(F_REG, 10, cx + 18, logo_bottom - 4, RGBA(255,255,255,100), hmeta);
+        }
+        {
+            const char *pill_txt = can ? "ROM READY" :
+                (settings.g[tab].rom_path[0] ? "ROM ERROR" : "ROM NEEDED");
+            uint32_t pill_bg = can ? RGBA(38,116,83,230) :
+                (settings.g[tab].rom_path[0] ? RGBA(142,66,53,230) : RGBA(80,70,30,230));
+            float pw = ui_text_w(F_BOLD, 10, pill_txt) + 24.0f;
+            ui_rrect(cx + 808 - pw - 14, cy - 14 + 14, pw, 22, 11, pill_bg);
+            ui_text_c(F_BOLD, 10, cx + 808 - pw * 0.5f - 14, cy - 14 + 18, C_TEXT, pill_txt);
+        }
         const char *play_label = tab == GAME_GBA_SAGA
             ? (c->romhack_selected >= 0 ? "Play Profile" : "Play GBA")
-            : (c->romhack_selected >= 0 ? "Play Hack" : "Play");
-        if (ui_button(cx + 808 - 176, cy + 2, 176, 52, can ? play_label : "Needs ROM", B_PRIMARY, can)) res.play = tab;
-        if (!can) hint_area(cx + 808 - 176, cy + 2, 176, 52, "Choose your ROM on the Game tab (or drop it on this window)");
-        float y = cy + 118;
+            : (c->romhack_selected >= 0 ? "▶  Play Hack" : "▶  Play");
+        if (ui_button(cx + 808 - 176, cy - 14 + HERO_H * 0.5f - 26, 162, 52,
+                      can ? play_label : "▶  Needs ROM", B_PRIMARY, can))
+            res.play = tab;
+        if (!can) hint_area(cx + 808 - 176, cy - 14 + HERO_H * 0.5f - 26, 162, 52,
+                            "Choose your ROM on the Game tab (or drop it on this window)");
+        float y_seg = cy - 14 + HERO_H + 6.0f;
+        float y_cont = y_seg + 44.0f;
         pad_set_context(tab, 0);
         if (tab == GAME_GBA_SAGA) {
             static const char *gba_sub_names[6] = {"Game", "ROM Hacks", "Display", "Controllers", "Bindings", "DualSense"};
             if (sub[tab] < 0 || sub[tab] >= 6) sub[tab] = SUB_GAME;
-            ui_seg(cx, cy + 66, 808, 38, gba_sub_names, 6, &sub[tab]);
+            ui_seg(cx, y_seg, 808, 38, gba_sub_names, 6, &sub[tab]);
             switch (sub[tab]) {
-            case SUB_GAME: sub_external_game(tab, cx, y); break;
-            case SUB_ROMHACKS: sub_gba_rom_profiles(tab, cx, y); break;
-            case SUB_DISPLAY: sub_gba_display(tab, cx, y); break;
-            case SUB_CONTROLS: sub_gba_controllers(tab, cx, y); break;
-            case SUB_BINDINGS: sub_gba_bindings(tab, cx, y); break;
-            case SUB_DUALSENSE: sub_gba_dualsense(tab, cx, y); break;
-            default: sub_external_game(tab, cx, y); break;
+            case SUB_GAME: sub_external_game(tab, cx, y_cont); break;
+            case SUB_ROMHACKS: sub_gba_rom_profiles(tab, cx, y_cont); break;
+            case SUB_DISPLAY: sub_gba_display(tab, cx, y_cont); break;
+            case SUB_CONTROLS: sub_gba_controllers(tab, cx, y_cont); break;
+            case SUB_BINDINGS: sub_gba_bindings(tab, cx, y_cont); break;
+            case SUB_DUALSENSE: sub_gba_dualsense(tab, cx, y_cont); break;
+            default: sub_external_game(tab, cx, y_cont); break;
             }
         } else if (games[tab].external_player) {
             const char *external_sub_names[2] = {"Game", "ROM Hacks"};
             int external_sub = sub[tab] == SUB_ROMHACKS ? 1 : 0;
-            ui_seg(cx, cy + 66, 808, 38, external_sub_names, 2, &external_sub);
+            ui_seg(cx, y_seg, 808, 38, external_sub_names, 2, &external_sub);
             sub[tab] = external_sub ? SUB_ROMHACKS : SUB_GAME;
-            if (sub[tab] == SUB_ROMHACKS) sub_romhacks(tab, cx, y);
-            else sub_external_game(tab, cx, y);
+            if (sub[tab] == SUB_ROMHACKS) sub_romhacks(tab, cx, y_cont);
+            else sub_external_game(tab, cx, y_cont);
         } else {
-            ui_seg(cx, cy + 66, 808, 38, sub_names, N_SUB, &sub[tab]);
+            ui_seg(cx, y_seg, 808, 38, sub_names, N_SUB, &sub[tab]);
             switch (sub[tab]) {
-        case SUB_GAME:
-            sub_game(tab, cx, y);
-            break;
-        case SUB_ROMHACKS:
-            sub_romhacks(tab, cx, y);
-            break;
-        case SUB_DISPLAY:
-            sub_display(tab, cx, y);
-            break;
-        case SUB_CONTROLS:
-            sub_controls(tab, cx, y);
-            break;
-        case SUB_BINDINGS:
-            sub_bindings(tab, cx, y);
-            break;
-        case SUB_DUALSENSE:
-            sub_dualsense(tab, cx, y);
-            break;
-        case SUB_SAVE_STATES:
-            sub_save_states(tab, cx, y);
-            break;
-            default:
-                sub_textures(tab, cx, y);
-                break;
+            case SUB_GAME: sub_game(tab, cx, y_cont); break;
+            case SUB_ROMHACKS: sub_romhacks(tab, cx, y_cont); break;
+            case SUB_DISPLAY: sub_display(tab, cx, y_cont); break;
+            case SUB_CONTROLS: sub_controls(tab, cx, y_cont); break;
+            case SUB_BINDINGS: sub_bindings(tab, cx, y_cont); break;
+            case SUB_DUALSENSE: sub_dualsense(tab, cx, y_cont); break;
+            case SUB_SAVE_STATES: sub_save_states(tab, cx, y_cont); break;
+            default: sub_textures(tab, cx, y_cont); break;
             }
         }
         if (load_state_request[tab] >= 0) res.play = tab;
     } else if (tab == TAB_MULTIPLAYER) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Choose 2–4 players and customize names and character colors.");
+        page_heading(cx, cy - 14, 808, 64, "Multiplayer",
+                     "Choose 2–4 players and customize names and character colors.", 0x4C8DFF);
         tab_multiplayer(cx, cy + 58);
     } else if (tab == TAB_MP_CONTROLLERS) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Multiplayer Controllers");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Assign controllers, respawn bindings, and independent sound banks for players 2–4.");
+        page_heading(cx, cy - 14, 808, 64, "Multiplayer Controllers",
+                     "Assign controllers, respawn bindings, and independent sound banks for players 2–4.", 0x4C8DFF);
         tab_mp_controllers(cx, cy + 58);
     } else if (tab == TAB_FILTERS) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Filters");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Make the screen look like a real Game Boy, a CRT TV, or something glowing.");
+        page_heading(cx, cy - 14, 808, 64, "Filters",
+                     "Make the screen look like a real Game Boy, a CRT TV, or something glowing.", 0x4C8DFF);
         tab_filters(cx, cy + 58);
     } else if (tab == TAB_AUDIO) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Audio & menu");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Game volume, the launcher's own music and the little click sounds.");
+        page_heading(cx, cy - 14, 808, 64, "Audio & menu",
+                     "Game volume, the launcher's own music and the little click sounds.", 0x4C8DFF);
         tab_audio(cx, cy + 58);
     } else if (tab == TAB_ONLINE) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Online");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Session invites, player identity, and cross-platform play.");
+        page_heading(cx, cy - 14, 808, 64, "Online",
+                     "Session invites, player identity, and cross-platform play.", 0x4C8DFF);
         tab_online(cx, cy + 58);
     } else if (tab == TAB_DISPLAY) {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Display & layout");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "Adjust the launcher's size on desktop and Android.");
+        page_heading(cx, cy - 14, 808, 64, "Display & layout",
+                     "Adjust the launcher's size on desktop and Android.", 0x4C8DFF);
         tab_display(cx, cy + 58);
     } else {
-        ui_text(F_BOLD, 28, cx, cy - 4, C_TEXT, "Collectible Museum");
-        ui_text(F_REG, 13, cx, cy + 34, C_MUTED, "A shared collection for every game: enemies, items, treasures, stages, and milestones.");
+        page_heading(cx, cy - 14, 808, 64, "Collectible Museum",
+                     "A shared collection for every game: enemies, items, treasures, stages, and milestones.", 0x4C8DFF);
         tab_museum(cx, cy + 58);
     }
 
@@ -5677,7 +5877,11 @@ LauncherResult launcher_frame(float dt)
         float tx = (compact_layout ? vx + vw * 0.5f : UI_W * 0.5f) - tw * 0.5f;
         float ty = compact_layout ? vy + vh - 74 : UI_H - 74;
         ui_shadow(tx, ty, tw, 40, 12, 10, RGBA(0, 0, 0, (int)(90 * a)));
-        ui_rrect(tx, ty, tw, 40, 12, RGBA(40, 46, 66, (int)(250 * a)));
+        ui_rrect(tx, ty, tw, 40, 12, RGBA(19, 25, 40, (int)(250 * a)));
+        ui_stroke(tx, ty, tw, 40, 12, 1.0f,
+                  RGBA(104, 126, 164, (int)(150 * a)));
+        ui_rrect(tx + 11, ty + 10, 3, 20, 1.5f,
+                 HEXA(ui_accent, (int)(255 * a)));
         ui_text_c(F_BOLD, 14, compact_layout ? vx + vw * 0.5f : UI_W * 0.5f, ty + 10, RGBA(237, 239, 246, (int)(255 * a)), toast_msg);
     }
 
