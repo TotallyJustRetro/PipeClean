@@ -25,7 +25,7 @@ jobs:
       - name: Verify toolchain
         run: |
           emcc --version
-          emcmake --version
+          cmake --version
 
       - name: Configure browser build
         run: emcmake cmake -S . -B build-yougame-web -DCMAKE_BUILD_TYPE=Release
