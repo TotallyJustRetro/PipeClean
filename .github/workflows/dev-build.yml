@@ -2,7 +2,7 @@ name: PipeClean Dev Build
 
 on:
   push:
-    branches: [main, feature/online-android-foundation, feature/android-pipe-screen-swap, feature/gba-superstar-saga-pipeclean-test]
+    branches: [main, feature/online-android-foundation, feature/android-pipe-screen-swap, feature/gba-superstar-saga-pipeclean-test, feature/yougame-native-windows]
   pull_request:
     branches: [main, fix/sml-dx-widescreen-revision, feature/online-android-foundation]
   workflow_dispatch:
@@ -179,6 +179,8 @@ jobs:
           mkdir -p dist/PipeClean-Dev-Windows-x64/assets
           cp build-dev/PipeClean.exe dist/PipeClean-Dev-Windows-x64/PipeClean.exe
           cp ci/warko/build/player/gbplayer.exe dist/PipeClean-Dev-Windows-x64/gbplayer.exe
+          cp yougame-native.json dist/PipeClean-Dev-Windows-x64/yougame-native.json
+          cp docs/yougame-native-windows.md dist/PipeClean-Dev-Windows-x64/yougame-native-windows.txt
           cp assets/pipeclean-icon.svg assets/pipeclean-logo.svg assets/pipeclean-logo.webp assets/cacert.pem dist/PipeClean-Dev-Windows-x64/assets/
           {
             ldd build-dev/PipeClean.exe
