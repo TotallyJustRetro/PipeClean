@@ -21,6 +21,7 @@
 #include "branding.h"
 #include "widescreen.h"
 #include "netplay.h"
+#include "yougame_native.h"
 #include "museum.h"
 
 static SDL_Renderer *g_ren; static SDL_Renderer *ren_get(void){return g_ren;}
@@ -3327,6 +3328,13 @@ static void tab_online(float x, float y)
                 settings.online_connection_mode == 0
                     ? "Direct peer-to-peer mode is not implemented in this build. Choose Traversal Server to play online."
                     : "Host a room, choose a supported game, and share its invite code with another player.");
+    if (yougame_native_ready()) {
+        char yougame_status[80];
+        const char *player_name = yougame_native_player_name();
+        snprintf(yougame_status, sizeof yougame_status, "YouGame connected · %.32s",
+                 player_name && player_name[0] ? player_name : "Player");
+        ui_text_fit(F_REG, 10, x + 18, y + 56, 772, C_OK, yougame_status);
+    }
 
     panel_surface(x + 18, y + 70, 354, 422, 12);
     section_heading(x + 34, y + 82, 322, "PLAYER PROFILE");
