@@ -19,7 +19,11 @@ YouGame web build.
 ## ROM handling and listing setup
 
 The package contains only a synthetic build-time ROM used by the interpreter generator.
-It contains no playable Game Boy ROM, extracted game assets, or Nintendo artwork.
+It contains no playable Game Boy ROM, extracted game assets, or Nintendo artwork. CMake
+copies the root `yougame.json` controls manifest into the uploaded build folder. It maps
+the Game Boy inputs to PipeClean's existing SDL keys (A = X, B = Z, arrows, Enter = Start,
+right Shift = Select), sends touch playback as key events, and hides the touch overlay in
+PipeClean menus while showing it during the game.
 
 The hosted listing must be a YouGame **patch** listing for Super Mario Land 2. Before
 testing the hosted build, register the accepted base-game dump with YouGame using the
@@ -57,5 +61,11 @@ Ranked matchmaking is intentionally out of scope for cooperative play.
 This is a prototype build, not a production release. Verify a two-account staging
 session, real friend invitation, matching-ROM rejection, SML2 input determinism,
 disconnect behavior, pause/resume, browser refresh, save behavior and phone layout
-before publishing. The web pilot does not enable GBA external-player launch or the
-native Companion Deck simulator.
+before publishing. The build reserves the measured YouGame host-control insets around
+the SDL canvas; the actual hosted layout and the bottom d-pad / face-button hit zones
+still need visual testing. Do not enable the YouGame "Works on phones" listing flag
+until it has been tested at 390×844, 844×390 and 1024×768 with real touch input.
+The web pilot does not enable GBA external-player launch, the native Companion Deck
+simulator, synchronized shared save states, or persistent browser saves yet. The
+browser virtual filesystem is session-local until IndexedDB / account-backed saves
+are implemented.
