@@ -5,21 +5,27 @@ executable. It is separate from the experimental browser/WASM branch.
 
 ## Current stage
 
-- Uses YouGame's MIT-licensed native C header, `yougame.h`.
+- Uses YouGame's MIT-licensed native C header, `yougame.h`, and retains its adjacent
+  upstream `LICENSE`.
 - On Windows builds with `PIPECLEAN_ENABLE_YOUGAME_NATIVE=ON`, PipeClean initializes the
   SDK, pumps `yg_update()` on its main/game loops, reports menu/playing/paused state, and
   exits cleanly when the YouGame app sends its quit instruction.
-- When launched by YouGame, the SDK uses the app's native stdin/stdout channel. The game
-  reads `YOUGAME_GAME` from the process environment for its listing slug.
+- When launched by YouGame, the SDK uses the app's native stdin/stdout channel and reads
+  the listing slug from `YOUGAME_GAME`.
+- The root `yougame-native.json` declares version 1 and `"net": "yougame"`, which asks
+  the desktop app to broker native network connections instead of granting the executable
+  its own internet access.
 - A standalone build can discover the running YouGame app through its local channel once
   `PIPECLEAN_YOUGAME_SLUG` is configured to the published listing slug.
 
 ## Not implemented yet
 
-This is the native SDK foundation, **not yet a completed online multiplayer provider**.
-PipeClean's existing Render relay remains unchanged. The next stage must implement the
-native room/ticket/data transport and connect it to `runtime/netplay.h`, then add the
-SML2-specific ROM compatibility and Friends lobby flow.
+This is the native SDK and desktop-launch foundation, **not yet a completed online
+multiplayer provider**. PipeClean's current `runtime/netplay.c` still uses the existing
+Render relay; the native YouGame broker has not yet been connected to
+`runtime/netplay.h`. The next stage must implement the ticket, brokered room connection,
+message handling, and SML2 ROM compatibility/Friends-room flow. A green Windows build
+will prove compilation only, not that a two-player session works.
 
 The current YouGame native desktop handoff documented by YouGame is for GameCube/Wii
 discs; it does not document handing a Game Boy ROM to a native Windows build. SML2 ROM
