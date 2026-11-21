@@ -28,6 +28,18 @@ Render relay; the native YouGame broker has not yet been connected to
 message handling, and SML2 ROM compatibility/Friends-room flow. A green Windows build
 will prove compilation only, not that a two-player session works.
 
+The native facade now also exposes generic broker primitives for the next adapter:
+`yougame_native_request()` wraps SDK `yg_call()` for requests such as `mpTicket`,
+and delivers replies from `yougame_native_update()`. SDK push events can be forwarded
+through `yougame_native_set_push_handler()`, and raw non-call lines through
+`yougame_native_set_line_handler()`. `yougame_native_next_request_id()` and
+`yougame_native_write_line()` are available to a protocol client that must share the
+SDK's request counter and stdio channel. These callbacks run on the PipeClean thread
+that pumps the SDK. Reply strings (especially `result_json`) are only valid for the
+duration of the callback, so an adapter must copy any data it retains. This is plumbing
+only: no native room-ticket flow, brokered socket, or PipeClean netplay transport is
+connected yet.
+
 The current YouGame native desktop handoff documented by YouGame is for GameCube/Wii
 discs; it does not document handing a Game Boy ROM to a native Windows build. SML2 ROM
 availability inside the Windows sandbox therefore remains an explicit integration issue

@@ -16,6 +16,19 @@
 static int g_yougame_initialized;
 static volatile LONG g_yougame_quit_requested;
 
+typedef struct YouGamePendingCall {
+    long long request_id;
+    YouGameNativeReplyCallback callback;
+    void *user;
+    struct YouGamePendingCall *next;
+} YouGamePendingCall;
+
+static YouGamePendingCall *g_yougame_pending_calls;
+static YouGameNativePushCallback g_yougame_push_callback;
+static void *g_yougame_push_user;
+static YouGameNativeLineCallback g_yougame_line_callback;
+static void *g_yougame_line_user;
+
 static void yougame_log(void *user, int level, const char *message)
 {
     (void)user;
@@ -45,17 +58,34 @@ static void yougame_quit(void *user)
 static void yougame_push(void *user, const char *type, const char *json)
 {
     (void)user;
-    (void)type;
-    (void)json;
-    /* Room/lobby push handling is added by the native netplay adapter. */
+    if (g_yougame_push_callback)
+        g_yougame_push_callback(g_yougame_push_user, type ? type : "",
+                                json ? json : "");
 }
 
 static void yougame_line(void *user, const char *line, size_t len)
 {
     (void)user;
-    (void)line;
-    (void)len;
-    /* Reserved for the YouGame native networking client (yougame_net.h). */
+    if (g_yougame_line_callback)
+        g_yougame_line_callback(g_yougame_line_user, line ? line : "", len);
+}
+
+static void yougame_call_finished(void *user, const yg_result *result)
+{
+    YouGamePendingCall *pending = (YouGamePendingCall *)user;
+    YouGamePendingCall **link = &g_yougame_pending_calls;
+    if (!pending) return;
+
+    while (*link && *link != pending) link = &(*link)->next;
+    if (*link == pending) *link = pending->next;
+
+    if (pending->callback && result) {
+        pending->callback(pending->user, result->id ? result->id : pending->request_id,
+            result->type ? result->type : "", result->ok,
+            result->code ? result->code : "", result->error ? result->error : "",
+            result->result_json ? result->result_json : "");
+    }
+    free(pending);
 }
 
 int yougame_native_init(void)
@@ -90,6 +120,67 @@ void yougame_native_shutdown(void)
     if (!g_yougame_initialized) return;
     yg_shutdown();
     g_yougame_initialized = 0;
+
+    /* The SDK deliberately drops outstanding callbacks during shutdown. */
+    while (g_yougame_pending_calls) {
+        YouGamePendingCall *pending = g_yougame_pending_calls;
+        g_yougame_pending_calls = pending->next;
+        free(pending);
+    }
+    g_yougame_push_callback = NULL;
+    g_yougame_push_user = NULL;
+    g_yougame_line_callback = NULL;
+    g_yougame_line_user = NULL;
+}
+
+long long yougame_native_request(const char *type, const char *body_json,
+    double timeout_seconds, YouGameNativeReplyCallback callback, void *user)
+{
+    YouGamePendingCall *pending = NULL;
+    long long request_id;
+
+    if (!g_yougame_initialized || !type || !type[0]) return 0;
+    if (!callback)
+        return yg_call(type, body_json, timeout_seconds, NULL, NULL);
+
+    pending = (YouGamePendingCall *)calloc(1, sizeof *pending);
+    if (!pending) return 0;
+    pending->callback = callback;
+    pending->user = user;
+
+    request_id = yg_call(type, body_json, timeout_seconds,
+                         yougame_call_finished, pending);
+    if (request_id <= 0) {
+        free(pending);
+        return 0;
+    }
+    pending->request_id = request_id;
+    pending->next = g_yougame_pending_calls;
+    g_yougame_pending_calls = pending;
+    return request_id;
+}
+
+void yougame_native_set_push_handler(YouGameNativePushCallback callback, void *user)
+{
+    g_yougame_push_callback = callback;
+    g_yougame_push_user = user;
+}
+
+void yougame_native_set_line_handler(YouGameNativeLineCallback callback, void *user)
+{
+    g_yougame_line_callback = callback;
+    g_yougame_line_user = user;
+}
+
+long long yougame_native_next_request_id(void)
+{
+    return g_yougame_initialized ? yg_next_id() : 0;
+}
+
+int yougame_native_write_line(const char *line, size_t length)
+{
+    if (!g_yougame_initialized || !line || length == 0) return -1;
+    return yg_write_line(line, length);
 }
 
 void yougame_native_set_state(int state)
@@ -149,6 +240,16 @@ int yougame_native_take_quit_request(void)
 int yougame_native_init(void) { return 0; }
 void yougame_native_update(void) {}
 void yougame_native_shutdown(void) {}
+long long yougame_native_request(const char *type, const char *body_json,
+    double timeout_seconds, YouGameNativeReplyCallback callback, void *user)
+{ (void)type; (void)body_json; (void)timeout_seconds; (void)callback; (void)user; return 0; }
+void yougame_native_set_push_handler(YouGameNativePushCallback callback, void *user)
+{ (void)callback; (void)user; }
+void yougame_native_set_line_handler(YouGameNativeLineCallback callback, void *user)
+{ (void)callback; (void)user; }
+long long yougame_native_next_request_id(void) { return 0; }
+int yougame_native_write_line(const char *line, size_t length)
+{ (void)line; (void)length; return -1; }
 void yougame_native_set_state(int state) { (void)state; }
 void yougame_native_relay_key(const char *key) { (void)key; }
 int yougame_native_connected(void) { return 0; }
