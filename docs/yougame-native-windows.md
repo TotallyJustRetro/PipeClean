@@ -12,9 +12,10 @@ executable. It is separate from the experimental browser/WASM branch.
   exits cleanly when the YouGame app sends its quit instruction.
 - When launched by YouGame, the SDK uses the app's native stdin/stdout channel and reads
   the listing slug from `YOUGAME_GAME`.
-- The root `yougame-native.json` declares version 1 and `"net": "yougame"`, which asks
-  the desktop app to broker native network connections instead of granting the executable
-  its own internet access.
+- The root `yougame-native.json` declares version 1 and `"net": "internet"` for this
+  transition build. This preserves the existing Render relay while allowing the YouGame
+  native connection. Once PipeClean's netplay provider uses the native room broker end to
+  end, switch the manifest to `"net": "yougame"` to remove direct network access.
 - A standalone build can discover the running YouGame app through its local channel once
   `PIPECLEAN_YOUGAME_SLUG` is configured to the published listing slug.
 
