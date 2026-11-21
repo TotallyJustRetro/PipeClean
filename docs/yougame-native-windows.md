@@ -23,10 +23,11 @@ executable. It is separate from the experimental browser/WASM branch.
 
 This is the native SDK and desktop-launch foundation, **not yet a completed online
 multiplayer provider**. PipeClean's current `runtime/netplay.c` still uses the existing
-Render relay; the native YouGame broker has not yet been connected to
-`runtime/netplay.h`. The next stage must implement the ticket, brokered room connection,
-message handling, and SML2 ROM compatibility/Friends-room flow. A green Windows build
-will prove compilation only, not that a two-player session works.
+Render relay; the YouGame broker transport has not yet been connected to
+`runtime/netplay.h`. The next stage must implement ticket issuance and Friends/queue
+selection, room/lobby messages, game start/results, and the SML2 ROM compatibility flow.
+A green Windows build proves compilation and the configured smoke test, not that a
+two-player session works.
 
 The native facade now also exposes generic broker primitives for the next adapter:
 `yougame_native_request()` wraps SDK `yg_call()` for requests such as `mpTicket`,
@@ -36,14 +37,23 @@ through `yougame_native_set_push_handler()`, and raw non-call lines through
 `yougame_native_write_line()` are available to a protocol client that must share the
 SDK's request counter and stdio channel. These callbacks run on the PipeClean thread
 that pumps the SDK. Reply strings (especially `result_json`) are only valid for the
-duration of the callback, so an adapter must copy any data it retains. This is plumbing
-only: no native room-ticket flow, brokered socket, or PipeClean netplay transport is
-connected yet.
+duration of the callback, so an adapter must copy any data it retains. This is request/event plumbing only: it is not a lobby or matchmaking implementation.
 
-The current YouGame native desktop handoff documented by YouGame is for GameCube/Wii
-discs; it does not document handing a Game Boy ROM to a native Windows build. SML2 ROM
-availability inside the Windows sandbox therefore remains an explicit integration issue
-to resolve before a hosted listing can launch SML2 automatically.
+A separate C façade, `runtime/yougame_native_net.h/.c`, now wraps the native
+broker's `netOpen`, `netSend` and `netClose` calls. It JSON-escapes text safely,
+checks queue room-code syntax, validates `pass` (24 UTF-16 code units), `name`
+(40 UTF-16 code units) and close-reason length (123 UTF-8 bytes), parses the returned
+connection id, and forwards `net` pushes. Pushes may arrive before the `netOpen`
+answer; the future room client must buffer those events until it associates the
+connection id. This wrapper does not yet request `mpTicket` or implement room
+protocol, matchmaking, the Friends picker, or PipeClean lockstep messages.
+
+The current published native handoff schema explicitly documents GameCube/Wii disc
+placeholders. YouGame's recent updates also mention setup of players' own SNES and DS
+copies for native builds, but the SDK's documented native placeholders do not describe
+a Game Boy/Game Boy Color ROM handoff. SML2 ROM availability inside the Windows sandbox
+therefore remains an integration issue to verify with YouGame before a hosted listing
+can launch SML2 automatically.
 
 ## Build options
 

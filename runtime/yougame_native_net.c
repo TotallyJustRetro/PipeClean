@@ -22,6 +22,64 @@ static void *g_net_event_user;
 static int g_net_registered;
 static YouGameNativeNetCall *g_net_pending_calls;
 
+/* Return UTF-16 code units for a valid UTF-8 string, or -1. The broker
+ * limits pass/name in UTF-16 units rather than bytes. */
+static int utf8_utf16_units(const char *text, int reject_controls)
+{
+    const unsigned char *p = (const unsigned char *)(text ? text : "");
+    int units = 0;
+    while (*p) {
+        unsigned char lead = *p++;
+        unsigned int cp;
+        unsigned int minimum;
+        int tails;
+        if (lead < 0x80) {
+            cp = lead; minimum = 0; tails = 0;
+        } else if (lead >= 0xC2 && lead <= 0xDF) {
+            cp = lead & 0x1Fu; minimum = 0x80; tails = 1;
+        } else if (lead >= 0xE0 && lead <= 0xEF) {
+            cp = lead & 0x0Fu; minimum = 0x800; tails = 2;
+        } else if (lead >= 0xF0 && lead <= 0xF4) {
+            cp = lead & 0x07u; minimum = 0x10000; tails = 3;
+        } else {
+            return -1;
+        }
+        for (int i = 0; i < tails; ++i) {
+            unsigned char next = *p++;
+            if ((next & 0xC0u) != 0x80u) return -1;
+            cp = (cp << 6) | (next & 0x3Fu);
+        }
+        if ((tails && cp < minimum) || cp > 0x10FFFFu ||
+            (cp >= 0xD800u && cp <= 0xDFFFu))
+            return -1;
+        if (reject_controls && (cp < 0x20u || (cp >= 0x7Fu && cp <= 0x9Fu)))
+            return -1;
+        units += cp > 0xFFFFu ? 2 : 1;
+    }
+    return units;
+}
+
+static int valid_room_code(const char *room)
+{
+    size_t length;
+    if (!room || !room[0]) return 0;
+    length = strlen(room);
+    if (length < 6 || length > 12) return 0;
+    for (size_t i = 0; i < length; ++i) {
+        unsigned char c = (unsigned char)room[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')))
+            return 0;
+    }
+    return 1;
+}
+
+static int valid_close_reason(const char *reason)
+{
+    if (!reason) return 1;
+    if (strlen(reason) > 123) return 0;
+    return utf8_utf16_units(reason, 0) >= 0;
+}
+
 static int append_char(char *out, size_t capacity, size_t *used, char value)
 {
     if (*used + 1 >= capacity) return 0;
@@ -204,6 +262,11 @@ long long yougame_native_net_open(const char *ticket, const char *room,
     char body[8192] = "{\"ticket\":";
     size_t used = strlen(body);
     if (!ticket || !ticket[0] ||
+        (room && room[0] && !valid_room_code(room)) ||
+        (pass && utf8_utf16_units(pass, 1) > 24) ||
+        (name && utf8_utf16_units(name, 1) > 40) ||
+        (pass && utf8_utf16_units(pass, 1) < 0) ||
+        (name && utf8_utf16_units(name, 1) < 0) ||
         !append_json_string(body, sizeof body, &used, ticket) ||
         !append_optional_string(body, sizeof body, &used, "room", room) ||
         !append_optional_string(body, sizeof body, &used, "pass", pass) ||
@@ -245,7 +308,8 @@ long long yougame_native_net_close(int connection_id, int code,
     char body[1024];
     size_t used;
     if (connection_id <= 0 ||
-        !(code == 1000 || (code >= 3000 && code <= 4999)))
+        !(code == 1000 || (code >= 3000 && code <= 4999)) ||
+        !valid_close_reason(reason))
         return 0;
     used = (size_t)snprintf(body, sizeof body, "{\"conn\":%d,\"code\":%d",
                             connection_id, code);
