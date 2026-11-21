@@ -2947,8 +2947,6 @@ int app_run(const char *autorun, const char *hack)
         fprintf(stderr, "SDL: %s\n", SDL_GetError());
         return 1;
     }
-    (void)yougame_native_init();
-    yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
     /* Keep native touch events enabled even when SDL also emits mouse events. */
     SDL_EventState(SDL_FINGERDOWN, SDL_ENABLE);
     SDL_EventState(SDL_FINGERMOTION, SDL_ENABLE);
@@ -2979,6 +2977,8 @@ int app_run(const char *autorun, const char *hack)
     audio_init(settings.latency);
     pad_init();
     ui_sfx_cb = sfx;
+    (void)yougame_native_init();
+    yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
     launcher_init();
     launcher_enter();
     yougame_native_set_state(PIPECLEAN_YOUGAME_MENU);
