@@ -17,7 +17,6 @@
   </style>
   <script>
     var Module = {
-      canvas: (function () { return document.getElementById('canvas'); })(),
       print: function (text) { console.log(text); },
       printErr: function (text) { console.error(text); },
       setStatus: function (text) {
@@ -27,9 +26,13 @@
       onRuntimeInitialized: function () {
         window.pcPipeCleanReady = true;
         document.getElementById('pc-status').textContent = 'PipeClean browser runtime ready.';
-        if (typeof YouGame === 'undefined' || YouGame.mode !== 'bridge') {
-          document.getElementById('pc-local-tools').style.display = 'block';
-        }
+        var showLocalPicker = function () {
+          if (typeof YouGame === 'undefined' || YouGame.mode !== 'bridge')
+            document.getElementById('pc-local-tools').style.display = 'block';
+        };
+        if (typeof YouGame !== 'undefined' && YouGame.ready)
+          YouGame.ready().then(showLocalPicker).catch(showLocalPicker);
+        else showLocalPicker();
       }
     };
   </script>
@@ -37,6 +40,7 @@
 <body>
   <div id="pc-status">Loading PipeClean…</div>
   <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+  <script>Module.canvas = document.getElementById('canvas');</script>
   <div id="pc-local-tools">
     <button id="pc-load-rom" type="button">Load my SML2 ROM (local test)</button>
     <p>Standalone development only. The hosted YouGame listing uses the player's accepted base-game copy instead.</p>
