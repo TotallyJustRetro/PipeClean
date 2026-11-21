@@ -1,0 +1,52 @@
+name: YouGame Web Prototype
+
+on:
+  push:
+    branches: [feature/yougame-online-prototype]
+  pull_request:
+    branches: [feature/yougame-online-prototype]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Emscripten
+        uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: latest
+
+      - name: Verify toolchain
+        run: |
+          emcc --version
+          emcmake --version
+
+      - name: Configure browser build
+        run: emcmake cmake -S . -B build-yougame-web -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build browser package
+        run: cmake --build build-yougame-web --parallel 2
+
+      - name: Verify packaged web entry points
+        run: |
+          test -s build-yougame-web/index.html
+          test -s build-yougame-web/index.js
+          test -s build-yougame-web/index.wasm
+          test -s build-yougame-web/index.data
+
+      - name: Check generated JavaScript syntax
+        run: node --check build-yougame-web/index.js
+
+      - name: Upload YouGame web prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeclean-yougame-web-prototype
+          path: build-yougame-web/
+          if-no-files-found: error
+          retention-days: 14
