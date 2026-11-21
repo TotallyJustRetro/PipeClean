@@ -2151,6 +2151,11 @@ static int play_multiplayer(int g)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_KEYDOWN && !e.key.repeat &&
+                e.key.keysym.sym == SDLK_ESCAPE && (e.key.keysym.mod & KMOD_SHIFT)) {
+                yougame_native_relay_key("shift-escape");
+                continue;
+            }
             if (companion_handle_event(g, &e, &paused, &quit)) continue;
 #if !defined(__ANDROID__)
             if (companion_sim_handle_event(&e, &settings)) continue;
@@ -2801,6 +2806,11 @@ static int play(int g)
         if (emu_cpu_faulted()) { quit = 1; break; }
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_KEYDOWN && !e.key.repeat &&
+                e.key.keysym.sym == SDLK_ESCAPE && (e.key.keysym.mod & KMOD_SHIFT)) {
+                yougame_native_relay_key("shift-escape");
+                continue;
+            }
             if (companion_handle_event(g, &e, &paused, &quit)) continue;
 #if !defined(__ANDROID__)
             if (companion_sim_handle_event(&e, &settings)) continue;
@@ -3000,6 +3010,11 @@ int app_run(const char *autorun, const char *hack)
     while (!quit) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_KEYDOWN && !e.key.repeat &&
+                e.key.keysym.sym == SDLK_ESCAPE && (e.key.keysym.mod & KMOD_SHIFT)) {
+                yougame_native_relay_key("shift-escape");
+                continue;
+            }
 #if !defined(__ANDROID__)
             if (companion_sim_handle_event(&e, &settings)) continue;
 #endif
