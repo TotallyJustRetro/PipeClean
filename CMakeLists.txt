@@ -142,6 +142,11 @@ endif()
 if(EMSCRIPTEN)
   set_target_properties(PipeClean PROPERTIES OUTPUT_NAME "index" SUFFIX ".html")
 endif()
+if(EMSCRIPTEN)
+  # YouGame reads controls from the root of the uploaded web build.
+  configure_file("${CMAKE_SOURCE_DIR}/yougame.json"
+                 "${CMAKE_BINARY_DIR}/yougame.json" COPYONLY)
+endif()
 target_include_directories(${PIPECLEAN_RUNTIME_TARGET} PRIVATE runtime ${GEN})
 target_compile_definitions(${PIPECLEAN_RUNTIME_TARGET} PRIVATE USE_SDL)
 if(EMSCRIPTEN)
