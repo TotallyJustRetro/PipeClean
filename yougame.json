@@ -1,0 +1,25 @@
+{
+  "controls": {
+    "preset": "dpad-ab",
+    "move": "dpad",
+    "buttons": ["a", "b", "start", "select"],
+    "keys": {
+      "a": "KeyX",
+      "b": "KeyZ",
+      "up": "ArrowUp",
+      "down": "ArrowDown",
+      "left": "ArrowLeft",
+      "right": "ArrowRight",
+      "start": "Enter",
+      "select": "ShiftRight"
+    },
+    "labels": {
+      "a": "A",
+      "b": "B",
+      "start": "Start",
+      "select": "Select"
+    },
+    "emit": "keys",
+    "touch": "auto"
+  }
+}
