@@ -3314,6 +3314,90 @@ static void tab_online_lobby(float x, float y, const NetplayInfo *np)
 
 static void tab_online(float x, float y)
 {
+#if defined(__EMSCRIPTEN__)
+    NetplayInfo web_np;
+    netplay_get_info(&web_np);
+    if (web_np.state == NETPLAY_HOSTING || web_np.state == NETPLAY_CONNECTED) {
+        card(x, y, 808, 512, "YOUGAME FRIENDS ROOM");
+        ui_text_fit(F_REG, 12, x + 18, y + 42, 772, C_DIM,
+                    "Private invitations and player identity are managed by YouGame.");
+        panel_surface(x + 18, y + 70, 354, 422, 12);
+        section_heading(x + 34, y + 84, 320, "ROOM");
+        ui_text(F_REG, 10, x + 34, y + 116, C_MUTED, "INVITE CODE");
+        ui_text_fit(F_BOLD, 24, x + 34, y + 136, 306, C_TEXT,
+                    web_np.code[0] ? web_np.code : "Waiting for room…");
+        if (ui_button(x + 34, y + 184, 322, 38, "Invite Friends / Room Controls",
+                      B_PRIMARY, web_np.state == NETPLAY_HOSTING ||
+                                 web_np.state == NETPLAY_CONNECTED))
+            netplay_show_lobby();
+        if (ui_button(x + 34, y + 232, 322, 32, "Leave Room", B_DANGER, 1))
+            netplay_disconnect();
+        ui_text(F_REG, 10, x + 34, y + 286, C_MUTED, "PLAYER");
+        ui_text_fit(F_BOLD, 15, x + 34, y + 306, 322, C_TEXT,
+                    web_np.peer[0] ? web_np.peer : "Waiting for a friend…");
+        ui_text_wrap(F_REG, 10, x + 34, y + 354, 322, C_DIM,
+                     web_np.status[0] ? web_np.status : "Open the YouGame room panel to invite someone.", 3);
+
+        panel_surface(x + 390, y + 70, 400, 422, 12);
+        section_heading(x + 408, y + 84, 360, "SUPER MARIO LAND 2 CO-OP");
+        ui_text_wrap(F_REG, 11, x + 408, y + 112, 360, C_DIM,
+                     "This first YouGame pilot is limited to Super Mario Land 2. Both players must use the same accepted ROM dump.", 3);
+        ui_text_fit(F_REG, 10, x + 408, y + 188, 360, C_MUTED, "ROM COMPATIBILITY");
+        ui_rrect(x + 408, y + 210, 360, 42, 8,
+                 web_np.rom_check_state == NETPLAY_ROM_MATCH ? RGBA(46,154,105,30) :
+                 (web_np.rom_check_state == NETPLAY_ROM_MISMATCH ? RGBA(206,75,74,28) : RGBA(237,180,81,18)));
+        ui_text_fit(F_REG, 11, x + 422, y + 224, 332,
+                    web_np.rom_check_state == NETPLAY_ROM_MATCH ? HEX(0x59D49A) :
+                    (web_np.rom_check_state == NETPLAY_ROM_MISMATCH ? C_WARN : C_TEXT),
+                    web_np.rom_check_status[0] ? web_np.rom_check_status : "Waiting for both ROM checks…");
+        if (web_np.is_host) {
+            int can_play = web_np.state == NETPLAY_CONNECTED &&
+                           web_np.rom_check_state == NETPLAY_ROM_MATCH;
+            if (ui_button(x + 408, y + 278, 360, 46, "Play Super Mario Land 2 Together",
+                          B_PRIMARY, can_play)) {
+                if (!netplay_lobby_start_game(GAME_SML2))
+                    launcher_toast("Waiting for a friend and matching ROM checks before starting.");
+            }
+        } else {
+            ui_text_fit(F_BOLD, 12, x + 408, y + 294, 360, C_TEXT,
+                        web_np.state == NETPLAY_CONNECTED
+                            ? "Waiting for the room host to start…" : "Waiting for a friend to join…");
+        }
+        ui_text_fit(F_REG, 10, x + 408, y + 386, 360, C_DIM,
+                    "Pause and rewind are disabled during online lockstep play.");
+    } else {
+        card(x, y, 808, 512, "ONLINE PLAY");
+        ui_text_wrap(F_REG, 12, x + 18, y + 42, 772, C_DIM,
+                     "The browser prototype uses YouGame Friends rooms. Regular Windows and Android builds keep the existing Render relay.", 2);
+        panel_surface(x + 18, y + 82, 354, 396, 12);
+        section_heading(x + 34, y + 96, 320, "YOUR GAME");
+        ui_text(F_REG, 11, x + 34, y + 136, C_MUTED, "FIRST ONLINE PILOT");
+        ui_text_fit(F_BOLD, 17, x + 34, y + 160, 320, C_TEXT, "Super Mario Land 2");
+        ui_text_wrap(F_REG, 11, x + 34, y + 202, 320, C_DIM,
+                     "The hosted patch listing supplies the player's own accepted ROM. This project does not package Nintendo ROM data.", 4);
+        if (ui_button(x + 34, y + 340, 322, 48, "Create / Join Friends Room",
+                      B_PRIMARY, 1)) {
+            (void)netplay_lobby_set_game(GAME_SML2);
+            if (netplay_host("yougame", settings.online_name) != 0)
+                launcher_toast("Load an accepted Super Mario Land 2 ROM first, then try again.");
+            else
+                launcher_toast("Opening your YouGame Friends room…");
+        }
+        if (web_np.state == NETPLAY_ERROR)
+            ui_text_fit(F_REG, 10, x + 34, y + 404, 322, C_WARN, web_np.status);
+        else
+            ui_text_fit(F_REG, 10, x + 34, y + 404, 322, C_DIM,
+                        "Your friend accepts the invitation from the YouGame room panel.");
+
+        panel_surface(x + 390, y + 82, 400, 396, 12);
+        section_heading(x + 408, y + 96, 360, "HOW IT WORKS");
+        ui_text_wrap(F_REG, 11, x + 408, y + 130, 360, C_TEXT,
+                     "1. Load your own accepted SML2 ROM.\n2. Create a private Friends room.\n3. Invite a friend with the YouGame room panel.\n4. Both players verify the same ROM before starting.", 6);
+        ui_text_wrap(F_REG, 10, x + 408, y + 316, 360, C_DIM,
+                     "This is an experimental browser build. Save synchronization and native Companion Deck integration are future work.", 3);
+    }
+    return;
+#endif
     NetplayInfo np;
     netplay_get_info(&np);
     if (np.state == NETPLAY_HOSTING || np.state == NETPLAY_CONNECTED) {
