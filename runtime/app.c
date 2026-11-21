@@ -2412,6 +2412,10 @@ static int play_multiplayer(int g)
             }
         }
 
+        yougame_native_set_state(paused ? PIPECLEAN_YOUGAME_PAUSED : PIPECLEAN_YOUGAME_PLAYING);
+        yougame_native_update();
+        if (yougame_native_take_quit_request()) quit = 2;
+
         int ev;
         while ((ev = events_pop()) >= 0) pad_event_fx(g, ev);
 
@@ -2854,6 +2858,9 @@ static int play(int g)
         pad_poll(g, &b, &d);
         emu_input(rewind_held ? 0 : b, rewind_held ? 0 : d);
         if (emu_frame_get(f)) { have = 1; tex_collect_frame(f); }
+        yougame_native_set_state(paused ? PIPECLEAN_YOUGAME_PAUSED : PIPECLEAN_YOUGAME_PLAYING);
+        yougame_native_update();
+        if (yougame_native_take_quit_request()) quit = 2;
         int ev;
         while ((ev = events_pop()) >= 0) pad_event_fx(g, ev);
         Uint64 now = SDL_GetPerformanceCounter();
