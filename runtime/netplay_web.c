@@ -41,6 +41,7 @@ EM_JS(void, pc_yg_netplay_init, (), {
         YouGame.ready().then(() => {
             y.ready = true;
             if (typeof YouGame.setGameState === "function") YouGame.setGameState("menu");
+            if (YouGame.input && typeof YouGame.input.hide === "function") YouGame.input.hide();
         }).catch(e => {
             y.state = 4; y.status = "YouGame SDK unavailable: " + String(e && e.message || e);
         });
@@ -79,6 +80,7 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
             y.localIsP1 = !!(matchConnections && matchConnections[0] === room.me);
             y.playing = true; y.error = false; y.remoteGame = null;
             if (typeof YouGame.setGameState === "function") YouGame.setGameState("playing");
+            if (YouGame.input && typeof YouGame.input.show === "function") YouGame.input.show();
             y.remoteInputs.clear(); y.localInputs.clear();
             y.startRequest = 2;
             y.status = "Match starting; synchronizing Mario and Luigi.";
@@ -140,7 +142,9 @@ EM_ASYNC_JS(int, pc_yg_join_friends_room, (const char *displayName), {
         room.on("result", () => {
             y.playing = false; y.startRequest = -1; y.remoteGame = null;
     if (typeof YouGame !== "undefined" && typeof YouGame.setGameState === "function")
-        YouGame.setGameState("menu"); y.refresh();
+        YouGame.setGameState("menu");
+    if (typeof YouGame !== "undefined" && YouGame.input && typeof YouGame.input.hide === "function")
+        YouGame.input.hide(); y.refresh();
         });
         room.on("close", ({ reason }) => {
             y.room = null; y.playing = false; y.startRequest = -1;
@@ -172,6 +176,10 @@ EM_JS(void, pc_yg_disconnect, (), {
     y.room = null; y.playing = false; y.startRequest = -1;
     y.error = false; y.state = 0; y.code = ""; y.peer = "";
     y.status = "Not connected";
+    if (typeof YouGame !== "undefined" && YouGame.input && typeof YouGame.input.hide === "function")
+        YouGame.input.hide();
+    if (typeof YouGame !== "undefined" && typeof YouGame.setGameState === "function")
+        YouGame.setGameState("menu");
     for (const resolve of y.inputWaiters ? y.inputWaiters.values() : []) resolve(null);
     if (y.inputWaiters) y.inputWaiters.clear();
     if (y.gameWaiter) { y.gameWaiter(null); y.gameWaiter = null; }
