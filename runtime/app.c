@@ -3115,8 +3115,8 @@ int app_run(const char *autorun, const char *hack)
 #if !defined(__ANDROID__)
     companion_sim_shutdown();
 #endif
-    yougame_native_shutdown();
     launcher_shutdown();
+    yougame_native_shutdown();
     branding_shutdown();
     settings_save();
     pad_shutdown();
