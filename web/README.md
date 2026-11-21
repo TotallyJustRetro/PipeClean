@@ -47,8 +47,10 @@ development. It is not used by the published listing.
 - PipeClean owns emulation, game rules, player assignment and simulation.
 
 Shared online save slots are intentionally unavailable in this first web provider. The
-existing local save data remains local; account-backed binary save integration is a later
-milestone. Ranked matchmaking is intentionally out of scope for cooperative play.
+browser virtual filesystem is currently session-local, so saves and settings are not yet
+guaranteed to survive a page reload. IndexedDB persistence or YouGame account-backed binary
+save integration is a required follow-up before calling this a release-ready browser port.
+Ranked matchmaking is intentionally out of scope for cooperative play.
 
 ## Important limitations
 
