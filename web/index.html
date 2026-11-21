@@ -39,14 +39,12 @@
         };
         var applyHostLayout = function (layout) {
           if (!layout || (layout.status !== 'ready' && layout.status !== 'standalone')) return;
-          var measured = YouGame.ui.getLayout(surface);
-          if (measured.status !== 'ready' && measured.status !== 'standalone') return;
-          var insets = measured.insets || { left: 0, top: 0, right: 0, bottom: 0 };
+          var insets = layout.insets || { left: 0, top: 0, right: 0, bottom: 0 };
           surface.style.left = Math.max(0, insets.left || 0) + 'px';
           surface.style.top = Math.max(0, insets.top || 0) + 'px';
           surface.style.right = Math.max(0, insets.right || 0) + 'px';
           surface.style.bottom = Math.max(0, insets.bottom || 0) + 'px';
-          if (measured.status === 'ready') {
+          if (layout.status === 'ready') {
             if (status) status.style.display = 'none';
           } else {
             if (status) status.style.display = 'block';
@@ -57,7 +55,7 @@
             showLocalPicker();
             if (YouGame.ui && YouGame.ui.onChange) {
               YouGame.ui.onChange(function (layout) { applyHostLayout(layout); });
-              applyHostLayout(YouGame.ui.getLayout(surface));
+              applyHostLayout(YouGame.ui.getLayout());
             }
           }).catch(showLocalPicker);
         } else showLocalPicker();
